@@ -29,6 +29,9 @@ sys.path.insert(0, HERE)
 import sms2md  # noqa: E402
 
 MDV = np.array([0, 2, 5, 7]) * 255 // 7
+MDV4 = np.array([0, 2, 4, 6]) * 255 // 7   # back end A (Mode 4): the VDP shows each SMS 2-bit level as the top of a 3-bit one
+GEOM = {'top': 0, 'lev': MDV}               # back end A: the 192-line picture sits 16 rows down in the 224-row frame
+SETS = []
 MAP = {'A': 'B', 'B': 'C', 'Select': 'Start'}
 
 
@@ -70,8 +73,9 @@ def md_img(d, f):
     p = os.path.join(d, 'f%06d.png' % f)
     if not os.path.exists(p):
         return None
-    a = np.asarray(Image.open(p).convert('RGB'), dtype=np.int32)[:192]
-    return np.abs(a[..., None] - MDV[None, None, None, :]).argmin(-1)
+    t = GEOM['top']
+    a = np.asarray(Image.open(p).convert('RGB'), dtype=np.int32)[t:t + 192]
+    return np.abs(a[..., None] - GEOM['lev'][None, None, None, :]).argmin(-1)
 
 
 def same(a, b):
@@ -109,12 +113,19 @@ def test_game(g, work, exe, bizhawk=False):
          '--report', os.path.join(work, 'report.json'), '--workshop', exe]
     if g.get('profile'):
         a += ['--profile', g['profile']]
+    for kv in SETS:
+        a += ['--set', kv]
     code, log = run(a)
     if code or not os.path.exists(out):
         res.update(grade='Build fails', log=log[-600:])
         return res
     rep = json.load(open(os.path.join(work, 'report.json')))
     res['translation'] = {k: rep[k] for k in ('out_sha256', 'out_size', 'instructions', 'stats')}
+    res['video'] = rep['settings'].get('video')
+    if rep['settings'].get('video') == 'mode4':
+        GEOM.update(top=16, lev=MDV4)
+    else:
+        GEOM.update(top=0, lev=MDV)
     # 1. boot delay
     tf = prof.get('title_frame', 110)
     sb, mb = os.path.join(work, 'sboot'), os.path.join(work, 'mboot')
@@ -249,7 +260,9 @@ def main():
     ap.add_argument('--only')
     ap.add_argument('--results')
     ap.add_argument('--workshop')
+    ap.add_argument('--set', action='append', default=[], help='translator setting key=value (e.g. video=mode5)')
     a = ap.parse_args()
+    SETS[:] = a.set
     exe = sms2md.workshop_exe(a.workshop)
     games = []
     if a.rom:

@@ -33,12 +33,19 @@
         move.b  #1,(VCODE).w
         movea.l #VSHADOW,a6
         adda.w  d3,a6
+        .if VIDEO_MODE == 5
         move.b  d0,(a6)+
         clr.b   (a6)+
         move.w  d3,d7
         lsr.w   #5,d7
         lea     (DIRTY).w,a0
         st      0(a0,d7.w)
+        .else
+        move.b  d0,(a6)+                | Mode 4: the whole name table entry (an even address) as one pair
+        clr.b   (a6)+
+        move.w  d3,d7
+        jsr     (m4_pair).l
+        .endif
         moveq   #0,d0                   | XOR A: A = 0, Z set
         moveq   #4,d4
         move.b  1(a5),-(sp)             | RET

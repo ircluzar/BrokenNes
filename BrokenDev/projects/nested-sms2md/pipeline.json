@@ -14,7 +14,7 @@
   },
   "tool": "BrokenDev/tools/nested-everything/sms2md.py",
   "cli": "brokendev.ps1 nested-everything sms2md <in.sms> <out.md> [-Profile <game id or file>] [-Feedback none|brokennes] [-Set key=value,...]",
-  "description": "Ahead-of-time Z80 -> 68000 translation (static analysis + entry-point feedback from BrokenNes's SMS core + per-game profiles) with a small 68000 runtime that stands in for the SMS VDP, PSG, pads and Sega mapper. The output is a plain Genesis ROM: no SMS-mode reset, no Power Base Converter. Video back end B (Mode 5 translation) is built; back end A (keep the VDP in Mode 4) is a stub until a real console says Mode 4 works from Genesis mode.",
+  "description": "Ahead-of-time Z80 -> 68000 translation (static analysis + entry-point feedback from BrokenNes's SMS core + per-game profiles) with a small 68000 runtime that stands in for the SMS VDP, PSG, pads and Sega mapper. The output is a plain Genesis ROM: no SMS-mode reset, no Power Base Converter. Video back end A (default): the VDP stays in SMS Mode 4, which a real Genesis draws from Genesis mode; back end B (Mode 5 translation) stays as an option.",
   "settings": [
     {
       "id": "video",
@@ -23,8 +23,8 @@
         "mode5",
         "mode4"
       ],
-      "default": "mode5",
-      "what": "Video back end: mode5 = translate the SMS picture to Genesis Mode 5 (tiles converted, name table / sprites / colours translated); mode4 = leave the VDP in SMS Mode 4 and pass the game's writes through (STUB, needs the md-mode4-test answer from real hardware)"
+      "default": "mode4",
+      "what": "Video back end: mode4 (A, default) = leave the VDP in SMS Mode 4 and pass the game's writes through (a real Genesis draws Mode 4 from Genesis mode: md-mode4-test, 2026-11-15); mode5 (B) = translate the SMS picture to Genesis Mode 5 (tiles converted, name table / sprites / colours translated), for emulators without Mode 4 on the Genesis"
     },
     {
       "id": "memory",

@@ -6,9 +6,9 @@
 |   a4 BC'    a6 the SMS VDP address (pointer into the VRAM shadow)    DE' HL' A' F' in RAM
 |   d5 d6 d7 a0 a1: scratch. Helpers take an address in d7.w, a value in d6.b and may clobber d5-d7/a0/a1 unless they say so.
 |
-| Video back ends: VIDEO_MODE=5 (default, built here): the SMS VDP is emulated on top of Mode 5 (tiles converted from the SMS's
-| planar 4bpp to packed, name table / sprites / colours translated). VIDEO_MODE=4: pass-through stub for the day a console proves
-| that Mode 4 works from Genesis mode (md-mode4-test); not tested, see vid4_* below.
+| Video back ends: VIDEO_MODE=5: the SMS VDP is emulated on top of Mode 5 (tiles converted from the SMS's planar 4bpp to packed,
+| name table / sprites / colours translated). VIDEO_MODE=4 (back end A): the VDP stays in SMS Mode 4 (M5 clear), which a real
+| Genesis draws from Genesis mode (md-mode4-test, 2026-11-15); the game's bytes go to it almost directly, see "Mode 4 pass-through".
 
         .equ VDPD,      0xC00000
         .equ VDPC,      0xC00004
@@ -57,6 +57,9 @@
         .equ NTNEXT,    0xFFFFF110
         .equ NTFORCE,   0xFFFFF111
         .equ LASTDISP,  0xFFFFF112
+        .equ HWADDR,    0xFFFFF114      | Mode 4: the VRAM address the real VDP holds now ($FFFF = unknown)
+        .equ DEFPAIR,   0xFFFFF116      | Mode 4: an even SMS byte written to the shadow but not yet sent ($FFFF = none)
+        .equ VPEND,     0xFFFFF118      | Mode 4: this frame interrupt's 68000 work done, the Z80 delivery still waiting (DI)
         .equ SHFLOOR,   0xFFFFF098      | 68000 SP at the current interrupt's entry: shadow return entries below it are its own
         .equ IDLEFR,    0xFFFFF08A      | frames in which the game reached its idle point (HALT or a profile's idle_pc)
         .equ IDLEFLAG,  0xFFFFF08E
@@ -132,6 +135,7 @@ boot:
         moveq   #19,d1
 5:      move.l  d0,(VDPD).l
         dbra    d1,5b
+        .if VIDEO_MODE == 5
         | solid tiles: $780 = colour 15 (SMS BG colour 0), $781 = colour 14 (SMS backdrop)
         move.l  #0x70000003,(a0)        | VRAM $F000
         move.l  #0xFFFFFFFF,d0
@@ -153,6 +157,7 @@ boot:
         move.w  #1023,d1
 9:      move.w  d0,(VDPD).l
         dbra    d1,9b
+        .endif
         | pads
         move.b  #0x40,(0xA10009).l
         move.b  #0x40,(0xA10003).l
@@ -176,9 +181,13 @@ boot:
         dbra    d1,12b
         | SMS power-on state
         move.w  #0x3800,(NTBASE).w
+        .if VIDEO_MODE == 5
         moveq   #2,d6
         move.b  #0xFF,d5
         bsr     vdp_setreg              | the power-on name table ($3800) gets its plane
+        .else
+        bsr     m4_enter
+        .endif
         move.w  #0x3F00,(SATBASE).w
         move.b  #0xFF,(PAD1).w
         lea     (MAPREG).w,a0
@@ -419,6 +428,10 @@ port_in:
 | z_vcount: the SMS V counter as the game expects it relative to its frame interrupt. That fires at Genesis line 224
 | (VInt), SMS line 192 on the console: the game sees the Genesis line minus 48, SMS-encoded ($00-$DA, then $D5-$FF).
 z_vcount:
+        .if VIDEO_MODE == 4
+        move.b  (HVC).l,d6              | Mode 4: the VDP's own V counter runs the SMS's 192-line sequence
+        rts
+        .endif
         moveq   #0,d6
         move.b  (HVC).l,d6
         subi.w  #48,d6                  | (48, not 32: the VInt handler's own work takes Genesis lines 224-238, where a
@@ -431,7 +444,16 @@ z_vcount:
 z_hcount:
         move.b  (HVC+1).l,d6
         rts
-z_pad1: move.b  (PAD1).w,d6
+z_pad1:
+        .if VIDEO_MODE == 4
+        movem.l d0-d1/a0,-(sp)          | Mode 4: read now (the frame interrupt may be off while the game polls)
+        bsr     pad_raw
+        move.b  d0,(PAD1).w
+        move.b  d0,d6
+        movem.l (sp)+,d0-d1/a0
+        rts
+        .endif
+        move.b  (PAD1).w,d6
         rts
 z_pad2: moveq   #-1,d6
         rts
@@ -463,13 +485,18 @@ isr_call:
         move.w  a5,-(sp)
         move.w  #MAGIC,-(sp)
         move.l  sp,(SHFLOOR).w
+        .if VIDEO_MODE == 5
         move    #0x2000,sr
+        .else
+        move    #0x2700,sr              | Mode 4: the VDP's interrupt line stays up until a status read; IFF is off, so the
+        .endif                          | 68000 takes nothing until the game's EI (z_ei) opens the mask
         jsr     (a0)
         addq.l  #4,sp
         move.l  (sp)+,(SHFLOOR).w
         move.w  (sp)+,sr
         rts
 
+        .if VIDEO_MODE == 5
 vint:
         movem.l d0-d7/a0-a6,-(sp)
         addq.l  #1,(FRAMES).w
@@ -545,6 +572,70 @@ z_halt: addq.l  #1,(HALTS).w
         cmp.b   (ISRCNT).w,d6
         beq.s   1b
         rts
+        .else
+| Mode 4: the real VDP raises the 68000's level 6 (frame) and level 4 (line) interrupts and holds them until the game reads
+| the status port, exactly the SMS's IRQ line. Z80 IFF off: the handler masks the interrupted code (stacked SR) and returns;
+| the game's EI opens the mask again and the 68000 takes the still pending interrupt then (the Z80's own behaviour).
+vint:
+        movem.l d0-d7/a0-a6,-(sp)
+        tst.b   (VPEND).w
+        bne.s   3f                      | the same frame interrupt again (after an EI): its 68000 work is done
+        st      (VPEND).w
+        addq.l  #1,(FRAMES).w
+        bsr     m4_flush
+        bsr     read_pad
+        tst.b   d2
+        beq.s   3f
+        | Pause: the Z80 NMI
+        addq.l  #1,(NMIS).w
+        moveq   #0,d7
+        move.b  (IFF).w,d7
+        move.w  d7,-(sp)
+        sf      (IFF).w
+        movem.l 2(sp),d0-d7/a0-a6
+        lea     Z80_NMI,a0
+        bsr     isr_call
+        move.l  a6,2+56(sp)
+        move    #0x2700,sr
+        move.w  (sp)+,d7
+        move.b  d7,(IFF).w
+3:      tst.b   (IFF).w
+        beq.s   8f
+        sf      (VPEND).w
+        movem.l (sp),d0-d7/a0-a6
+        bsr     deliver
+        move.l  a6,56(sp)
+        movem.l (sp)+,d0-d7/a0-a6
+        rte
+8:      ori.w   #0x0700,60(sp)          | DI: keep the interrupted code masked until its EI
+        movem.l (sp)+,d0-d7/a0-a6
+        rte
+
+hint:
+        tst.b   (IFF).w
+        beq.s   8f
+        movem.l d0-d7/a0-a6,-(sp)
+        bsr     deliver
+        move.l  a6,56(sp)
+        movem.l (sp)+,d0-d7/a0-a6
+        rte
+8:      ori.w   #0x0700,(sp)
+        rte
+
+| EI: interrupts on; a pending VDP interrupt is taken at once by the 68000
+z_ei:   st      (IFF).w
+        move    #0x2000,sr
+        rts
+
+| HALT: wait for the next delivered interrupt
+z_halt: addq.l  #1,(HALTS).w
+        bsr     z_idle
+        move.b  (ISRCNT).w,d6
+1:      stop    #0x2000
+        cmp.b   (ISRCNT).w,d6
+        beq.s   1b
+        rts
+        .endif
 
 | z_idle: the game reached its idle point this frame (HALT or a profile idle_pc): counts frames with idle time (lag = frames without)
 z_idle: move.l  (FRAMES).w,d5
@@ -559,6 +650,18 @@ z_idle: move.l  (FRAMES).w,d5
 
 | read_pad (in VInt, every register free): PAD1 = SMS $DC (Genesis B = button 1, C = button 2, A = button 1 too), d2 = Start newly pressed
 read_pad:
+        bsr.s   pad_raw
+        move.b  d0,(PAD1).w
+        move.b  d1,d2
+        not.b   d2
+        andi.b  #0x20,d2
+        move.b  (PADPREV).w,d3
+        move.b  d2,(PADPREV).w
+        not.b   d3
+        and.b   d3,d2
+        rts
+| pad_raw: d0 = SMS $DC, d1 = the second (Start/A) read; a0 clobbered
+pad_raw:
         lea     (0xA10003).l,a0
         move.b  #0x40,(a0)
         nop
@@ -573,15 +676,7 @@ read_pad:
         btst    #4,d1
         bne.s   1f
         bclr    #4,d0
-1:      move.b  d0,(PAD1).w
-        move.b  d1,d2
-        not.b   d2
-        andi.b  #0x20,d2
-        move.b  (PADPREV).w,d3
-        move.b  d2,(PADPREV).w
-        not.b   d3
-        and.b   d3,d2
-        rts
+1:      rts
 
 | ------------------------------------------------------------------------------------------------- block instructions
 | (all keep d0-d4/a2-a6 as the Z80 state; flags: d4)
@@ -688,9 +783,16 @@ z_cpdr: bsr.s   z_cpd
 | z_outin: d5.w = n consecutive OUTIs. Port $BE with the source in one RAM range or one ROM slot: a bulk copy into the
 | shadow and one dirty mark per unit; anything else: n single OUTIs.
 z_outin:
-        .if VIDEO_MODE == 5
         cmpi.b  #0xBE,d1
         bne.s   8f
+        .if VIDEO_MODE == 4
+        cmpi.b  #3,(VCODE).w            | (CRAM: one byte at a time)
+        beq.s   8f
+        move.w  a6,d6
+        add.w   d5,d6
+        cmpi.w  #0x4000,d6              | (wraps the 16 KB: one byte at a time)
+        bhi.s   8f
+        .endif
         move.w  d3,d7
         cmpi.w  #0xC000,d7
         bcc.s   1f
@@ -719,6 +821,11 @@ z_outin:
         subq.w  #1,d7
 3:      move.b  (a0)+,(a6)+
         dbra    d7,3b
+        .if VIDEO_MODE == 4
+        move.w  d5,-(sp)
+        bsr     m4_bulk
+        move.w  (sp)+,d5
+        .else
         move.w  a6,d7
         subq.w  #1,d7
         lsr.w   #5,d7                   | last unit
@@ -727,6 +834,7 @@ z_outin:
         addq.w  #1,d6
         cmp.w   d7,d6
         bls.s   4b
+        .endif
         add.w   d5,d3
         lsl.w   #8,d5
         sub.w   d5,d1
@@ -735,7 +843,6 @@ z_outin:
         bcc.s   5f
         moveq   #4,d4
 5:      rts
-        .endif
 8:      move.w  d5,-(sp)
 9:      bsr     z_outi
         subq.w  #1,(sp)
@@ -743,9 +850,10 @@ z_outin:
         addq.l  #2,sp
         rts
 
-z_outi: cmpi.b  #0xBE,d1                | the VRAM upload case: (HL) straight into the shadow
-        bne.s   5f
+z_outi:
         .if VIDEO_MODE == 5
+        cmpi.b  #0xBE,d1                | the VRAM upload case: (HL) straight into the shadow
+        bne.s   5f
         move.w  d3,d7
         cmpi.w  #0xC000,d7
         bcc.s   1f
@@ -1311,41 +1419,236 @@ sat_upload:
         rts
 
         .else
-| --- Mode 4 pass-through (back end A): STUB, untested; for a console that proves Mode 4 works from Genesis mode ---
-| The idea: leave the VDP in Mode 4, send the game's bytes straight to it; only the interrupts and the pad stay translated.
+| --- Mode 4 pass-through (back end A) ---
+| The VDP stays in Mode 4: the game's tiles, name table, sprites, scroll and colours are the hardware's own, no conversion.
+| What the real Genesis showed (md-mode4-test, 2026-11-15) and what this code is built on:
+|  - every control word is a whole command ($4000|a VRAM write, $C000|i CRAM write, $8rvv register); registers 11+ cannot
+|    be written in Mode 4, so the increment (R15 = 1: a word steps the address by 2) is set in Mode 5 before the switch;
+|  - VRAM is written a word at a time: the word's LOW byte goes to the even SMS address, the high byte to the odd one;
+|  - CRAM: one command per colour ($C000|index), the SMS colour in the word's low 6 bits;
+|  - frame interrupt (level 6) at line 192, line interrupt (level 4) from R10, both held until a status read.
+| The SMS writes bytes; the hardware takes words. The runtime keeps the SMS VRAM in the shadow (VSHADOW, as back end B) and
+| sends whole pairs: an even byte waits in DEFPAIR, the odd byte of the same pair sends the word; anything else sends the
+| waiting pair first. HWADDR follows the hardware address so a stream of pairs needs one command only. Data port reads come
+| from the shadow (the read-ahead buffer as on the SMS).
+
+| m4_enter (boot): Genesis Mode 5 -> SMS Mode 4, display off, the SMS power-on registers
+m4_enter:
+        lea     (VDPC).l,a0
+        move.w  #0x8104,(a0)            | Mode 5, display off
+        move.w  #0x8F01,(a0)            | increment 1 (= 2 bytes in Mode 4), set while registers 11+ can still be written
+        move.w  #0x8B00,(a0)
+        move.w  #0x8C00,(a0)            | H32
+        move.w  #0x9000,(a0)
+        move.w  #0x8180,(a0)            | M5 clear: Mode 4
+        lea     m4regs(pc),a1
+        moveq   #(m4regs_end-m4regs)/2-1,d1
+1:      move.w  (a1)+,(a0)
+        dbra    d1,1b
+        move.w  #0x4000,(a0)            | clear the 16 KB
+        lea     (VDPD).l,a1
+        moveq   #0,d0
+        move.w  #0x1FFF,d1
+2:      move.w  d0,(a1)
+        dbra    d1,2b
+        moveq   #0,d1                   | CRAM
+3:      move.w  d1,d0
+        ori.w   #0xC000,d0
+        move.w  d0,(a0)
+        clr.w   (a1)
+        addq.w  #1,d1
+        cmpi.w  #32,d1
+        bne.s   3b
+        move.w  #0xFFFF,(HWADDR).w
+        move.w  #0xFFFF,(DEFPAIR).w
+        sf      (VPEND).w
+        move.w  (a0),d0                 | nothing pending
+        rts
+m4regs: .word 0x8004, 0x82FF, 0x83FF, 0x84FF, 0x85FF, 0x86FB, 0x8700, 0x8800, 0x8900, 0x8AFF
+m4regs_end:
+
+| vdpw_ctrl: d6.b = byte written to $BF. Address and code are kept here (a6 into the shadow, as back end B); only register
+| writes go to the VDP at once (VRAM and CRAM commands are sent with the data).
 vdpw_ctrl:
-        move.b  d6,d5
         tst.b   (VLATCH).w
         bne.s   1f
         move.b  d6,(VLOW).w
         st      (VLATCH).w
         rts
 1:      sf      (VLATCH).w
-        lsl.w   #8,d6
-        move.b  (VLOW).w,d6
-        move.w  d6,(VDPC).l
-        lsr.w   #8,d6
-        cmpi.b  #0x80,d6
-        bcs.s   2f
-        andi.w  #0x0F,d6
+        move.b  d6,d5
+        lsr.b   #6,d5
+        move.b  d5,(VCODE).w
+        moveq   #0x3F,d7
+        and.b   d6,d7
+        lsl.w   #8,d7
+        move.b  (VLOW).w,d7             | d7 = the 14-bit address
+        cmpi.b  #3,d5
+        bne.s   2f
+        andi.w  #0x1F,d7
+        ori.w   #0x4000,d7              | CRAM: a6 into CRAMBUF
+2:      movea.l #VSHADOW,a6
+        adda.w  d7,a6
+        cmpi.b  #2,d5
+        beq.s   3f
+        tst.b   d5
+        bne.s   4f
+        move.b  (a6)+,(VBUF).w          | read setup: the read-ahead buffer
+4:      rts
+3:      andi.w  #0x0F,d6                | register write
         move.b  (VLOW).w,d5
         lea     (VREGS).w,a0
         move.b  d5,0(a0,d6.w)
-2:      rts
+        cmpi.b  #11,d6
+        bcc.s   4b
+        cmpi.b  #1,d6
+        bne.s   5f
+        andi.b  #0xE3,d5                | R1: M5 stays clear; DMA enable and 30-line (the SMS's M1/M3) off
+        bra.s   6f
+5:      tst.b   d6
+        bne.s   6f
+        andi.b  #0xFC,d5                | R0: the Genesis HV latch / display-off bits off
+        ori.b   #0x04,d5
+6:      lsl.w   #8,d6
+        move.b  d5,d6
+        ori.w   #0x8000,d6
+        move.w  sr,-(sp)
+        ori     #0x0700,sr
+        move.w  d6,(VDPC).l
+        move.w  #0xFFFF,(HWADDR).w      | (a register write loads the address register too)
+        move.w  (sp)+,sr
+        rts
+
+| vdpw_data: d6.b = byte written to $BE (d0-d4/a2-a5 kept; a6 steps)
 vdpw_data:
         sf      (VLATCH).w
-        move.b  d6,d5
-        lsl.w   #8,d6
-        move.b  d5,d6
-        move.w  d6,(VDPD).l
+        cmpi.b  #3,(VCODE).w
+        beq     m4_cram
+        move.w  a6,d5
+        andi.w  #0x3FFF,d5              | SMS address
+        move.b  d6,(a6)+
+        cmpa.l  #VSHADOW+0x4000,a6
+        bcs.s   1f
+        movea.l #VSHADOW,a6             | (the SMS address wraps at 16 KB)
+1:      move.w  (DEFPAIR).w,d7
+        btst    #0,d5
+        bne.s   3f
+        cmp.w   d5,d7                   | even byte: wait for its partner
+        beq.s   2f
+        move.w  d5,(DEFPAIR).w
+        tst.w   d7
+        bpl.s   m4_send                 | another pair was waiting: send it
+2:      rts
+3:      subq.w  #1,d5                   | odd byte: this pair goes now
+        move.w  #0xFFFF,(DEFPAIR).w
+        tst.w   d7
+        bmi.s   4f
+        cmp.w   d5,d7
+        beq.s   4f
+        move.w  d5,-(sp)                | (a different pair was waiting: it goes first)
+        bsr.s   m4_send
+        move.w  (sp)+,d5
+4:      move.w  d5,d7
+| m4_send: d7.w = even SMS address: the shadow's pair to the VDP (clobbers d5-d7/a0)
+m4_send:
+        lea     VSHADOW,a0
+        move.b  1(a0,d7.w),d5
+        lsl.w   #8,d5
+        move.b  0(a0,d7.w),d5           | low byte = the even address
+        move.w  sr,-(sp)
+        ori     #0x0700,sr
+        cmp.w   (HWADDR).w,d7
+        beq.s   1f
+        move.w  d7,d6
+        ori.w   #0x4000,d6
+        move.w  d6,(VDPC).l
+1:      move.w  d5,(VDPD).l
+        addq.w  #2,d7
+        move.w  d7,(HWADDR).w
+        move.w  (sp)+,sr
         rts
+| m4_pair: d7.w = even SMS address whose two shadow bytes were just written: any waiting pair first, then this one
+m4_pair:
+        move.w  (DEFPAIR).w,d5
+        bmi.s   m4_send
+        cmp.w   d5,d7
+        beq.s   1f
+        move.w  d7,-(sp)
+        bsr.s   m4_flush
+        move.w  (sp)+,d7
+        bra.s   m4_send
+1:      move.w  #0xFFFF,(DEFPAIR).w
+        bra.s   m4_send
+| m4_flush: send the waiting even byte's pair, if any (clobbers d5-d7/a0)
+m4_flush:
+        move.w  (DEFPAIR).w,d7
+        bmi.s   1f
+        move.w  #0xFFFF,(DEFPAIR).w
+        bra.s   m4_send
+1:      rts
+m4_cram:
+        move.w  a6,d7
+        andi.w  #0x1F,d7
+        lea     (CRAMBUF).l,a0
+        move.b  d6,0(a0,d7.w)
+        lea     1(a0,d7.w),a6
+        cmpi.w  #0x1F,d7
+        bne.s   1f
+        movea.l a0,a6
+1:      ori.w   #0xC000,d7
+        andi.w  #0x3F,d6
+        move.w  sr,-(sp)
+        ori     #0x0700,sr
+        move.w  d7,(VDPC).l
+        move.w  d6,(VDPD).l
+        move.w  #0xFFFF,(HWADDR).w
+        move.w  (sp)+,sr
+        rts
+
+| m4_bulk: the n (d5.w) bytes just copied into the shadow, ending at a6: their pairs to the VDP in one stream
+m4_bulk:
+        move.w  d5,-(sp)
+        bsr.s   m4_flush
+        move.w  (sp)+,d5
+        move.w  a6,d6
+        sub.w   d5,d6
+        andi.w  #0x3FFE,d6              | first pair
+        move.w  a6,d7
+        subq.w  #1,d7
+        andi.w  #0x3FFE,d7              | last pair
+        sub.w   d6,d7
+        lsr.w   #1,d7                   | pairs - 1
+        lea     VSHADOW,a0
+        adda.w  d6,a0
+        move.w  sr,-(sp)
+        ori     #0x0700,sr
+        move.w  d6,d5
+        ori.w   #0x4000,d5
+        move.w  d5,(VDPC).l
+        lea     (VDPD).l,a1
+1:      move.b  1(a0),d5
+        lsl.w   #8,d5
+        move.b  (a0),d5
+        move.w  d5,(a1)
+        addq.l  #2,a0
+        dbra    d7,1b
+        move.w  a0,d6
+        andi.w  #0x3FFF,d6
+        move.w  d6,(HWADDR).w
+        move.w  (sp)+,sr
+        rts
+
+| vdpr_data / vdpr_stat: -> d6.b
 vdpr_data:
         sf      (VLATCH).w
-        move.w  (VDPD).l,d6
+        move.b  (VBUF).w,d6
+        move.b  (a6)+,(VBUF).w
         rts
 vdpr_stat:
         sf      (VLATCH).w
-        move.w  (VDPC).l,d6
+        move.b  (VDPC+1).l,d6           | the real status (reading it acknowledges the interrupts, as on the SMS)
+        andi.b  #0xE0,d6
+        sf      (VPEND).w
         rts
 sat_upload:
         rts

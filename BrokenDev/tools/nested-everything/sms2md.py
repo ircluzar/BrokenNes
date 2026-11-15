@@ -1223,7 +1223,7 @@ class Gen:
                     self.raw('jsr     (z_idle).l')
                 run = 1
                 rest = 1
-                if i.op == 'OUTI' and self.st.get('video') != 'mode4':
+                if i.op == 'OUTI':
                     while (k + rest < len(inss) and inss[k + rest].op == 'OUTI' and inss[k + rest].pc == inss[k + rest - 1].nxt):
                         rest += 1
                 if rest > 1 and all((bank, slot, inss[k + j].pc) in p.labels for j in range(1, rest)):
@@ -1236,11 +1236,11 @@ class Gen:
                     self.stats['outi_run_entries'] += 1
                     prev = i
                     continue
-                if i.op == 'OUTI' and self.st.get('video') != 'mode4':
+                if i.op == 'OUTI':
                     while (k + run < len(inss) and inss[k + run].op == 'OUTI' and inss[k + run].pc == inss[k + run - 1].nxt
                            and (bank, slot, inss[k + run].pc) not in p.labels):
                         run += 1
-                loop = (self.st.get('video') != 'mode4' and (i.op == 'OTIR' or (
+                loop = ((i.op == 'OTIR' or (
                     i.op == 'OUTI' and run == 1 and k + 1 < len(inss) and inss[k + 1].op == 'JR' and inss[k + 1].a == ('cc', 'NZ')
                     and inss[k + 1].b[1] == i.pc and inss[k + 1].pc == i.nxt and (bank, slot, inss[k + 1].pc) not in p.labels)))
                 if loop:
