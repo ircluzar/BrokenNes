@@ -342,6 +342,80 @@ internal static class PicDiff
 
     public static double Score(Pic a, Pic b) => (double)Compare(a, b)["score"]!;
 
+    /// <summary>
+    /// The shift-tolerant score (T2 fix 2026-11-15: the NES pilot's ~17 "background 1-2 px off while scrolling" Janks were scroll-phase false
+    /// alarms, SMB1 among them). Like Grid, but a cell counts as matching when the other picture has a cell within <paramref name="r"/> px
+    /// (each way, both axes) of about the same brightness, and an edge counts as matching when the other picture has an edge within r px.
+    /// Local, so a background scrolled 1-2 px under a still HUD and sprites scores as the same picture; a real fault (wrong tiles, a missing
+    /// layer, a shift of 3 px or more) still scores high. Pictures of different sizes are first cropped where Compare places them.
+    /// </summary>
+    public static double Tolerant(Pic a, Pic b, int r = 2)
+    {
+        if (a.W != b.W || a.H != b.H)
+        {
+            var c = Compare(a, b);
+            if (c["dx"] is JsonNode dxn && c["dy"] is JsonNode dyn)
+            {
+                bool aBig = a.W >= b.W && a.H >= b.H;
+                if (aBig) a = Crop(a, b, (int)dxn, (int)dyn); else b = Crop(b, a, (int)dxn, (int)dyn);
+            }
+        }
+        int w = Math.Min(a.W, b.W), h = Math.Min(a.H, b.H);
+        var la = Luma(a, w, h); var lb = Luma(b, w, h);
+        var ea = Edges(la, w, h); var eb = Edges(lb, w, h);
+        int pixBad = 0, eMatch = 0, eCount = 0;
+        void Side(int[] l1, int[] l2, bool[] e1, bool[] e2)
+        {
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    int i = y * w + x, v = l1[i];
+                    bool pixOk = false, edgeOk = !e1[i];
+                    for (int dy = -r; dy <= r && !(pixOk && edgeOk); dy++)
+                    {
+                        int yy = y + dy; if (yy < 0 || yy >= h) continue;
+                        for (int dx = -r; dx <= r; dx++)
+                        {
+                            int xx = x + dx; if (xx < 0 || xx >= w) continue;
+                            int j = yy * w + xx;
+                            if (!pixOk && Math.Abs(v - l2[j]) <= 42) pixOk = true;
+                            if (!edgeOk && e2[j]) edgeOk = true;
+                            if (pixOk && edgeOk) break;
+                        }
+                    }
+                    if (!pixOk) pixBad++;
+                    if (e1[i]) { eCount++; if (edgeOk) eMatch++; }
+                }
+        }
+        Side(la, lb, ea, eb); Side(lb, la, eb, ea);
+        double pixel = (double)pixBad / (2.0 * la.Length), edges = eCount == 0 ? 0 : 1 - (double)eMatch / eCount;
+        return Math.Round((pixel + edges) / 2, 4);
+    }
+
+    /// <summary>
+    /// The step score: the raw score (Compare) plus the tolerant one (+-2 px) over a +-1 frame window: BrokenNes's picture at the step's last frame
+    /// and the one before, against the reference's last and one before. score = the best tolerant score; phase = the frame shift that gave it
+    /// (+1: the reference is a frame ahead of BrokenNes there). A Jank needs score (not raw) over 0.12.
+    /// </summary>
+    public static JsonObject StepScore(Pic mine, Pic? minePrev, Pic theirs, Pic? theirsPrev)
+    {
+        var raw = Compare(mine, theirs);
+        double best = Tolerant(mine, theirs); int phase = 0;
+        if (best > 0.02)
+        {
+            if (minePrev != null) { double s = Tolerant(minePrev, theirs); if (s < best - 1e-9) { best = s; phase = 1; } }
+            if (theirsPrev != null) { double s = Tolerant(mine, theirsPrev); if (s < best - 1e-9) { best = s; phase = -1; } }
+        }
+        var j = new JsonObject
+        {
+            ["score"] = best, ["raw"] = raw["score"]?.DeepClone(), ["phase"] = phase, ["shiftPx"] = 2,
+            ["verdict"] = best <= 0.02 ? "same" : best <= 0.12 ? "close" : "different",
+            ["pixel"] = raw["pixel"]?.DeepClone(), ["edges"] = raw["edges"]?.DeepClone(), ["sizes"] = raw["sizes"]?.DeepClone(),
+        };
+        if (raw["cropped"] != null) j["cropped"] = raw["cropped"]!.DeepClone();
+        return j;
+    }
+
     /// <summary>Brightness 0-255 sampled on a w x h grid (nearest pixel: a picture of another size is scaled onto it).</summary>
     private static int[] Luma(Pic p, int w, int h)
     {
