@@ -1,0 +1,68 @@
+{
+  "_about": "Hand-curated inputs to titles.py (cc-gaps lane, 2026-11-15). Keys are title_key() forms: the display title, lower case, tags removed. Only file names and titles here, never ROM data.",
+  "aliases": {
+    "_about": "Region-merged titles: the same game sold under another name. alias title -> the main title it merges into (one dump per title; the alias record is kept but marked extra.aliasOf). Found by matching internal header names (Genesis overseas name) plus known region renames; only renames where the game is the same program with a different name/logo, not a reskin (Kirby's Avalanche, Black Belt, Secret Command stay separate).",
+    "snes": {
+      "return of double dragon": "super double dragon"
+    },
+    "gb": {
+      "red arremer - makaimura gaiden": "gargoyle's quest - ghosts'n goblins",
+      "nettou samurai spirits - zankurou musouken": "samurai shodown"
+    },
+    "md": {
+      "gauntlet arcade version": "gauntlet 4",
+      "rockman megaworld": "mega man - the wily wars",
+      "samurai spirits": "samurai shodown",
+      "super shinobi ii, the": "shinobi 3 - return of the ninja master",
+      "valis sd": "syd of valis",
+      "mickey mouse - minnie's magical adventure 2": "mickey mouse - great circus mystery",
+      "phantasy star - the end of the millenium": "phantasy star iv",
+      "wonder boy v - monster world iii": "wonder boy in monster world",
+      "teenage mutant ninja turtles - return of the shredder": "teenage mutant ninja turtles - the hyperstone heist",
+      "devil crash md": "dragon's fury"
+    },
+    "sms": {
+      "super wonder boy": "wonder boy",
+      "super wonder boy - monster world": "wonder boy in monster world",
+      "final bubble bobble": "bubble bobble",
+      "maze walker": "maze hunter 3-d",
+      "teddy boy blues": "teddy boy",
+      "opa opa": "fantasy zone - the maze",
+      "lord of sword": "lord of the sword",
+      "family games": "parlour games",
+      "doki doki penguin land - uchuu daibouken": "penguin land",
+      "astro flash": "transbot",
+      "aleste": "power strike",
+      "sdi": "global defense",
+      "space harrier 3d": "space harrier 3-d"
+    },
+    "gg": {
+      "sonic & tails": "sonic chaos",
+      "sonic & tails 2": "sonic the hedgehog - triple trouble",
+      "monster world ii - dragon no wana": "wonder boy - the dragon's trap",
+      "shining force gaiden ii": "shining force ii - the sword of hajya",
+      "ecco ii - the tides of time": "ecco - the tides of time",
+      "virtua fighter mini": "virtua fighter animation",
+      "samurai spirits": "samurai shodown"
+    }
+  },
+  "include_untagged": {
+    "_about": "Files in the No-Intro style folders that carry no region tag but are real retail games (not hacks): file names, matched case-insensitively. From the 219 untagged GameBoy Color files: 30 are byte-identical to a dump already in the catalog, the rest are hacks, colourisations, translations and fan games, except these.",
+    "gbc": ["gekido.gbc"]
+  },
+  "known_revisions": [
+    {"_about": "Titles whose revisions are known to differ in ways the catalog cares about: every listed revision found in the library gets its own record (revisionOf = the main dump). Sources: default-db.json (the revision the 2026-09 certification graded) and the FCEUX movie-parity work (TAS movies are tied to one exact revision by MD5)."},
+    {"console": "nes", "title": "Super Mario Bros.", "keep": ["PRG0", "PRG1"], "why": "default-db grades PRG0 (certified); PRG1 differs in code, TAS movies target either"},
+    {"console": "nes", "title": "Super Mario Bros. 2", "keep": ["PRG0", "PRG1"], "why": "default-db grades PRG0"},
+    {"console": "nes", "title": "Super Mario Bros. 3", "keep": ["PRG0", "PRG1"], "why": "default-db grades PRG1 (certified 2026-09-25, red-clouds boot bug)"},
+    {"console": "nes", "title": "Kirby's Adventure", "keep": ["PRG0", "PRG1"], "why": "default-db grades PRG1 (DMC DMA stall certification)"},
+    {"console": "nes", "title": "Legend of Zelda, The", "keep": ["PRG0", "PRG1"], "why": "default-db grades PRG1 (certified 2026-09-25)"},
+    {"console": "nes", "title": "Abadox", "keep": ["(J)", "(U)"], "why": "FCEUX movie parity: the TAS library movie expects another revision than the library default (paired by MD5)"},
+    {"console": "nes", "title": "Ghostbusters", "keep": ["(J)", "(U)"], "why": "TAS integration: the reference movie (meshuggah-ghostbusters.fm2) is the (J) revision"}
+  ],
+  "missing_originals": {
+    "_about": "Titles that should be in the catalog but have no clean dump in X:\\EMULATION (only a translation/hack or a patched proto). Not added (hacks/translations stay out); listed so the user can decide whether to source the originals. The SNES list (Japan-only titles present only under Translations) is in T:/BrokenDev/Catalog/reports/missing-originals-2026-11-15.json.",
+    "gbc": ["Gimmick Land (unreleased, only an English-patched proto)", "Pokemon Picross (unreleased, only an English-patched proto)", "Mobile Golf (Japan-only, only the English translation)"],
+    "snes_unl_not_scanned": "Super Nintendo\\Homebrew & Unlicensed holds commercial unlicensed carts (Hind Strike, Iron Commando, Socks the Cat Rocks the Hill, Super Boss Gaiden, Nightmare Busters, Unholy Night...) next to modern homebrew; outside this lane's scope, not scanned"
+  }
+}
