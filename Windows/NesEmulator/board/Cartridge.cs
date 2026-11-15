@@ -50,6 +50,9 @@ public class Cartridge
 		69 => "Sunsoft FME-7 (Mapper69)",
 		71 => "Camerica (Mapper71)",
 		119 => "TQROM (Mapper119)",
+		13 => "CPROM (Mapper13)",
+		47 => "NES-QJ (Mapper47)",
+		118 => "TxSROM (Mapper118)",
 		_ => "Unknown"
 	};
 
@@ -133,7 +136,7 @@ public class Cartridge
 		// give it the extra room so the generic CHR-RAM path (save states, the RTC "CHR" corruption
 		// domain, PeekChr/PokeChr) sees the same memory the mapper actually renders from, instead of
 		// only ever touching a phantom, unbanked first 8KB.
-		chrRAM = new byte[mapperID == 30 ? 32 * 1024 : 8 * 1024];
+		chrRAM = new byte[mapperID == 30 ? 32 * 1024 : mapperID == 13 ? 16 * 1024 : 8 * 1024];   // CPROM: 16KB
 
 		// If trainer present, load it into PRG RAM at $7000-$71FF per iNES spec (offset 0x1000 into 8KB $6000-$7FFF range)
 		if (hasTrainer)
@@ -203,6 +206,9 @@ public class Cartridge
 			case 69: mapper = new Mapper69(this); break;
 			case 71: mapper = new Mapper71(this); break;
 			case 119: mapper = new Mapper119(this); break;
+			case 13: mapper = new Mapper13(this); break;    // CPROM (16KB CHR-RAM)
+			case 47: mapper = new Mapper47(this); break;    // NES-QJ
+			case 118: mapper = new Mapper118(this); break;  // TxSROM
 			default:
 				#if DIAG_LOG
 				Console.WriteLine($"Mapper {mapperID} ({mapperName}) is not supported");
