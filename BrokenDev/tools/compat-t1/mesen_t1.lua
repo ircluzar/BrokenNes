@@ -9,12 +9,19 @@ local script = os.getenv("BNT1_INPUT") or ""
 local outDir = os.getenv("BNT1_OUT")
 local win = tonumber(os.getenv("BNT1_WIN") or "2")
 if not outDir then emu.log("t1: BNT1_OUT missing"); emu.stop(3); return end
+-- BNT1_MAP "a=one,b=two,start=pause": BrokenNes pad names -> this console's Mesen input names (empty = dropped)
+local map = {}
+for k, v in (os.getenv("BNT1_MAP") or ""):gmatch("(%w+)=(%w*)") do map[k] = v end
 local steps = {}
 for st in script:gmatch("[^,]+") do
   local f, b = st:match("^%s*(%d+)%s*:(.*)$")
   if f then
     local t = {}
-    for n in b:gmatch("[^+%s]+") do t[n:lower()] = true end
+    for n in b:gmatch("[^+%s]+") do
+      local k = n:lower()
+      if map[k] ~= nil then k = map[k] end
+      if k ~= "" then t[k] = true end
+    end
     steps[#steps + 1] = { f = tonumber(f), pad = t }
   end
 end

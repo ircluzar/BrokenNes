@@ -219,7 +219,7 @@ def mesen_run(rom, script, shots, out_dir, frames, console="nes"):
     for d in ("Saves", "SaveStates", "RecentGames"):   # every game boots clean (no battery save from an earlier run)
         shutil.rmtree(os.path.join(home, d), ignore_errors=True)
     os.makedirs(out_dir, exist_ok=True)
-    env = dict(os.environ, BNT1_INPUT=script or "", BNT1_SHOTS=",".join(str(max(0, f - REF_LAG)) for f in shots), BNT1_WIN=str(WIN), BNT1_OUT=out_dir)
+    env = dict(os.environ, BNT1_MAP=MESEN_MAP.get(console, ""), BNT1_INPUT=script or "", BNT1_SHOTS=",".join(str(max(0, f - REF_LAG)) for f in shots), BNT1_WIN=str(WIN), BNT1_OUT=out_dir)
     secs_limit = frames // 20 + 60   # a loaded machine can drop Mesen's test runner to ~60 fps
     cmd = [exe, rom, "--luaScriptsToLoad", os.path.join(HERE, "mesen_t1.lua"), "--testRunner", f"--timeout={secs_limit}"]
     with Slot():
@@ -333,7 +333,9 @@ def check_nes(rec, minutes, keep_dir):
 
 
 # ------------------------------------------------------------------------------------------------ other consoles (--console-run)
-MESEN_CONSOLES = ("snes", "gb", "gbc", "sms", "gg")   # Mesen 2.1.1 plays these; md needs another reference (not wired)
+MESEN_CONSOLES = ("snes", "gb", "gbc", "sms", "gg")
+# BrokenNes SMS/GG pads: A=button 1, B=button 2, Start=the Game Gear Start, Select=the SMS Pause; Mesen names them one/two/pause
+MESEN_MAP = {"sms": "a=one,b=two,select=pause,start=", "gg": "a=one,b=two,start=pause,select="}   # Mesen 2.1.1 plays these; md needs another reference (not wired)
 MESEN_EXTRA = {
     "snes": {"Snes": {"Port1": {"Type": "SnesController"}, "RamPowerOnState": "AllZeros"}},
     "gb": {},   # (a "Gameboy" block with Model Gameboy/Auto makes Mesen 2.1.1 exit -1 at once; its default plays .gb)
