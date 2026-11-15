@@ -24,13 +24,17 @@ import argparse, json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import sm83
+import gb2snes_sound
 from asm816 import Assembler, assemble
 
 R8 = {'b': '$01', 'c': '$00', 'd': '$03', 'e': '$02', 'h': '$05', 'l': '$04', 'a': '$09'}
 RP = {'bc': '$00', 'de': '$02', 'hl': '$04', 'sp': '$06', 'af': '$08'}
 CODE_BANKS = list(range(0xC2, 0xD0))
-GBROM_BANK = 0xD0
-TAB_BANK = {0: 0xD1, 1: 0xD2, 3: 0xD3}
+TAB0_BANK = 0xD0                           # dispatch table: GB ROM bank 0 ($0000-$3FFF)
+TAB3_BANK = 0xD1                           # $C000-$FFFF (RAM code)
+# GB ROM bank n (n >= 1) at $4000-$7FFF: its table at $D1+n; the GB ROM file (contiguous) right after the last table
+def tab_bank(n): return 0xD1 + n
+def gbrom_bank(banks): return 0xD1 + banks
 BFIX = ['xba', 'lda #$00', 'xba']          # the hidden B accumulator back to 0 (TAX / TAY stay clean)
 
 # ------------------------------------------------------------------------------------------------- flag liveness
@@ -126,6 +130,7 @@ class Gen:
         self.k = 0
         self.count = count
         self.tcyc = tcyc                  # GB timer on GB time: each instruction adds its cycles to $3C
+        self.mbc = False                  # banked ROM: reads at $4000-$7FFF through the bank pointer at $80
 
     def u(self):
         self.k += 1
@@ -135,6 +140,10 @@ class Gen:
     def rd_x(self):
         """A = GB memory at X (X = address)."""
         f, d = self.u(), self.u()
+        if self.mbc:
+            h = self.u()
+            return ['cpx #$4000', 'bcc ' + f, 'cpx #$8000', 'bcs ' + h, 'txy', 'lda [$80],y', 'bra ' + d, h + ':',
+                    'cpx #$E000', 'bcc ' + f, 'jsl rdx', 'bra ' + d, f + ':', 'lda.w $0000,x', d + ':']
         return ['cpx #$E000', 'bcc ' + f, 'jsl rdx', 'bra ' + d, f + ':', 'lda.w $0000,x', d + ':']
 
     def wr_x(self):
@@ -143,13 +152,14 @@ class Gen:
         return ['cpx #$C000', 'bcc ' + s, 'cpx #$E000', 'bcs ' + s, 'sta.w $0000,x', 'bra ' + d, s + ':', 'jsl wrx', d + ':']
 
     def rd_const(self, a):
+        if self.mbc and 0x4000 <= a < 0x8000: return ['ldy #$%04X' % a, 'lda [$80],y']
         if a < 0xE000 or 0xFF80 <= a: return ['lda.w $%04X' % a]
         if 0xFF00 <= a < 0xFF80 and (a & 0xFF) not in (0x00, 0x04, 0x05, 0x41, 0x44) + ((0x0F,) if self.tcyc else ()): return ['lda.w $%04X' % a]
         return ['ldx #$%04X' % a, 'jsl rdx']
 
     def wr_const(self, a):
         if 0xA000 <= a < 0xE000 or 0xFF80 <= a < 0xFFFF: return ['sta.w $%04X' % a]
-        if 0xFF00 <= a < 0xFF80 and (a & 0xFF) not in (0x01, 0x02, 0x04, 0x05, 0x07, 0x0F, 0x46): return ['sta.w $%04X' % a]
+        if 0xFF00 <= a < 0xFF80 and (a & 0xFF) not in (0x01, 0x02, 0x04, 0x05, 0x07, 0x0F, 0x14, 0x19, 0x1E, 0x23, 0x46): return ['sta.w $%04X' % a]
         return ['ldx #$%04X' % a, 'jsl wrx']
 
     # flags ---------------------------------------------------------------------------------------------------
@@ -396,7 +406,7 @@ class Gen:
             sk = self.u()
             o = self.cond(sm83.CC[y], sk) if op not in (0xC9, 0xD9) else []
             if op == 0xD9: o += ['lda #$01', 'sta $14', 'jsl updpend']
-            o += ['ldx $06', 'lda.w $0001,x', 'xba', 'lda.w $0000,x', 'inx', 'inx', 'stx $06', 'tax', 'lda #$00', 'xba', 'jml dispatch']
+            o += ['ldx $06', 'rep #$20', 'lda.w $0000,x', 'inx', 'inx', 'stx $06', 'tax', 'sep #$20', 'jml dispatch']
             return out + o + [sk + ':']
         if op in sm83.ILLEGAL: return out + ['ldx #$%04X' % pc if not I else 'ldx $16', 'jml done_rt']
         raise ValueError('no template for $%02X' % op)
@@ -605,7 +615,19 @@ NMI_T = r'''        lda $3E
 '''
 
 
-def runtime_text(chunks_tab, lytab, tcyc=False):
+def runtime_text(chunks_tab, lytab, tcyc=False, banks=2, mbc='none', sound=True):
+    sub = {'@GBROM@': '$%02X' % gbrom_bank(banks), '@TAB0@': '$%02X' % TAB0_BANK, '@TAB3@': '$%02X' % TAB3_BANK,
+           '@TAB1@': '$%02X' % tab_bank(1), '@BANKMASK@': '#$%02X' % (banks - 1),
+           '@BSELMASK@': '#$7F' if mbc == 'mbc3' else '#$1F', '@BSELHI@': '#$4000',
+           '@HIMASK@': '#$00' if mbc == 'mbc3' else '#$03', '@ZEROBANK@': '#$01'}
+    t = runtime_body(chunks_tab, lytab, tcyc)
+    t = t.replace('@@SNDBOOT@@', '        jsr sndboot' + chr(10) if sound else '').replace('@@SNDFRAME@@', '        jsr sndframe' + chr(10) if sound else '')
+    t = t.replace('@@SNDW@@', '        jsr sndw' + chr(10) if sound else '').replace('@@SNDRT@@', gb2snes_sound.runtime() if sound else '')
+    for k, v in sub.items(): t = t.replace(k, v.replace('#', '') if k in ('@GBROM@', '@TAB0@', '@TAB3@', '@TAB1@') else v)
+    return t
+
+
+def runtime_body(chunks_tab, lytab, tcyc):
     return (r'''
 ; ============================================================ reset (entered at $00:8xxx, continues in FastROM $C0)
 reset:  sei
@@ -626,7 +648,7 @@ fast:   lda #$80
         sta.l $002100
         lda #$00
         sta.l $004200
-        ; clear WRAM bank $7F, then the GB ROM image into $7F:0000-$7FFF
+@@SNDBOOT@@        ; clear WRAM bank $7F, then the GB ROM image into $7F:0000-$7FFF
         rep #$30
         .a16
         lda #$0000
@@ -638,7 +660,7 @@ fast:   lda #$80
         lda #$7FFF
         ldx #$0000
         ldy #$0000
-        mvn $7F,$D0
+        mvn $7F,@GBROM@
         sep #$20
         .a8
         ; (data bank is $7F now)
@@ -652,8 +674,32 @@ fast:   lda #$80
         jsr oaminit
         lda #$02
         sta.l $002101
-        lda #$11
+        lda #$12
         sta.l $00212C
+        lda #$23
+        sta.l $002123
+        lda #$03
+        sta.l $00212E
+        lda #$00
+        sta.l $00212A
+        lda #$01
+        sta.l $7E3E00
+        sta.l $7E3E01
+        lda #$00
+        sta.l $7E3E02
+        sta.l $7E3E03
+        lda #$01
+        sta.l $004370
+        lda #$26
+        sta.l $004371
+        lda #$00
+        sta.l $004372
+        lda #$3E
+        sta.l $004373
+        lda #$7E
+        sta.l $004374
+        lda #$80
+        sta.l $00420C
         lda #$00
         sta.l $00212D
         ; clear VRAM (64KB) with a fixed-source DMA
@@ -709,6 +755,20 @@ fast:   lda #$80
         sta.l $7E3F00
         sta.l $7E3F02
         sta.l $7E3F04
+        stz $80
+        stz $84
+        stz $87
+        stz $89
+        sep #$20
+        .a8
+        lda #@GBROM@
+        sta $82
+        lda #@TAB1@
+        sta $86
+        lda #$01
+        sta $87
+        rep #$20
+        .a16
         sep #$20
         .a8
         ldx #$0000
@@ -752,35 +812,51 @@ dispatch:
         asl a
         asl a
         tax
-        lda.l $D10000,x
+        lda.l @TAB0@0002,x          ; bank byte + 0: 0 = not translated
+        beq .int
+        sta $12
+        lda.l @TAB0@0000,x
         sta $10
-        lda.l $D10002,x
-        bra .go
-.r1:    txa
-        asl a
-        asl a
-        tax
-        lda.l $D20000,x
-        sta $10
-        lda.l $D20002,x
-        bra .go
-.r3:    txa
-        asl a
-        asl a
-        tax
-        lda.l $D30000,x
-        sta $10
-        lda.l $D30002,x
-.go:    sta $12
+        lda #$0000                  ; (B = 0)
         sep #$20
         .a8
-        xba
-        lda #$00
-        xba
-        lda $12
-        beq .int
         jml [$0010]
-.int:   ldx $0E
+.r1:    .a16
+        txa
+        asl a
+        asl a
+        tay
+        iny
+        iny
+        lda [$84],y                 ; the table of the GB ROM bank in $4000-$7FFF
+        beq .int
+        sta $12
+        dey
+        dey
+        lda [$84],y
+        sta $10
+        lda #$0000
+        sep #$20
+        .a8
+        jml [$0010]
+.r3:    .a16
+        txa
+        asl a
+        asl a
+        tax
+        lda.l @TAB3@0002,x
+        beq .int
+        sta $12
+        lda.l @TAB3@0000,x
+        sta $10
+        lda #$0000
+        sep #$20
+        .a8
+        jml [$0010]
+.int:   .a16
+        sep #$20
+        .a8
+        ldx $0E
         jml interp
 
 ; ============================================================ GB memory: reads at $E000+ and the special writes
@@ -911,7 +987,9 @@ getly:  lda.l $00213F
 .r:     rts
 
 wrx:    cpx #$8000
-        bcc .rom
+        bcs .nrom
+        jmp .rom
+.nrom:
         cpx #$A000
         bcc .vram
         cpx #$E000
@@ -926,7 +1004,6 @@ wrx:    cpx #$8000
         beq .ie
 .pl:    sta.w $0000,x
         rtl
-.rom:   rtl
 .ie:    sta.w $FFFF
         jsr updp
         rtl
@@ -972,7 +1049,7 @@ wrx:    cpx #$8000
 .tw:    jsr tupd
 .io2:   pla
         sta.w $0000,x
-        pha
+@@SNDW@@        pha
         txa
         cmp #$07
         beq .tac
@@ -1048,6 +1125,54 @@ wrx:    cpx #$8000
         jsr updp
 .scx:   pla
         rtl
+
+.rom:   cpx #$2000
+        bcc .rx
+        cpx @BSELHI@
+        bcs .r2
+        and @BSELMASK@
+        sta $87
+        bra .upd
+.r2:    cpx #$6000
+        bcs .rx
+        and #$03
+        sta $88
+.upd:   lda $88
+        and @HIMASK@
+        asl a
+        asl a
+        asl a
+        asl a
+        asl a
+        ora $87
+        sta $0B
+        lda $87
+        and @BSELMASK@
+        bne .nz
+        inc $0B                     ; (bank 0 in the switchable slot reads bank 1)
+.nz:    lda $0B
+        and @BANKMASK@
+        bne .nz1
+        lda @ZEROBANK@
+.nz1:   dec a                       ; v = bank - 1: pointer = ROM image + v * $4000 - ... (bank 1 = the image's $4000)
+        sta $0B
+        lsr a
+        lsr a
+        clc
+        adc #@GBROM@
+        sta $82
+        lda $0B
+        and #$03
+        lsr a
+        ror a
+        ror a
+        sta $81
+        stz $80
+        lda $0B
+        clc
+        adc #@TAB1@
+        sta $86
+.rx:    rtl
 
 updpend: jsr updp
         rtl
@@ -1254,32 +1379,160 @@ nmi:    rep #$30
         lda #$24
         bra .m1
 .m0:    lda #$20
-.m1:    sta.w $2107
+.m1:    sta.w $2108                 ; GB BG map -> BG2
+        lda.l $7FFF40
+        and #$40
+        beq .w0
+        lda #$24
+        bra .w1
+.w0:    lda #$20
+.w1:    sta.w $2107                 ; GB window map -> BG1
         lda.l $7FFF40
         and #$10
         beq .sg
         lda #$00
         bra .sg1
-.sg:    lda #$01
+.sg:    lda #$11
 .sg1:   sta.w $210B
         lda.l $7FFF43
         sec
         sbc #48
-        sta.w $210D
+        sta.w $210F
         lda #$00
         sbc #$00
-        sta.w $210D
+        sta.w $210F
         lda.l $7FFF42
         sec
         sbc #40
-        sta.w $210E
+        sta.w $2110
         lda #$00
         sbc #$00
+        sta.w $2110
+        ; window: map x 0 at GB x WX-7, map y 0 at GB line WY
+        rep #$20
+        .a16
+        lda.l $7FFF4A
+        xba
+        and #$00FF
+        clc
+        adc #41
+        eor #$FFFF
+        inc a
+        sep #$20
+        .a8
+        sta.w $210D
+        xba
+        sta.w $210D
+        lda #$00
+        xba
+        lda #$00
+        sec
+        sbc.l $7FFF4A
+        sta $0B
+        lda #$00
+        sbc #$00
+        sta $0C
+        lda $0B
+        sec
+        sbc #40
         sta.w $210E
+        lda $0C
+        sbc #$00
+        sta.w $210E
+        ; layers: LCDC bit 0 = BG + window, bit 5 = window, bit 1 = sprites
+        lda.l $7FFF40
+        and #$01
+        beq .nobg
+        lda.l $7FFF40
+        and #$20
+        beq .nowin
+        lda #$03
+        bra .lay
+.nowin: lda #$02
+        bra .lay
+.nobg:  lda #$00
+.lay:   sta $0B
+        lda.l $7FFF40
+        and #$02
+        beq .noobj
+        lda #$10
+        tsb $0B
+.noobj: lda $0B
+        sta.w $212C
+        and #$01                    ; window clipping only while the GB window is on
+        beq .tmw
+        lda #$03
+.tmw:   sta.w $212E
+        ; HDMA table for window 1 ($2126/$2127): empty above GB line WY, [WX+41, 207] below
+        lda.l $7FFF4A
+        cmp #144
+        bcc .wyok
+        lda #144
+.wyok:  clc
+        adc #40
+        sta $0B                     ; SNES line where the window starts
+        ldx #$0000
+        lda $0B
+        cmp #$80
+        bcc .h1
+        lda #$7F
+        sta.l $7E3E00,x
+        lda #$01
+        sta.l $7E3E01,x
+        lda #$00
+        sta.l $7E3E02,x
+        inx
+        inx
+        inx
+        lda $0B
+        sec
+        sbc #$7F
+.h1:    sta.l $7E3E00,x
+        lda #$01
+        sta.l $7E3E01,x
+        lda #$00
+        sta.l $7E3E02,x
+        inx
+        inx
+        inx
+        lda.l $7FFF4B
+        clc
+        adc #41
+        bcc .wxok
+        lda #$FF
+.wxok:  cmp #48
+        bcs .wx1
+        lda #48
+.wx1:   sta $0C
+        lda #$01
+        sta.l $7E3E00,x
+        lda $0C
+        sta.l $7E3E01,x
+        lda #207
+        sta.l $7E3E02,x
+        lda #$00
+        sta.l $7E3E03,x
         lda.l $7FFF47
         cmp $30
         beq .nopal
         sta $30
+        sta $0B
+        lda #$20
+        sta.w $2121
+        ldy #$0004
+.pal2:  lda $0B
+        and #$03
+        asl a
+        tax
+        lda.l SHADES,x
+        sta.w $2122
+        lda.l SHADES+1,x
+        sta.w $2122
+        lsr $0B
+        lsr $0B
+        dey
+        bne .pal2
+        lda $30
         sta $0B
         lda #$00
         sta.w $2121
@@ -1324,7 +1577,7 @@ nmi:    rep #$30
         cpx #$0040
         bne .lp
 .end:   jsr sprites
-        rep #$30
+@@SNDFRAME@@        rep #$30
         .a16
         pla
         sta $0E
@@ -1362,6 +1615,9 @@ objpal: sta $0B
 sprites: lda #$00
         sta.w $2102
         sta.w $2103
+        lda.l $7FFF40
+        and #$04
+        sta $2B                     ; 8x16
         ldx #$0000
 .s:     lda.l $7FFE00,x
         beq .hide
@@ -1370,34 +1626,64 @@ sprites: lda #$00
         clc
         adc #23
         sta $0B
-        lda.l $7FFE01,x
-        clc
-        adc #40
-        sta.w $2104
-        lda $0B
-        sta.w $2104
-        lda.l $7FFE02,x
-        sta.w $2104
         lda.l $7FFE03,x
-        sta $0B
+        sta $0D
         and #$60
         asl a
         sta $0C
-        lda $0B
+        lda $0D
         and #$10
         lsr a
         lsr a
         lsr a
         ora $0C
         sta $0C
-        lda $0B
+        lda $0D
         bmi .back
         lda #$20
         tsb $0C
-.back:  lda $0C
+.back:  lda.l $7FFE02,x
+        sta $0D
+        lda $2B
+        beq .one
+        lda $0D
+        and #$FE
+        sta $0D
+        lda $0C
+        bpl .one                    ; (SNES attr bit 7 = y flip: the bottom tile on top)
+        inc $0D
+.one:   lda.l $7FFE01,x
+        clc
+        adc #40
+        sta $0A
+        sta.w $2104
+        lda $0B
+        sta.w $2104
+        lda $0D
+        sta.w $2104
+        lda $0C
+        sta.w $2104
+        lda $2B
+        beq .h2
+        lda $0A
+        sta.w $2104
+        lda $0B
+        clc
+        adc #8
+        sta.w $2104
+        lda $0D
+        eor #$01
+        sta.w $2104
+        lda $0C
         sta.w $2104
         bra .nx
 .hide:  lda #$00
+        sta.w $2104
+        lda #$F0
+        sta.w $2104
+        sta.w $2104
+        sta.w $2104
+.h2:    lda #$00
         sta.w $2104
         lda #$F0
         sta.w $2104
@@ -1408,8 +1694,9 @@ sprites: lda #$00
         inx
         inx
         cpx #160
-        bne .s
-        rts
+        beq .sd
+        jmp .s
+.sd:    rts
 ; all 128 SNES sprites hidden, small, x bit 8 clear (once, at boot, in forced blank)
 oaminit: lda #$00
         sta.l $002102
@@ -1641,6 +1928,7 @@ KTAB:   dw 67, 4262, 1066, 266
 TMASK:  dw $03FF, $000F, $003F, $00FF
 TSHIFT: dw 10, 4, 6, 8
 
+@@SNDRT@@
 irqv:   rti
 cop:    rti
 
@@ -1677,17 +1965,38 @@ def ly_table():
 
 # ------------------------------------------------------------------------------------------------- interpreter
 
-def interp_text(count, tcyc=False):
+FETCH_MBC = r'''        cpx #$4000
+        bcc .ram
+        cpx #$8000
+        bcs .ram
+        txy
+        lda [$80],y
+        pha
+        iny
+        lda [$80],y
+        sta $0C
+        iny
+        lda [$80],y
+        sta $0D
+        pla
+        bra .fetched
+.ram:
+'''
+
+
+def interp_text(count, tcyc=False, mbc=False):
     g = Gen(lambda t, k: None, count, tcyc)
+    g.mbc = mbc
     parts = [r'''
 interp: stx $16
-        lda.w $0000,x
+@@IFETCH@@        lda.w $0000,x
         pha
         lda.w $0001,x
         sta $0C
         lda.w $0002,x
         sta $0D
         pla
+.fetched:
         rep #$20
         .a16
         and #$00FF
@@ -1729,7 +2038,9 @@ interp: stx $16
     parts.append('OPTAB:  dw ' + ','.join('lo(%s)|hi(%s)<<8' % (n, n) for n in names))
     parts.append('CBTAB:  dw ' + ','.join('lo(%s)|hi(%s)<<8' % (n, n) for n in cbn))
     parts.append('OPLEN:  db ' + ','.join(str(sm83.length(o)) for o in range(256)))
-    return '\n'.join(parts) + '\n'
+    t = '\n'.join(parts) + '\n'
+    fetch = '' if not mbc else FETCH_MBC
+    return t.replace('@@IFETCH@@', fetch)
 
 
 # ------------------------------------------------------------------------------------------------- convert
@@ -1738,24 +2049,29 @@ def unit_key_label(bank, pc):
     return 'G_%s_%04X' % ('R' if bank < 0 else '%X' % bank, pc)
 
 
-def convert(data, pcs, report, count=False, tcyc=False):
+def convert(data, pcs, report, count=False, tcyc=False, sound=True):
     cart = sm83.Cart(data)
-    if cart.banks > 2:
-        report['warning'] = 'PoC back end: only 32KB ROMs (bank 0 + bank 1); MBC1 banks beyond 1 are not translated'
+    banked = cart.banks > 2
+    if banked and cart.mbc not in ('mbc1', 'mbc3'):
+        report['warning'] = 'banked ROM with %s: only the MBC1 / MBC3 ROM bank select is mapped' % cart.mbc
+    if gbrom_bank(cart.banks) + (len(data) + 0xFFFF) // 0x10000 > 0x100:
+        raise SystemExit('gb2snes: GB ROM too big for the 4MB HiROM layout (%d banks)' % cart.banks)
     an = sm83.analyse(cart, pcs)
     report['cart'] = {'title': cart.title, 'mbc': cart.mbc, 'banks': cart.banks}
     report['analysis'] = an.summary()
     report['overlays'] = ['$%04X-$%04X <- file $%05X' % o for o in an.overlays]
-    keys = sorted((k for k in an.insn if k[0] in (0, 1, -1)), key=lambda k: (k[0] if k[0] >= 0 else 9, k[1]))
+    keys = sorted((k for k in an.insn if k[0] < cart.banks), key=lambda k: (k[0] if k[0] >= 0 else 999, k[1]))
     keyset = set(keys)
 
     def label_of(t, frm):
         b = frm[0] if frm else 0
         k = an.norm(b, t)
-        if k[0] == 1 and (1, t) not in keyset: return None
+        if banked and 0x4000 <= t < 0x8000 and b < 1: return None      # bank unknown: the dispatcher picks it
+        if k[0] >= 1 and k not in keyset: return None
         return unit_key_label(*k) if k in keyset and t not in an.volatile else None
 
     g = Gen(label_of, count, tcyc)
+    g.mbc = banked
     units = []
     stats = {'flags_skipped': 0, 'flags_kept': 0}
     for k in keys:
@@ -1802,13 +2118,15 @@ def convert(data, pcs, report, count=False, tcyc=False):
                 lines += ['jml ' + lab] if lab else ['ldx #$%04X' % nx, 'jml dispatch']
         texts[placed[i]].append('\n'.join(lines))
     # runtime + interpreter first (their symbols are needed by the code), then the code banks (twice: forward labels)
-    rom = bytearray(0x200000)
-    rt_text = runtime_text(chunks_table(), ly_table(), tcyc)
+    rom_banks = gbrom_bank(cart.banks) - 0xC0 + (len(data) + 0xFFFF) // 0x10000
+    rom_size = 0x200000 if rom_banks <= 32 else 0x400000
+    rom = bytearray(rom_size)
+    rt_text = runtime_text(chunks_table(), ly_table(), tcyc, cart.banks, cart.mbc, sound)
     syms = dict(dummy)
     for rnd in range(2):
         rt, rtl = assemble(rt_text, 0xC08000, syms)
         syms.update(rtl)
-        it, itl = assemble(interp_text(count, tcyc), 0xC10000, syms)
+        it, itl = assemble(interp_text(count, tcyc, banked), 0xC10000, syms)
         syms.update(itl)
         labels = {}
         code = []
@@ -1824,23 +2142,25 @@ def convert(data, pcs, report, count=False, tcyc=False):
     for bi2, b in enumerate(code):
         o = (CODE_BANKS[bi2] - 0xC0) << 16
         rom[o:o + len(b)] = b
-    g_off = (GBROM_BANK - 0xC0) << 16
-    rom[g_off:g_off + min(len(data), 0x8000)] = data[:0x8000]
+    g_off = (gbrom_bank(cart.banks) - 0xC0) << 16
+    rom[g_off:g_off + len(data)] = data
     # dispatch tables
     for k in keys:
         bank, pc = k
         if pc in an.volatile and bank < 0: continue
-        region = 0 if pc < 0x4000 else 1 if pc < 0x8000 else 3 if pc >= 0xC000 else None
-        if region is None: continue
+        if pc < 0x4000: tb = TAB0_BANK
+        elif pc < 0x8000: tb = tab_bank(max(bank, 1))
+        elif pc >= 0xC000: tb = TAB3_BANK
+        else: continue
         a = syms[unit_key_label(*k)]
-        o = ((TAB_BANK[region] - 0xC0) << 16) + (pc & 0x3FFF) * 4
+        o = ((tb - 0xC0) << 16) + (pc & 0x3FFF) * 4
         rom[o:o + 4] = bytes([a & 0xFF, a >> 8 & 0xFF, a >> 16 & 0xFF, 0])
     # header ($00:FFC0 = file $FFC0) and native / emulation vectors
     title = ('NESTED GB ' + cart.title)[:21].upper().ljust(21).encode('ascii', 'replace')
     rom[0xFFC0:0xFFD5] = title
     rom[0xFFD5] = 0x31          # HiROM + FastROM
     rom[0xFFD6] = 0x00
-    rom[0xFFD7] = 0x0B          # 2MB
+    rom[0xFFD7] = 0x0B if rom_size == 0x200000 else 0x0C          # 2MB / 4MB
     rom[0xFFD8] = 0x00
     rom[0xFFD9] = 0x01
     rom[0xFFDA] = 0x00
@@ -1929,6 +2249,7 @@ def main():
         p.add_argument('--pcs'); p.add_argument('--report'); p.add_argument('--frames', type=int, default=1800)
         p.add_argument('--input', default=''); p.add_argument('--workshop'); p.add_argument('--profile')
         p.add_argument('--set', action='append', default=[]); p.add_argument('--count', action='store_true')
+        p.add_argument('--no-sound', action='store_true', help='leave the GB APU unmapped (no SPC700 driver)')
         p.add_argument('--timer', choices=['real', 'gb'], default='real', help='GB timer on SNES real time (games) or GB instruction time (test ROMs)')
     a = ap.parse_args()
     data = open(a.inp, 'rb').read()
@@ -1940,7 +2261,7 @@ def main():
         report['feedback'] = {'pcs': len(pcs), 'run': out.strip().splitlines()[:3]}
     elif a.pcs:
         pcs = sm83.read_pcs(a.pcs)
-    rom = convert(data, pcs, report, a.count, a.timer == 'gb')
+    rom = convert(data, pcs, report, a.count, a.timer == 'gb', not a.no_sound)
     open(a.out, 'wb').write(rom)
     with open(os.path.splitext(a.out)[0] + '.sym', 'w') as f:      # WLA-DX symbols: the GB address of each block
         f.write('[labels]' + chr(10))

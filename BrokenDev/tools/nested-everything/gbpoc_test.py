@@ -74,7 +74,7 @@ def main():
     ap.add_argument('--frames', type=int, default=600)
     ap.add_argument('--workshop')
     ap.add_argument('--json')
-    ap.add_argument('--timer', choices=['real', 'gb'], default='gb', help='snes: GB timer mode (test ROMs: gb)')
+    ap.add_argument('--timer', choices=['real', 'gb'], default='real', help='snes: GB timer on real time, or on GB instruction time (02-interrupts needs gb)')
     a = ap.parse_args()
     os.makedirs(a.work, exist_ok=True)
     exe = sm83.workshop_exe(a.workshop)

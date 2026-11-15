@@ -56,6 +56,16 @@ S_IHL   = $BDB8
 S_IAF   = $BDBA
 S_LBGP  = $BDBC
 S_LOBP  = $BDBD
+S_UF    = $BDBE
+S_RRS   = $BDBF
+S_MKEY  = $BDF8
+S_MF    = $BDFC
+DIRTY   = $BDC0
+MDIRTY  = $BDF0
+KT      = $BE00
+KF      = $BE40
+KU      = $BE80
+SPT     = $BEC0
 SH      = $BF00
 
 ; ---------------------------------------------------------------- RST bodies
@@ -196,6 +206,7 @@ op1:    ld (S_HL),hl
 .k9:    pop af
         jp gbdaa
 .k1:    pop af
+        call vmark
         ld (hl),a
         inc hl
         ret
@@ -204,6 +215,7 @@ op1:    ld (S_HL),hl
         inc hl
         ret
 .k3:    pop af
+        call vmark
         ld (hl),a
         dec hl
         ret
@@ -636,13 +648,54 @@ sync:   push bc
         call tiles
         ld b,128
         call tiles
+        ld hl,KF
+        ld b,64
+.kf:    ld (hl),0
+        inc hl
+        djnz .kf
+        ld a,1
+        ld (S_MF),a
         call map
         jr .out
-.part:  ld b,8
-        call tiles
+.part:  call dtiles
         ld a,(S_FRAME)
-        and 3
-        call z,map
+        and 7
+        jr nz,.nf8
+        ld a,1
+        ld (S_MF),a
+.nf8:   ld a,(SH+$43)
+        and $F8
+        ld b,a
+        ld hl,S_MKEY
+        ld a,(hl)
+        cp b
+        jr nz,.mk
+        ld a,(SH+$42)
+        and $F8
+        ld b,a
+        inc hl
+        ld a,(hl)
+        cp b
+        jr nz,.mk
+        ld a,(S_LCDC)
+        and $18
+        ld b,a
+        inc hl
+        ld a,(hl)
+        cp b
+        jr z,.mok
+.mk:    ld a,(SH+$43)
+        and $F8
+        ld (S_MKEY),a
+        ld a,(SH+$42)
+        and $F8
+        ld (S_MKEY+1),a
+        ld a,(S_LCDC)
+        and $18
+        ld (S_MKEY+2),a
+        ld a,1
+        ld (S_MF),a
+.mok:   call map
         call sprites
 .out:   pop hl
         pop de
@@ -700,18 +753,120 @@ palette: ld a,(SH+$47)
         djnz .q
         ret
 
-; GB OAM shadow ($BD00, 40 x 8x8) -> the GG sprite table: y-16+24-1, x-8+48 (no flips, no priority: VDP limits)
-sprites: xor a
+; GB OAM shadow ($BD00, 40 x 8x8) -> the GG sprite table: y-16+24-1, x-8+48. The VDP has no sprite flips: every
+; sprite pattern comes from a 64-slot cache (GG tiles 384-447, sprite patterns 128-191 with the $2000 base), keyed by
+; GB tile + flip bits, filled with (bit-reversed / row-reversed) copies of the GB tile. 4 slots a frame are dropped
+; so tiles the game rewrites in place come back. (No behind-BG priority: VDP limit.)
+sprites: ld a,(S_FRAME)
+        add a,a
+        add a,a
+        and 63
+        add a,$40
+        ld l,a
+        ld h,$BE
+        xor a
+        ld (hl),a
+        inc l
+        ld (hl),a
+        inc l
+        ld (hl),a
+        inc l
+        ld (hl),a
+        ld hl,$BD00
+        ld b,40
+.p1:    push bc
+        ld a,(hl)
+        or a
+        jr z,.hid
+        cp 160
+        jr nc,.hid
+        push hl
+        inc hl
+        inc hl
+        ld c,(hl)
+        inc hl
+        ld a,(hl)
+        and $60
+        or $80
+        ld d,a
+        rrca
+        rrca
+        rrca
+        add a,c
+        and 63
+        ld e,a
+        ld b,64
+.pr:    ld h,$BE
+        ld l,e
+        ld a,(hl)
+        cp c
+        jr nz,.nm
+        ld a,l
+        add a,$40
+        ld l,a
+        ld a,(hl)
+        cp d
+        jr z,.hit
+.nm:    ld a,e
+        add a,$80
+        ld l,a
+        ld a,(S_FRAME)
+        cp (hl)
+        jr nz,.ev
+        ld a,e
+        inc a
+        and 63
+        ld e,a
+        djnz .pr
+        pop hl
+        jr .hid
+.ev:    ld (hl),a
+        ld l,e
+        ld (hl),c
+        ld a,e
+        add a,$40
+        ld l,a
+        ld (hl),d
+        call sprupl
+        jr .got
+.hit:   ld a,e
+        add a,$80
+        ld l,a
+        ld a,(S_FRAME)
+        ld (hl),a
+.got:   pop hl
+        ld a,e
+        add a,128
+        jr .st
+.hid:   xor a
+.st:    ld c,a
+        ld a,l
+        rrca
+        rrca
+        and $3F
+        add a,$C0
+        ld e,a
+        ld d,$BE
+        ld a,c
+        ld (de),a
+        inc hl
+        inc hl
+        inc hl
+        inc hl
+        pop bc
+        djnz .p1
+        ; the sprite table
+        xor a
         out ($BF),a
         ld a,$7F
         out ($BF),a
         ld hl,$BD00
+        ld de,SPT
         ld b,40
-.y:     ld a,(hl)
+.y:     ld a,(de)
         or a
         jr z,.hy
-        cp 160
-        jr nc,.hy
+        ld a,(hl)
         add a,7
         cp $D0
         jr nz,.oy
@@ -724,6 +879,7 @@ sprites: xor a
         inc hl
         inc hl
         inc hl
+        inc de
         djnz .y
         ld b,24
         ld a,$E0
@@ -734,18 +890,187 @@ sprites: xor a
         ld a,$7F
         out ($BF),a
         ld hl,$BD01
+        ld de,SPT
         ld b,40
 .x:     ld a,(hl)
         add a,40
         out ($BE),a
-        inc hl
-        ld a,(hl)
+        ld a,(de)
         out ($BE),a
         inc hl
         inc hl
         inc hl
+        inc hl
+        inc de
         djnz .x
         ret
+
+; slot e <- GB tile c ($8000 + c*16) with the flips in d (bit 5 x, bit 6 y)
+sprupl: push bc
+        push de
+        push hl
+        ld h,0
+        ld l,e
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        ld a,l
+        out ($BF),a
+        ld a,h
+        or $70
+        out ($BF),a
+        ld l,c
+        ld h,0
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        ld a,h
+        or $80
+        ld h,a
+        ld a,d
+        ld (S_UF),a
+        ld de,2
+        bit 6,a
+        jr z,.ny
+        ld de,14
+        add hl,de
+        ld de,$FFFE
+.ny:    ld b,8
+.row:   ld a,(hl)
+        call sprfx
+        out ($BE),a
+        inc hl
+        ld a,(hl)
+        call sprfx
+        out ($BE),a
+        dec hl
+        add hl,de
+        xor a
+        out ($BE),a
+        nop
+        out ($BE),a
+        djnz .row
+        pop hl
+        pop de
+        pop bc
+        ret
+sprfx:  ld c,a
+        ld a,(S_UF)
+        bit 5,a
+        ld a,c
+        ret z
+        push hl
+        ld h,hi(REV)
+        ld l,c
+        ld a,(hl)
+        pop hl
+        ret
+
+; VRAM write-site dirty tracking: the converted store sites (ld (hl+/-),a, ld (nn),a into VRAM) call this with HL =
+; the GB address: a tile ($8000-$97FF) sets its bit in DIRTY (48 bytes), a map byte its row bit in MDIRTY (64 rows)
+vmark:  push af
+        ld a,h
+        sub $80
+        cp $20
+        jr nc,.x
+        push hl
+        push bc
+        cp $18
+        jr nc,.map
+        ld b,a
+        ld a,l
+        rlca
+        and 1
+        ld c,a
+        ld a,b
+        add a,a
+        add a,c
+        add a,lo(DIRTY)
+        ld c,a
+        ld a,l
+        rrca
+        rrca
+        rrca
+        rrca
+        and 7
+        jr .set
+.map:   sub $18
+        add a,lo(MDIRTY)
+        ld c,a
+        ld a,l
+        rlca
+        rlca
+        rlca
+        and 7
+.set:   ld b,a
+        ld a,1
+        inc b
+.sh:    dec b
+        jr z,.or
+        add a,a
+        jr .sh
+.or:    ld l,c
+        ld h,hi(DIRTY)
+        or (hl)
+        ld (hl),a
+        pop bc
+        pop hl
+.x:     pop af
+        ret
+
+; the dirty tiles first (up to 24 a frame), then 2 more of the round robin
+dtiles: ld hl,DIRTY
+        ld c,24
+        ld e,0
+.byte:  ld a,(hl)
+        or a
+        jr z,.nb
+        ld d,a
+        ld b,8
+.bit:   srl d
+        jr nc,.nbit
+        push bc
+        push de
+        push hl
+        ld a,(S_RR)
+        ld (S_RRS),a
+        ld a,(S_RR+1)
+        push af
+        ld l,e
+        ld h,0
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        ld a,8
+        sub b
+        or l
+        ld (S_RR),a
+        ld a,h
+        ld (S_RR+1),a
+        ld b,1
+        call tiles
+        pop af
+        ld (S_RR+1),a
+        ld a,(S_RRS)
+        ld (S_RR),a
+        pop hl
+        pop de
+        pop bc
+        dec c
+        jr z,.full
+.nbit:  djnz .bit
+        ld (hl),0
+.nb:    inc hl
+        inc e
+        ld a,e
+        cp 48
+        jr nz,.byte
+        ld b,2
+        jp tiles
+.full:  ret                         ; budget used: this byte keeps its bits (uploaded again next frame)
 SHADES: db $FF,$0F,$AA,$0A,$55,$05,$00,$00
 
 ; b tiles (0 = 256) from tile (S_RR) on (wrapping at 384): GB 2bpp rows -> GG 4bpp rows
@@ -824,7 +1149,36 @@ map:    ld a,(SH+$43)
         ld e,a
         ld b,0
 .rowl:  push bc
-        ld a,b
+        ld a,(S_MF)
+        or a
+        jr nz,.do
+        ld a,(S_LCDC)
+        and 8
+        ld a,e
+        and 31
+        jr z,.m00
+        add a,32
+.m00:   ld c,a
+        srl a
+        srl a
+        srl a
+        add a,lo(MDIRTY)
+        ld l,a
+        ld h,hi(MDIRTY)
+        ld a,c
+        and 7
+        ld c,a
+        ld a,(hl)
+        inc c
+.bs:    dec c
+        jr z,.bt
+        rrca
+        jr .bs
+.bt:    and 1
+        jr nz,.do
+        pop bc
+        jr .skip
+.do:    ld a,b
         add a,2
         ld l,a
         ld h,0
@@ -878,11 +1232,18 @@ map:    ld a,(SH+$43)
         ld c,a
         djnz .col
         pop bc
-        inc e
+.skip:  inc e
         inc b
         ld a,b
         cp 20
         jr nz,.rowl
+        xor a
+        ld (S_MF),a
+        ld hl,MDIRTY
+        ld b,8
+.cl:    ld (hl),a
+        inc hl
+        djnz .cl
         ret
 
 ; ---------------------------------------------------------------- boot
@@ -936,7 +1297,7 @@ boot:   im 1
         ld hl,$014D
         ld sp,$DFFE
         jp $0100
-VDPINIT: db $04,$80, $A0,$81, $FF,$82, $FF,$83, $FF,$84, $FF,$85, $FB,$86, $00,$87, $00,$88, $00,$89, $FF,$8A
+VDPINIT: db $04,$80, $A0,$81, $FF,$82, $FF,$83, $FF,$84, $FF,$85, $FF,$86, $00,$87, $00,$88, $00,$89, $FF,$8A
 '''
 
 
@@ -991,9 +1352,10 @@ def tramp_text(an, bank, pc, n, rd):
     if op == 0xF1: return 'ld (S_HL),hl\npop hl\nld a,h\nld h,hi(G2Z)\nld l,(hl)\nld h,a\nld (S_AF),hl\nld (S_SPS),sp\nld sp,S_AF\npop af\nld sp,(S_SPS)\nld hl,(S_HL)'
     if op == 0x27: return 'call gbdaa'
     if op == 0xFB: return 'call eichk'
-    if op == 0x22: return 'ld (hl),a\ninc hl'
+    if op == 0x22: return 'call vmark\nld (hl),a\ninc hl'
     if op == 0x2A: return 'ld a,(hl)\ninc hl'
-    if op == 0x32: return 'ld (hl),a\ndec hl'
+    if op == 0x32: return 'call vmark\nld (hl),a\ndec hl'
+    if op == 0xEA and 0x8000 <= w < 0xA000: return 'ld ($%04X),a\npush hl\nld hl,$%04X\ncall vmark\npop hl' % (w, w)
     if op == 0x3A: return 'ld a,(hl)\ndec hl'
     if op == 0xE2: return 'rst $%02X\ndb 0' % LDHW if False else 'call ldcw'
     if op == 0xF2: return 'call ldcr'
@@ -1010,7 +1372,7 @@ def tramp_text(an, bank, pc, n, rd):
     return None
 
 
-def inplace(an, bank, pc, n, rd):
+def inplace(an, bank, pc, n, rd, plain=False):
     """Same-length replacement bytes for the GB instruction at pc, or None (needs a trampoline), or 'same'."""
     op = rd(pc)
     b1 = rd(pc + 1)
@@ -1021,6 +1383,7 @@ def inplace(an, bank, pc, n, rd):
         if w >= 0xFF00: return [0xC7 | LDHW, w & 0xFF, 0x00]
         if 0xFE00 <= w < 0xFF00: w = OAM + (w & 0xFF)
         if w < 0x8000: return 'mbc'
+        if 0x8000 <= w < 0xA000 and not plain: return None          # VRAM: a trampoline marks it dirty
         return [0x32, w & 0xFF, w >> 8]
     if op == 0xFA:
         if w >= 0xFF00: return [0xC7 | LDHR, w & 0xFF, 0x00]
@@ -1070,6 +1433,7 @@ def convert(data, pcs, report, count=False):
     else:
         alloc = Alloc(runs0)
     tabs = alloc.take(1280, 256)         # Z2G, G2Z, HT (op1 sites: a hash of address lo / hi / kind, 3 pages)
+    revt = alloc.take(256, 256)          # bit-reversed bytes (x-flipped sprite rows)
     op1_sites = {}
     for i in range(256):
         rom[tabs + i] = z2g(i)
@@ -1082,7 +1446,8 @@ def convert(data, pcs, report, count=False):
     kinds = ''.join('        cp %d\n        jr z,.r%02X\n' % (16 + v // 8, v) for v in reloc)
     kinds += ''.join('        jr .rx%02X\n.r%02X:   pop af\n        jp R_%02X\n.rx%02X:\n' % (v, v, v, v) for v in reloc)
     rt_text = RUNTIME.replace(';RSTKINDS', kinds)
-    syms = {'Z2G': tabs, 'G2Z': tabs + 256, 'HT': tabs + 512}
+    syms = {'Z2G': tabs, 'G2Z': tabs + 256, 'HT': tabs + 512, 'REV': revt}
+    for i in range(256): rom[revt + i] = int('{:08b}'.format(i)[::-1], 2)
     syms.update({'R_%02X' % v: 0x1000 for v in reloc})
     code, _ = assemble(rt_text, 0x0000, syms)
     rt = alloc.take(len(code) + 16)
@@ -1156,6 +1521,8 @@ def convert(data, pcs, report, count=False):
             op = rd(pc)
             if op in (0xF5, 0xF1):
                 rom[o] = 0xC7 | (PUSHAF if op == 0xF5 else POPAF); stats['rst_af'] = stats.get('rst_af', 0) + 1
+            elif op == 0xEA:
+                rom[o:o + 3] = bytes(inplace(an, bank, pc, n, rd, True)); stats['vram_unmarked'] = stats.get('vram_unmarked', 0) + 1
             elif op in KINDS and n == 1:
                 op1_sites[(bank, pc)] = KINDS[op]; rom[o] = 0xC7 | OP1; stats['op1'] = stats.get('op1', 0) + 1
             else:
