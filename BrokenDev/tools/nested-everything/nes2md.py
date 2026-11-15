@@ -22,6 +22,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -75,6 +76,7 @@ def chr_to_md(chr_rom, offset):
 class Emitter:
     def __init__(self, prg, insns, count):
         self.prg, self.insns, self.count = prg, insns, count
+        self.opprof = False
         self.out = []
         self.uid = 0
         self.order = sorted(insns)
@@ -143,10 +145,7 @@ class Emitter:
             ix = 'd1' if mode == 'zpx' else 'd2'
             if arg + 255 < 0x100 or arg == 0:
                 return ('ea', '%d(a5,%s.w)' % (arg, ix))
-            # exact zero-page wrap
-            self.e('move.b %s,d5' % ix)
-            self.e('add.b #%d,d5' % arg)
-            self.e('and.w #0xff,d5')
+            self.zpwrap(arg, ix)           # exact zero-page wrap: d5.w = (arg + ix) & $FF
             return ('ea', '0(a5,d5.w)')
         if mode == 'abs':
             r = self.region(arg)
@@ -171,21 +170,28 @@ class Emitter:
             self.e('add.w %s,d5' % ix)
             return ('gen', None)
         if mode == 'izy':
-            self.e('move.b %d(a5),d5' % ((arg + 1) & 0xFF))
+            self.e('move.b %d(a5),d5' % ((arg + 1) & 0xFF))     # ($FF),Y reads $00 for the high byte
             self.e('lsl.w #8,d5')
             self.e('move.b %d(a5),d5' % arg)
             self.e('add.w d2,d5')
             return ('gen', None)
         if mode == 'izx':
-            self.e('move.b d1,d5')
-            self.e('add.b #%d,d5' % arg)
-            self.e('and.w #0xff,d5')
+            self.zpwrap(arg, 'd1')
             self.e('lea 0(a5,d5.w),a0')
-            self.e('move.b 1(a0),d5')     # NOTE: ($FF,X) does not wrap the high byte read
+            self.e('addq.b #1,d5')        # the high byte wraps in the zero page too: ($FF,X)
+            self.e('move.b 0(a5,d5.w),d5')
             self.e('lsl.w #8,d5')
             self.e('move.b (a0),d5')
             return ('gen', None)
         raise ValueError(mode)
+
+    def zpwrap(self, arg, ix):
+        # moveq / move.w leave bits 8-15 zero, add.b wraps the low byte: 2 instructions instead of 3
+        if arg < 0x80:
+            self.e('moveq #%d,d5' % arg)
+        else:
+            self.e('move.w #%d,d5' % arg)
+        self.e('add.b %s,d5' % ix)
 
     def load(self, d, dst):
         """Operand value -> register dst (a data register).  Returns nothing."""
@@ -256,8 +262,7 @@ class Emitter:
             self.e('ext.w d3')
 
     def setc(self, cond='scs'):
-        self.e('%s d4' % cond)
-        self.e('neg.b d4')
+        self.e('%s d4' % cond)          # C is 0 / $FF (lsr.b #1 still gives X; Scc leaves the 68000 flags for the branch)
 
     def push_imm(self, v):
         self.e('subq.b #1,d6')                  # S first: a VInt between the two must not land on the byte
@@ -274,6 +279,12 @@ class Emitter:
         nextc = nxt is not None and nxt['m'] in ('BCC', 'BCS')
         if self.count:
             self.e('addq.l #1,icount(a6)')
+        if self.opprof:
+            l = self.lab()                    # per-opcode counts inside NMIs at $FF8400 (profile builds)
+            self.e('tst.b in_nmi(a6)')
+            self.e('beq.s %s' % l)
+            self.e('addq.l #1,%d(a6)' % (0x400 + 4 * d['op']))
+            self.out.append(l + ':')
         if m in ('LDA', 'LDX', 'LDY'):
             r = REG[m[2]]
             self.load(d, r)
@@ -322,7 +333,7 @@ class Emitter:
                 self.e('lsr.b #1,d4')
                 self.e('addx.b d7,d0')
             else:
-                self.e('eori.b #1,d4')
+                self.e('not.b d4')
                 self.e('lsr.b #1,d4')
                 self.e('subx.b d7,d0')
             if v:
@@ -342,11 +353,7 @@ class Emitter:
                 self.e('move.b %s,d3' % r)
                 self.e('sub.b %s,d3' % ea)
                 self.e('scc d4')
-                if nextc:
-                    self.e('ext.w d3')
-                    self.e('neg.b d4')
-                else:
-                    self.e('neg.b d4')
+                if self.nlive:
                     self.e('ext.w d3')
             else:
                 self.e('cmp.b %s,%s' % (ea, r))
@@ -394,8 +401,18 @@ class Emitter:
             t = 'L%04X' % self.prg.canon(d['tgt'])
             test, cc = BR[m]
             last = self.out[-1].strip() if self.out else ''
-            if (m in ('BEQ', 'BNE') and last.startswith('move.b') and last.endswith(',d3')) or                (m in ('BEQ', 'BNE', 'BMI', 'BPL') and last == 'ext.w d3') or                (m in ('BCS', 'BCC') and last == 'neg.b d4'):
+            prev = self.out[-2].strip() if len(self.out) > 1 else ''
+            if (m in ('BEQ', 'BNE') and last.startswith('move.b') and last.endswith(',d3')) or                (m in ('BEQ', 'BNE', 'BMI', 'BPL') and last == 'ext.w d3') or                (m in ('BEQ', 'BNE') and last == 'scc d4' and prev.startswith('sub.b ') and prev.endswith(',d3')):
                 test = None                  # the 68000 flags already say it
+            elif m in ('BCS', 'BCC') and last in ('scs d4', 'scc d4'):
+                i = len(self.out) - 1
+                while i > 0 and SCC.match(self.out[i].strip()):
+                    i -= 1
+                if CFLAG.match(self.out[i].strip()):
+                    # the 68000 carry is the 6502 carry after scs, its inverse after scc
+                    test = None
+                    same = last == 'scs d4'
+                    cc = ('cs' if same else 'cc') if m == 'BCS' else ('cc' if same else 'cs')
             if test:
                 self.e(test)
             self.e('jb%s %s' % (cc, t))
@@ -421,10 +438,8 @@ class Emitter:
             ret = (a + 2) & 0xFFFF
             self.e('move.w d6,-(sp)')
             self.e('subq.b #2,d6')
-            self.e('move.w #0x%04x,d7' % ret)
-            self.e('move.b d7,1(a2,d6.w)')
-            self.e('lsr.w #8,d7')
-            self.e('move.b d7,2(a2,d6.w)')
+            self.e('move.b #%d,1(a2,d6.w)' % (ret & 0xFF))      # immediates: no lsr.w #8 (22 cycles)
+            self.e('move.b #%d,2(a2,d6.w)' % (ret >> 8))
             self.e('jbsr L%04X' % self.prg.canon(d['arg']))
             if self.prg.canon(a + 3) not in self.insns:
                 self.e('move.w #0x%04x,d5' % (a + 3))
@@ -461,7 +476,7 @@ class Emitter:
         elif m == 'CLC':
             self.e('moveq #0,d4')
         elif m == 'SEC':
-            self.e('moveq #1,d4')
+            self.e('moveq #-1,d4')
         elif m == 'CLV':
             self.e('clr.b vflag(a6)')
         elif m in ('SEI', 'CLI'):
@@ -495,11 +510,53 @@ class Emitter:
         return '\n'.join(self.out) + '\n'
 
 
+SCC = re.compile(r'^s(cs|cc|vs|ne|eq) ')
+CFLAG = re.compile(r'^(addx|subx|cmp|sub|lsl|lsr|roxl|roxr)\.b ')
 BR = {'BEQ': ('tst.b d3', 'eq'), 'BNE': ('tst.b d3', 'ne'), 'BMI': ('tst.w d3', 'mi'), 'BPL': ('tst.w d3', 'pl'),
       'BCS': ('tst.b d4', 'ne'), 'BCC': ('tst.b d4', 'eq'), 'BVS': ('tst.b vflag(a6)', 'ne'),
       'BVC': ('tst.b vflag(a6)', 'eq')}
 IO_WRITES = {0x2000, 0x2001, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x4003, 0x4007, 0x400B, 0x400F, 0x4014, 0x4015,
              0x4016}
+
+
+MD_CLOCK = 7670453
+NES_CLOCK = 1789773
+
+
+def fm_word(f):
+    rate = MD_CLOCK / 144
+    for blk in range(8):
+        fn = round(f * (1 << 20) / rate / (2 ** (blk - 1)))
+        if fn < 2048:
+            return (blk << 11) | max(1, fn)
+    return (7 << 11) | 2047
+
+
+def fm_tables():
+    """YM2612 tables for the 2A03 -> FM path: block/fnum per period (pulse f = clk/16(t+1), triangle clk/32(t+1)),
+    carrier TL per NES volume, the duty voices (modulator MUL/TL: 50% = ratio 2, odd harmonics like a square;
+    12.5/25/75% = ratio 1, even harmonics too, brighter the narrower), and the register init list."""
+    import math
+    out = []
+    for name, div in (('fmfreq_p', 16), ('fmfreq_t', 32)):
+        w = [fm_word(NES_CLOCK / (div * (t + 1))) for t in range(2048)]
+        out.append(name + ':')
+        for i in range(0, 2048, 16):
+            out.append('\t.word ' + ','.join('0x%04x' % x for x in w[i:i + 16]))
+    tl = [127] + [min(127, 8 + round(20 * math.log10(15 / v) / 0.75)) for v in range(1, 16)]
+    out.append('fmtl: .byte ' + ','.join(map(str, tl)))
+    out.append('\t.even')
+    out.append('fmduty: .word 0x0112, 0x011a, 0x021c, 0x011a')
+    ini = [0x2200, 0x2700, 0x2B00]
+    for ch in range(3):
+        ini += [0xB004 + (ch << 8), 0xB4C0 + (ch << 8)]          # algorithm 4 (S1 -> S2), both speakers
+        for op in (0, 4, 8, 12):
+            r = (op + ch) << 8
+            tl0 = 127 if (op != 0 or ch == 2) else 0x1c           # S1 modulates S2 (none on the triangle); S3/S4 off
+            ini += [0x3001 + r, 0x4000 + r + tl0, 0x501F + r, 0x6000 + r, 0x7000 + r, 0x800F + r, 0x9000 + r]
+        ini.append(0x28F0 + ch)                                    # key on for good; the level is the carrier TL
+    out.append('ymini: .word ' + ','.join('0x%04x' % x for x in ini) + ',0xffff')
+    return out
 
 
 def toolchain_bin():
@@ -535,6 +592,7 @@ def convert(src, dst, profile_path=None, settings=None, work=None, report_path=N
     insns, labels, bad, indirect = m6502.walk(prg, vec[:2] + extra)
     count = settings.get('count', 'off') == 'on'
     em = Emitter(prg, insns, count)
+    em.opprof = settings.get('opprof', 'off') == 'on'
     code = em.emit_all()
 
     work = os.path.abspath(work or os.path.splitext(dst)[0] + '_build')
@@ -551,10 +609,16 @@ def convert(src, dst, profile_path=None, settings=None, work=None, report_path=N
         disp.append('L%04X' % a if a in insns else 'miss_tab')
     sprattr = []
     for v in range(256):
-        sprattr.append(((v & 3) << 13) | (0x800 if v & 0x40 else 0) | (0x1000 if v & 0x80 else 0))
+        sprattr.append(((v & 3) << 13) | (0x800 if v & 0x40 else 0) | (0x1000 if v & 0x80 else 0) |
+                       (0 if v & 0x20 else 0x8000))      # in front: high priority; behind: low (under plane A's pixels)
     pal = ', '.join('0x%04x' % md_colour(c) for c in NES_RGB)
-    gen = ['\t.include "%s"' % os.path.join(HERE, 'nes2md_runtime.s').replace('\\', '/'),
-           '\t.equ MIRBIT, %d' % (10 if f6 & 1 else 11),
+    sound = settings.get('sound', 'fm')
+    if sound not in ('fm', 'psg'):
+        raise SystemExit('sound must be fm or psg')
+    gen = ['\t.equ MIRBIT, %d' % (10 if f6 & 1 else 11),
+           '\t.equ SOUND_FM, %d' % (sound == 'fm'),
+           '\t.equ SPR0_LAG, %d' % int(settings.get('spr0lag', '0')),
+           '\t.include "%s"' % os.path.join(HERE, 'nes2md_runtime.s').replace('\\', '/'),
            '\t.equ NMI_ENTRY_ADDR, 0x%04x' % vec[0],
            '\t.text', '\t.even', 'nmi_entry: jra L%04X' % prg.canon(vec[0]),
            'reset_entry: jra L%04X' % prg.canon(vec[1]),
@@ -564,7 +628,7 @@ def convert(src, dst, profile_path=None, settings=None, work=None, report_path=N
            'prg: .incbin "%s"' % os.path.join(work, 'prg.bin').replace('\\', '/'),
            '\t.even', 'chrraw: .incbin "%s"' % os.path.join(work, 'chrraw.bin').replace('\\', '/'),
            '\t.even', 'chrdata: .incbin "%s"' % os.path.join(work, 'chr.bin').replace('\\', '/'), 'chrdata_end:',
-           '\t.even', 'disp:']
+           '\t.even'] + fm_tables() + ['\t.even', 'disp:']
     for i in range(0, 0x8000, 8):
         gen.append('\t.long ' + ','.join(disp[i:i + 8]))
     gen.append('\t.even')

@@ -35,6 +35,8 @@
 	.equ	ic_sum,  0x34        | long: 6502 instructions run inside NMIs (count builds)
 	.equ	missed,  0x40        | word: 6502 address of a dispatch miss
 	.equ	missflag,0x42        | $A5 after a miss
+	.equ	spr0line,0x7C        | word: Genesis line sprite 0 hit starts on (OAM Y + 1 - 8 + SPR0_LAG)
+	.equ	ymduty,  0x7E        | 2 bytes: duty last written to FM channels 0/1
 	.equ	apu,     0x44        | 24 bytes: $4000-$4017 as written
 	.equ	sq,      0x5C        | 4 channels x 8 bytes: +0 length, +1 env vol, +2 env acc, +3 linear, +4 last atten, +5 last noise ctl
 	.equ	oam,     0x100       | 256 bytes
@@ -95,6 +97,9 @@ start:	move.w	#0x2700,sr
 	move.w	d1,(a4)
 	addi.w	#0x0100,d1
 	dbra	d0,3b
+.if MIRBIT == 10
+	move.w	#0x9001,(a4)                  | plane 64x32
+.endif
 	move.l	#0x40000000,(a4)              | clear 64 KB VRAM
 	move.w	#0x7FFF,d0
 4:	move.w	#0,(a3)
@@ -123,6 +128,19 @@ start:	move.w	#0x2700,sr
 	move.b	#0xDF,(a0)
 	move.b	#0xFF,(a0)
 	lea	VARS,a6
+.if SOUND_FM
+	move.w	#0x100,0xA11100               | Z80 bus held for good (the Z80 stays idle): the 68000 drives the YM2612
+	move.w	#0x100,0xA11200
+1:	btst	#0,0xA11100
+	bne.s	1b
+	lea	ymini,a0                      | pulses + triangle on FM channels 1-3 (generated table, $FFFF ends it)
+2:	move.w	(a0)+,d3
+	cmpi.w	#0xFFFF,d3
+	beq.s	3f
+	bsr	ymw
+	bra.s	2b
+3:	move.w	#0xFFFF,ymduty(a6)
+.endif
 	move.w	#1,ppuinc(a6)
 	lea	0xFF0000,a5
 	lea	0xFF0100,a2
@@ -289,11 +307,14 @@ php_build:                                    | -> d7 = NV..DIZC (B/U left to th
 3:	tst.b	d3
 	bne.s	4f
 	ori.b	#0x02,d7
-4:	or.b	d4,d7
-	rts
+4:	tst.b	d4                            | C is 0 / $FF
+	beq.s	5f
+	ori.b	#0x01,d7
+5:	rts
 plp_unpack:                                   | d7 = P
 	move.b	d7,d4
 	andi.b	#1,d4
+	neg.b	d4
 	btst	#6,d7
 	sne	vflag(a6)
 	btst	#2,d7
@@ -430,15 +451,23 @@ apply_scroll:                                 | plane A scroll from scrollx/y an
 	movem.l	d0/d5,-(sp)
 	moveq	#0,d0
 	move.b	scrollx(a6),d0
+.if MIRBIT == 10
+	btst	#0,ppuctrl(a6)                | second nametable to the right
+	beq.s	5f
+	addi.w	#256,d0
+5:
+.endif
 	neg.w	d0
 	move.l	#0x7C000003,(a4)              | HScroll table $FC00
 	move.w	d0,(a3)
 	moveq	#0,d0
 	move.b	scrolly(a6),d0
 	addq.w	#8,d0
+.if MIRBIT == 11
 	btst	#1,ppuctrl(a6)
 	beq.s	1f
 	addi.w	#256,d0
+.endif
 1:	move.l	#0x40000010,(a4)
 	move.w	d0,(a3)
 	movem.l	(sp)+,d0/d5
@@ -455,7 +484,19 @@ io_rd_2002:
 	move.b	ppustat(a6),d7
 	andi.b	#0x7F,ppustat(a6)
 	sf	wlatch(a6)
-	ori.b	#0x40,d7                      | sprite 0 always "hit" (Donkey Kong does not wait on it)
+	move.l	d5,-(sp)                      | sprite 0 hit: set from the line sprite 0 starts on (Genesis V counter,
+	moveq	#0,d5                         | 8 lines of NES crop) to the end of the picture; clear in vblank
+	move.b	VDP_CTRL+4,d5
+	cmpi.w	#224,d5
+	bcc.s	1f
+	btst	#3,ppumask(a6)                | background on (the hit needs both layers)
+	beq.s	1f
+	btst	#4,ppumask(a6)
+	beq.s	1f
+	cmp.w	spr0line(a6),d5
+	bcs.s	1f
+	ori.b	#0x40,d7
+1:	move.l	(sp)+,d5
 	rts
 io_rd_2004:
 	move.l	d5,-(sp)
@@ -525,10 +566,20 @@ io_wr_2007:
 	rts
 vram_cell:                                    | set the VDP write address for cell d5 of half d2
 	movem.l	d5,-(sp)
+.if MIRBIT == 10
+	move.w	d5,-(sp)                      | vertical mirroring: a 64x32 plane, halves side by side
+	andi.w	#0xFFE0,d5
+	add.w	(sp)+,d5                      | row*64 + col
 	add.w	d5,d5
 	tst.b	d2
 	beq.s	1f
+	addi.w	#64,d5
+.else
+	add.w	d5,d5                         | horizontal mirroring: a 32x64 plane, halves one above the other
+	tst.b	d2
+	beq.s	1f
 	addi.w	#0x800,d5
+.endif
 1:	addi.w	#0x4000,d5                    | $C000 & $3FFF = $0000 ... plane at $C000: (addr & $3FFF) | $4000, top bits 3
 	swap	d5
 	move.w	#3,d5
@@ -560,6 +611,7 @@ nt_entry:                                     | d5 = cell 0..959, a0 = half base
 3:	andi.w	#3,d1
 	ror.w	#3,d1                         | palette -> bits 13-14
 	or.w	d1,d0
+	ori.w	#0x8000,d0                    | high priority: sprites with the NES behind-background bit are low
 	movem.l	(sp)+,d1/d5
 	rts
 wr_attr:                                      | rewrite the 4x4 cells under attribute byte d5 ($3C0..$3FF)
@@ -621,6 +673,12 @@ io_wr_4014:                                   | 64 NES sprites -> the SAT (Y+121
 	lsl.w	#8,d7
 	lea	0(a5,d7.w),a0
 	lea	sprattr,a1
+	moveq	#0,d0                         | sprite 0's first line for the $2002 hit
+	move.b	(a0),d0
+	addi.w	#1-8+SPR0_LAG,d0
+	bpl.s	0f
+	moveq	#0,d0
+0:	move.w	d0,spr0line(a6)
 	move.l	#0x78000003,(a4)              | SAT at $F800
 	move.w	#512,d5                       | sprite pattern base: 512 + (bit3 ? 256 : 0)
 	btst	#3,ppuctrl(a6)
@@ -671,15 +729,19 @@ io_wr_4014:                                   | 64 NES sprites -> the SAT (Y+121
 | ---------------------------------------------------------------- pad ($4016)
 read_pad:                                     | Genesis pad 1 -> padnes (A=C, B=B, Select=A, Start=Start)
 	lea	0xA10003,a0
-	move.b	#0x40,(a0)
-	nop
-	nop
+	move.b	#0x40,(a0)                    | TH settle time: 2 nops pass on BrokenNes, real pads / Genesis Plus GX
+	moveq	#3,d0                         | (BizHawk) want longer, so ~10 us
+0:	dbra	d0,0b
 	move.b	(a0),d0                       | TH=1: ..CBRLDU
 	move.b	#0x00,(a0)
-	nop
-	nop
+	moveq	#3,d1
+1:	dbra	d1,1b
 	move.b	(a0),d1                       | TH=0: ..SA00DU
 	move.b	#0x40,(a0)
+	btst	#2,d1                         | a 3-button pad reads Left/Right as 0 with TH=0: anything else is a
+	beq.s	0f                            | 6-button pad mid-sequence or no pad; keep the last pad
+	rts
+0:
 	not.b	d0
 	not.b	d1
 	moveq	#0,d2
@@ -861,7 +923,11 @@ env_done:
 	cmpi.w	#8,d0
 	bcc.s	2f
 	moveq	#0,d1
-2:	addq.w	#1,d0                         | PSG N = t + 1
+2:
+.if SOUND_FM
+	bra	fm_out
+.endif
+	addq.w	#1,d0                         | PSG N = t + 1
 	bra	tone_out
 tri:	moveq	#0,d1
 	btst	#7,d4
@@ -880,6 +946,9 @@ tri:	moveq	#0,d1
 	and.b	apu+11(a6),d0
 	lsl.w	#8,d0
 	move.b	apu+10(a6),d0
+.if SOUND_FM
+	bra	fm_out
+.endif
 	addq.w	#1,d0
 	add.w	d0,d0                         | PSG N = 2 (t + 1)
 tone_out:
@@ -904,6 +973,7 @@ vol_out:
 	or.b	d2,d3
 	ori.b	#0x90,d3
 	move.b	d3,(a1)
+ch_next:
 	addq.w	#8,d6
 	addq.w	#4,d5
 	cmpi.w	#32,d6
@@ -925,3 +995,67 @@ noise:	moveq	#15,d0
 	move.b	d2,(a1)
 	bra	vol_out
 
+
+.if SOUND_FM
+| ---------------------------------------------------------------- 2A03 pulses / triangle -> YM2612 channels 1-3
+| d0.w = the 11-bit period t, d1 = volume 0-15, d4 = the channel's reg 0 (duty in bits 6-7), d6 = channel*8
+fm_out:
+	move.w	d6,d2
+	lsr.w	#3,d2                         | FM channel 0-2
+	add.w	d0,d0
+	lea	fmfreq_p,a0
+	cmpi.w	#2,d2
+	bne.s	1f
+	lea	fmfreq_t,a0
+1:	move.w	0(a0,d0.w),d0                 | block << 11 | fnum
+	move.w	d2,d5
+	lsl.w	#8,d5                         | d5 = ch << 8 (added to a register number)
+	move.w	d0,d3
+	lsr.w	#8,d3
+	ori.w	#0xA400,d3
+	add.w	d5,d3
+	bsr	ymw                           | $A4+ch: block / fnum high first
+	moveq	#0,d3
+	move.b	d0,d3
+	ori.w	#0xA000,d3
+	add.w	d5,d3
+	bsr	ymw
+	lea	fmtl,a0                       | carrier (S2) level
+	moveq	#0,d3
+	move.b	0(a0,d1.w),d3
+	ori.w	#0x4800,d3
+	add.w	d5,d3
+	bsr	ymw
+	cmpi.w	#2,d2
+	beq.s	9f
+	moveq	#0,d0                         | pulse duty -> the modulator (S1) ratio and depth
+	move.b	d4,d0
+	lsr.b	#6,d0
+	cmp.b	ymduty(a6,d2.w),d0
+	beq.s	9f
+	move.b	d0,ymduty(a6,d2.w)
+	add.w	d0,d0
+	lea	fmduty,a0
+	move.w	0(a0,d0.w),d0                 | MUL << 8 | TL
+	move.w	d0,d3
+	lsr.w	#8,d3
+	ori.w	#0x3000,d3
+	add.w	d5,d3
+	bsr	ymw
+	moveq	#0,d3
+	move.b	d0,d3
+	ori.w	#0x4000,d3
+	add.w	d5,d3
+	bsr	ymw
+9:	moveq	#0,d5                         | restore the loop's register offset
+	move.w	d6,d5
+	lsr.w	#1,d5
+	bra	ch_next
+ymw:	btst	#7,0xA04000                   | d3.w = register << 8 | value (part I)
+	bne.s	ymw
+	move.w	d3,-(sp)
+	move.b	(sp),0xA04000
+	move.b	d3,0xA04001
+	addq.l	#2,sp
+	rts
+.endif
