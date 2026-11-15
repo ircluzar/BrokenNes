@@ -44,8 +44,18 @@ emu.addEventCallback(function()
   while cur <= #steps and steps[cur].f <= done do pad = steps[cur].pad; cur = cur + 1 end
   emu.setInput(pad, 0)
 end, emu.eventType.inputPolled)
+local function hwFrame()
+  local ok, st = pcall(emu.getState)
+  if ok and st then return st["ppu.frameCount"] or st["frameCount"] end
+  return nil
+end
+local logged = false
 emu.addEventCallback(function()
   done = done + 1
+  if not logged then
+    logged = true
+    local f = io.open(outDir .. "/start.txt", "w"); f:write("done=" .. done .. " hw=" .. tostring(hwFrame()) .. string.char(10)); f:close()
+  end
   if want[done] then writeShot(outDir .. "/m_" .. done .. ".raw") end
   if done >= last then emu.stop(0) end
 end, emu.eventType.endFrame)

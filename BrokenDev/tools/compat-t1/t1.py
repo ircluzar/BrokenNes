@@ -218,7 +218,7 @@ def mesen_run(rom, script, shots, out_dir, frames):
         shutil.rmtree(os.path.join(home, d), ignore_errors=True)
     os.makedirs(out_dir, exist_ok=True)
     env = dict(os.environ, BNT1_INPUT=script or "", BNT1_SHOTS=",".join(str(max(0, f - REF_LAG)) for f in shots), BNT1_WIN=str(WIN), BNT1_OUT=out_dir)
-    secs_limit = max(60, frames // 300 + 60)
+    secs_limit = frames // 20 + 60   # a loaded machine can drop Mesen's test runner to ~60 fps
     cmd = [exe, rom, "--luaScriptsToLoad", os.path.join(HERE, "mesen_t1.lua"), "--testRunner", f"--timeout={secs_limit}"]
     with Slot():
         code, o, e, secs, to = run(cmd, timeout=secs_limit + 30, env=env, cwd=home)
@@ -298,6 +298,7 @@ def check_nes(rec, minutes, keep_dir):
     script, end = generic_script(start, minutes)
     cps = sorted(set([max(1, start - 30), start + 120, start + 300, start + 470] + list(range(start + 480 + 1200, end, 1200)) + [end]))
     res["frames"] = end
+    res["start"] = start
     res["input"] = "generic-v1 start@%d" % start
     # pass 2: the script on BrokenNes (movie + checkpoint pictures), then the same script on the reference
     os.makedirs(keep_dir, exist_ok=True)
@@ -379,15 +380,28 @@ def grade_compare(res, p2, cmp, title):
         tag = "picture" if any(not r["bnBlank"] for r in bn_rows) else "crash"
         return grade_result(res, "Broken", [tag, "timing"] if tag == "picture" else [tag],
                             f"title screen differs from the reference (score {title_row['score']} at frame {title_row['frame']})")
-    if first_bad is None:
+    # boot, title and the first ~8 s after Start (two Start presses + an A) are where the two emulators must agree; after that the
+    # generic script plays blind and the two runs can part on any lag frame / sub-frame poll difference (1942, 720...), so a later
+    # divergence is recorded (extra.t1.playDiverges) but is not by itself a defect
+    early = [r for r in have_ref if r["frame"] <= res["start"] + 470]
+    late = [r for r in have_ref if r["frame"] > res["start"] + 470]
+    e_bad = next((r for r in early if r["score"] > 0.12), None)
+    e_off = next((r for r in early if r["score"] > 0.03), None)
+    if e_bad:
+        return grade_result(res, "Jank", ["timing", "input"],
+                            f"same title, then differs right after Start at frame {e_bad['frame']} (score {e_bad['score']}): menu/intro timing or input")
+    if e_off:
         return grade_result(res, "Jank", ["picture"],
-                            f"close to the reference but not the same from frame {first_off['frame']} (worst {worst}): palette/scroll/sprite detail")
-    # the title matches and later play diverges: timing / RNG / input reaction
-    early = first_bad is have_ref[1] if len(have_ref) > 1 else False
-    tags = ["timing"] + (["input"] if early else [])
-    return grade_result(res, "Jank", tags,
-                        f"same title, then diverges from the reference at frame {first_bad['frame']} (score {first_bad['score']}; "
-                        f"{res['summary']['different']}/{len(scores)} checkpoints different)")
+                            f"title/menu close to the reference but not the same at frame {e_off['frame']} (score {e_off['score']}): palette/scroll/sprite detail")
+    l_off = next((r for r in late if r["score"] > 0.03), None)
+    res["playDiverges"] = l_off["frame"] if l_off else None
+    gone = [r for r in late if r["bnBlank"] and r["refBlank"] is False]
+    if len(gone) >= 2 and gone[-1] is late[-1]:
+        return grade_result(res, "Jank", ["picture"],
+                            f"boot and title match; in play the picture goes blank from frame {gone[0]['frame']} while the reference shows one")
+    if l_off and l_off["score"] <= 0.12 and all(r["score"] <= 0.12 for r in late):
+        return grade_result(res, "OK", [], f"boot, title and menus match; play close to the reference (worst {worst}, from frame {l_off['frame']})")
+    return grade_result(res, "OK", [], f"boot, title and menus match the reference; blind play parts from it at frame {l_off['frame']} (not frame-locked)")
 
 
 # ------------------------------------------------------------------------------------------------ catalog
