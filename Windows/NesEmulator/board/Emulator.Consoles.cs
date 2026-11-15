@@ -243,19 +243,67 @@ namespace BrokenNes
         {
             var s = session;
             if (s == null) return;
+            ClearStateCoreFix();
             if (!s.SupportsState) { nesController.ErrorMessage = s.StateUnsupportedReason; Status.Set(s.StateUnsupportedReason); StateHasChanged(); return; }
+            byte[]? data = null;
             try
             {
-                var data = await JS.InvokeAsync<byte[]?>("nesInterop.idbGetBytes", ConsoleStateFile.SlotKey(s.Console, s.GameId));
+                data = await JS.InvokeAsync<byte[]?>("nesInterop.idbGetBytes", ConsoleStateFile.SlotKey(s.Console, s.GameId));
                 if (data == null || data.Length == 0) { Status.Set("No saved state for this game"); StateHasChanged(); return; }
                 s.LoadState(data);   // refuses a state of another game / sound unit with the reason; the game keeps running as it was
                 BugBreak("a state was loaded");
                 try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
+                if (nesController.ErrorMessage?.StartsWith("Load error", StringComparison.Ordinal) == true) nesController.ErrorMessage = "";   // an earlier refusal is answered
                 Status.Set("State loaded");
             }
-            catch (Exception ex) when (ex is System.IO.InvalidDataException or NotSupportedException) { nesController.ErrorMessage = "Load error: " + ex.Message; Status.Set(nesController.ErrorMessage); }
+            catch (Exception ex) when (ex is System.IO.InvalidDataException or NotSupportedException)
+            {
+                nesController.ErrorMessage = "Load error: " + ex.Message; Status.Set(nesController.ErrorMessage);
+                if (data != null) OfferStateCoreFix(s, data, ex.Message);
+            }
             catch (Exception ex) { nesController.ErrorMessage = "Load error: " + ex.Message; Status.Set(nesController.ErrorMessage); }
             StateHasChanged();
+        }
+
+        // ------------------------------------------------------------------ one tap for a state saved on other cores
+        // A state is never loaded into a different CPU / sound unit (no silent fallback). When the refusal is only that, the page offers a button that
+        // switches the named cores back (the same switch as picking them in the core menu, so the choice is kept) and loads the state again.
+
+        private List<(CoreSlot Slot, string Id)>? stateCoreFix;
+
+        /// <summary>The label of the "switch the cores and load" button after a refusal, or null when there is none to offer.</summary>
+        public string? StateCoreFixLabel { get; private set; }
+
+        private void ClearStateCoreFix() { stateCoreFix = null; StateCoreFixLabel = null; }
+
+        private void OfferStateCoreFix(IConsoleSession s, byte[] data, string refusal)
+        {
+            ClearStateCoreFix();
+            if (!(refusal.Contains("sound unit", StringComparison.Ordinal) || refusal.Contains("CPU core", StringComparison.Ordinal))) return;   // another game, model, region, chip or format: no core switch answers it
+            ConsoleStateInfo info;
+            try { info = ConsoleStateFile.Peek(data); } catch (System.IO.InvalidDataException) { return; }
+            if (info.Console != s.Console || !string.Equals(info.GameId, s.GameId, StringComparison.OrdinalIgnoreCase)) return;
+            var fix = new List<(CoreSlot, string)>();
+            foreach (var (unit, slot) in new[] { ("cpu", CoreSlot.Cpu), ("apu", CoreSlot.Apu) })
+            {
+                if (!info.Units.TryGetValue(unit, out var saved) || string.IsNullOrEmpty(saved)) continue;
+                if (string.Equals(ConsoleCore(s.Console, slot), saved, StringComparison.OrdinalIgnoreCase)) continue;
+                var opt = CoreCatalog.Options(s.Console, slot).FirstOrDefault(o => string.Equals(o.Id, saved, StringComparison.OrdinalIgnoreCase));
+                if (opt == null) return;   // that core is not in this build: nothing to switch to, the refusal stands alone
+                fix.Add((slot, opt.Id));
+            }
+            if (fix.Count == 0) return;
+            stateCoreFix = fix;
+            StateCoreFixLabel = "Switch to " + string.Join(" + ", fix.Select(f => $"{f.Item1.ToString().ToUpperInvariant()} {f.Item2}")) + " and load";
+        }
+
+        /// <summary>The one-tap answer to a refusal: switches to the cores the state was saved with, then loads it.</summary>
+        public async Task SwitchCoresAndLoadStateAsync()
+        {
+            var fix = stateCoreFix; ClearStateCoreFix();
+            if (fix == null || session == null) return;
+            foreach (var (slot, id) in fix) await SetConsoleCoreAsync(slot, id);
+            await LoadSessionStateAsync();
         }
 
         // ------------------------------------------------------------------ battery saves (IndexedDB kv)
