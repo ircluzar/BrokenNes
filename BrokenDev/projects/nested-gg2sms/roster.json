@@ -105,7 +105,8 @@
   {
    "id": "micro-machines",
    "name": "Micro Machines (E)",
-   "rom": "Micro Machines (E).gg"
+   "rom": "Micro Machines (E).gg",
+   "profile": "profiles/micro-machines.json"
   },
   {
    "id": "wonder-boy-the-dragon-s-trap",

@@ -142,6 +142,7 @@ class Analysis:
 # ============================================================================================== patch planning
 
 GG_PORTS = range(0x00, 0x07)
+SIMPLE = {0x06, 0x0E, 0x16, 0x1E, 0x26, 0x2E, 0x3E, 0x01, 0x11, 0x21, 0xAF, 0x3A, 0x2A} | set(range(0x78, 0x80)) | {0x04, 0x05, 0x0C, 0x0D, 0x14, 0x15, 0x1C, 0x1D, 0x24, 0x25, 0x2C, 0x2D, 0x3C, 0x3D, 0x23, 0x2B, 0x13, 0x1B, 0x03, 0x0B}
 
 
 def classify_static(rom, an):
@@ -288,6 +289,7 @@ def plan(rom, an, settings, profile):
                 continue
         unhandled.append({'off': None, 'pc': pc, 'why': f'code in RAM touches port ${port:02X} (cannot be patched in ROM)'})
     an.ram_srcs = ram_srcs
+    an.ram_handled = handled
     return actions, unhandled
 
 
@@ -652,7 +654,6 @@ def convert_once(data, settings, profile, traces, allow_hook):
         tramps.append([c[0], c[1], {o: idx}, None])
     # code copied to RAM, no RST: the site and the simple instructions before it become CALL t / NOPs in the ROM source; the
     # trampoline redoes them, calls the runtime and RETurns into the RAM copy (no jump back to a fixed address needed)
-    SIMPLE = {0x06, 0x0E, 0x16, 0x1E, 0x26, 0x2E, 0x3E, 0x01, 0x11, 0x21, 0xAF, 0x3A, 0x2A} | set(range(0x78, 0x80)) | {0x04, 0x05, 0x0C, 0x0D, 0x14, 0x15, 0x1C, 0x1D, 0x24, 0x25, 0x2C, 0x2D, 0x3C, 0x3D, 0x23, 0x2B, 0x13, 0x1B, 0x03, 0x0B}
     rs = set(ramcalls)
     for o in ramcalls:
         if any(t[0] <= o < t[1] for t in tramps if t[3] == 'ram'):
@@ -681,6 +682,70 @@ def convert_once(data, settings, profile, traces, allow_hook):
             continue
         protected.update(range(st, en))
         tramps.append([st, en, sites, 'ram'])
+    # code the game unpacks to RAM (profile "ram_code": {"entry": ROM offset of the CALL/JP into it, "frame": when it is there}):
+    # its VDP writes get CALLs to trampolines written into the RAM copy by a fixup that runs in place of the entry jump
+    ramfix, ram_used = None, set()
+    rc_p = profile.get('ram_code')
+    img = profile.get('_ram_image')
+    if rc_p and img:
+        e0 = int(rc_p['entry'], 0)
+        if rom.b[e0] in (0xCD, 0xC3) and rom.b[e0 + 2] >= 0xC0:
+            dest = rom.b[e0 + 1] | rom.b[e0 + 2] << 8
+            hi = dest + int(rc_p.get('length', '0x400'), 0)
+            mem = lambda a: img[(a - 0xC000) & 0x1FFF]
+            def ilen(a):
+                return z80.length(bytes(mem(a + k) for k in range(4)), 0)
+            buf = bytes(mem(a) for a in range(dest, hi + 4))
+            rtg, a = set(), dest                   # jump targets inside the unpacked code (a linear sweep)
+            while a < hi:
+                for t_ in z80.flow(buf, a - dest, a)[1]:
+                    rtg.add(t_)
+                a += z80.length(buf, a - dest)
+            pcs = sorted({x['pc'] for x in an.sites if x['off'] < 0 and x['write'] and 0x80 <= x['port'] < 0xC0 and dest <= x['pc'] < hi
+                          and x['pc'] not in getattr(an, 'ram_handled', ())})
+            sites_h = {}
+            for pc in pcs:
+                o1, o2 = mem(pc), mem(pc + 1)
+                h = ('h_bf' if o2 & 1 else 'h_be') if o1 == 0xD3 and 0x80 <= o2 < 0xC0 else BLOCK.get(o2) if o1 == 0xED and o2 in BLOCK else                     ('oc_' + OC_REG[o2]) if o1 == 0xED and o2 in OC_REG else None
+                if h:
+                    sites_h[pc] = h
+            rt_list, edits, done_r = [], [], set()
+            for pc in sorted(sites_h):
+                if pc in done_r:
+                    continue
+                st, en, ss = pc, pc + ilen(pc), {pc: rt.HANDLERS.index(sites_h[pc])}
+                while en - st < 3:
+                    got = False
+                    for back in (1, 2, 3):
+                        q = st - back
+                        if ilen(q) == back and (mem(q) in SIMPLE) and q not in done_r and st not in rtg:
+                            st, got = q, True
+                            break
+                    if not got:
+                        if en in rtg:
+                            break
+                        if en in sites_h:
+                            ss[en] = rt.HANDLERS.index(sites_h[en]); en += ilen(en)
+                        elif mem(en) in SIMPLE:
+                            en += ilen(en)
+                        else:
+                            break
+                if en - st < 3:
+                    report['unhandled'].append({'off': None, 'pc': pc, 'why': 'unpacked RAM code: no simple instructions around the site for a CALL'})
+                    continue
+                done_r.update(range(st, en))
+                rt_list.append((st, en, ss))
+            if rt_list:
+                ramfix = {'entry': e0, 'dest': dest, 'tramps': rt_list, 'mem': mem, 'ilen': ilen}
+                fixed = set(range(dest, hi)) & done_r
+                report['unhandled'] = [u for u in report['unhandled'] if not (u.get('off') is None and u.get('pc') in fixed)]
+                for st, en, ss in rt_list:
+                    for pc, ix in ss.items():
+                        report['patches'].append({'off': None, 'pc': pc, 'what': f'{rt.HANDLERS[ix]} in unpacked RAM code (fixup at the entry ${e0:05X})'})
+                protected.update(range(e0, e0 + 3))
+                ram_used.update(rt.HANDLERS[ix] for _, _, ss in rt_list for ix in ss.values())
+        else:
+            report['warnings'].append(f'ram_code entry ${e0:05X} is not a CALL/JP into RAM')
     # unrolled OUTI chains in place: each site's index says how many OUTIs are left, one call does them all (h_chain)
     outi = sorted(o for o in inplace if actions[o][1] == 'h_outi')
     runs_o, cur = [], []
@@ -707,7 +772,7 @@ def convert_once(data, settings, profile, traces, allow_hook):
             inplace[o] = rt.HANDLERS.index('h_oidj')
             actions[o] = ('call', 'h_oidj', actions[o][2].replace('OUTI -> dispatch', 'OUTI/DJNZ loop -> h_oidj'), actions[o][3])
             actions[o + 2] = ('bytes', bytes(2), 'DJNZ of an OUTI loop -> NOP NOP (h_oidj loops)')
-    used = {actions[o][1] for o in actions if actions[o][0] == 'call'}
+    used = {actions[o][1] for o in actions if actions[o][0] == 'call'} | ram_used
     hookspec = None
     if hook:
         table = []                         # the game's own RST calls of the hooked vector (static and traced code)
@@ -768,6 +833,27 @@ def convert_once(data, settings, profile, traces, allow_hook):
                 t.code[jf] = back & 0xFF; t.code[jf + 1] = back >> 8
             t.op_w(0xC3, back)
             out.append(t)
+        if ramfix:
+            fx = z80.Asm(); fx.label('rfix')
+            for st, en, ss in ramfix['tramps']:
+                t = z80.Asm(); t.label(f'tr_{st:x}')
+                q = st
+                while q < en:
+                    n = ramfix['ilen'](q)
+                    if q in ss:
+                        t.op_w(0xCD, 'disp'); t.db(ss[q])
+                    else:
+                        t.db(bytes(ramfix['mem'](q + k) for k in range(n)))
+                    q += n
+                t.db(0xC9)
+                out.append(t)
+                fx.db(0x3E, 0xCD); fx.op_w(0x32, st); fx.op_w(0x21, f'tr_{st:x}'); fx.op_w(0x22, st + 1)
+                if en - st > 3:
+                    fx.db(0xAF)
+                    for k in range(st + 3, en):
+                        fx.op_w(0x32, k)
+            fx.op_w(0xC3, ramfix['dest'])
+            out.append(fx)
         return out
 
     # ---- where the runtime goes: near (all of it in always-mapped ROM) or far (a stub there, the handlers in a bank of their own).
@@ -878,6 +964,10 @@ def convert_once(data, settings, profile, traces, allow_hook):
         if a[0] == 'bytes':
             rom.b[o:o + len(a[1])] = a[1]
             report['patches'].append({'off': o, 'what': a[2]})
+    if ramfix:
+        t = labels['rfix']
+        rom.b[ramfix['entry'] + 1] = t & 0xFF; rom.b[ramfix['entry'] + 2] = t >> 8
+        report['patches'].append({'off': ramfix['entry'], 'what': f'entry into unpacked RAM code -> fixup ${t:04X}, then ${ramfix["dest"]:04X}'})
     if nmi_ok:
         t = labels['nmi']
         rom.b[0x66] = 0xC3; rom.b[0x67] = t & 0xFF; rom.b[0x68] = t >> 8
@@ -919,6 +1009,16 @@ def run_trace(rom_path, out_json, console, frames, inputs, exe):
         raise SystemExit(f'trace failed ({r.returncode}): {r.stdout[-400:]} {r.stderr[-400:]}')
     with open(out_json) as f:
         return json.load(f)
+
+
+def ram_image(rom_path, work, frame, exe):
+    """The game's 8 KB of work RAM at the end of a frame (the original on the GG core, no input): code it unpacked to RAM."""
+    subprocess.run([exe, '--sms-run', rom_path, '--console', 'gg', '--frames', str(frame + 1), '--ram-at', str(frame),
+                    '--out', work, '--tag', 'ramimg'], capture_output=True, text=True, timeout=1800)
+    p = os.path.join(work, f'ramimg_f{frame}.ram.bin')
+    if not os.path.exists(p):
+        raise SystemExit('RAM image dump failed: ' + p)
+    return open(p, 'rb').read()
 
 
 def profile_inputs(profile, manifest):
@@ -987,6 +1087,8 @@ def main():
     traces = []
     for i, inp in enumerate(profile_inputs(profile, manifest)):
         traces.append(run_trace(os.path.abspath(a.inp), os.path.join(work, f'orig{i}.json'), 'gg', inp['frames'], inp['input'], exe))
+    if profile.get('ram_code'):
+        profile['_ram_image'] = ram_image(os.path.abspath(a.inp), work, int(profile['ram_code'].get('frame', 60)), exe)
     for rnd in range(3):                   # residual GG port use in the converted game's own run becomes sites of the next round
         out, report, code = convert(data, settings, profile, traces)
         if out is None or not report.get('runtimeRanges'):

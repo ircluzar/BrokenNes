@@ -1,0 +1,4 @@
+{
+  "what": "Micro Machines (Codemasters): its boot code is unpacked to RAM $C000 and entered by CALL $C000 at ROM $8018; that code uploads the palette with OUT/OTIR, so the converter patches the unpacked copy at the entry (a RAM image taken at frame 10)",
+  "ram_code": { "entry": "0x8018", "frame": 10, "length": "0x200" }
+}
