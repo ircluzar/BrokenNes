@@ -23,6 +23,8 @@ public static class EngineState
     private const ulong Magic = 0x31545345474E45B7UL;  // "\xB7ENGEST1"
     /// <summary>FA-ST-2 hub sections have a magic of their own: a stock unit's LoadState peeks for (and skips) an engine section right after its state, which is where a hub section stands.</summary>
     private const ulong HubMagic = 0x31425548474E45B7UL;  // ENGHUB1
+    /// <summary>True when a hub bridge's section (<see cref="SaveHub"/>) starts here: what follows a PSG-only bridge's front state, never a unit's own data.</summary>
+    public static bool AtHubSection(BinaryReader r) => AtSection(r, HubMagic);
 
     /// <summary>Test hook (Workshop --apu-channels --state negative control): loads skip the engine section, as an old state would.</summary>
     public static bool TestSkipRestore;
