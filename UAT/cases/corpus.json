@@ -250,24 +250,6 @@
       ]
     },
     {
-      "id": "corpus-m034-bnrom",
-      "rom": "{corpus}/Deadly Towers (U).nes",
-      "skip": "Mapper 34 (BNROM/NINA-001) is not implemented. Verified: 'Mapper 34 (Unknown) is not supported'. 2 corpus ROMs.",
-      "tags": [
-        "corpus",
-        "unsupported"
-      ]
-    },
-    {
-      "id": "corpus-m041-caltron",
-      "rom": "{corpus}/Caltron 6-in-1 (U).nes",
-      "skip": "Mapper 41 (Caltron 6-in-1) is not implemented. 1 corpus ROM.",
-      "tags": [
-        "corpus",
-        "unsupported"
-      ]
-    },
-    {
       "id": "corpus-m047-mmc3-multicart",
       "rom": "{corpus}/Super Spike V'Ball + Nintendo World Cup (U) [!].nes",
       "skip": "Mapper 47 (MMC3 multicart) is not implemented, even though plain mapper 4 is. 1 corpus ROM.",
@@ -277,54 +259,9 @@
       ]
     },
     {
-      "id": "corpus-m064-rambo1",
-      "rom": "{corpus}/Klax (U).nes",
-      "skip": "Mapper 64 (Tengen RAMBO-1) is not implemented. Verified: 'Mapper 64 (Unknown) is not supported'. 3 corpus ROMs.",
-      "tags": [
-        "corpus",
-        "unsupported"
-      ]
-    },
-    {
-      "id": "corpus-m066-gxrom",
-      "rom": "{corpus}/Super Mario Bros. + Duck Hunt (U).nes",
-      "skip": "Mapper 66 (GxROM) is not implemented. 4 corpus ROMs. Worth noting: GxROM is one of the simplest mappers left unimplemented, so it is the cheapest coverage win available here.",
-      "tags": [
-        "corpus",
-        "unsupported"
-      ]
-    },
-    {
-      "id": "corpus-m067-sunsoft3",
-      "rom": "{corpus}/Transformers.nes",
-      "skip": "Mapper 67 (Sunsoft-3) is not implemented. 1 corpus ROM.",
-      "tags": [
-        "corpus",
-        "unsupported"
-      ]
-    },
-    {
       "id": "corpus-m068-sunsoft4",
       "rom": "{corpus}/After Burner (U).nes",
       "skip": "Mapper 68 (Sunsoft-4) is not implemented. 1 corpus ROM.",
-      "tags": [
-        "corpus",
-        "unsupported"
-      ]
-    },
-    {
-      "id": "corpus-m069-fme7",
-      "rom": "{corpus}/Batman - Return of the Joker (U).nes",
-      "skip": "Mapper 69 (Sunsoft FME-7) is not implemented. 1 corpus ROM.",
-      "tags": [
-        "corpus",
-        "unsupported"
-      ]
-    },
-    {
-      "id": "corpus-m071-camerica",
-      "rom": "{corpus}/Bee 52 (U).nes",
-      "skip": "Mapper 71 (Camerica/Codemasters) is not implemented. Verified: 'Mapper 71 (Unknown) is not supported'. 11 corpus ROMs.",
       "tags": [
         "corpus",
         "unsupported"
@@ -352,15 +289,6 @@
       "id": "corpus-m118-txsrom",
       "rom": "{corpus}/Alien Syndrome (U).nes",
       "skip": "Mapper 118 (TxSROM / MMC3 with per-bank mirroring) is not implemented, despite plain mapper 4 being implemented. 4 corpus ROMs.",
-      "tags": [
-        "corpus",
-        "unsupported"
-      ]
-    },
-    {
-      "id": "corpus-m119-tqrom",
-      "rom": "{corpus}/High Speed (U).nes",
-      "skip": "Mapper 119 (TQROM / MMC3 with CHR-RAM) is not implemented, despite plain mapper 4 being implemented. 2 corpus ROMs.",
       "tags": [
         "corpus",
         "unsupported"

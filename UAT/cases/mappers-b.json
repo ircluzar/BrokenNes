@@ -1,0 +1,323 @@
+{
+  "schema": 1,
+  "suite": "mappers-b",
+  "description": "Compatibility catalog P0, NES mappers part B (34, 41, 64, 66, 67, 69, 71, 119): one case per tested title, played past its title screen. The ROMs are the user's library (X:), not in the repo: the cases skip on a machine without it.",
+  "roots": {
+    "lib": "X:/EMULATION/Nintendo Entertainment System"
+  },
+  "cases": [
+    {
+      "id": "mapb-m034-bnrom-deadlytowers",
+      "description": "Mapper 34. BNROM: 32KB PRG switching with bus conflicts, CHR-RAM. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-14).",
+      "kind": "romtest",
+      "rom": "{lib}/Deadly Towers (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-b",
+        "mapper34"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "4552E9B138EAE06B",
+        "framesRun": 900,
+        "distinctColors": 6,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapb-m034-nina001-impossiblemission2",
+      "description": "Mapper 34. NINA-001: PRG/CHR registers at $7FFD-$7FFF over PRG-RAM. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-14).",
+      "kind": "romtest",
+      "rom": "{lib}/Impossible Mission II (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-b",
+        "mapper34"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "ADDC66E84296D9A7",
+        "framesRun": 900,
+        "distinctColors": 9,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapb-m041-caltron",
+      "description": "Mapper 41. Caltron 6-in-1: address-latched outer register, gated inner CHR. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-14).",
+      "kind": "romtest",
+      "rom": "{lib}/Caltron 6-in-1 (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-b",
+        "mapper41"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "FB3F9D8BF153ABA3",
+        "framesRun": 900,
+        "distinctColors": 4,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapb-m064-rambo1-klax",
+      "description": "Mapper 64. Tengen RAMBO-1: MMC3-like banking with K mode. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-14).",
+      "kind": "romtest",
+      "rom": "{lib}/Klax (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-b",
+        "mapper64"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "9ED2188237FD754B",
+        "framesRun": 900,
+        "distinctColors": 11,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapb-m064-rambo1-skullcrossbones",
+      "description": "Mapper 64. Tengen RAMBO-1: scanline IRQ split at the bottom border. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-14).",
+      "kind": "romtest",
+      "rom": "{lib}/Skull & Crossbones (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-b",
+        "mapper64"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "BA535FC728A297D7",
+        "framesRun": 900,
+        "distinctColors": 9,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapb-m064-rambo1-shinobi",
+      "description": "Mapper 64. Tengen RAMBO-1: in-game status bar split. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-14).",
+      "kind": "romtest",
+      "rom": "{lib}/Shinobi (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-b",
+        "mapper64"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "D4536B92D31812F7",
+        "framesRun": 900,
+        "distinctColors": 10,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapb-m066-gxrom-smbduckhunt",
+      "description": "Mapper 66. GxROM: 32KB PRG + 8KB CHR latch (menu picks the game). Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-14).",
+      "kind": "romtest",
+      "rom": "{lib}/Super Mario Bros. + Duck Hunt (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-b",
+        "mapper66"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "B8137E659895A16D",
+        "framesRun": 900,
+        "distinctColors": 11,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapb-m066-gxrom-gumshoe",
+      "description": "Mapper 66. GxROM. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-14).",
+      "kind": "romtest",
+      "rom": "{lib}/Gumshoe (UE).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-b",
+        "mapper66"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "10686BCB027141DF",
+        "framesRun": 900,
+        "distinctColors": 10,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapb-m069-fme7-batman",
+      "description": "Mapper 69. Sunsoft FME-7: CPU-cycle IRQ, 8KB PRG banking, RAM/ROM at $6000. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-14).",
+      "kind": "romtest",
+      "rom": "{lib}/Batman - Return of the Joker (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-b",
+        "mapper69"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "F0699F899D5A4E2F",
+        "framesRun": 900,
+        "distinctColors": 18,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapb-m071-camerica-bee52",
+      "description": "Mapper 71. Camerica BF909x. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-14).",
+      "kind": "romtest",
+      "rom": "{lib}/Bee 52 (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-b",
+        "mapper71"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "E9FA2B8686D97815",
+        "framesRun": 900,
+        "distinctColors": 7,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapb-m071-camerica-dizzy",
+      "description": "Mapper 71. Camerica BF909x. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-14).",
+      "kind": "romtest",
+      "rom": "{lib}/Dizzy The Adventurer (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-b",
+        "mapper71"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "D22346D75B989C5F",
+        "framesRun": 900,
+        "distinctColors": 14,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapb-m119-tqrom-pinbot",
+      "description": "Mapper 119. TQROM: MMC3 with mixed CHR-ROM / CHR-RAM. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-14).",
+      "kind": "romtest",
+      "rom": "{lib}/Pinbot (U) [!].nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-b",
+        "mapper119"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "5126D91BB1E478B9",
+        "framesRun": 900,
+        "distinctColors": 10,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapb-m119-tqrom-highspeed",
+      "description": "Mapper 119. TQROM: MMC3 with mixed CHR-ROM / CHR-RAM. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-14).",
+      "kind": "romtest",
+      "rom": "{lib}/High Speed (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-b",
+        "mapper119"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "E20CDEFF922328A9",
+        "framesRun": 900,
+        "distinctColors": 7,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    }
+  ],
+  "goldenGeneratedUtc": "2026-11-15T03:36:52Z"
+}
