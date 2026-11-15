@@ -1,0 +1,1941 @@
+{
+ "what": "Widened GG -> SMS roster (round 2): one dump per title from the user's GG folder, preferring [!] and (U)/(W)/(JU), no bad/hacked/translated dumps; the 20 of the first roster are left out. ROMs are never copied into git.",
+ "folder": "X:\\EMULATION\\Sega Game Gear",
+ "games": [
+  {
+   "id": "5-in-1-funpak",
+   "name": "5 in 1 Funpak (U) [!]",
+   "rom": "5 in 1 Funpak (U) [!].gg"
+  },
+  {
+   "id": "aah-harimanada",
+   "name": "Aah! Harimanada (J)",
+   "rom": "Aah! Harimanada (J).gg"
+  },
+  {
+   "id": "addams-family-the",
+   "name": "Addams Family, The (U) [!]",
+   "rom": "Addams Family, The (U) [!].gg"
+  },
+  {
+   "id": "adventures-of-batman-robin-the",
+   "name": "Adventures of Batman & Robin, The (U) [!]",
+   "rom": "Adventures of Batman & Robin, The (U) [!].gg"
+  },
+  {
+   "id": "aerial-assault",
+   "name": "Aerial Assault (JU) (V1.1) [!]",
+   "rom": "Aerial Assault (JU) (V1.1) [!].gg"
+  },
+  {
+   "id": "aladdin",
+   "name": "Aladdin (U) [!]",
+   "rom": "Aladdin (U) [!].gg"
+  },
+  {
+   "id": "alien-3",
+   "name": "Alien 3 (U) [!]",
+   "rom": "Alien 3 (U) [!].gg"
+  },
+  {
+   "id": "alien-syndrome",
+   "name": "Alien Syndrome (J)",
+   "rom": "Alien Syndrome (J).gg"
+  },
+  {
+   "id": "andre-agassi-tennis",
+   "name": "Andre Agassi Tennis (U) [!]",
+   "rom": "Andre Agassi Tennis (U) [!].gg"
+  },
+  {
+   "id": "arcade-classics",
+   "name": "Arcade Classics (U) [!]",
+   "rom": "Arcade Classics (U) [!].gg"
+  },
+  {
+   "id": "arch-rivals",
+   "name": "Arch Rivals (U) [!]",
+   "rom": "Arch Rivals (U) [!].gg"
+  },
+  {
+   "id": "arena-maze-of-death",
+   "name": "Arena - Maze of Death (U) [!]",
+   "rom": "Arena - Maze of Death (U) [!].gg"
+  },
+  {
+   "id": "ariel-the-little-mermaid",
+   "name": "Ariel - The Little Mermaid (U) [!]",
+   "rom": "Ariel - The Little Mermaid (U) [!].gg"
+  },
+  {
+   "id": "arliel-crystal-densetsu",
+   "name": "Arliel - Crystal Densetsu (J)",
+   "rom": "Arliel - Crystal Densetsu (J).gg"
+  },
+  {
+   "id": "asterix-and-the-great-rescue",
+   "name": "Asterix and the Great Rescue (U) [!]",
+   "rom": "Asterix and the Great Rescue (U) [!].gg"
+  },
+  {
+   "id": "ax-battler-a-legend-of-golden-axe",
+   "name": "Ax Battler - A Legend of Golden Axe (U) (V2.4) [!]",
+   "rom": "Ax Battler - A Legend of Golden Axe (U) (V2.4) [!].gg"
+  },
+  {
+   "id": "ayrton-senna-s-super-monaco-gp-ii",
+   "name": "Ayrton Senna's Super Monaco GP II (U) [!]",
+   "rom": "Ayrton Senna's Super Monaco GP II (U) [!].gg"
+  },
+  {
+   "id": "baku-baku-animal",
+   "name": "Baku Baku Animal (U)",
+   "rom": "Baku Baku Animal (U).gg"
+  },
+  {
+   "id": "baku-baku-animal-sekai-shiikugakari-senshu-ken",
+   "name": "Baku Baku Animal - Sekai Shiikugakari Senshu-ken (J) [!]",
+   "rom": "Baku Baku Animal - Sekai Shiikugakari Senshu-ken (J) [!].gg"
+  },
+  {
+   "id": "batman-forever",
+   "name": "Batman Forever (U) [!]",
+   "rom": "Batman Forever (U) [!].gg"
+  },
+  {
+   "id": "batman-returns",
+   "name": "Batman Returns (U) [!]",
+   "rom": "Batman Returns (U) [!].gg"
+  },
+  {
+   "id": "batter-up",
+   "name": "Batter Up (U) [!]",
+   "rom": "Batter Up (U) [!].gg"
+  },
+  {
+   "id": "battleship",
+   "name": "Battleship (U) [!]",
+   "rom": "Battleship (U) [!].gg"
+  },
+  {
+   "id": "battletoads",
+   "name": "Battletoads (U) [!]",
+   "rom": "Battletoads (U) [!].gg"
+  },
+  {
+   "id": "beavis-and-butt-head",
+   "name": "Beavis and Butt-head (U) [!]",
+   "rom": "Beavis and Butt-head (U) [!].gg"
+  },
+  {
+   "id": "berenstain-bears-the-camping-adventure",
+   "name": "Berenstain Bears', The - Camping Adventure (U) [!]",
+   "rom": "Berenstain Bears', The - Camping Adventure (U) [!].gg"
+  },
+  {
+   "id": "berlin-no-kabe",
+   "name": "Berlin no Kabe (J)",
+   "rom": "Berlin no Kabe (J).gg"
+  },
+  {
+   "id": "bishoujo-senshi-sailor-moon-s",
+   "name": "Bishoujo Senshi Sailor Moon S (J)",
+   "rom": "Bishoujo Senshi Sailor Moon S (J).gg"
+  },
+  {
+   "id": "bonkers-wax-up",
+   "name": "Bonkers Wax Up! (U) [!]",
+   "rom": "Bonkers Wax Up! (U) [!].gg"
+  },
+  {
+   "id": "bram-stoker-s-dracula",
+   "name": "Bram Stoker's Dracula (U) [!]",
+   "rom": "Bram Stoker's Dracula (U) [!].gg"
+  },
+  {
+   "id": "bugs-bunny-in-double-trouble",
+   "name": "Bugs Bunny in Double Trouble (U) [!]",
+   "rom": "Bugs Bunny in Double Trouble (U) [!].gg"
+  },
+  {
+   "id": "bust-a-move",
+   "name": "Bust-A-Move (U) [!]",
+   "rom": "Bust-A-Move (U) [!].gg"
+  },
+  {
+   "id": "buster-ball",
+   "name": "Buster Ball (J)",
+   "rom": "Buster Ball (J).gg"
+  },
+  {
+   "id": "buster-fight",
+   "name": "Buster Fight (J)",
+   "rom": "Buster Fight (J).gg"
+  },
+  {
+   "id": "caesar-s-palace",
+   "name": "Caesar's Palace (U) [!]",
+   "rom": "Caesar's Palace (U) [!].gg"
+  },
+  {
+   "id": "captain-america-and-the-avengers",
+   "name": "Captain America and the Avengers (U) [!]",
+   "rom": "Captain America and the Avengers (U) [!].gg"
+  },
+  {
+   "id": "car-licence",
+   "name": "Car Licence (J)",
+   "rom": "Car Licence (J).gg"
+  },
+  {
+   "id": "casino-funpak",
+   "name": "Casino Funpak (U) [!]",
+   "rom": "Casino Funpak (U) [!].gg"
+  },
+  {
+   "id": "chakan",
+   "name": "Chakan (U) [!]",
+   "rom": "Chakan (U) [!].gg"
+  },
+  {
+   "id": "chaos-89",
+   "name": "Chaos 89 (PD)",
+   "rom": "Chaos 89 (PD).gg"
+  },
+  {
+   "id": "chase-h-q",
+   "name": "Chase H.Q. (J) [S][!]",
+   "rom": "Chase H.Q. (J) [S][!].gg"
+  },
+  {
+   "id": "chessmaster-the",
+   "name": "Chessmaster, The (U) [!]",
+   "rom": "Chessmaster, The (U) [!].gg"
+  },
+  {
+   "id": "chicago-syndicate",
+   "name": "Chicago Syndicate (U) [!]",
+   "rom": "Chicago Syndicate (U) [!].gg"
+  },
+  {
+   "id": "choplifter-iii",
+   "name": "Choplifter III (U) [!]",
+   "rom": "Choplifter III (U) [!].gg"
+  },
+  {
+   "id": "chuck-rock",
+   "name": "Chuck Rock (U) [!]",
+   "rom": "Chuck Rock (U) [!].gg"
+  },
+  {
+   "id": "chuck-rock-ii-son-of-chuck",
+   "name": "Chuck Rock II - Son of Chuck (U) [!]",
+   "rom": "Chuck Rock II - Son of Chuck (U) [!].gg"
+  },
+  {
+   "id": "cliffhanger",
+   "name": "Cliffhanger (U) [!]",
+   "rom": "Cliffhanger (U) [!].gg"
+  },
+  {
+   "id": "clutch-hitter",
+   "name": "Clutch Hitter (U) [!]",
+   "rom": "Clutch Hitter (U) [!].gg"
+  },
+  {
+   "id": "coca-cola-kid",
+   "name": "Coca Cola Kid (J) [!]",
+   "rom": "Coca Cola Kid (J) [!].gg"
+  },
+  {
+   "id": "cool-spot",
+   "name": "Cool Spot (U) [!]",
+   "rom": "Cool Spot (U) [!].gg"
+  },
+  {
+   "id": "cosmic-spacehead",
+   "name": "Cosmic Spacehead (E) (M4) [!]",
+   "rom": "Cosmic Spacehead (E) (M4) [!].gg"
+  },
+  {
+   "id": "crayon-shin-chan-taiketsu-tankam-panic",
+   "name": "Crayon Shin-Chan - Taiketsu! Tankam Panic!! (J)",
+   "rom": "Crayon Shin-Chan - Taiketsu! Tankam Panic!! (J).gg"
+  },
+  {
+   "id": "crystal-warriors",
+   "name": "Crystal Warriors (U) [!]",
+   "rom": "Crystal Warriors (U) [!].gg"
+  },
+  {
+   "id": "cutthroat-island",
+   "name": "Cutthroat Island (U) [!]",
+   "rom": "Cutthroat Island (U) [!].gg"
+  },
+  {
+   "id": "daffy-duck-in-hollywood",
+   "name": "Daffy Duck in Hollywood (E) (M5) [!]",
+   "rom": "Daffy Duck in Hollywood (E) (M5) [!].gg"
+  },
+  {
+   "id": "deep-duck-trouble-starring-donald-duck",
+   "name": "Deep Duck Trouble Starring Donald Duck (U) [!]",
+   "rom": "Deep Duck Trouble Starring Donald Duck (U) [!].gg"
+  },
+  {
+   "id": "desert-speedtrap-starring-road-runner-and-wile-e-coyote",
+   "name": "Desert Speedtrap - Starring Road Runner and Wile E. Coyote (U) [!]",
+   "rom": "Desert Speedtrap - Starring Road Runner and Wile E. Coyote (U) [!].gg"
+  },
+  {
+   "id": "desert-strike-return-to-the-gulf",
+   "name": "Desert Strike - Return to the Gulf (U) [!]",
+   "rom": "Desert Strike - Return to the Gulf (U) [!].gg"
+  },
+  {
+   "id": "devilish",
+   "name": "Devilish (U) [!]",
+   "rom": "Devilish (U) [!].gg"
+  },
+  {
+   "id": "doraemon-waku-waku-pocket-paradise",
+   "name": "Doraemon - Waku Waku Pocket Paradise (J) [!]",
+   "rom": "Doraemon - Waku Waku Pocket Paradise (J) [!].gg"
+  },
+  {
+   "id": "double-dragon",
+   "name": "Double Dragon (U) [!]",
+   "rom": "Double Dragon (U) [!].gg"
+  },
+  {
+   "id": "dr-robotnik-s-mean-bean-machine",
+   "name": "Dr. Robotnik's Mean Bean Machine (U) [!]",
+   "rom": "Dr. Robotnik's Mean Bean Machine (U) [!].gg"
+  },
+  {
+   "id": "dragon-the-bruce-lee-story",
+   "name": "Dragon - The Bruce Lee Story (U) [!]",
+   "rom": "Dragon - The Bruce Lee Story (U) [!].gg"
+  },
+  {
+   "id": "drop-zone",
+   "name": "Drop Zone (U) [!]",
+   "rom": "Drop Zone (U) [!].gg"
+  },
+  {
+   "id": "dunk-kid-s",
+   "name": "Dunk Kid's (J)",
+   "rom": "Dunk Kid's (J).gg"
+  },
+  {
+   "id": "dynamite-headdy",
+   "name": "Dynamite Headdy (U)",
+   "rom": "Dynamite Headdy (U).gg"
+  },
+  {
+   "id": "earthworm-jim",
+   "name": "Earthworm Jim (U) [!]",
+   "rom": "Earthworm Jim (U) [!].gg"
+  },
+  {
+   "id": "ecco-the-tides-of-time",
+   "name": "Ecco - The Tides of Time (U) [!]",
+   "rom": "Ecco - The Tides of Time (U) [!].gg"
+  },
+  {
+   "id": "ecco-ii-the-tides-of-time",
+   "name": "Ecco II - The Tides of Time (J) [!]",
+   "rom": "Ecco II - The Tides of Time (J) [!].gg"
+  },
+  {
+   "id": "ecco-the-dolphin",
+   "name": "Ecco the Dolphin (U) [!]",
+   "rom": "Ecco the Dolphin (U) [!].gg"
+  },
+  {
+   "id": "ernie-els-golf",
+   "name": "Ernie Els Golf (E)",
+   "rom": "Ernie Els Golf (E).gg"
+  },
+  {
+   "id": "eternal-legend",
+   "name": "Eternal Legend (J) [!]",
+   "rom": "Eternal Legend (J) [!].gg"
+  },
+  {
+   "id": "evander-holyfield-s-real-deal-boxing",
+   "name": "Evander Holyfield's 'Real Deal' Boxing (U) [!]",
+   "rom": "Evander Holyfield's 'Real Deal' Boxing (U) [!].gg"
+  },
+  {
+   "id": "excellent-dizzy-collection-the",
+   "name": "Excellent Dizzy Collection, The (E) [S][!]",
+   "rom": "Excellent Dizzy Collection, The (E) [S][!].gg"
+  },
+  {
+   "id": "f-1",
+   "name": "F-1 (E) [!]",
+   "rom": "F-1 (E) [!].gg"
+  },
+  {
+   "id": "f-15-strike-eagle",
+   "name": "F-15 Strike Eagle (U) [!]",
+   "rom": "F-15 Strike Eagle (U) [!].gg"
+  },
+  {
+   "id": "fifa-international-soccer",
+   "name": "FIFA International Soccer (UE) (M4) [!]",
+   "rom": "FIFA International Soccer (UE) (M4) [!].gg"
+  },
+  {
+   "id": "fifa-soccer-96",
+   "name": "FIFA Soccer 96 (UE) (M4) [!]",
+   "rom": "FIFA Soccer 96 (UE) (M4) [!].gg"
+  },
+  {
+   "id": "faceball-2000",
+   "name": "Faceball 2000 (J) [!]",
+   "rom": "Faceball 2000 (J) [!].gg"
+  },
+  {
+   "id": "factory-panic",
+   "name": "Factory Panic (U) [!]",
+   "rom": "Factory Panic (U) [!].gg"
+  },
+  {
+   "id": "fantastic-dizzy",
+   "name": "Fantastic Dizzy (U) [S][!]",
+   "rom": "Fantastic Dizzy (U) [S][!].gg"
+  },
+  {
+   "id": "fatal-fury-special",
+   "name": "Fatal Fury Special (U) [!]",
+   "rom": "Fatal Fury Special (U) [!].gg"
+  },
+  {
+   "id": "fire-track-by-ben-ryves",
+   "name": "Fire Track by Ben Ryves (PD)",
+   "rom": "Fire Track by Ben Ryves (PD).gg"
+  },
+  {
+   "id": "foreman-for-real",
+   "name": "Foreman for Real (U) [!]",
+   "rom": "Foreman for Real (U) [!].gg"
+  },
+  {
+   "id": "frank-thomas-big-hurt-baseball",
+   "name": "Frank Thomas Big Hurt Baseball (U) [!]",
+   "rom": "Frank Thomas Big Hurt Baseball (U) [!].gg"
+  },
+  {
+   "id": "fred-couples-golf",
+   "name": "Fred Couples Golf (U) [!]",
+   "rom": "Fred Couples Golf (U) [!].gg"
+  },
+  {
+   "id": "frogger",
+   "name": "Frogger (Prototype) [!]",
+   "rom": "Frogger (Prototype) [!].gg"
+  },
+  {
+   "id": "frogs-by-charles-doty",
+   "name": "Frogs by Charles Doty (PD)",
+   "rom": "Frogs by Charles Doty (PD).gg"
+  },
+  {
+   "id": "from-tv-animation-slam-dunk-shouri-heno-starting-5",
+   "name": "From TV Animation - Slam Dunk - Shouri heno Starting 5 (J) [!]",
+   "rom": "From TV Animation - Slam Dunk - Shouri heno Starting 5 (J) [!].gg"
+  },
+  {
+   "id": "g-loc-air-battle",
+   "name": "G-LOC Air Battle (U) [!]",
+   "rom": "G-LOC Air Battle (U) [!].gg"
+  },
+  {
+   "id": "gg-aleste",
+   "name": "GG Aleste (J)",
+   "rom": "GG Aleste (J).gg"
+  },
+  {
+   "id": "gg-doraemon-nora-no-suke-no-yabou",
+   "name": "GG Doraemon - Nora no Suke no Yabou (J)",
+   "rom": "GG Doraemon - Nora no Suke no Yabou (J).gg"
+  },
+  {
+   "id": "gg-hi-res-graphics-demo-by-charles-mcdonald",
+   "name": "GG Hi-Res Graphics Demo by Charles McDonald (PD)",
+   "rom": "GG Hi-Res Graphics Demo by Charles McDonald (PD).gg"
+  },
+  {
+   "id": "gg-hicolor-demo-by-chris-covell",
+   "name": "GG Hicolor Demo by Chris Covell (PD)",
+   "rom": "GG Hicolor Demo by Chris Covell (PD).gg"
+  },
+  {
+   "id": "gg-hicolor-demo-v1-05-by-chris-covell",
+   "name": "GG Hicolor Demo v1.05 by Chris Covell (PD)",
+   "rom": "GG Hicolor Demo v1.05 by Chris Covell (PD).gg"
+  },
+  {
+   "id": "gg-nibbles-by-martin-konrad-v1",
+   "name": "GG Nibbles by Martin Konrad V1 (PD)",
+   "rom": "GG Nibbles by Martin Konrad V1 (PD).gg"
+  },
+  {
+   "id": "gg-nibbles-by-martin-konrad-v2",
+   "name": "GG Nibbles by Martin Konrad V2 (PD)",
+   "rom": "GG Nibbles by Martin Konrad V2 (PD).gg"
+  },
+  {
+   "id": "gg-nibbles-by-martin-konrad-v3",
+   "name": "GG Nibbles by Martin Konrad V3 (PD)",
+   "rom": "GG Nibbles by Martin Konrad V3 (PD).gg"
+  },
+  {
+   "id": "gg-nibbles-by-martin-konrad-v4",
+   "name": "GG Nibbles by Martin Konrad V4 (PD)",
+   "rom": "GG Nibbles by Martin Konrad V4 (PD).gg"
+  },
+  {
+   "id": "gg-portrait-pai-chan",
+   "name": "GG Portrait - Pai Chan (J) [!]",
+   "rom": "GG Portrait - Pai Chan (J) [!].gg"
+  },
+  {
+   "id": "gg-portrait-yuuki-akira",
+   "name": "GG Portrait - Yuuki Akira (J) [!]",
+   "rom": "GG Portrait - Yuuki Akira (J) [!].gg"
+  },
+  {
+   "id": "gg-turrican-demo-v0-9-by-martin-konrad",
+   "name": "GG Turrican Demo V0.9 by Martin Konrad (PD)",
+   "rom": "GG Turrican Demo V0.9 by Martin Konrad (PD).gg"
+  },
+  {
+   "id": "gg-turrican-demo-v1-0-by-martin-konrad",
+   "name": "GG Turrican Demo V1.0 by Martin Konrad (PD)",
+   "rom": "GG Turrican Demo V1.0 by Martin Konrad (PD).gg"
+  },
+  {
+   "id": "gp-rider",
+   "name": "GP Rider (U) [!]",
+   "rom": "GP Rider (U) [!].gg"
+  },
+  {
+   "id": "galaga-91",
+   "name": "Galaga '91 (J)",
+   "rom": "Galaga '91 (J).gg"
+  },
+  {
+   "id": "gamble-panic",
+   "name": "Gamble Panic (J)",
+   "rom": "Gamble Panic (J).gg"
+  },
+  {
+   "id": "gambler-jikochuushin-ha",
+   "name": "Gambler Jikochuushin Ha (J)",
+   "rom": "Gambler Jikochuushin Ha (J).gg"
+  },
+  {
+   "id": "ganbare-gorby",
+   "name": "Ganbare Gorby! (J)",
+   "rom": "Ganbare Gorby! (J).gg"
+  },
+  {
+   "id": "garfield-caught-in-the-act",
+   "name": "Garfield - Caught in the Act (U) [!]",
+   "rom": "Garfield - Caught in the Act (U) [!].gg"
+  },
+  {
+   "id": "gear-stadium",
+   "name": "Gear Stadium (J)",
+   "rom": "Gear Stadium (J).gg"
+  },
+  {
+   "id": "gear-stadium-heiseiban",
+   "name": "Gear Stadium Heiseiban (J) [!]",
+   "rom": "Gear Stadium Heiseiban (J) [!].gg"
+  },
+  {
+   "id": "gear-works",
+   "name": "Gear Works (U) [!]",
+   "rom": "Gear Works (U) [!].gg"
+  },
+  {
+   "id": "george-foreman-s-ko-boxing",
+   "name": "George Foreman's KO Boxing (U) [!]",
+   "rom": "George Foreman's KO Boxing (U) [!].gg"
+  },
+  {
+   "id": "godzilla-kaiju-dai-shingeki",
+   "name": "Godzilla - Kaiju Dai Shingeki (J) [!]",
+   "rom": "Godzilla - Kaiju Dai Shingeki (J) [!].gg"
+  },
+  {
+   "id": "greendog",
+   "name": "Greendog (U)",
+   "rom": "Greendog (U).gg"
+  },
+  {
+   "id": "griffin",
+   "name": "Griffin (J)",
+   "rom": "Griffin (J).gg"
+  },
+  {
+   "id": "gunstar-heroes",
+   "name": "Gunstar Heroes (J)",
+   "rom": "Gunstar Heroes (J).gg"
+  },
+  {
+   "id": "halley-wars",
+   "name": "Halley Wars (U) [!]",
+   "rom": "Halley Wars (U) [!].gg"
+  },
+  {
+   "id": "head-buster",
+   "name": "Head Buster (J)",
+   "rom": "Head Buster (J).gg"
+  },
+  {
+   "id": "home-alone",
+   "name": "Home Alone (U) [!]",
+   "rom": "Home Alone (U) [!].gg"
+  },
+  {
+   "id": "honoo-no-doukyuuji-dodge-danpei",
+   "name": "Honoo no Doukyuuji - Dodge Danpei (J)",
+   "rom": "Honoo no Doukyuuji - Dodge Danpei (J).gg"
+  },
+  {
+   "id": "hook",
+   "name": "Hook (U) [!]",
+   "rom": "Hook (U) [!].gg"
+  },
+  {
+   "id": "house-of-tarot",
+   "name": "House of Tarot (J) [!]",
+   "rom": "House of Tarot (J) [!].gg"
+  },
+  {
+   "id": "hurricanes",
+   "name": "Hurricanes (U) [!]",
+   "rom": "Hurricanes (U) [!].gg"
+  },
+  {
+   "id": "hyokkori-hyoutan-jima",
+   "name": "Hyokkori Hyoutan Jima (J)",
+   "rom": "Hyokkori Hyoutan Jima (J).gg"
+  },
+  {
+   "id": "hyper-chou-pro-yakyuu-92",
+   "name": "Hyper Chou Pro Yakyuu '92 (J) [!]",
+   "rom": "Hyper Chou Pro Yakyuu '92 (J) [!].gg"
+  },
+  {
+   "id": "ichidant-r-gg-puzzle-action",
+   "name": "Ichidant~R GG - Puzzle & Action (J)",
+   "rom": "Ichidant~R GG - Puzzle & Action (J).gg"
+  },
+  {
+   "id": "in-the-wake-of-vampire",
+   "name": "In the Wake of Vampire (J)",
+   "rom": "In the Wake of Vampire (J).gg"
+  },
+  {
+   "id": "incredible-crash-dummies-the",
+   "name": "Incredible Crash Dummies, The (U)",
+   "rom": "Incredible Crash Dummies, The (U).gg"
+  },
+  {
+   "id": "incredible-hulk-the",
+   "name": "Incredible Hulk, The (U) [!]",
+   "rom": "Incredible Hulk, The (U) [!].gg"
+  },
+  {
+   "id": "indiana-jones-and-the-last-crusade",
+   "name": "Indiana Jones and the Last Crusade (U) [t1]",
+   "rom": "Indiana Jones and the Last Crusade (U) [t1].gg"
+  },
+  {
+   "id": "iron-man-x-o-manowar-in-heavy-metal",
+   "name": "Iron Man X-O Manowar in Heavy Metal (U)",
+   "rom": "Iron Man X-O Manowar in Heavy Metal (U).gg"
+  },
+  {
+   "id": "itchy-scratchy-game-the",
+   "name": "Itchy & Scratchy Game, The (U) [!]",
+   "rom": "Itchy & Scratchy Game, The (U) [!].gg"
+  },
+  {
+   "id": "j-league-soccer-dream-eleven",
+   "name": "J.League Soccer - Dream Eleven (J) [!]",
+   "rom": "J.League Soccer - Dream Eleven (J) [!].gg"
+  },
+  {
+   "id": "james-bond-007-the-duel",
+   "name": "James Bond 007 - The Duel (U) [!]",
+   "rom": "James Bond 007 - The Duel (U) [!].gg"
+  },
+  {
+   "id": "james-pond-3-operation-starfish",
+   "name": "James Pond 3 - Operation Starfish (U) [!]",
+   "rom": "James Pond 3 - Operation Starfish (U) [!].gg"
+  },
+  {
+   "id": "james-pond-ii-codename-robocod",
+   "name": "James Pond II - Codename RoboCod (U) [!]",
+   "rom": "James Pond II - Codename RoboCod (U) [!].gg"
+  },
+  {
+   "id": "jang-pung-ii",
+   "name": "Jang Pung II (K) [S]",
+   "rom": "Jang Pung II (K) [S].gg"
+  },
+  {
+   "id": "jeopardy",
+   "name": "Jeopardy! (U) [!]",
+   "rom": "Jeopardy! (U) [!].gg"
+  },
+  {
+   "id": "jeopardy-sports-edition",
+   "name": "Jeopardy! - Sports Edition (U) [!]",
+   "rom": "Jeopardy! - Sports Edition (U) [!].gg"
+  },
+  {
+   "id": "joe-montana-s-football",
+   "name": "Joe Montana's Football (JU) [!]",
+   "rom": "Joe Montana's Football (JU) [!].gg"
+  },
+  {
+   "id": "judge-dredd",
+   "name": "Judge Dredd (U) [!]",
+   "rom": "Judge Dredd (U) [!].gg"
+  },
+  {
+   "id": "junction",
+   "name": "Junction (U)",
+   "rom": "Junction (U).gg"
+  },
+  {
+   "id": "jungle-book-the",
+   "name": "Jungle Book, The (U) (Aug 1993) [!]",
+   "rom": "Jungle Book, The (U) (Aug 1993) [!].gg"
+  },
+  {
+   "id": "jurassic-park",
+   "name": "Jurassic Park (UE) [!]",
+   "rom": "Jurassic Park (UE) [!].gg"
+  },
+  {
+   "id": "kaitou-saint-tail",
+   "name": "Kaitou Saint Tail (J)",
+   "rom": "Kaitou Saint Tail (J).gg"
+  },
+  {
+   "id": "kawasaki-superbike-challenge",
+   "name": "Kawasaki Superbike Challenge (U) [!]",
+   "rom": "Kawasaki Superbike Challenge (U) [!].gg"
+  },
+  {
+   "id": "kenyuu-densetsu-yaiba",
+   "name": "Kenyuu Densetsu Yaiba (J)",
+   "rom": "Kenyuu Densetsu Yaiba (J).gg"
+  },
+  {
+   "id": "kick-rush",
+   "name": "Kick & Rush (J)",
+   "rom": "Kick & Rush (J).gg"
+  },
+  {
+   "id": "kinetic-connection",
+   "name": "Kinetic Connection (J)",
+   "rom": "Kinetic Connection (J).gg"
+  },
+  {
+   "id": "kishin-douji-zenki",
+   "name": "Kishin Douji Zenki (J)",
+   "rom": "Kishin Douji Zenki (J).gg"
+  },
+  {
+   "id": "klax",
+   "name": "Klax (U) [!]",
+   "rom": "Klax (U) [!].gg"
+  },
+  {
+   "id": "kuni-chan-no-game-tengoku",
+   "name": "Kuni-chan no Game Tengoku (J)",
+   "rom": "Kuni-chan no Game Tengoku (J).gg"
+  },
+  {
+   "id": "kuni-chan-no-game-tengoku-part-2",
+   "name": "Kuni-chan no Game Tengoku Part 2 (J)",
+   "rom": "Kuni-chan no Game Tengoku Part 2 (J).gg"
+  },
+  {
+   "id": "last-action-hero",
+   "name": "Last Action Hero (U) [!]",
+   "rom": "Last Action Hero (U) [!].gg"
+  },
+  {
+   "id": "legend-of-illusion-starring-mickey-mouse",
+   "name": "Legend of Illusion Starring Mickey Mouse (U) [!]",
+   "rom": "Legend of Illusion Starring Mickey Mouse (U) [!].gg"
+  },
+  {
+   "id": "lemmings",
+   "name": "Lemmings (U) [!]",
+   "rom": "Lemmings (U) [!].gg"
+  },
+  {
+   "id": "lion-king-the",
+   "name": "Lion King, The (U) [!]",
+   "rom": "Lion King, The (U) [!].gg"
+  },
+  {
+   "id": "lost-world-the-jurassic-park",
+   "name": "Lost World, The - Jurassic Park (U)",
+   "rom": "Lost World, The - Jurassic Park (U).gg"
+  },
+  {
+   "id": "lucky-dime-caper-the-starring-donald-duck",
+   "name": "Lucky Dime Caper, The Starring Donald Duck (U) [!]",
+   "rom": "Lucky Dime Caper, The Starring Donald Duck (U) [!].gg"
+  },
+  {
+   "id": "lunar-sanposuru-gakuen",
+   "name": "Lunar - Sanposuru Gakuen (J)",
+   "rom": "Lunar - Sanposuru Gakuen (J).gg"
+  },
+  {
+   "id": "mlbpa-baseball",
+   "name": "MLBPA Baseball (U) [!]",
+   "rom": "MLBPA Baseball (U) [!].gg"
+  },
+  {
+   "id": "mod2psg-v1-0-secret-of-monkey-island",
+   "name": "MOD2PSG V1.0 - Secret of Monkey Island (PD)",
+   "rom": "MOD2PSG V1.0 - Secret of Monkey Island (PD).gg"
+  },
+  {
+   "id": "mod2psg-v1-1-secret-of-monkey-island",
+   "name": "MOD2PSG V1.1 - Secret of Monkey Island (PD)",
+   "rom": "MOD2PSG V1.1 - Secret of Monkey Island (PD).gg"
+  },
+  {
+   "id": "mod2psg-v1-2-secret-of-monkey-island",
+   "name": "MOD2PSG V1.2 - Secret of Monkey Island (PD)",
+   "rom": "MOD2PSG V1.2 - Secret of Monkey Island (PD).gg"
+  },
+  {
+   "id": "mod2psg-v1-3-secret-of-monkey-island",
+   "name": "MOD2PSG V1.3 - Secret of Monkey Island (PD)",
+   "rom": "MOD2PSG V1.3 - Secret of Monkey Island (PD).gg"
+  },
+  {
+   "id": "mod2psg-v1-3-shadow-of-the-beast",
+   "name": "MOD2PSG V1.3 - Shadow of the Beast (PD)",
+   "rom": "MOD2PSG V1.3 - Shadow of the Beast (PD).gg"
+  },
+  {
+   "id": "mod2psg-v1-5-secret-of-monkey-island",
+   "name": "MOD2PSG V1.5 - Secret of Monkey Island (PD)",
+   "rom": "MOD2PSG V1.5 - Secret of Monkey Island (PD).gg"
+  },
+  {
+   "id": "mod2psg-v1-5-shadow-of-the-beast",
+   "name": "MOD2PSG V1.5 - Shadow of the Beast (PD)",
+   "rom": "MOD2PSG V1.5 - Shadow of the Beast (PD).gg"
+  },
+  {
+   "id": "mod2psg-v1-6-secret-of-monkey-island",
+   "name": "MOD2PSG V1.6 - Secret of Monkey Island (PD)",
+   "rom": "MOD2PSG V1.6 - Secret of Monkey Island (PD).gg"
+  },
+  {
+   "id": "mod2psg-v1-6-shadow-of-the-beast",
+   "name": "MOD2PSG V1.6 - Shadow of the Beast (PD)",
+   "rom": "MOD2PSG V1.6 - Shadow of the Beast (PD).gg"
+  },
+  {
+   "id": "mod2psg-v1-7-secret-of-monkey-island",
+   "name": "MOD2PSG V1.7 - Secret of Monkey Island (PD)",
+   "rom": "MOD2PSG V1.7 - Secret of Monkey Island (PD).gg"
+  },
+  {
+   "id": "mod2psg-v1-7-shadow-of-the-beast",
+   "name": "MOD2PSG V1.7 - Shadow of the Beast (PD)",
+   "rom": "MOD2PSG V1.7 - Shadow of the Beast (PD).gg"
+  },
+  {
+   "id": "mod2psg-v1-8-secret-of-monkey-island",
+   "name": "MOD2PSG V1.8 - Secret of Monkey Island (PD)",
+   "rom": "MOD2PSG V1.8 - Secret of Monkey Island (PD).gg"
+  },
+  {
+   "id": "mod2psg-v1-8-shadow-of-the-beast",
+   "name": "MOD2PSG V1.8 - Shadow of the Beast (PD)",
+   "rom": "MOD2PSG V1.8 - Shadow of the Beast (PD).gg"
+  },
+  {
+   "id": "madden-nfl-95",
+   "name": "Madden NFL '95 (U) [!]",
+   "rom": "Madden NFL '95 (U) [!].gg"
+  },
+  {
+   "id": "madden-nfl-96",
+   "name": "Madden NFL '96 (U) [!]",
+   "rom": "Madden NFL '96 (U) [!].gg"
+  },
+  {
+   "id": "madoh-monogatari-iii-kyuukyoku-joo-sama",
+   "name": "Madoh Monogatari III - Kyuukyoku Joo-sama [v1] (JP)",
+   "rom": "Madoh Monogatari III - Kyuukyoku Joo-sama [v1] (JP).gg"
+  },
+  {
+   "id": "madou-monogatari-a-doki-doki-bake-shon",
+   "name": "Madou Monogatari A - Doki Doki - Bake Shon (J)",
+   "rom": "Madou Monogatari A - Doki Doki - Bake Shon (J).gg"
+  },
+  {
+   "id": "madou-monogatari-i",
+   "name": "Madou Monogatari I (J)",
+   "rom": "Madou Monogatari I (J).gg"
+  },
+  {
+   "id": "madou-monogatari-ii-aruru-16-sai",
+   "name": "Madou Monogatari II - Aruru 16-sai (J)",
+   "rom": "Madou Monogatari II - Aruru 16-sai (J).gg"
+  },
+  {
+   "id": "madou-monogatari-iii-kyukyoku-joo-sama",
+   "name": "Madou Monogatari III - Kyukyoku Joo-sama (J)",
+   "rom": "Madou Monogatari III - Kyukyoku Joo-sama (J).gg"
+  },
+  {
+   "id": "magic-knight-rayearth",
+   "name": "Magic Knight Rayearth (J) [!]",
+   "rom": "Magic Knight Rayearth (J) [!].gg"
+  },
+  {
+   "id": "magic-knight-rayearth-2-making-of-magic-knight",
+   "name": "Magic Knight Rayearth 2 - Making of Magic Knight (J) [!]",
+   "rom": "Magic Knight Rayearth 2 - Making of Magic Knight (J) [!].gg"
+  },
+  {
+   "id": "magical-puzzle-popils",
+   "name": "Magical Puzzle Popils (J)",
+   "rom": "Magical Puzzle Popils (J).gg"
+  },
+  {
+   "id": "magical-taruruuto-kun",
+   "name": "Magical Taruruuto-kun (J)",
+   "rom": "Magical Taruruuto-kun (J).gg"
+  },
+  {
+   "id": "majesco-game-gear-bios",
+   "name": "Majesco Game Gear BIOS (U) [!]",
+   "rom": "Majesco Game Gear BIOS (U) [!].gg"
+  },
+  {
+   "id": "majors-pro-baseball-the",
+   "name": "Majors Pro Baseball, The (U) [!]",
+   "rom": "Majors Pro Baseball, The (U) [!].gg"
+  },
+  {
+   "id": "mappy",
+   "name": "Mappy (J)",
+   "rom": "Mappy (J).gg"
+  },
+  {
+   "id": "marble-madness",
+   "name": "Marble Madness (U)",
+   "rom": "Marble Madness (U).gg"
+  },
+  {
+   "id": "marko-s-magic-football",
+   "name": "Marko's Magic Football (U) [!]",
+   "rom": "Marko's Magic Football (U) [!].gg"
+  },
+  {
+   "id": "megaman",
+   "name": "Megaman (U) [!]",
+   "rom": "Megaman (U) [!].gg"
+  },
+  {
+   "id": "megami-tensei-gaiden-last-bible",
+   "name": "Megami Tensei Gaiden - Last Bible (J)",
+   "rom": "Megami Tensei Gaiden - Last Bible (J).gg"
+  },
+  {
+   "id": "megami-tensei-gaiden-last-bible-special",
+   "name": "Megami Tensei Gaiden - Last Bible Special (J)",
+   "rom": "Megami Tensei Gaiden - Last Bible Special (J).gg"
+  },
+  {
+   "id": "mick-mack-as-the-global-gladiators",
+   "name": "Mick & Mack as the Global Gladiators (U) [!]",
+   "rom": "Mick & Mack as the Global Gladiators (U) [!].gg"
+  },
+  {
+   "id": "mickey-s-ultimate-challenge",
+   "name": "Mickey's Ultimate Challenge (U)",
+   "rom": "Mickey's Ultimate Challenge (U).gg"
+  },
+  {
+   "id": "micro-machines-2-turbo-tournament",
+   "name": "Micro Machines 2 - Turbo Tournament (E)",
+   "rom": "Micro Machines 2 - Turbo Tournament (E).gg"
+  },
+  {
+   "id": "mighty-morphin-power-rangers",
+   "name": "Mighty Morphin Power Rangers (U) [!]",
+   "rom": "Mighty Morphin Power Rangers (U) [!].gg"
+  },
+  {
+   "id": "mighty-morphin-power-rangers-the-movie",
+   "name": "Mighty Morphin Power Rangers - The Movie (U) [!]",
+   "rom": "Mighty Morphin Power Rangers - The Movie (U) [!].gg"
+  },
+  {
+   "id": "moldorian",
+   "name": "Moldorian (J) [!]",
+   "rom": "Moldorian (J) [!].gg"
+  },
+  {
+   "id": "monster-truck-wars",
+   "name": "Monster Truck Wars (U) [!]",
+   "rom": "Monster Truck Wars (U) [!].gg"
+  },
+  {
+   "id": "monster-world-ii-dragon-no-wana",
+   "name": "Monster World II - Dragon no Wana (J)",
+   "rom": "Monster World II - Dragon no Wana (J).gg"
+  },
+  {
+   "id": "mortal-kombat",
+   "name": "Mortal Kombat (U) [!]",
+   "rom": "Mortal Kombat (U) [!].gg"
+  },
+  {
+   "id": "mortal-kombat-3",
+   "name": "Mortal Kombat 3 (U) [!]",
+   "rom": "Mortal Kombat 3 (U) [!].gg"
+  },
+  {
+   "id": "mortal-kombat-ii",
+   "name": "Mortal Kombat II (U) [!]",
+   "rom": "Mortal Kombat II (U) [!].gg"
+  },
+  {
+   "id": "ms-pac-man",
+   "name": "Ms. Pac-Man (U) [!]",
+   "rom": "Ms. Pac-Man (U) [!].gg"
+  },
+  {
+   "id": "nba-action",
+   "name": "NBA Action (U) [!]",
+   "rom": "NBA Action (U) [!].gg"
+  },
+  {
+   "id": "nba-jam",
+   "name": "NBA Jam (U) (V1.1) [!]",
+   "rom": "NBA Jam (U) (V1.1) [!].gg"
+  },
+  {
+   "id": "nba-jam-tournament-edition",
+   "name": "NBA Jam Tournament Edition (U) [!]",
+   "rom": "NBA Jam Tournament Edition (U) [!].gg"
+  },
+  {
+   "id": "nfl-95",
+   "name": "NFL '95 (U) [!]",
+   "rom": "NFL '95 (U) [!].gg"
+  },
+  {
+   "id": "nfl-quarterback-club",
+   "name": "NFL Quarterback Club (U) [!]",
+   "rom": "NFL Quarterback Club (U) [!].gg"
+  },
+  {
+   "id": "nfl-quarterback-club-96",
+   "name": "NFL Quarterback Club '96 (U) [!]",
+   "rom": "NFL Quarterback Club '96 (U) [!].gg"
+  },
+  {
+   "id": "nhl-all-star-hockey",
+   "name": "NHL All-Star Hockey (U) [!]",
+   "rom": "NHL All-Star Hockey (U) [!].gg"
+  },
+  {
+   "id": "nhl-hockey",
+   "name": "NHL Hockey (U) [!]",
+   "rom": "NHL Hockey (U) [!].gg"
+  },
+  {
+   "id": "nazo-puyo",
+   "name": "Nazo Puyo (J) [!]",
+   "rom": "Nazo Puyo (J) [!].gg"
+  },
+  {
+   "id": "nazo-puyo-2",
+   "name": "Nazo Puyo 2 (J) [!]",
+   "rom": "Nazo Puyo 2 (J) [!].gg"
+  },
+  {
+   "id": "nazo-puyo-aruru-no-ru",
+   "name": "Nazo Puyo Aruru no Ru (J) (Editor Prototype)",
+   "rom": "Nazo Puyo Aruru no Ru (J) (Editor Prototype).gg"
+  },
+  {
+   "id": "neko-daisuki",
+   "name": "Neko Daisuki! (J)",
+   "rom": "Neko Daisuki! (J).gg"
+  },
+  {
+   "id": "ninja-gaiden",
+   "name": "Ninja Gaiden (U) [!]",
+   "rom": "Ninja Gaiden (U) [!].gg"
+  },
+  {
+   "id": "ninku",
+   "name": "Ninku (J) [!]",
+   "rom": "Ninku (J) [!].gg"
+  },
+  {
+   "id": "ninku-2-tenkuryu-e-no-michi",
+   "name": "Ninku 2 - Tenkuryu-e no Michi (J) [!]",
+   "rom": "Ninku 2 - Tenkuryu-e no Michi (J) [!].gg"
+  },
+  {
+   "id": "ninku-gaiden-hiroyuki-daikatsugeki",
+   "name": "Ninku Gaiden - Hiroyuki Daikatsugeki (J)",
+   "rom": "Ninku Gaiden - Hiroyuki Daikatsugeki (J).gg"
+  },
+  {
+   "id": "nomo-s-world-series-baseball",
+   "name": "Nomo's World Series Baseball (J)",
+   "rom": "Nomo's World Series Baseball (J).gg"
+  },
+  {
+   "id": "olympic-gold-barcelona-92",
+   "name": "Olympic Gold - Barcelona '92 (U) (M8) [S][!]",
+   "rom": "Olympic Gold - Barcelona '92 (U) (M8) [S][!].gg"
+  },
+  {
+   "id": "ottifants-the",
+   "name": "Ottifants, The (E)",
+   "rom": "Ottifants, The (E).gg"
+  },
+  {
+   "id": "outrun",
+   "name": "OutRun (JU)",
+   "rom": "OutRun (JU).gg"
+  },
+  {
+   "id": "outrun-europa",
+   "name": "OutRun Europa (U) [S][!]",
+   "rom": "OutRun Europa (U) [S][!].gg"
+  },
+  {
+   "id": "pga-tour-96",
+   "name": "PGA Tour 96 (U) [!]",
+   "rom": "PGA Tour 96 (U) [!].gg"
+  },
+  {
+   "id": "pga-tour-golf",
+   "name": "PGA Tour Golf (U) (V1.0) [!]",
+   "rom": "PGA Tour Golf (U) (V1.0) [!].gg"
+  },
+  {
+   "id": "pga-tour-golf-ii",
+   "name": "PGA Tour Golf II (U) [!]",
+   "rom": "PGA Tour Golf II (U) [!].gg"
+  },
+  {
+   "id": "pac-attack",
+   "name": "Pac-Attack (U) [!]",
+   "rom": "Pac-Attack (U) [!].gg"
+  },
+  {
+   "id": "pac-in-time",
+   "name": "Pac-In-Time (Prototype) [!]",
+   "rom": "Pac-In-Time (Prototype) [!].gg"
+  },
+  {
+   "id": "panzer-dragoon-mini",
+   "name": "Panzer Dragoon Mini (J) [!]",
+   "rom": "Panzer Dragoon Mini (J) [!].gg"
+  },
+  {
+   "id": "paperboy",
+   "name": "Paperboy (U) [t1]",
+   "rom": "Paperboy (U) [t1].gg"
+  },
+  {
+   "id": "paperboy-2",
+   "name": "Paperboy 2 (U) [!]",
+   "rom": "Paperboy 2 (U) [!].gg"
+  },
+  {
+   "id": "pengo",
+   "name": "Pengo (U) [!]",
+   "rom": "Pengo (U) [!].gg"
+  },
+  {
+   "id": "pet-club-inu-daisuki",
+   "name": "Pet Club Inu Daisuki! (J)",
+   "rom": "Pet Club Inu Daisuki! (J).gg"
+  },
+  {
+   "id": "pete-sampras-tennis",
+   "name": "Pete Sampras Tennis (E) [!]",
+   "rom": "Pete Sampras Tennis (E) [!].gg"
+  },
+  {
+   "id": "phantasy-star-adventure",
+   "name": "Phantasy Star Adventure (J)",
+   "rom": "Phantasy Star Adventure (J).gg"
+  },
+  {
+   "id": "phantasy-star-gaiden",
+   "name": "Phantasy Star Gaiden (J) [!]",
+   "rom": "Phantasy Star Gaiden (J) [!].gg"
+  },
+  {
+   "id": "phantom-2040",
+   "name": "Phantom 2040 (U) [!]",
+   "rom": "Phantom 2040 (U) [!].gg"
+  },
+  {
+   "id": "pinball-dreams",
+   "name": "Pinball Dreams (U) [!]",
+   "rom": "Pinball Dreams (U) [!].gg"
+  },
+  {
+   "id": "pocket-jansou",
+   "name": "Pocket Jansou (J)",
+   "rom": "Pocket Jansou (J).gg"
+  },
+  {
+   "id": "pokemon-legends",
+   "name": "Pokemon Legends (Eternal Legend Hack)",
+   "rom": "Pokemon Legends (Eternal Legend Hack).gg"
+  },
+  {
+   "id": "poker-faced-paul-s-blackjack",
+   "name": "Poker Faced Paul's Blackjack (U) [!]",
+   "rom": "Poker Faced Paul's Blackjack (U) [!].gg"
+  },
+  {
+   "id": "poker-faced-paul-s-gin",
+   "name": "Poker Faced Paul's Gin (U) [!]",
+   "rom": "Poker Faced Paul's Gin (U) [!].gg"
+  },
+  {
+   "id": "poker-faced-paul-s-solitaire",
+   "name": "Poker Faced Paul's Solitaire (U) [!]",
+   "rom": "Poker Faced Paul's Solitaire (U) [!].gg"
+  },
+  {
+   "id": "pop-breaker",
+   "name": "Pop Breaker (J)",
+   "rom": "Pop Breaker (J).gg"
+  },
+  {
+   "id": "popeye-s-beach-volleyball",
+   "name": "Popeye's Beach Volleyball (J)",
+   "rom": "Popeye's Beach Volleyball (J).gg"
+  },
+  {
+   "id": "power-strike-ii",
+   "name": "Power Strike II (U)",
+   "rom": "Power Strike II (U).gg"
+  },
+  {
+   "id": "predator-2",
+   "name": "Predator 2 (U) [S][!]",
+   "rom": "Predator 2 (U) [S][!].gg"
+  },
+  {
+   "id": "primal-rage",
+   "name": "Primal Rage (U) [!]",
+   "rom": "Primal Rage (U) [!].gg"
+  },
+  {
+   "id": "prince-of-persia",
+   "name": "Prince of Persia (U) [S][!]",
+   "rom": "Prince of Persia (U) [S][!].gg"
+  },
+  {
+   "id": "pro-yakyuu-91-the",
+   "name": "Pro Yakyuu '91, The (J)",
+   "rom": "Pro Yakyuu '91, The (J).gg"
+  },
+  {
+   "id": "pro-yakyuu-gg-league-94",
+   "name": "Pro Yakyuu GG League '94 (J)",
+   "rom": "Pro Yakyuu GG League '94 (J).gg"
+  },
+  {
+   "id": "psychic-world",
+   "name": "Psychic World (U) [!]",
+   "rom": "Psychic World (U) [!].gg"
+  },
+  {
+   "id": "putt-putter",
+   "name": "Putt & Putter (U) [!]",
+   "rom": "Putt & Putter (U) [!].gg"
+  },
+  {
+   "id": "puyo-puyo-2",
+   "name": "Puyo Puyo 2 (J) [!]",
+   "rom": "Puyo Puyo 2 (J) [!].gg"
+  },
+  {
+   "id": "puzlow-kids",
+   "name": "Puzlow Kids (J)",
+   "rom": "Puzlow Kids (J).gg"
+  },
+  {
+   "id": "puzzle-bobble",
+   "name": "Puzzle Bobble (J)",
+   "rom": "Puzzle Bobble (J).gg"
+  },
+  {
+   "id": "quiz-gear-fight-the",
+   "name": "Quiz Gear Fight!!, The (J)",
+   "rom": "Quiz Gear Fight!!, The (J).gg"
+  },
+  {
+   "id": "r-b-i-baseball-94",
+   "name": "R.B.I. Baseball '94 (U) [!]",
+   "rom": "R.B.I. Baseball '94 (U) [!].gg"
+  },
+  {
+   "id": "r-c-grand-prix",
+   "name": "R.C. Grand Prix (U) [S][!]",
+   "rom": "R.C. Grand Prix (U) [S][!].gg"
+  },
+  {
+   "id": "rastan-saga",
+   "name": "Rastan Saga (J) [S]",
+   "rom": "Rastan Saga (J) [S].gg"
+  },
+  {
+   "id": "ren-stimpy-quest-for-the-shaven-yak-the",
+   "name": "Ren & Stimpy - Quest for the Shaven Yak, The (U) [!]",
+   "rom": "Ren & Stimpy - Quest for the Shaven Yak, The (U) [!].gg"
+  },
+  {
+   "id": "revenge-of-drancon",
+   "name": "Revenge of Drancon (U) [!]",
+   "rom": "Revenge of Drancon (U) [!].gg"
+  },
+  {
+   "id": "riddick-bowe-boxing",
+   "name": "Riddick Bowe Boxing (U) [!]",
+   "rom": "Riddick Bowe Boxing (U) [!].gg"
+  },
+  {
+   "id": "rise-of-the-robots",
+   "name": "Rise of the Robots (U) [!]",
+   "rom": "Rise of the Robots (U) [!].gg"
+  },
+  {
+   "id": "road-rash",
+   "name": "Road Rash (U)",
+   "rom": "Road Rash (U).gg"
+  },
+  {
+   "id": "robocop-3",
+   "name": "Robocop 3 (U) [!]",
+   "rom": "Robocop 3 (U) [!].gg"
+  },
+  {
+   "id": "robocop-versus-the-terminator",
+   "name": "Robocop versus The Terminator (U) [!]",
+   "rom": "Robocop versus The Terminator (U) [!].gg"
+  },
+  {
+   "id": "ronald-in-the-magical-world",
+   "name": "Ronald in the Magical World (JU) [t1]",
+   "rom": "Ronald in the Magical World (JU) [t1].gg"
+  },
+  {
+   "id": "royal-stone",
+   "name": "Royal Stone (J)",
+   "rom": "Royal Stone (J).gg"
+  },
+  {
+   "id": "ryu-kyu",
+   "name": "Ryu Kyu (J)",
+   "rom": "Ryu Kyu (J).gg"
+  },
+  {
+   "id": "s-s-lucifer-man-overboard",
+   "name": "S.S. Lucifer - Man Overboard! (U) [!]",
+   "rom": "S.S. Lucifer - Man Overboard! (U) [!].gg"
+  },
+  {
+   "id": "sd-gundam-winner-s-history",
+   "name": "SD Gundam - Winner's History (J)",
+   "rom": "SD Gundam - Winner's History (J).gg"
+  },
+  {
+   "id": "samurai-shodown",
+   "name": "Samurai Shodown (U) [!]",
+   "rom": "Samurai Shodown (U) [!].gg"
+  },
+  {
+   "id": "samurai-spirits",
+   "name": "Samurai Spirits (J)",
+   "rom": "Samurai Spirits (J).gg"
+  },
+  {
+   "id": "scratch-golf",
+   "name": "Scratch Golf (JU) [!]",
+   "rom": "Scratch Golf (JU) [!].gg"
+  },
+  {
+   "id": "sega-game-pack-4-in-1",
+   "name": "Sega Game Pack 4 in 1 (U) [!]",
+   "rom": "Sega Game Pack 4 in 1 (U) [!].gg"
+  },
+  {
+   "id": "sega-tween",
+   "name": "Sega Tween (Normal) by Ben Ryves (PD)",
+   "rom": "Sega Tween (Normal) by Ben Ryves (PD).gg"
+  },
+  {
+   "id": "sensible-soccer",
+   "name": "Sensible Soccer (E)",
+   "rom": "Sensible Soccer (E).gg"
+  },
+  {
+   "id": "shadam-crusader",
+   "name": "Shadam Crusader (J) [!]",
+   "rom": "Shadam Crusader (J) [!].gg"
+  },
+  {
+   "id": "shanghai-ii",
+   "name": "Shanghai II (J)",
+   "rom": "Shanghai II (J).gg"
+  },
+  {
+   "id": "shaq-fu",
+   "name": "Shaq Fu (U) [!]",
+   "rom": "Shaq Fu (U) [!].gg"
+  },
+  {
+   "id": "shikinjou",
+   "name": "Shikinjou (J)",
+   "rom": "Shikinjou (J).gg"
+  },
+  {
+   "id": "shining-force-gaiden",
+   "name": "Shining Force Gaiden (J) [!]",
+   "rom": "Shining Force Gaiden (J) [!].gg"
+  },
+  {
+   "id": "shining-force-gaiden-final-conflict",
+   "name": "Shining Force Gaiden - Final Conflict (J)",
+   "rom": "Shining Force Gaiden - Final Conflict (J).gg"
+  },
+  {
+   "id": "shining-force-gaiden-ii",
+   "name": "Shining Force Gaiden II (J)",
+   "rom": "Shining Force Gaiden II (J).gg"
+  },
+  {
+   "id": "side-pocket",
+   "name": "Side Pocket (U)",
+   "rom": "Side Pocket (U).gg"
+  },
+  {
+   "id": "simple-text-demo-by-charles-doty",
+   "name": "Simple Text Demo by Charles Doty (PD)",
+   "rom": "Simple Text Demo by Charles Doty (PD).gg"
+  },
+  {
+   "id": "simpsons-the-bart-vs-the-space-mutants",
+   "name": "Simpsons, The - Bart vs. The Space Mutants (U) [!]",
+   "rom": "Simpsons, The - Bart vs. The Space Mutants (U) [!].gg"
+  },
+  {
+   "id": "simpsons-the-bart-vs-the-world",
+   "name": "Simpsons, The - Bart vs. The World (U) [!]",
+   "rom": "Simpsons, The - Bart vs. The World (U) [!].gg"
+  },
+  {
+   "id": "simpsons-the-bartman-meets-radioactive-man",
+   "name": "Simpsons, The - Bartman Meets Radioactive Man (U) [!]",
+   "rom": "Simpsons, The - Bartman Meets Radioactive Man (U) [!].gg"
+  },
+  {
+   "id": "simpsons-the-krusty-s-fun-house",
+   "name": "Simpsons, The - Krusty's Fun House (U) [!]",
+   "rom": "Simpsons, The - Krusty's Fun House (U) [!].gg"
+  },
+  {
+   "id": "skweek",
+   "name": "Skweek (J) [!]",
+   "rom": "Skweek (J) [!].gg"
+  },
+  {
+   "id": "slider",
+   "name": "Slider (U)",
+   "rom": "Slider (U).gg"
+  },
+  {
+   "id": "smurfs-the",
+   "name": "Smurfs, The (E) [!]",
+   "rom": "Smurfs, The (E) [!].gg"
+  },
+  {
+   "id": "solitaire-funpak",
+   "name": "Solitaire Funpak (U) [!]",
+   "rom": "Solitaire Funpak (U) [!].gg"
+  },
+  {
+   "id": "solitaire-poker",
+   "name": "Solitaire Poker (U) [!]",
+   "rom": "Solitaire Poker (U) [!].gg"
+  },
+  {
+   "id": "sonic-tails",
+   "name": "Sonic & Tails (J) [!]",
+   "rom": "Sonic & Tails (J) [!].gg"
+  },
+  {
+   "id": "sonic-tails-2",
+   "name": "Sonic & Tails 2 (J) [t1]",
+   "rom": "Sonic & Tails 2 (J) [t1].gg"
+  },
+  {
+   "id": "sonic-blast",
+   "name": "Sonic Blast (U) [!]",
+   "rom": "Sonic Blast (U) [!].gg"
+  },
+  {
+   "id": "sonic-drift",
+   "name": "Sonic Drift (J)",
+   "rom": "Sonic Drift (J).gg"
+  },
+  {
+   "id": "sonic-drift-2",
+   "name": "Sonic Drift 2 (J) [!]",
+   "rom": "Sonic Drift 2 (J) [!].gg"
+  },
+  {
+   "id": "sonic-labyrinth",
+   "name": "Sonic Labyrinth (U) [!]",
+   "rom": "Sonic Labyrinth (U) [!].gg"
+  },
+  {
+   "id": "sonic-spinball",
+   "name": "Sonic Spinball (U) [!]",
+   "rom": "Sonic Spinball (U) [!].gg"
+  },
+  {
+   "id": "sonic-the-hedgehog-triple-trouble",
+   "name": "Sonic The Hedgehog - Triple Trouble (U) [!]",
+   "rom": "Sonic The Hedgehog - Triple Trouble (U) [!].gg"
+  },
+  {
+   "id": "soukoban",
+   "name": "Soukoban (J)",
+   "rom": "Soukoban (J).gg"
+  },
+  {
+   "id": "space-harrier",
+   "name": "Space Harrier (JU) [!]",
+   "rom": "Space Harrier (JU) [!].gg"
+  },
+  {
+   "id": "spider-man-return-of-the-sinister-six",
+   "name": "Spider-Man - Return of the Sinister Six (U)",
+   "rom": "Spider-Man - Return of the Sinister Six (U).gg"
+  },
+  {
+   "id": "spider-man-and-the-x-men-in-arcade-s-revenge",
+   "name": "Spider-Man and the X-Men in Arcade's Revenge (U) [!]",
+   "rom": "Spider-Man and the X-Men in Arcade's Revenge (U) [!].gg"
+  },
+  {
+   "id": "spider-man-vs-the-kingpin",
+   "name": "Spider-Man vs. The Kingpin (U) [!]",
+   "rom": "Spider-Man vs. The Kingpin (U) [!].gg"
+  },
+  {
+   "id": "sports-illustrated-championship-football-baseball",
+   "name": "Sports Illustrated Championship Football & Baseball (U) [!]",
+   "rom": "Sports Illustrated Championship Football & Baseball (U) [!].gg"
+  },
+  {
+   "id": "sports-trivia",
+   "name": "Sports Trivia (U) [!]",
+   "rom": "Sports Trivia (U) [!].gg"
+  },
+  {
+   "id": "sports-trivia-championship-edition",
+   "name": "Sports Trivia - Championship Edition (U)",
+   "rom": "Sports Trivia - Championship Edition (U).gg"
+  },
+  {
+   "id": "star-trek-generations-beyond-the-nexus",
+   "name": "Star Trek Generations - Beyond the Nexus (U) [!]",
+   "rom": "Star Trek Generations - Beyond the Nexus (U) [!].gg"
+  },
+  {
+   "id": "star-trek-tng-advanced-holodeck-tutorial",
+   "name": "Star Trek TNG - Advanced Holodeck Tutorial (U) [!]",
+   "rom": "Star Trek TNG - Advanced Holodeck Tutorial (U) [!].gg"
+  },
+  {
+   "id": "star-wars",
+   "name": "Star Wars (U) [!]",
+   "rom": "Star Wars (U) [!].gg"
+  },
+  {
+   "id": "stargate",
+   "name": "Stargate (U)",
+   "rom": "Stargate (U).gg"
+  },
+  {
+   "id": "streets-of-rage",
+   "name": "Streets of Rage (U) [!]",
+   "rom": "Streets of Rage (U) [!].gg"
+  },
+  {
+   "id": "streets-of-rage-ii",
+   "name": "Streets of Rage II (U) [!]",
+   "rom": "Streets of Rage II (U) [!].gg"
+  },
+  {
+   "id": "strider-returns",
+   "name": "Strider Returns (U) [!]",
+   "rom": "Strider Returns (U) [!].gg"
+  },
+  {
+   "id": "super-battletank",
+   "name": "Super Battletank (U) [!]",
+   "rom": "Super Battletank (U) [!].gg"
+  },
+  {
+   "id": "super-columns",
+   "name": "Super Columns (U) [!]",
+   "rom": "Super Columns (U) [!].gg"
+  },
+  {
+   "id": "super-golf",
+   "name": "Super Golf (J)",
+   "rom": "Super Golf (J).gg"
+  },
+  {
+   "id": "super-kick-off",
+   "name": "Super Kick Off (J) [S][!]",
+   "rom": "Super Kick Off (J) [S][!].gg"
+  },
+  {
+   "id": "super-monaco-gp",
+   "name": "Super Monaco GP (U) [!]",
+   "rom": "Super Monaco GP (U) [!].gg"
+  },
+  {
+   "id": "super-off-road",
+   "name": "Super Off-Road (U)",
+   "rom": "Super Off-Road (U).gg"
+  },
+  {
+   "id": "super-return-of-the-jedi",
+   "name": "Super Return of the Jedi (U) [!]",
+   "rom": "Super Return of the Jedi (U) [!].gg"
+  },
+  {
+   "id": "super-smash-t-v",
+   "name": "Super Smash T.V. (U) [!]",
+   "rom": "Super Smash T.V. (U) [!].gg"
+  },
+  {
+   "id": "super-space-invaders",
+   "name": "Super Space Invaders (U) [!]",
+   "rom": "Super Space Invaders (U) [!].gg"
+  },
+  {
+   "id": "superman",
+   "name": "Superman (U) [!]",
+   "rom": "Superman (U) [!].gg"
+  },
+  {
+   "id": "surf-ninjas",
+   "name": "Surf Ninjas (U) [!]",
+   "rom": "Surf Ninjas (U) [!].gg"
+  },
+  {
+   "id": "sylvan-tale",
+   "name": "Sylvan Tale (J) [!]",
+   "rom": "Sylvan Tale (J) [!].gg"
+  },
+  {
+   "id": "t2-the-arcade-game",
+   "name": "T2 - The Arcade Game (U) [!]",
+   "rom": "T2 - The Arcade Game (U) [!].gg"
+  },
+  {
+   "id": "tails-sky-patrol",
+   "name": "Tails' Sky Patrol (J) [!]",
+   "rom": "Tails' Sky Patrol (J) [!].gg"
+  },
+  {
+   "id": "taisen-mahjong-haopai",
+   "name": "Taisen Mahjong HaoPai (J)",
+   "rom": "Taisen Mahjong HaoPai (J).gg"
+  },
+  {
+   "id": "taisen-mahjong-haopai-2",
+   "name": "Taisen Mahjong HaoPai 2 (J)",
+   "rom": "Taisen Mahjong HaoPai 2 (J).gg"
+  },
+  {
+   "id": "taisen-gata-daisenryaku-g",
+   "name": "Taisen-gata Daisenryaku G (J)",
+   "rom": "Taisen-gata Daisenryaku G (J).gg"
+  },
+  {
+   "id": "tale-spin",
+   "name": "Tale Spin (U) [!]",
+   "rom": "Tale Spin (U) [!].gg"
+  },
+  {
+   "id": "tama-friends-3choume-kouen-tamalympics",
+   "name": "Tama & Friends - 3choume Kouen - Tamalympics (J)",
+   "rom": "Tama & Friends - 3choume Kouen - Tamalympics (J).gg"
+  },
+  {
+   "id": "tanto-r",
+   "name": "Tanto-R (J)",
+   "rom": "Tanto-R (J).gg"
+  },
+  {
+   "id": "taz-in-escape-from-mars",
+   "name": "Taz in Escape from Mars (U) [!]",
+   "rom": "Taz in Escape from Mars (U) [!].gg"
+  },
+  {
+   "id": "taz-mania-the-search-for-the-lost-seabirds",
+   "name": "Taz-Mania - The Search for the Lost Seabirds (U) [!]",
+   "rom": "Taz-Mania - The Search for the Lost Seabirds (U) [!].gg"
+  },
+  {
+   "id": "tempo-jr",
+   "name": "Tempo Jr. (U) [!]",
+   "rom": "Tempo Jr. (U) [!].gg"
+  },
+  {
+   "id": "terminator-2-judgment-day",
+   "name": "Terminator 2 - Judgment Day (U)",
+   "rom": "Terminator 2 - Judgment Day (U).gg"
+  },
+  {
+   "id": "terminator-the",
+   "name": "Terminator, The (U) [!]",
+   "rom": "Terminator, The (U) [!].gg"
+  },
+  {
+   "id": "tesserae",
+   "name": "Tesserae (U) [!]",
+   "rom": "Tesserae (U) [!].gg"
+  },
+  {
+   "id": "tintin-au-tibet",
+   "name": "Tintin au Tibet (E) [!]",
+   "rom": "Tintin au Tibet (E) [!].gg"
+  },
+  {
+   "id": "tom-and-jerry-the-movie",
+   "name": "Tom and Jerry - The Movie (U) [!]",
+   "rom": "Tom and Jerry - The Movie (U) [!].gg"
+  },
+  {
+   "id": "torarete-tamaruka",
+   "name": "Torarete Tamaruka! (J)",
+   "rom": "Torarete Tamaruka! (J).gg"
+  },
+  {
+   "id": "true-lies",
+   "name": "True Lies (U)",
+   "rom": "True Lies (U).gg"
+  },
+  {
+   "id": "twisty-by-charles-macdonald",
+   "name": "Twisty by Charles MacDonald (PD)",
+   "rom": "Twisty by Charles MacDonald (PD).gg"
+  },
+  {
+   "id": "ultimate-soccer",
+   "name": "Ultimate Soccer (E)",
+   "rom": "Ultimate Soccer (E).gg"
+  },
+  {
+   "id": "urban-strike",
+   "name": "Urban Strike (U) [!]",
+   "rom": "Urban Strike (U) [!].gg"
+  },
+  {
+   "id": "vr-troopers",
+   "name": "VR Troopers (U) [!]",
+   "rom": "VR Troopers (U) [!].gg"
+  },
+  {
+   "id": "vampire-master-of-darkness",
+   "name": "Vampire - Master of Darkness (U) [!]",
+   "rom": "Vampire - Master of Darkness (U) [!].gg"
+  },
+  {
+   "id": "virtua-fighter-animation",
+   "name": "Virtua Fighter Animation (U) [!]",
+   "rom": "Virtua Fighter Animation (U) [!].gg"
+  },
+  {
+   "id": "virtua-fighter-mini",
+   "name": "Virtua Fighter Mini (J) [!]",
+   "rom": "Virtua Fighter Mini (J) [!].gg"
+  },
+  {
+   "id": "wwf-raw",
+   "name": "WWF Raw (U) [!]",
+   "rom": "WWF Raw (U) [!].gg"
+  },
+  {
+   "id": "wwf-steel-cage-challenge",
+   "name": "WWF Steel Cage Challenge (U) [S][!]",
+   "rom": "WWF Steel Cage Challenge (U) [S][!].gg"
+  },
+  {
+   "id": "wagyan-land",
+   "name": "Wagyan Land (J)",
+   "rom": "Wagyan Land (J).gg"
+  },
+  {
+   "id": "wheel-of-fortune",
+   "name": "Wheel of Fortune (U) [!]",
+   "rom": "Wheel of Fortune (U) [!].gg"
+  },
+  {
+   "id": "wimbledon",
+   "name": "Wimbledon (U) [!]",
+   "rom": "Wimbledon (U) [!].gg"
+  },
+  {
+   "id": "windows-for-gg-by-victor-kemp",
+   "name": "Windows for GG by Victor Kemp (PD)",
+   "rom": "Windows for GG by Victor Kemp (PD).gg"
+  },
+  {
+   "id": "winter-olympics-lillehammer-94",
+   "name": "Winter Olympics - Lillehammer '94 (U) [!]",
+   "rom": "Winter Olympics - Lillehammer '94 (U) [!].gg"
+  },
+  {
+   "id": "wizard-pinball",
+   "name": "Wizard Pinball (U) [!]",
+   "rom": "Wizard Pinball (U) [!].gg"
+  },
+  {
+   "id": "wolfchild",
+   "name": "Wolfchild (U) [!]",
+   "rom": "Wolfchild (U) [!].gg"
+  },
+  {
+   "id": "woody-pop",
+   "name": "Woody Pop (U) (V1.1) [!]",
+   "rom": "Woody Pop (U) (V1.1) [!].gg"
+  },
+  {
+   "id": "world-class-leader-golf",
+   "name": "World Class Leader Golf (U) [!]",
+   "rom": "World Class Leader Golf (U) [!].gg"
+  },
+  {
+   "id": "world-cup-94",
+   "name": "World Cup 94 (U) [!]",
+   "rom": "World Cup 94 (U) [!].gg"
+  },
+  {
+   "id": "world-cup-soccer",
+   "name": "World Cup Soccer (U) [!]",
+   "rom": "World Cup Soccer (U) [!].gg"
+  },
+  {
+   "id": "world-derby",
+   "name": "World Derby (J)",
+   "rom": "World Derby (J).gg"
+  },
+  {
+   "id": "world-series-baseball",
+   "name": "World Series Baseball (U) (V1.0) [!]",
+   "rom": "World Series Baseball (U) (V1.0) [!].gg"
+  },
+  {
+   "id": "world-series-baseball-95",
+   "name": "World Series Baseball '95 (U) [!]",
+   "rom": "World Series Baseball '95 (U) [!].gg"
+  },
+  {
+   "id": "x-men",
+   "name": "X-Men (U) [!]",
+   "rom": "X-Men (U) [!].gg"
+  },
+  {
+   "id": "x-men-gamemaster-s-legacy",
+   "name": "X-Men - Gamemaster's Legacy (U) [!]",
+   "rom": "X-Men - Gamemaster's Legacy (U) [!].gg"
+  },
+  {
+   "id": "x-men-mojo-world",
+   "name": "X-Men - Mojo World (U) [!]",
+   "rom": "X-Men - Mojo World (U) [!].gg"
+  },
+  {
+   "id": "xaropinho",
+   "name": "Xaropinho (Mappy Hack)",
+   "rom": "Xaropinho (Mappy Hack).gg"
+  },
+  {
+   "id": "yogi-bear-in-yogi-bear-s-goldrush",
+   "name": "Yogi Bear in Yogi Bear's Goldrush (Prototype) [!]",
+   "rom": "Yogi Bear in Yogi Bear's Goldrush (Prototype) [!].gg"
+  },
+  {
+   "id": "yuu-yuu-hakusho",
+   "name": "Yuu Yuu Hakusho (J)",
+   "rom": "Yuu Yuu Hakusho (J).gg"
+  },
+  {
+   "id": "yuu-yuu-hakusho-ii",
+   "name": "Yuu Yuu Hakusho II (J)",
+   "rom": "Yuu Yuu Hakusho II (J).gg"
+  },
+  {
+   "id": "zan-gear",
+   "name": "Zan Gear (J)",
+   "rom": "Zan Gear (J).gg"
+  },
+  {
+   "id": "zool",
+   "name": "Zool (U) [!]",
+   "rom": "Zool (U) [!].gg"
+  },
+  {
+   "id": "zoop",
+   "name": "Zoop (U) [!]",
+   "rom": "Zoop (U) [!].gg"
+  },
+  {
+   "id": "zoop-em-up-by-martin-konrad",
+   "name": "Zoop'em Up by Martin Konrad (PD)",
+   "rom": "Zoop'em Up by Martin Konrad (PD).gg"
+  }
+ ]
+}

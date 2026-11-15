@@ -75,6 +75,11 @@ class Asm:
         self.labels = {}
         self.fix = []          # (pos, kind, label): 'w' = 16-bit absolute, 'r' = 8-bit relative, 'h' = high byte, 'l' = low byte
 
+    def uniq(self, stem):
+        self._n = getattr(self, '_n', 0) + 1
+        self.last = f'{stem}_{self._n}'
+        return self.last
+
     def here(self):
         return len(self.code)
 

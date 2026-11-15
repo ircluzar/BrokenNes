@@ -1,0 +1,327 @@
+{
+ "what": "gg2sms_test.py on roster-wide.json, first titles alphabetically (later ones graded with converter 0eafcfa7+, path = which reference graded it), 2026-11-14. Resume with gg2sms_test.py --resume. Names and numbers only.",
+ "results": [
+  {
+   "id": "5-in-1-funpak",
+   "name": "5 in 1 Funpak (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0731,
+    0.3694,
+    0.2645,
+    0.0427,
+    0.0368,
+    0.03
+   ],
+   "vsSmsRef": [
+    0.0363,
+    0.8134,
+    0.8134,
+    0.8134,
+    0.8134,
+    0.8134
+   ],
+   "sound": 0.419,
+   "lag": 4,
+   "patches": 79,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "aah-harimanada",
+   "name": "Aah! Harimanada (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.1558,
+    0.4606,
+    0.135,
+    0.068,
+    0.8652,
+    0.6474
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.8021,
+    0.9155,
+    0.5927,
+    0.2944,
+    0.2927
+   ],
+   "sound": -0.025,
+   "lag": 12,
+   "patches": 139,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "addams-family-the",
+   "name": "Addams Family, The (U) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.9845,
+    0.999,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0708,
+    0.8033,
+    0.8035,
+    0.6898,
+    0.6928,
+    0.693
+   ],
+   "sound": 0.904,
+   "lag": 0,
+   "patches": 72,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "adventures-of-batman-robin-the",
+   "name": "Adventures of Batman & Robin, The (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9991,
+    0.99,
+    0.9695,
+    0.3799,
+    0.6099,
+    0.2931
+   ],
+   "vsSmsRef": [
+    0.0234,
+    0.0,
+    0.0189,
+    0.6694,
+    0.3168,
+    0.1824
+   ],
+   "sound": 0.594,
+   "lag": 0,
+   "patches": 59,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "aerial-assault",
+   "name": "Aerial Assault (JU) (V1.1) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9364,
+    0.5753,
+    0.6395,
+    0.1422,
+    0.415,
+    0.0024
+   ],
+   "vsSmsRef": [
+    0.7074,
+    0.1012,
+    0.1062,
+    0.1046,
+    0.9216,
+    0.0687
+   ],
+   "sound": 0.308,
+   "lag": 18,
+   "patches": 68,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "aladdin",
+   "name": "Aladdin (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.0,
+    0.859,
+    0.859,
+    0.0,
+    1.0,
+    0.0
+   ],
+   "vsSmsRef": [
+    0.9271,
+    0.9507,
+    0.9507,
+    0.9899,
+    1.0,
+    0.833
+   ],
+   "sound": 0.963,
+   "lag": 0,
+   "patches": 61,
+   "unhandled": 64,
+   "residual": 128
+  },
+  {
+   "id": "alien-3",
+   "name": "Alien 3 (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.594,
+    0.9992,
+    0.4751,
+    0.4112,
+    0.5184,
+    0.3396
+   ],
+   "vsSmsRef": [
+    0.8289,
+    0.7416,
+    0.519,
+    0.0305,
+    0.0343,
+    0.0393
+   ],
+   "sound": 0.304,
+   "lag": 70,
+   "patches": 243,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "alien-syndrome",
+   "name": "Alien Syndrome (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9246,
+    0.7483,
+    0.8133,
+    0.8924,
+    0.8537,
+    0.8529
+   ],
+   "vsSmsRef": [
+    0.9647,
+    0.9647,
+    1.0,
+    0.9647,
+    0.9971,
+    0.9959
+   ],
+   "sound": 0.449,
+   "lag": 4,
+   "patches": 87,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "andre-agassi-tennis",
+   "name": "Andre Agassi Tennis (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.957,
+    0.02,
+    0.0076,
+    0.8987,
+    0.8089
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0224,
+    0.0,
+    0.0,
+    0.0001
+   ],
+   "sound": 0.398,
+   "lag": 0,
+   "patches": 89,
+   "unhandled": 0,
+   "residual": 1
+  },
+  {
+   "id": "arcade-classics",
+   "name": "Arcade Classics (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8219,
+    0.3844,
+    0.3518,
+    0.8786,
+    0.5796,
+    0.2366
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    0.7031,
+    0.0,
+    1.0,
+    0.0
+   ],
+   "sound": 0.672,
+   "lag": 38,
+   "patches": 138,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "arch-rivals",
+   "name": "Arch Rivals (U) [!]",
+   "grade": "Glitchy",
+   "path": null,
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.1776,
+    0.4695,
+    0.183,
+    0.2076
+   ],
+   "vsSmsRef": null,
+   "sound": 0.329,
+   "lag": 8,
+   "patches": 38,
+   "unhandled": 0,
+   "residual": 2
+  },
+  {
+   "id": "arena-maze-of-death",
+   "name": "Arena - Maze of Death (U) [!]",
+   "grade": "Glitchy",
+   "path": null,
+   "verdict": "converted",
+   "match": [
+    0.6855,
+    0.8981,
+    0.7105,
+    0.5622,
+    0.5268,
+    0.6396
+   ],
+   "vsSmsRef": null,
+   "sound": 0.181,
+   "lag": 0,
+   "patches": 179,
+   "unhandled": 0,
+   "residual": 0
+  }
+ ]
+}

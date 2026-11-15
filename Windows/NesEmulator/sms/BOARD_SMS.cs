@@ -80,6 +80,8 @@ public sealed class BOARD_SMS
     public long Frames { get; private set; }
 
     /// <summary>Called at every instruction boundary with the program counter (tracing; a null hook costs nothing).</summary>
+    /// <summary>Tools: the Game Gear's stereo port $06 is ignored (every channel on both sides), so the sound is what a Master System would play (the GG -> SMS converter's harness compares it).</summary>
+    public bool IgnoreGgStereo;
     public Action<ushort>? InstructionHook;
     /// <summary>Called for every port access: (is a write, port, value, frame line, Z80 cycle in the line). Tracing; a null hook costs nothing.</summary>
     public Action<bool, ushort, byte, int, int>? PortHook;
@@ -409,7 +411,7 @@ public sealed class BOARD_SMS
                 case 2: ggExtConfig = value; break;
                 case 3: ggSend = value; break;
                 case 5: ggSerial = (byte)(value & 0xF8); break;
-                case 6: SyncSound(); Sound.WriteStereo(value); break;
+                case 6: SyncSound(); Sound.WriteStereo(IgnoreGgStereo ? (byte)0xFF : value); break;
             }
             return;
         }

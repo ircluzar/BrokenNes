@@ -13,8 +13,10 @@ namespace BrokenNes.Workshop.Sega;
 /// data-port write went to colour RAM, the ROM bytes that ran as code (instruction starts), the targets of non-sequential jumps, and the pages slots 0 and 1 held.
 /// The converter uses it to confirm static sites, to find the sites a static scan cannot see (OUT (C), OTIR) and to check that its runtime's ROM space stays mapped.
 /// </summary>
-internal sealed class GgSitesTrace
+internal sealed class GgSitesTrace : ISegaBusDebugTap
 {
+    private readonly bool[] dataRead;   // ROM bytes read as data (operand fetches included: the converter subtracts the instructions)
+    private readonly long[] vecRuns = new long[0x40];   // instructions run at $0000-$003F (how often each RST vector is entered)
     private readonly BOARD_SMS board;
     private readonly byte[] code;   // 0 = never ran, else 1 + the slot (0-2) it ran from
     private readonly bool[] ramChanged = new bool[0x2000];
@@ -30,7 +32,14 @@ internal sealed class GgSitesTrace
     {
         this.board = board;
         code = new byte[board.Cart.Rom.Length];
+        dataRead = new bool[board.Cart.Rom.Length];
     }
+
+    public void OnRead(uint address, byte value) { int i = board.Cart.DebugRomIndex((ushort)address); if (i >= 0) dataRead[i] = true; }
+    public void OnWrite(uint address, byte value) { }
+    public void OnWriteDone(uint address, byte value) { }
+    public void OnPort(ushort port, byte value, bool write) { }
+    public void OnDmaRead(uint address, byte value) { }
 
     public void OnInstruction(ushort pc)
     {
@@ -38,6 +47,7 @@ internal sealed class GgSitesTrace
         if (idx >= 0)
         {
             code[idx] = (byte)(1 + Math.Min(2, pc >> 14));
+            if (idx < 0x40 && pc < 0x40) vecRuns[idx]++;
             int d = pc - lastPc;
             if (lastPc >= 0 && (d < 1 || d > 4)) targets.Add(idx);
         }
@@ -78,6 +88,10 @@ internal sealed class GgSitesTrace
         var runs = new List<string>();
         for (int i = 0; i < code.Length; i++) if (code[i] != 0) runs.Add($"[{i},{code[i] - 1}]");
         sb.Append(string.Join(",", runs)).Append("],\n  \"ramChanged\": [").Append(string.Join(",", Enumerable.Range(0, 0x2000).Where(i => ramChanged[i]).Select(i => 0xC000 + i)));
+        sb.Append("],\n  \"dataRead\": [");
+        var dr = new List<string>();
+        for (int i = 0; i < dataRead.Length; i++) if (dataRead[i]) { int j = i; while (j < dataRead.Length && dataRead[j]) j++; dr.Add($"[{i},{j}]"); i = j; }
+        sb.Append(string.Join(",", dr)).Append("],\n  \"vectorRuns\": [").Append(string.Join(",", vecRuns));
         sb.Append("],\n  \"targets\": [").Append(string.Join(",", targets.OrderBy(x => x))).Append("],\n  \"sites\": [\n");
         sb.Append(string.Join(",\n", sites.Values.OrderBy(s => s.Off).ThenBy(s => s.Pc).Select(s =>
             $"    {{\"off\": {s.Off}, \"pc\": {s.Pc}, \"write\": {(s.Rw ? "true" : "false")}, \"port\": {s.Port}, \"count\": {s.Count}, \"cram\": {s.Cram}, \"vram\": {s.Vram}, \"bytes\": \"{s.Bytes}\", \"regs\": \"{s.Regs}\"}}")));
