@@ -217,7 +217,13 @@ public class SmsSession : IConsoleSession, IButcherHost
                     using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) board.Sound.SaveState(w);
                     ms.Position = 0;
                     using var r = new BinaryReader(ms);
-                    try { next.LoadState(r); } catch (Exception) { /* a unit with a different state layout starts from reset */ }
+                    try { next.LoadState(r); }
+                    catch (Exception e) when (e is InvalidDataException or EndOfStreamException or IndexOutOfRangeException or ArgumentException)
+                    {
+                        // a unit with a different state layout starts from power-on: a fresh unit, never the one whose load stopped halfway (that one ran on with half-read registers and
+                        // indexed the YM2413's tables out of range, bfuzz sms seed 318257)
+                        next = SmsSoundFactories.Create(id, new SmsSoundRequest(new SegaMachine(board.Timeline, GenesisModel.Model1, Rate), Console, variant));
+                    }
                 }
                 board.SwapSound(next);
                 apuId = id;

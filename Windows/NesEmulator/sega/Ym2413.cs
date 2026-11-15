@@ -894,6 +894,9 @@ public sealed partial class Ym2413 : IHubVoiceSource
         testFlag = r.ReadInt32(); slotKeyStatus = r.ReadUInt32(); rhythmMode = r.ReadBoolean(); egCounter = r.ReadUInt32(); pmPhase = r.ReadUInt32(); amPhase = r.ReadInt32(); lfoAm = r.ReadInt32();
         noise = r.ReadUInt32(); shortNoise = r.ReadBoolean(); mask = r.ReadUInt32();
         for (int i = 0; i < 2; i++) LoadPatch(r, patches[i]);
+        for (int i = 0; i < 2; i++)
+            if ((uint)patches[i].KR > 1 || (uint)patches[i].KL > 3 || (uint)patches[i].WS > 1 || (uint)patches[i].TL > 63 || (uint)patches[i].ML > 15 || (uint)patches[i].FB > 7 || (uint)patches[i].AR > 15 || (uint)patches[i].DR > 15 || (uint)patches[i].SL > 15 || (uint)patches[i].RR > 15)
+                throw new InvalidDataException("YM2413 state: user instrument out of range: not this chip's state");
         for (int i = 2; i < patches.Length; i++) patches[i].CopyFrom(RomPatchSet[i]);
         foreach (var s in slot)
         {
@@ -901,6 +904,8 @@ public sealed partial class Ym2413 : IHubVoiceSource
             s.PgPhase = r.ReadUInt32(); s.PgOut = r.ReadUInt32(); s.PgKeep = r.ReadBoolean(); s.BlkFnum = r.ReadInt32(); s.Fnum = r.ReadInt32(); s.Blk = r.ReadInt32();
             s.EgState = r.ReadInt32(); s.Volume = r.ReadInt32(); s.KeyFlag = r.ReadBoolean(); s.SusFlag = r.ReadBoolean(); s.DampSkip = r.ReadBoolean(); s.Tll = r.ReadInt32(); s.Rks = r.ReadInt32();
             s.EgRateH = r.ReadInt32(); s.EgRateL = r.ReadInt32(); s.EgShift = r.ReadInt32(); s.EgOut = r.ReadUInt32(); s.UpdateRequests = r.ReadInt32();
+            if (s.PatchIndex < -1 || s.PatchIndex >= patches.Length || (uint)s.BlkFnum > 0xfff || (uint)s.Number >= 18)
+                throw new InvalidDataException($"YM2413 state: slot {s.Number} out of range (patch {s.PatchIndex}, block/F-number {s.BlkFnum}): not this chip's state");
             s.Patch = s.PatchIndex >= 0 ? patches[s.PatchIndex] : NullPatch;
         }
         for (int i = 0; i < 14; i++) chOut[i] = r.ReadInt16();
