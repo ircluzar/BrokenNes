@@ -744,7 +744,7 @@ public sealed partial class Opl2
     public void LoadEngine(BinaryReader r)
     {
         string id = r.ReadString();
-        if (id.Length == 0) { if (_alt != null) Console.Error.WriteLine($"[EngineState] AdLib {_alt.Id}: the state was saved on ymfm; engine re-keyed from the registers (not sample-exact)"); return; }
+        if (id.Length == 0) { if (_alt != null) Console.WriteLine($"[EngineState] AdLib {_alt.Id}: the state was saved on ymfm; engine re-keyed from the registers (not sample-exact)"); return; }
         if (_alt != null && _alt.Id == id)
         {
             if (!EngineState.TryLoad(_alt, typeof(object), r, units: true)) EngineState.ReportRekey(_alt);
@@ -755,10 +755,10 @@ public sealed partial class Opl2
             // skip another engine's section
             r.ReadUInt64(); r.ReadUInt64(); r.ReadBytes(r.ReadInt32());
             int n = r.ReadInt32(); r.ReadBytes(n * 2);
-            if (_alt != null) Console.Error.WriteLine($"[EngineState] AdLib {_alt.Id}: the state was saved on {id}; engine re-keyed from the registers (not sample-exact)");
+            if (_alt != null) Console.WriteLine($"[EngineState] AdLib {_alt.Id}: the state was saved on {id}; engine re-keyed from the registers (not sample-exact)");
         }
     }
 
     /// <summary>A state from before FA-ST-1: the engine keeps its re-key, reported.</summary>
-    public void NoEngineState() { if (_alt != null) Console.Error.WriteLine($"[EngineState] AdLib {_alt.Id}: state from before FA-ST-1; engine re-keyed from the registers (not sample-exact)"); }
+    public void NoEngineState() { if (_alt != null) Console.WriteLine($"[EngineState] AdLib {_alt.Id}: state from before FA-ST-1; engine re-keyed from the registers (not sample-exact)"); }
 }

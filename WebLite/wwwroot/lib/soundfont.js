@@ -89,7 +89,7 @@
         libLoadingPromise = new Promise((resolve,reject)=>{
             const s = document.createElement('script');
             s.src = LIB_URL; s.async=true; s.onload=()=>{ sampleModeReady = typeof Soundfont !== 'undefined'; resolve(); };
-            s.onerror=()=>{ console.warn('[NES] SoundFont library load failed'); reject(new Error('soundfont-player load failed')); };
+            s.onerror=()=>{ g.sampleStatus = 'unavailable'; console.info('[NES] WF: the SoundFont sample library (unpkg.com) is unavailable offline; WF plays its built-in oscillator voices'); reject(new Error('soundfont-player load failed')); };
             document.head.appendChild(s);
         });
         return libLoadingPromise;
@@ -199,5 +199,6 @@
 
     // Public configuration APIs
     g.setPreferSampleBased = function(on){ preferSampleBased = !!on; };
-    g.enableSampleMode = async function(){ preferSampleBased = true; await ensureSampleMode(); };
+    // true when the sample library loaded; false: WF plays its built-in oscillator voices (g.sampleStatus says why)
+    g.enableSampleMode = async function(){ preferSampleBased = true; const ok = await ensureSampleMode(); g.sampleStatus = ok ? 'samples' : (g.sampleStatus || 'unavailable'); return !!ok; };
 })();

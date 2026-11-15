@@ -143,19 +143,22 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		// cartridge the power-on test pattern is left on screen.
 		mmc5TileHooks = bus?.cartridge?.mapper is Mapper5;
 		hasCartridge = bus?.cartridge != null;
+		// speed: these mappers (exact types) keep IMapper's default nametable hooks (no override, -1 / false), so a nametable fetch can skip the two interface calls
+		var mt = bus?.cartridge?.mapper?.GetType();
+		ntPlainMapper = mt == typeof(Mapper0) || mt == typeof(Mapper1) || mt == typeof(Mapper2) || mt == typeof(Mapper3) || mt == typeof(Mapper4) || mt == typeof(Mapper7) || mt == typeof(Mapper30);
 	}
-	private bool mmc5TileHooks, hasCartridge;
+	private bool mmc5TileHooks, hasCartridge, ntPlainMapper;
 	// PPUMASK-derived colour-output state, refreshed whenever $2001 changes and at the top of every
 	// scanline. Both are pure output-stage effects - they never touch what is stored in palette RAM.
 	//   greyMask  - PPUMASK bit 0 (greyscale) ANDs the palette INDEX with $30 on its way out of
 	//               palette RAM, collapsing all four colour columns onto the grey one.
 	//   emphBase  - byte offset into EmphasisPaletteBytes selected by PPUMASK bits 5/6/7.
-	private int emphBase;
+	private int emphBase, emphRow;   // emphRow: the same block as a row of EmphasisPaletteRgba (emphBase / 3)
 	private int greyMask = 0x3F;
 
 	private void RefreshColorMask()
 	{
-		emphBase = ((PPUMASK >> 5) & 0x07) * 192;
+		emphBase = ((PPUMASK >> 5) & 0x07) * 192; emphRow = emphBase / 3;
 		greyMask = (PPUMASK & 0x01) != 0 ? 0x30 : 0x3F;
 		UpdateVPipelineFlag(); // PPUMASK bits 3/4 also gate the loopy-v pipeline
 	}
@@ -203,11 +206,22 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 
 
 	// New batched step to reduce managed/WASM call overhead; processes 'elapsedCycles' PPU cycles
+	private static readonly byte[] EventDot = BuildEventDot();
+	private static byte[] BuildEventDot() { var t = new byte[342]; t[1] = t[3] = t[261] = 1; return t; }
+
 	public void Step(int elapsedCycles)
 	{
 		ppuDotCounter += elapsedCycles;
 		for (int c = 0; c < elapsedCycles; c++)
 		{
+			// Speed (Lite AOT, 2026-11-14): lines 240-260 (after 241's dot 1) do nothing per dot but count - no fetches, no pixels, no loopy-v, no events -
+			// so the dots up to the line's last one are counted in one step; the last dot runs below as always (the end of line). With a $2006 copy
+			// in flight (vUpdateDelay) every dot runs.
+			if (scanline >= 240 && scanline <= 260 && vUpdateDelay == 0 && (scanline != 241 || scanlineCycle > 1))
+			{
+				int k = Math.Min(340 - scanlineCycle, elapsedCycles - 1 - c);
+				if (k > 0) { scanlineCycle += k; c += k; }
+			}
 			if (vUpdateDelay > 0 && --vUpdateDelay == 0) v = vUpdatePending;
 			// Hardware clears VBlank (bit 7), sprite-0 hit (bit 6) and sprite overflow (bit 5) at
 			// PRE-RENDER scanline 261, dot 1 - not at scanline 0 dot 0, and not only bits 7/6.
@@ -217,7 +231,9 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			// is the classic cause of a corrupt top scanline for one that busy-waits on $2002 and
 			// then races VRAM writes against the end of vblank, and it mis-times any raster effect
 			// that counts cycles from the NMI.
-			if (scanline == 261 && scanlineCycle == 1)
+			int sc = scanlineCycle;   // speed: dots 1, 3 and 261 are the only ones the event checks below can match (one table lookup instead of the comparisons)
+			bool eventDot = (uint)sc < (uint)EventDot.Length && EventDot[sc] != 0;
+			if (eventDot && scanline == 261 && sc == 1)
 			{
 				PPUSTATUS &= 0x1F;
 			}
@@ -225,7 +241,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			// Hardware raises VBlank at scanline 241 dot 1, asserting /NMI there when enabled. This
 			// used to live in the end-of-scanline block below, which fired it at the END of 241 -
 			// i.e. scanline 242 dot 0, 340 dots late.
-			if (scanline == 241 && scanlineCycle == 1)
+			if (eventDot && scanline == 241 && sc == 1)
 			{
 				PPUSTATUS |= 0x80;
 				if ((PPUCTRL & 0x80) != 0)
@@ -241,7 +257,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			if (scanline < 240 || scanline == 261) RenderDot();
 
 			// MMC5 IRQ tick at early cycle 3 when rendering enabled
-			if (scanline >= 0 && scanline < 240 && scanlineCycle == 3)
+			if (eventDot && scanline >= 0 && scanline < 240 && scanlineCycle == 3)
 			{
 				bool renderingOn = (PPUMASK & 0x18) != 0;
 				if (bus.cartridge.mapper is Mapper5 mmc5)
@@ -257,7 +273,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			// ran on 194 where Mesen runs it on 193, drawing the bar one row low). Clocked at dot 261,
 			// the A12 rise of the first sprite-pattern fetch, rather than the commonly quoted 260 - with
 			// CPU_FIX's last-cycle IRQ poll that puts Mega Man 3's MMC3-timed split writes on Mesen's dots.
-			if ((scanline < 240 || scanline == 261) && scanlineCycle == 261)
+			if (eventDot && (scanline < 240 || scanline == 261) && scanlineCycle == 261)
 			{
 				if ((PPUMASK & 0x18) != 0 && bus.cartridge.mapper is Mapper4)
 				{
@@ -464,50 +480,78 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	private int nSprCount;
 	private bool nSprZeroOnLine;
 
+	// Speed (Lite AOT, 2026-11-14): what RenderDot does at each dot, looked up once instead of a chain of range tests (same work, same order).
+	//   bits 0-2  background: 0 nothing, 1 shift only, 2 shift + load the shifters + nametable fetch, 3 shift + attribute, 4 shift + pattern low, 5 shift + pattern high
+	//   bit 3     a pixel out (dots 1-256)    bit 4  dot 257    bit 5  a sprite-pattern fetch dot (258-320, phase 5 or 7)    bit 6  dot 321
+	private const int RdBgMask = 7, RdPixel = 8, RdDot257 = 16, RdSprFetch = 32, RdDot321 = 64;
+	private static readonly byte[] RdTab = BuildRdTab();
+	private static byte[] BuildRdTab()
+	{
+		var t = new byte[341];
+		for (int dot = 0; dot < 341; dot++)
+		{
+			int v = 0;
+			if ((dot >= 2 && dot <= 257) || (dot >= 321 && dot <= 337))
+				v = ((dot - 1) & 7) switch { 0 => 2, 2 => 3, 4 => 4, 6 => 5, _ => 1 };
+			if (dot >= 1 && dot <= 256) v |= RdPixel;
+			if (dot == 257) v |= RdDot257;
+			else if (dot > 257 && dot <= 320) { int phase = (dot - 257) & 7; if (phase == 5 || phase == 7) v |= RdSprFetch; }
+			else if (dot == 321) v |= RdDot321;
+			t[dot] = (byte)v;
+		}
+		return t;
+	}
+
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	private void RenderDot()
 	{
 		int dot = scanlineCycle;
+		int act = (uint)dot < (uint)RdTab.Length ? RdTab[dot] : 0;
 		if (vPipelineOn)
 		{
-			if ((dot >= 2 && dot <= 257) || (dot >= 321 && dot <= 337))
+			int bg = act & RdBgMask;
+			if (bg != 0)
 			{
 				bgShiftLo <<= 1; bgShiftHi <<= 1; atShiftLo <<= 1; atShiftHi <<= 1;
-				switch ((dot - 1) & 7)
+				switch (bg)
 				{
-					case 0: // dots 9..257, 321, 329, 337: last tile into the shifters, next nametable byte
+					case 2: // dots 9..257, 321, 329, 337: last tile into the shifters, next nametable byte
 						LoadBgShifters();
 						FetchBgNametable();
 						break;
-					case 2: FetchBgAttribute(); break;
+					case 3: FetchBgAttribute(); break;
 					// The pattern address (tile, fine Y from v, table from $2000) is formed once, for the low
 					// byte, and reused for the high byte - as on hardware and in Mesen 2.1.1 - so a mid-line
 					// $2006/$2000 write landing between the two fetches cannot give one tile two rows or two
 					// tables. Mega Man 3's stage-select split: 47 -> 60 of 61 frames exact.
 					case 4: bgPatternAddr = BgPatternAddress(); bgNextLo = Read(bgPatternAddr); break;
-					case 6: bgNextHi = Read((ushort)(bgPatternAddr + 8)); break;
+					case 5: bgNextHi = Read((ushort)(bgPatternAddr + 8)); break;
 				}
 			}
-			if (dot == 257)
+			if ((act & (RdDot257 | RdSprFetch | RdDot321)) != 0)
 			{
-				bus.cartridge?.mapper?.PpuPhaseHint(true, ((PPUCTRL ^ bandTallXor) & 0x20) != 0, true);
-				EvaluateNextLineSprites();
-			}
-			else if (dot > 257 && dot <= 320)
-			{
-				int slot = (dot - 257) >> 3, phase = (dot - 257) & 7;
-				if (slot < nSprCount && (phase == 5 || phase == 7)) FetchSpritePattern(slot, phase == 7);
-			}
-			else if (dot == 321)
-			{
-				bus.cartridge?.mapper?.PpuPhaseHint(false, ((PPUCTRL ^ bandTallXor) & 0x20) != 0, true);
+				if ((act & RdDot257) != 0)
+				{
+					bus.cartridge?.mapper?.PpuPhaseHint(true, ((PPUCTRL ^ bandTallXor) & 0x20) != 0, true);
+					EvaluateNextLineSprites();
+				}
+				else if ((act & RdSprFetch) != 0)
+				{
+					int slot = (dot - 257) >> 3;
+					if (slot < nSprCount) FetchSpritePattern(slot, ((dot - 257) & 7) == 7);
+				}
+				else
+				{
+					bus.cartridge?.mapper?.PpuPhaseHint(false, ((PPUCTRL ^ bandTallXor) & 0x20) != 0, true);
+				}
 			}
 		}
-		else if (dot == 257)
+		else if ((act & RdDot257) != 0)
 		{
 			nSprCount = 0; nSprZeroOnLine = false; // rendering off: nothing is evaluated for the next line
 		}
 
-		if (scanline < 240 && dot >= 1 && dot <= 256) OutputPixel(dot - 1);
+		if ((act & RdPixel) != 0 && scanline < 240) OutputPixel(dot - 1);
 	}
 
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
@@ -625,6 +669,23 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		sprCount = nSprCount; sprZeroOnLine = nSprZeroOnLine;
 		for (int i = 0; i < nSprCount; i++) { sprX[i] = nSprX[i]; sprLo[i] = nSprLo[i]; sprHi[i] = nSprHi[i]; sprAttr[i] = nSprAttr[i]; }
 		nSprCount = 0; nSprZeroOnLine = false;
+		RecalcSpriteSpan();
+	}
+
+	// Speed (Lite AOT, 2026-11-14): the x range [sprSpanLo, sprSpanHi) where this line's sprites have any opaque pixel. A pixel outside it skips the
+	// sprite loop, which could only have found transparent pixels there: the output is unchanged. Recomputed whenever the line's sprite units change.
+	private int sprSpanLo, sprSpanHi;
+	private void RecalcSpriteSpan()
+	{
+		int lo = 256, hi = 0;
+		for (int i = 0; i < sprCount; i++)
+		{
+			if ((sprLo[i] | sprHi[i]) == 0) continue;
+			int x0 = sprX[i];
+			if (x0 < lo) lo = x0;
+			if (x0 + 8 > hi) hi = x0 + 8;
+		}
+		sprSpanLo = lo; sprSpanHi = hi;
 	}
 
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
@@ -645,12 +706,12 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			int bgPix = 0, bgPal = 0;
 			if ((mask & 0x08) != 0 && (x >= 8 || (mask & 0x02) != 0))
 			{
-				int m = 0x8000 >> fineX;
-				bgPix = ((bgShiftLo & m) != 0 ? 1 : 0) | ((bgShiftHi & m) != 0 ? 2 : 0);
-				bgPal = ((atShiftLo & m) != 0 ? 1 : 0) | ((atShiftHi & m) != 0 ? 2 : 0);
+				int sh = 15 - fineX;   // bit 15 - fineX of each shifter, without branches
+				bgPix = ((bgShiftLo >> sh) & 1) | (((bgShiftHi >> sh) & 1) << 1);
+				bgPal = ((atShiftLo >> sh) & 1) | (((atShiftHi >> sh) & 1) << 1);
 			}
 			int spPix = 0, spPal = 0; bool spFront = false;
-			if ((mask & 0x10) != 0 && (x >= 8 || (mask & 0x04) != 0))
+			if ((mask & 0x10) != 0 && x >= sprSpanLo && x < sprSpanHi && (x >= 8 || (mask & 0x04) != 0))
 			{
 				for (int i = 0; i < sprCount; i++)
 				{
@@ -666,13 +727,12 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 					break;
 				}
 			}
-			if (spPix != 0 && (bgPix == 0 || spFront)) colour = PR(0x10 | (spPal << 2) | spPix);
-			else if (bgPix != 0) colour = PR((bgPal << 2) | bgPix);
-			else colour = PR(0);
+			int pal = spPix != 0 && (bgPix == 0 || spFront) ? 0x10 | (spPal << 2) | spPix : bgPix != 0 ? (bgPal << 2) | bgPix : 0;
+			colour = bus.Butcher == null ? paletteRAM[pal] : PR(pal);   // speed: Butchering mode off is the common case
 		}
-		int pi = emphBase + (colour & greyMask) * 3;
 		int fi = (scanline * ScreenWidth + x) * 4;
-		fb[fi] = EmphasisPaletteBytes[pi]; fb[fi + 1] = EmphasisPaletteBytes[pi + 1]; fb[fi + 2] = EmphasisPaletteBytes[pi + 2]; fb[fi + 3] = 255;
+		// one 32-bit store of R, G, B, 255 (little-endian, as on every target: x64, ARM64, WebAssembly) instead of four byte stores
+		System.Runtime.CompilerServices.Unsafe.WriteUnaligned(ref fb[fi], EmphasisPaletteRgba[emphRow + (colour & greyMask)]);
 	}
 
 	// Pipeline state for savestates: a state is taken wherever RunFrame stopped, usually mid-line,
@@ -710,6 +770,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		bgNextNt = b[o++]; bgNextAt = b[o++]; bgNextLo = b[o++]; bgNextHi = b[o++];
 		sprCount = b[o++]; sprZeroOnLine = b[o++] != 0;
 		for (int i = 0; i < 8; i++) { sprX[i] = b[o++]; sprLo[i] = b[o++]; sprHi[i] = b[o++]; sprAttr[i] = b[o++]; }
+		RecalcSpriteSpan();
 		nSprCount = b[o++]; nSprZeroOnLine = b[o++] != 0;
 		for (int i = 0; i < 8; i++) { nSprX[i] = b[o++]; nSprLo[i] = b[o++]; nSprHi[i] = b[o++]; nSprAttr[i] = b[o++]; nSprTile[i] = b[o++]; nSprRow[i] = b[o++]; }
 		if (b.Length >= 99) { vUpdateDelay = b[o++]; vUpdatePending = U16(); } else vUpdateDelay = 0;
@@ -1001,6 +1062,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		else if (address >= 0x2000 && address <= 0x3EFF)
 		{
 			// Allow mapper to override nametable reads (MMC5 $5105 ExRAM/Fill)
+			if (ntPlainMapper) return vram[MirrorVRAMAddress(address)];
 			if (bus?.cartridge?.mapper is IMapper mNt && mNt.TryPpuNametableRead(address, out byte v)) return v;
 			// If mapper provides per-quadrant NT mode 0/1, resolve CIRAM A/B directly
 			if (bus?.cartridge?.mapper is IMapper mMode)
@@ -1282,6 +1344,15 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	// Note this deliberately leaves PaletteBytes itself untouched and 192 bytes long: the trace
 	// tooling reflects on it to invert rendered RGB back to NES palette indices.
 	private static readonly byte[] EmphasisPaletteBytes = BuildEmphasisPalette();
+	/// <summary><see cref="EmphasisPaletteBytes"/> as R | G &lt;&lt; 8 | B &lt;&lt; 16 | 255 &lt;&lt; 24 words (8 x 64), for <see cref="OutputPixel"/>'s single store.</summary>
+	private static readonly uint[] EmphasisPaletteRgba = BuildEmphasisRgba();
+	private static uint[] BuildEmphasisRgba()
+	{
+		var t = new uint[8 * 64];
+		for (int i = 0; i < t.Length; i++) t[i] = EmphasisPaletteBytes[i * 3] | (uint)EmphasisPaletteBytes[i * 3 + 1] << 8 | (uint)EmphasisPaletteBytes[i * 3 + 2] << 16 | 0xFF000000u;
+		if (!BitConverter.IsLittleEndian) for (int i = 0; i < t.Length; i++) t[i] = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(t[i]);
+		return t;
+	}
 
 	private static byte[] BuildEmphasisPalette()
 	{

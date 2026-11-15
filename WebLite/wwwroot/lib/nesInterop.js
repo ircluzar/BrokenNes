@@ -1,4 +1,6 @@
 // nesInterop.js - Blazor JS interop for NES framebuffer drawing
+// The phone layout (the picture with the touch pad, no page around it): a phone upright, or a phone held sideways (landscape with a short screen: the pad goes on both sides of the picture).
+const MOBILE_FS_QUERY = '(max-width: 899px) and (orientation: portrait), (orientation: landscape) and (max-height: 599px)';
 window.nesInterop = {
     // BrokenDev D8: the read-only debug bridge's .NET reference (Emulator.DebugJson); window.brokenNesDebug (end of file) uses it
     registerDebugBridge: function (ref) { this._debugRef = ref; return true; },
@@ -1339,6 +1341,7 @@ window.nesInterop = {
     setTouchLayout: function(consoleKey){
         this._touchLayout = consoleKey || 'nes';
         try { const tc = document.getElementById('touch-controller'); if (tc) tc.setAttribute('data-layout', this._touchLayout); } catch {}
+        if (this._touchLayout !== 'x86') { try { if (document.querySelector('#touch-controller .x86-kbd')) this.toggleX86Keyboard(false); } catch {} }
     },
 
     // Configure input mapping for players and enable gamepad polling
@@ -1972,7 +1975,7 @@ window.nesInterop = {
     _applyMobileFullscreen(on){
         const rootShell = document.getElementById('screen-shell');
         if(!rootShell) return;
-        const portraitQuery = '(max-width: 899px) and (orientation: portrait)';
+        const portraitQuery = MOBILE_FS_QUERY;
         const stillPortrait = window.matchMedia(portraitQuery).matches;
         if(on && !stillPortrait){
             // Prevent accidental activation if orientation changed between toggle & application
@@ -2035,8 +2038,8 @@ window.nesInterop = {
             const ctl = document.getElementById(containerId);
             if(!ctl) return;
             // Avoid re-binding
+            this._touchCtl = ctl;   // the pad the shell's pointer handler serves (set again on every fullscreen entry)
             if(ctl._nesBound) return; ctl._nesBound = true;
-            this._touchCtl = ctl;
             // Must match NesEmulator.Input.SetInput's real hardware shift-register order
             // (0:A, 1:B, 2:Select, 3:Start, 4:Up, 5:Down, 6:Left, 7:Right), NOT UI reading order -
             // this was previously up:0,down:1,... which silently fired the wrong button for every
@@ -2045,22 +2048,124 @@ window.nesInterop = {
             const activeTouches = new Map();
             const updateBtnVisual = (btnEl, pressed)=>{ if(!btnEl) return; btnEl.classList.toggle('pressed', !!pressed); };
             const setState = (btnKey, val)=>{ const idx = map[btnKey]; if(typeof idx!== 'number') return; if(!window.nesInputState) window.nesInputState=new Array(12).fill(false); window.nesInputState[idx]=val; this._sendPad('UpdateInput', 1, window.nesInputState); };
-            const elementFromTouch = (touch)=>{ const el = document.elementFromPoint(touch.clientX, touch.clientY); if(!el) return null; return el.closest && el.closest('[data-btn]'); };
+            // Which pad button a point lands on. A round or tilted button is hit-tested by its shape, so a press near its box corner falls through: the nearest
+            // button whose box, grown by a few pixels, holds the point takes it then (the UAT's 15%-in corner presses missed A on NES and the GB's round / tilted buttons).
+            const SLOP = 12;
+            const elementFromTouch = (touch)=>{
+                const el = document.elementFromPoint(touch.clientX, touch.clientY);
+                const hit = el && el.closest ? el.closest('[data-btn]') : null;
+                if (hit && ctl.contains(hit)) return hit;
+                if (el && el.closest && el.closest('[data-act],[data-key],.x86-kbd')) return null;   // a system / keyboard button is not a near-miss of a pad button
+                // a button whose own box holds the point first, then one within SLOP of it; the nearest centre wins within each pass
+                for (const grow of [0, SLOP]) {
+                    let best = null, bestD = Infinity;
+                    for (const b of ctl.querySelectorAll('[data-btn]')) {
+                        const r = b.getBoundingClientRect(); if (r.width === 0 || r.height === 0) continue;
+                        if (touch.clientX < r.left - grow || touch.clientX > r.right + grow || touch.clientY < r.top - grow || touch.clientY > r.bottom + grow) continue;
+                        const d = Math.hypot(touch.clientX - (r.left + r.right) / 2, touch.clientY - (r.top + r.bottom) / 2);
+                        if (d < bestD) { bestD = d; best = b; }
+                    }
+                    if (best) return best;
+                }
+                return null;
+            };
             const beginTouch = (touch)=>{ const target = elementFromTouch(touch); if(!target) return; const key = target.dataset.btn; if(!key) return; activeTouches.set(touch.identifier,key); setState(key,true); updateBtnVisual(target,true); };
             const moveTouch = (touch)=>{ const prevKey = activeTouches.get(touch.identifier); const currentEl = elementFromTouch(touch); const newKey = currentEl?.dataset.btn; if(prevKey && prevKey!==newKey){ setState(prevKey,false); const prevEl = ctl.querySelector(`[data-btn="${prevKey}"]`); updateBtnVisual(prevEl,false); activeTouches.delete(touch.identifier);} if(newKey && newKey!==prevKey){ activeTouches.set(touch.identifier,newKey); setState(newKey,true); updateBtnVisual(currentEl,true);} };
-            const endTouch = (touch)=>{ const key = activeTouches.get(touch.identifier); if(key){ setState(key,false); const el = ctl.querySelector(`[data-btn="${key}"]`); updateBtnVisual(el,false); activeTouches.delete(touch.identifier);} };
-            const invokeSystemAction = (act)=>{ switch(act){ case 'exit': this.toggleFullscreen(); break; case 'load': if(this._mainRef) try{ this._mainRef.invokeMethodAsync('JsLoadState'); }catch{} break; case 'save': if(this._mainRef) try{ this._mainRef.invokeMethodAsync('JsSaveState'); }catch{} break; } };
-            ctl.addEventListener('touchstart',(e)=>{ e.preventDefault(); const actEl = e.target.closest('[data-act]'); if(actEl){ invokeSystemAction(actEl.dataset.act); return; } for(const t of e.changedTouches) beginTouch(t); }, {passive:false});
-            ctl.addEventListener('touchmove',(e)=>{ e.preventDefault(); for(const t of e.changedTouches) moveTouch(t); }, {passive:false});
-            ctl.addEventListener('touchend',(e)=>{ e.preventDefault(); for(const t of e.changedTouches) endTouch(t); }, {passive:false});
-            ctl.addEventListener('touchcancel',(e)=>{ for(const t of e.changedTouches) endTouch(t); });
+            const endTouch = (touch)=>{ const key = activeTouches.get(touch.identifier); if(key){ const still = [...activeTouches.entries()].some(([id,k])=>id!==touch.identifier && k===key); if(!still) setState(key,false); const el = ctl.querySelector(`[data-btn="${key}"]`); if(!still) updateBtnVisual(el,false); activeTouches.delete(touch.identifier);} };
+            const invokeSystemAction = (act)=>{ switch(act){ case 'exit': this.toggleFullscreen(); break; case 'load': if(this._mainRef) try{ this._mainRef.invokeMethodAsync('JsLoadState'); }catch{} break; case 'save': if(this._mainRef) try{ this._mainRef.invokeMethodAsync('JsSaveState'); }catch{} break; case 'kbd': this.toggleX86Keyboard(); break; } };
+            // Pointer events: a finger, a pen and a mouse all press the pad (each pointer is its own press, so multi-touch stays). A touch pointer keeps sliding
+            // between buttons (Right to Up); a mouse or pen presses only while its button is down. System buttons answer the click that follows a tap.
+            const asTouch = (e)=>({ identifier: e.pointerId, clientX: e.clientX, clientY: e.clientY });
+            const liveFingers = new Set();   // touch pointers down in the pad, on a button or not: a finger can slide onto a button
+            // Bound on the screen shell, not the pad alone: sideways, the pad is see-through (pointer-events none around its buttons), so a near-miss beside a
+            // button lands on the shell; it is taken only when it is within reach of a pad button, anything else (the picture's own pointer) is left alone.
+            const zone = ctl.closest('#screen-shell') || ctl;
+            if (!zone._nesPadDown) {
+                zone._nesPadDown = true;
+                zone.addEventListener('pointerdown',(e)=>{
+                    const pad = this._touchCtl; if (!pad || !pad.isConnected) return;
+                    if (e.pointerType === 'mouse' && e.button !== 0) return;
+                    if (e.target.closest('[data-act],[data-key],.x86-kbd,#mobile-fs-view-bar,.overlay-status')) return;   // a system / keyboard / view button: its click handles it
+                    const inPad = pad.contains(e.target);
+                    if (!inPad && !pad._padDown(asTouch(e), true)) return;
+                    e.preventDefault();
+                    try { if (e.target.hasPointerCapture && e.target.hasPointerCapture(e.pointerId)) e.target.releasePointerCapture(e.pointerId); } catch {}
+                    pad._padDown(asTouch(e), false, e.pointerType === 'touch');
+                });
+            }
+            ctl._padDown = (t, probeOnly, finger)=>{ if (probeOnly) return !!elementFromTouch(t); if (finger) liveFingers.add(t.identifier); beginTouch(t); return true; };
+            zone.addEventListener('pointermove',(e)=>{ if(activeTouches.has(e.pointerId) || liveFingers.has(e.pointerId)) { e.preventDefault(); moveTouch(asTouch(e)); } });
+            const up = (e)=>{ liveFingers.delete(e.pointerId); endTouch(asTouch(e)); };
+            zone.addEventListener('pointerup', up); zone.addEventListener('pointercancel', up);
+            window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);   // a mouse let go outside the pad
+            // The touch events themselves only stop the browser scrolling, zooming or long-press selecting under the pad; the pointer events above do the pressing.
+            ctl.addEventListener('touchstart',(e)=>{ if(!e.target.closest('[data-act],[data-key],.x86-kbd,select,input,button')) e.preventDefault(); }, {passive:false});
+            ctl.addEventListener('touchmove',(e)=>{ e.preventDefault(); }, {passive:false});
+            ctl.addEventListener('contextmenu',(e)=>e.preventDefault());
             ctl.addEventListener('click',(e)=>{ const act = e.target.closest('[data-act]')?.dataset.act; if(!act) return; invokeSystemAction(act); });
+            this._bindX86Keyboard(ctl);
         } catch(e){ console.warn('initTouchController error', e); }
+    },
+    // ===== x86 / DOS in Lite: the pop-up keyboard (touch layout data-layout=x86). Each key sends the PC's own scan code (set 1) to PcSession.HostKey through
+    // Emulator.PcKey: down on press, up on release, as a real keyboard. Shift / Ctrl / Alt latch until the next key is let go (one-finger Shift+A, Ctrl+C).
+    _x86Rows: [
+        [['Esc',0x01],['F1',0x3b],['F2',0x3c],['F3',0x3d],['F4',0x3e],['F5',0x3f],['F6',0x40],['F7',0x41],['F8',0x42],['F9',0x43],['F10',0x44]],
+        [['1',0x02],['2',0x03],['3',0x04],['4',0x05],['5',0x06],['6',0x07],['7',0x08],['8',0x09],['9',0x0a],['0',0x0b],['-',0x0c],['=',0x0d],['Bksp',0x0e,0,1.5]],
+        [['Tab',0x0f,0,1.3],['Q',0x10],['W',0x11],['E',0x12],['R',0x13],['T',0x14],['Y',0x15],['U',0x16],['I',0x17],['O',0x18],['P',0x19],['[',0x1a],[']',0x1b],['\\',0x2b]],
+        [['Caps',0x3a,0,1.5],['A',0x1e],['S',0x1f],['D',0x20],['F',0x21],['G',0x22],['H',0x23],['J',0x24],['K',0x25],['L',0x26],[';',0x27],["'",0x28],['Enter',0x1c,0,1.8]],
+        [['Shift',0x2a,0,2,1],['Z',0x2c],['X',0x2d],['C',0x2e],['V',0x2f],['B',0x30],['N',0x31],['M',0x32],[',',0x33],['.',0x34],['/',0x35],['`',0x29]],
+        [['Ctrl',0x1d,0,1.4,1],['Alt',0x38,0,1.4,1],['Space',0x39,0,4],['←',0x4b,1],['↑',0x48,1],['↓',0x50,1],['→',0x4d,1],['Del',0x53,1],['Hide',-1,0,1.4]],
+    ],
+    _pcKey(scan, ext, down){ const ref = this._mainRef; if(!ref || scan < 0) return; try { ref.invokeMethodAsync('PcKey', scan, !!ext, !!down); } catch {} },
+    toggleX86Keyboard(force){
+        const ctl = document.getElementById('touch-controller'); if(!ctl) return false;
+        let kb = ctl.querySelector('.x86-kbd');
+        const open = typeof force === 'boolean' ? force : !kb || kb.hidden;
+        if(open && !kb){
+            kb = document.createElement('div'); kb.className = 'x86-kbd'; kb.setAttribute('role','group'); kb.setAttribute('aria-label','DOS keyboard');
+            for(const row of this._x86Rows){
+                const r = document.createElement('div'); r.className = 'x86-kbd-row';
+                for(const [label, scan, ext, grow, sticky] of row){
+                    const k = document.createElement('button'); k.type = 'button'; k.className = 'x86-key'; k.textContent = label;
+                    k.dataset.key = String(scan); if(ext) k.dataset.ext = '1'; if(sticky) k.dataset.sticky = '1';
+                    if(grow) k.style.flexGrow = String(grow);
+                    r.appendChild(k);
+                }
+                kb.appendChild(r);
+            }
+            ctl.appendChild(kb);
+        }
+        if(kb) kb.hidden = !open;
+        const shell = document.getElementById('screen-shell'); if(shell) shell.classList.toggle('x86-kbd-open', open);
+        const t = ctl.querySelector('[data-act=kbd]'); if(t) t.classList.toggle('active', open);
+        if(!open){ for(const k of (kb ? kb.querySelectorAll('.x86-key.latched,.x86-key.pressed') : [])){ this._pcKey(+k.dataset.key, k.dataset.ext, false); k.classList.remove('latched','pressed'); } }
+        return open;
+    },
+    _bindX86Keyboard(ctl){
+        const held = new Map();   // pointerId -> key element
+        const release = (pid)=>{
+            const k = held.get(pid); if(!k) return; held.delete(pid);
+            if(k.dataset.sticky) return;   // a modifier latches; the next key's release lets it go
+            this._pcKey(+k.dataset.key, k.dataset.ext, false); k.classList.remove('pressed');
+            for(const m of ctl.querySelectorAll('.x86-key.latched')){ this._pcKey(+m.dataset.key, m.dataset.ext, false); m.classList.remove('latched'); }
+        };
+        ctl.addEventListener('pointerdown',(e)=>{
+            const k = e.target.closest('.x86-key'); if(!k) return;
+            e.preventDefault();
+            const scan = +k.dataset.key;
+            if(scan < 0){ this.toggleX86Keyboard(false); return; }
+            if(k.dataset.sticky){
+                const on = !k.classList.contains('latched'); k.classList.toggle('latched', on); this._pcKey(scan, k.dataset.ext, on); return;
+            }
+            k.classList.add('pressed'); held.set(e.pointerId, k); this._pcKey(scan, k.dataset.ext, true);
+        });
+        ctl.addEventListener('pointerup',(e)=>release(e.pointerId));
+        ctl.addEventListener('pointercancel',(e)=>release(e.pointerId));
     },
     toggleFullscreen(){
         const shell = document.getElementById('screen-shell');
         if(!shell) return this._isFullscreen;
-        const isMobilePortrait = window.matchMedia('(max-width: 899px) and (orientation: portrait)').matches;
+        const isMobilePortrait = window.matchMedia(MOBILE_FS_QUERY).matches;
         if(!this._isFullscreen){
                         if(this._origShellClasses==null && shell){ this._origShellClasses = shell.className; }
             // Record and strip scale classes so fullscreen always maximizes
@@ -2098,7 +2203,7 @@ window.nesInterop = {
     // Exit fullscreen if currently in desktop fullscreen (no-op in mobile portrait)
     exitDesktopFullscreenIfActive(){
         try{
-            const isMobilePortrait = window.matchMedia('(max-width: 899px) and (orientation: portrait)').matches;
+            const isMobilePortrait = window.matchMedia(MOBILE_FS_QUERY).matches;
             if(isMobilePortrait) return false;
             if(this._isFullscreen){ this.toggleFullscreen(); return true; }
             return false;
@@ -2141,7 +2246,7 @@ window.nesInterop = {
 window.addEventListener('resize', ()=>{
     try {
         if(window.nesInterop && window.nesInterop._isFullscreen){
-            const portrait = window.matchMedia('(max-width: 899px) and (orientation: portrait)').matches;
+            const portrait = window.matchMedia(MOBILE_FS_QUERY).matches;
             if(!portrait && window.nesInterop._fsWasPortrait){
                 // Leave mobile fullscreen and attempt desktop fullscreen if width allows
                 window.nesInterop._applyMobileFullscreen(false);

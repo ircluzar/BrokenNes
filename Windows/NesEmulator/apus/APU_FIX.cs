@@ -145,7 +145,7 @@ namespace NesEmulator
             if (cpuCycles <= 0) return;
             for (int i = 0; i < cpuCycles; i++)
             {
-                ClockFrameSequencer();
+                if (frameCycle >= nextFrameEventCycle) ClockFrameSequencer();   // speed: its own loop test, done here first (it returns at once otherwise)
                 ClockDMC();
                 bool p1SweepMute = SweepWouldMute(pulse1_timer, pulse1_sweepNegate, pulse1_sweepShift, true);
                 bool p2SweepMute = SweepWouldMute(pulse2_timer, pulse2_sweepNegate, pulse2_sweepShift, false);
@@ -336,7 +336,7 @@ namespace NesEmulator
         // cannot legitimately hold across a 29780-cycle frame - the slowest NTSC noise period is
         // 4068 cycles, so it must tick at least seven times - which is what makes those counts a
         // defect rather than a sampling artifact of Mesen's lazily-updated APU state.
-        private void ClockPulse(ref ushort timer, ref int timerCounter, ref int seqIndex, ref int output, bool enabled, int lengthCounter, bool timerMute, bool sweepMute, byte duty, bool constantVol, int volumeParam, int envDecay, bool isFirst)
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] private void ClockPulse(ref ushort timer, ref int timerCounter, ref int seqIndex, ref int output, bool enabled, int lengthCounter, bool timerMute, bool sweepMute, byte duty, bool constantVol, int volumeParam, int envDecay, bool isFirst)
         {
             // Divider and duty sequencer first, unconditionally.
             if(--timerCounter <= 0){ timerCounter = (timer+1)*2; seqIndex = (seqIndex+1)&7; }
@@ -344,7 +344,7 @@ namespace NesEmulator
             var pattern = PulseDutyTable[duty & 3]; int bit = pattern[seqIndex]; int vol = constantVol ? volumeParam : envDecay; output = bit==1 ? vol : 0;
         }
 
-        private void ClockTriangle()
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] private void ClockTriangle()
         {
             // The triangle is the one channel where hardware really does gate the SEQUENCER and not
             // just the mixer: the sequence position advances only while both the linear counter and
@@ -364,7 +364,7 @@ namespace NesEmulator
             triangle_output = (triangle_seqIndex < 16) ? (15 - triangle_seqIndex) : (triangle_seqIndex - 16);
         }
 
-        private void ClockNoise()
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] private void ClockNoise()
         {
             // The LFSR is clocked by the timer unconditionally. It is the channel's entire state, so
             // freezing it while muted means the next noise burst plays a different random sequence
@@ -377,7 +377,7 @@ namespace NesEmulator
             int vol = noise_constantVolume ? noise_volumeParam : noise_envDecay; noise_output = ((noiseShiftRegister & 1)==0) ? vol : 0;
         }
 
-        private void ClockDMC()
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] private void ClockDMC()
         {
             dmcCycle++;
             if(--dmc_timer <= 0){
@@ -652,7 +652,7 @@ namespace NesEmulator
 
         private bool ChannelEnabled(int bit) => (channelEnableMask & bit) != 0;
 
-        private bool SweepWouldMute(ushort timer, bool negate, int shift, bool channel1)
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] private bool SweepWouldMute(ushort timer, bool negate, int shift, bool channel1)
         {
             // Hardware (nesdev "APU Sweep"): the target period is computed continuously and a target above $7FF mutes the channel "regardless of the
             // state of the sweep unit" - the enable flag and the shift count only decide whether the PERIOD is rewritten (Sweep()). At shift 0 the
