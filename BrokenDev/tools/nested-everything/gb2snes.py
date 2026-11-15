@@ -698,7 +698,27 @@ fast:   lda #$80
         sta.l $004373
         lda #$7E
         sta.l $004374
+        lda #127
+        sta.l $7E3E20
+        lda #184-127
+        sta.l $7E3E22
+        lda #$01
+        sta.l $7E3E24
         lda #$80
+        sta.l $7E3E25
+        sta.l $7E3E21
+        sta.l $7E3E23
+        lda #$00
+        sta.l $7E3E26
+        sta.l $004360
+        sta.l $004361
+        lda #$20
+        sta.l $004362
+        lda #$3E
+        sta.l $004363
+        lda #$7E
+        sta.l $004364
+        lda #$C0
         sta.l $00420C
         lda #$00
         sta.l $00212D
@@ -1369,10 +1389,11 @@ nmi:    rep #$30
 .np:    lda.l $7FFF40
         bmi .on
         lda #$80
-        sta.w $2100
-        bra .cont
+        bra .bri
 .on:    lda #$0F
-        sta.w $2100
+.bri:   sta.w $2100                 ; (HDMA channel 6 repeats it for the GB lines, forced blank below them)
+        sta.l $7E3E21
+        sta.l $7E3E23
 .cont:  lda.l $7FFF40
         and #$08
         beq .m0
@@ -1459,15 +1480,16 @@ nmi:    rep #$30
         tsb $0B
 .noobj: lda $0B
         sta.w $212C
-        and #$01                    ; window clipping only while the GB window is on
-        beq .tmw
-        lda #$03
-.tmw:   sta.w $212E
+        lda #$03                    ; window 1 clips both layers (and blanks them below the GB picture)
+        sta.w $212E
         ; HDMA table for window 1 ($2126/$2127): empty above GB line WY, [WX+41, 207] below
+        lda.l $7FFF40
+        and #$20
+        beq .nowy
         lda.l $7FFF4A
         cmp #144
         bcc .wyok
-        lda #144
+.nowy:  lda #144
 .wyok:  clc
         adc #40
         sta $0B                     ; SNES line where the window starts
@@ -1504,11 +1526,23 @@ nmi:    rep #$30
         bcs .wx1
         lda #48
 .wx1:   sta $0C
-        lda #$01
+        lda #144+40
+        sec
+        sbc $0B
+        beq .wfull
         sta.l $7E3E00,x
         lda $0C
         sta.l $7E3E01,x
         lda #207
+        sta.l $7E3E02,x
+        inx
+        inx
+        inx
+.wfull: lda #$01
+        sta.l $7E3E00,x
+        lda #$00
+        sta.l $7E3E01,x
+        lda #$FF
         sta.l $7E3E02,x
         lda #$00
         sta.l $7E3E03,x
