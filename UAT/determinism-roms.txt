@@ -1,0 +1,33 @@
+# --determinism-test's ROM list: console | path | label. A missing file is NOT RUN (never a pass). Commercial ROMs stay on X:\ (read only), never in git.
+# the user's games (T:\VRUN_Demo)
+nes  | T:\VRUN_Demo\VRUN CTW\NES (MMC3)\VRUN_CTW_MMC3_2026-11-14_6838abc.nes | VRUN CTW (MMC3)
+nes  | T:\VRUN_Demo\VRUN CTW\NES (mapper 30)\VRUN_CTW_m30_2026-11-14_6838abc.nes | VRUN CTW (mapper 30)
+nes  | T:\VRUN_Demo\SMB1 Remake\NES (MMC3)\SMB1_Remake_mmc3.nes | SMB1 Remake (MMC3)
+snes | T:\VRUN_Demo\Super VRUN\SNES\supervrun-cgram-11-07.sfc | Super VRUN (SNES)
+snes | T:\VRUN_Demo\VRUN CTW\SNES (Nested)\VRUN_Nested_SNES_2026-11-13_feedback-byfix.smc | Nested VRUN (SNES)
+wms  | T:\VRUN_Demo\Super VRUN\WideMess\SuperVRUN_WMS.wms | Super VRUN (WideMess)
+wms  | T:\VRUN_Demo\_Music tests\Super VRUN WideMess\supervrun_wms_musictest.wms | Super VRUN music test (WideMess)
+gbc  | T:\VRUN_Demo\VRUN Vaults of Obsolete Code\Game Boy Color\VRUN_Vaults_of_Obsolete_Code_V6_68475f9.gbc | Vaults (GBC)
+gbc  | T:\VRUN_Demo\_Music tests\Vaults GB\VRUN_Vaults_GB_MusicTest_73a03bc.gbc | Vaults music test (GBC)
+sms  | T:\VRUN_Demo\VRUN CTW\SMS\VRUN_CTW_SMS_2026-11-10_mmc3.sms | VRUN CTW (SMS)
+sms  | T:\VRUN_Demo\VRUN Vaults of Obsolete Code\SMS (Nested GG to SMS)\VRUN_Vaults_GG_on_SMS_87aff3f4.sms | Vaults GG on SMS
+gg   | T:\VRUN_Demo\VRUN Vaults of Obsolete Code\Game Gear\VRUN_Vaults_GG_9ea616a.gg | Vaults (GG)
+md   | T:\VRUN_Demo\Super VRUN\Genesis\supervrun_md_338a853.bin | Super VRUN (Genesis)
+md   | T:\VRUN_Demo\VRUN CTW\Genesis (Nested SMS to MD, WIP)\VRUN_CTW_SMS_on_MD_wip5.md | VRUN CTW SMS on MD (WIP)
+md   | T:\VRUN_Demo\_Hardware tests\Genesis Mode 4 test\md_mode4_test.md | Genesis mode 4 test
+# commercial ROMs (X:\EMULATION, read only)
+nes  | X:\EMULATION\Nintendo Entertainment System\Mega Man 2 (U).nes | Mega Man 2
+nes  | X:\EMULATION\Nintendo Entertainment System\Kirby's Adventure (U) (PRG1) [!].nes | Kirby's Adventure
+nes  | X:\EMULATION\Nintendo Entertainment System\Contra (U) [!].nes | Contra
+snes | X:\EMULATION\Super Nintendo\Super Nintendo (U)\Donkey Kong Country (U) (V1.2) [!].smc | Donkey Kong Country
+snes | X:\EMULATION\Super Nintendo\Super Nintendo (U)\F-ZERO (U) [!].smc | F-Zero
+gb   | X:\EMULATION\GameBoy\Tetris (W) (V1.1) [!].zip | Tetris
+gb   | X:\EMULATION\GameBoy\Super Mario Land (W) (V1.1) [!].zip | Super Mario Land
+gb   | X:\EMULATION\GameBoy\Kirby's Dream Land (UE) [!].zip | Kirby's Dream Land
+gbc  | X:\EMULATION\GameBoy Color\Legend of Zelda, The - Oracle of Seasons (USA).gbc | Zelda: Oracle of Seasons
+sms  | X:\EMULATION\Sega Master System\Sonic The Hedgehog 2 (Europe) (v1.1).sms | Sonic 2 (SMS)
+gg   | X:\EMULATION\Sega Game Gear\Sonic Blast (U) [!].gg | Sonic Blast (GG)
+gg   | X:\EMULATION\Sega Game Gear\Columns (U) [!].gg | Columns (GG)
+md   | X:\EMULATION\Sega Genesis\Gunstar Heroes (E) [!].bin | Gunstar Heroes
+md   | X:\EMULATION\Sega Genesis\Columns (JU) (REV 00).bin | Columns (Genesis)
+md   | X:\EMULATION\Sega Genesis\Contra - Hard Corps (U) [!].bin | Contra Hard Corps
