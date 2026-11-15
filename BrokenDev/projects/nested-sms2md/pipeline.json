@@ -27,6 +27,12 @@
       "what": "Video back end: mode4 (A, default) = leave the VDP in SMS Mode 4 and pass the game's writes through (a real Genesis draws Mode 4 from Genesis mode: md-mode4-test, 2026-11-15); mode5 (B) = translate the SMS picture to Genesis Mode 5 (tiles converted, name table / sprites / colours translated), for emulators without Mode 4 on the Genesis"
     },
     {
+      "id": "m4_lead",
+      "type": "int",
+      "default": 3,
+      "what": "Back end A: the hardware's line interrupt comes this many lines early and the handler's first register write waits on the V counter for the SMS's line (the translated handler is slower than the Z80's; CTW's HUD band came 2 lines late with 0)"
+    },
+    {
       "id": "memory",
       "type": "choice",
       "choices": [

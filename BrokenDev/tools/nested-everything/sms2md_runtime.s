@@ -64,6 +64,12 @@
         .equ IDLEFR,    0xFFFFF08A      | frames in which the game reached its idle point (HALT or a profile's idle_pc)
         .equ IDLEFLAG,  0xFFFFF08E
         .equ LASTFR,    0xFFFFF090      | FRAMES at the last idle
+        .equ NESTCUR,   0xFFFFF0F0      | interrupt handlers running now (nesting depth)
+        .equ NESTMAX,   0xFFFFF0F1      | the deepest nesting seen
+        .equ EARLYV,    0xFFFFF0F2      | Mode 4: a line interrupt's register writes wait for this V counter (0 = none)
+        .ifndef M4LEAD
+        .equ M4LEAD,    3
+        .endif
         .equ MAGIC,     0xFFFE          | Z80 return address that means "back to the 68000 interrupt handler"
 
         .org 0
@@ -485,12 +491,19 @@ isr_call:
         move.w  a5,-(sp)
         move.w  #MAGIC,-(sp)
         move.l  sp,(SHFLOOR).w
+        addq.b  #1,(NESTCUR).w          | interrupt nesting depth (harness: NESTMAX)
+        move.b  (NESTCUR).w,d7
+        cmp.b   (NESTMAX).w,d7
+        bls.s   1f
+        move.b  d7,(NESTMAX).w
+1:
         .if VIDEO_MODE == 5
         move    #0x2000,sr
         .else
         move    #0x2700,sr              | Mode 4: the VDP's interrupt line stays up until a status read; IFF is off, so the
         .endif                          | 68000 takes nothing until the game's EI (z_ei) opens the mask
         jsr     (a0)
+        subq.b  #1,(NESTCUR).w
         addq.l  #4,sp
         move.l  (sp)+,(SHFLOOR).w
         move.w  (sp)+,sr
@@ -611,11 +624,22 @@ vint:
         movem.l (sp)+,d0-d7/a0-a6
         rte
 
+| Early line interrupt: the translated handler needs a few lines before its first register write (CTW's HUD band, R2 at
+| line 184, came 2 lines late), so the hardware's R10 is M4LEAD lower and the handler's first register write waits on the V
+| counter for the line the SMS's interrupt would have come on (+1: the line the SMS handler's write lands in).
 hint:
         tst.b   (IFF).w
         beq.s   8f
         movem.l d0-d7/a0-a6,-(sp)
+        move.b  (HVC).l,d0
+        addq.b  #M4LEAD+1,d0
+        cmpi.b  #192,d0
+        bcs.s   1f
+        moveq   #0,d0
+1:      move.b  d0,(EARLYV).w
+        movem.l (sp),d0-d7/a0-a6
         bsr     deliver
+        sf      (EARLYV).w
         move.l  a6,56(sp)
         movem.l (sp)+,d0-d7/a0-a6
         rte
@@ -1509,7 +1533,18 @@ vdpw_ctrl:
         bne.s   6f
         andi.b  #0xFC,d5                | R0: the Genesis HV latch / display-off bits off
         ori.b   #0x04,d5
-6:      lsl.w   #8,d6
+6:      cmpi.b  #10,d6
+        bne.s   7f
+        subq.b  #M4LEAD,d5              | R10: the hardware's line interrupt comes M4LEAD lines early (see m4 early line interrupt)
+        bcc.s   7f
+        moveq   #0,d5
+7:      tst.b   (EARLYV).w
+        beq.s   8f
+        move.b  (EARLYV).w,d7           | a line interrupt's register write: wait for the line the SMS would write it on
+9:      cmp.b   (HVC).l,d7
+        bhi.s   9b
+        sf      (EARLYV).w
+8:      lsl.w   #8,d6
         move.b  d5,d6
         ori.w   #0x8000,d6
         move.w  sr,-(sp)

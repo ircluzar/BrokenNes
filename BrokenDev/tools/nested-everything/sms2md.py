@@ -1357,6 +1357,7 @@ def convert(rom, out_path, settings, profile, trace, work=None, report=None):
     lab = lambda pc: lbl(0, 0, pc) if (0, 0, pc) in p.ins else 'z_untranslated'
     head = ['        .equ NBANKS, %d' % nbanks_pow,
             '        .equ VIDEO_MODE, %d' % (4 if settings.get('video') == 'mode4' else 5),
+            '        .equ M4LEAD, %d' % int(settings.get('m4_lead', 3)),
             '        .include "%s"' % os.path.join(HERE, 'sms2md_runtime.s').replace('\\', '/'),
             '        .equ Z80_RESET, %s' % lab(0), '        .equ Z80_IRQ, %s' % lab(0x38), '        .equ Z80_NMI, %s' % lab(0x66)]
     tail = ['        .align 2', 'SMSROM:', '        .incbin "%s"' % romfile.replace('\\', '/'), '        .align 2', 'ROMEND:']

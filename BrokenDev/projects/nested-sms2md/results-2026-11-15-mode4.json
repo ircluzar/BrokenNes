@@ -1,0 +1,130 @@
+{
+ "pipeline": "sms2md",
+ "games": [
+  {
+   "id": "vrun_ctw_sms",
+   "translation": {
+    "out_sha256": "e8f391f1da48510680c0f575111d7bd72477aba9e184199bb260671776c8b2e3",
+    "out_size": 1227630,
+    "instructions": 37884,
+    "stats": {
+     "ins": 37756,
+     "mem_fast": 1494,
+     "outi_run_entries": 127,
+     "mem_checked": 3362,
+     "dyn_jumps": 19,
+     "replaced": 2,
+     "otir_loops": 1
+    }
+   },
+   "video": "mode4",
+   "boot": {
+    "titleFrame": 110,
+    "delay": 145,
+    "match": 0.997,
+    "seedShift": -16,
+    "seedRefine": -1,
+    "seedMatch": 0.9997
+   },
+   "md": {
+    "frames": 1597,
+    "irqs": 2887,
+    "halts": 2647,
+    "idleFrames": 1370,
+    "error": false,
+    "errKind": 0,
+    "errAddr": 0,
+    "nestMax": 18
+   },
+   "idle": {
+    "smsHaltFrames": 1410,
+    "smsFrames": 1500,
+    "mdHaltFrames": 1370,
+    "mdFrames": 1628
+   },
+   "picture": {
+    "samples": 139,
+    "meanMatch": 0.9965,
+    "minMatch": 0.8073,
+    "exact": 124,
+    "lagStart": 11,
+    "lagEnd": 4,
+    "lagMax": 25
+   },
+   "input": [
+    {
+     "frame": 120,
+     "button": "Select",
+     "sms": 0,
+     "md": 0
+    },
+    {
+     "frame": 300,
+     "button": "A",
+     "sms": 3,
+     "md": 4
+    },
+    {
+     "frame": 500,
+     "button": "A",
+     "sms": 3,
+     "md": 4
+    },
+    {
+     "frame": 700,
+     "button": "A",
+     "sms": 3,
+     "md": 4
+    },
+    {
+     "frame": 800,
+     "button": "Right",
+     "sms": 2,
+     "md": 2
+    },
+    {
+     "frame": 1000,
+     "button": "Right+A",
+     "sms": 29,
+     "md": 10
+    },
+    {
+     "frame": 1020,
+     "button": "Right",
+     "sms": 9,
+     "md": 26
+    },
+    {
+     "frame": 1200,
+     "button": "Left+B",
+     "sms": 2,
+     "md": 3
+    },
+    {
+     "frame": 1220,
+     "button": "Left",
+     "sms": 0,
+     "md": 0
+    },
+    {
+     "frame": 1300,
+     "button": "Up",
+     "sms": 2,
+     "md": 2
+    },
+    {
+     "frame": 1350,
+     "button": "Down",
+     "sms": 2,
+     "md": 3
+    }
+   ],
+   "sound": {
+    "smsMeanRms": 2133.6,
+    "mdMeanRms": 1969.0,
+    "loudnessCorr": 0.413
+   },
+   "grade": "Glitchy"
+  }
+ ]
+}

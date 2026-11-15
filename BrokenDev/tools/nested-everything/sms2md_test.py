@@ -100,7 +100,7 @@ def counters(ram):
     d = open(ram, 'rb').read()
     v = lambda a, n=4: int.from_bytes(d[a - 0xFF0000:a - 0xFF0000 + n], 'big')
     return {'frames': v(0xFFF070), 'irqs': v(0xFFF074), 'halts': v(0xFFF078), 'idleFrames': v(0xFFF08A), 'error': bool(v(0xFFF084, 1)),
-            'errKind': v(0xFFF082, 2), 'errAddr': v(0xFFF080, 2)}
+            'errKind': v(0xFFF082, 2), 'errAddr': v(0xFFF080, 2), 'nestMax': v(0xFFF0F1, 1)}
 
 
 def test_game(g, work, exe, bizhawk=False):
@@ -170,6 +170,29 @@ def test_game(g, work, exe, bizhawk=False):
                 res['boot']['seedShift'] = f - f0 - delay
                 delay = f - f0
                 break
+        # the seed byte can match while the press still lands a frame off (the Genesis frame boundary sits elsewhere relative
+        # to the game's frame interrupt, e.g. Mode 4's line-192 interrupt): refine the shift on the picture a while after
+        chk = prof.get('seed_check_frame', f0 + 200)
+        cs = os.path.join(work, 'seedchk')
+        os.makedirs(cs, exist_ok=True)
+        run([exe, '--sms-run', rom, '--console', 'sms', '--frames', str(chk + 1), '--png-at', str(chk), '--out', cs, '--tag', 's',
+             '--input', script])
+        sref = sms_img(cs, chk)
+        best_d, best_sc = delay, -1
+        for dd in (0, -1, 1, -2, 2, -3, 3):
+            d2 = delay + dd
+            md2 = os.path.join(cs, 'd%d' % dd)
+            os.makedirs(md2, exist_ok=True)
+            run([exe, '--md-run', out, '--frames', str(chk + d2 + 40), '--png-at', ','.join(str(x) for x in range(chk + d2 - 5, chk + d2 + 40)),
+                 '--png-dir', md2, '--input', md_script(script, d2), '--quiet'])
+            sc = max([same(sref, m) for m in (md_img(md2, x) for x in range(chk + d2 - 5, chk + d2 + 40)) if m is not None] or [0])
+            if sc > best_sc + 0.002:
+                best_d, best_sc = d2, sc
+            if sc >= 0.999:
+                break
+        res['boot']['seedRefine'] = best_d - delay
+        res['boot']['seedMatch'] = round(best_sc, 4)
+        delay = best_d
     sp, mp = os.path.join(work, 'splay'), os.path.join(work, 'mplay')
     os.makedirs(sp, exist_ok=True)
     os.makedirs(mp, exist_ok=True)
