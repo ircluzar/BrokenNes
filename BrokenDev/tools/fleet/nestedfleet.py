@@ -71,9 +71,10 @@ def cmd_run(a):
     for n, sids in plan.items():
         for sid in sids:
             root = rf"{RF}\runs\{sid}\root"
-            cmd = (rf"C:\brokennes\kit\py\python.exe -I {RF}\fork\tools\compat\sweep.py --root {root} --roster {RF}\runs\{sid}\roster.json "
+            cmd = (rf"C:\brokennes\kit\py\python.exe -I {RF}\{a.fork_dir}\tools\compat\sweep.py --root {root} --roster {RF}\runs\{sid}\roster.json "
                    rf"--core {RF}\{corename} --workshop C:\brokennes\kit\workshop\BrokenNes.Workshop.exe --python C:\brokennes\kit\py\python.exe --jobs 1 {a.sweep_args}")
             env = {"PATH": r"C:\brokennes\kit\pwsh;C:\brokennes\kit\py;%PATH%"}
+            env.update(dict(kv.split("=", 1) for kv in a.env))
             print("start", n, sid, job(bs[n], sid, cmd, rf"{RF}\runs\{sid}", env, limit=a.hours * 3600, low=False))
     if a.wait:
         wait(a.tag); collect(a.tag)
@@ -140,6 +141,8 @@ def main():
     r.add_argument("--roster", default=ROSTER); r.add_argument("--only", default=""); r.add_argument("--per-pc", type=int, default=3)
     r.add_argument("--names", default=None); r.add_argument("--sweep-args", default=""); r.add_argument("--root", default="")
     r.add_argument("--hours", type=int, default=6); r.add_argument("--wait", action="store_true")
+    r.add_argument("--fork-dir", default="fork", help="the fork copy on the PCs under C:\\brokennes\\nested (fork_x: the feedback/settings hooks)")
+    r.add_argument("--env", action="append", default=[], help="NAME=VALUE for the jobs (fork_x: NESTED_FEEDBACK_ALL=1, NESTED_EXTRA=a=b;c=d)")
     for name in ("poll", "collect"):
         q = sp.add_parser(name); q.add_argument("--tag", required=True)
     a = p.parse_args()

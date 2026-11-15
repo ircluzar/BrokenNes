@@ -475,7 +475,9 @@ def compare_rows(cps, bn_pngs, ref_pics, keep_dir):
 
 
 def check_any(rec, console, minutes, keep_dir):
-    return check_nes(rec, minutes, keep_dir) if console == "nes" else check_console(rec, console, minutes, keep_dir)
+    res = check_nes(rec, minutes, keep_dir) if console == "nes" else check_console(rec, console, minutes, keep_dir)
+    res["minutes"] = minutes
+    return res
 
 
 def grade_result(res, grade, tags, why):

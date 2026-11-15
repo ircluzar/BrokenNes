@@ -28,7 +28,7 @@ def t1_local(*args):
     return subprocess.run([LOCALPY, T1, *args], env=env, capture_output=True, text=True)
 
 
-def pending(console, reverse):
+def pending(console, reverse, redo_nonok=False):
     sys.path.insert(0, os.path.join(KIT, "tools", "catalog"))
     import catalog
     sys.path.insert(0, os.path.join(KIT, "tools", "compat-t1"))
@@ -38,7 +38,11 @@ def pending(console, reverse):
         if r.get("revisionOf"):
             continue
         full = catalog.get(console, r["sha1"]) or r
-        if ((full.get("extra") or {}).get("t1") or {}).get("version") == "t1-2":
+        t1 = (full.get("extra") or {}).get("t1") or {}
+        if redo_nonok:
+            if not t1.get("version", "").startswith("t1-") or t1.get("grade") == "OK" or t1.get("minutes", 1) >= 3:
+                continue
+        elif t1.get("version") == "t1-2":
             continue
         out.append(r)
     return out[::-1] if reverse else out
@@ -50,7 +54,7 @@ def cmd_kit(a):
 
 def cmd_plan(a):
     names = list(boxes(a.names))
-    todo = pending(a.console, a.reverse)
+    todo = pending(a.console, a.reverse, a.redo_nonok)
     if a.limit:
         todo = todo[:a.limit]
     slots = [(n, i) for i in range(a.per_pc) for n in names]
@@ -81,7 +85,7 @@ def cmd_plan(a):
             env = {"BNT1_WORKSHOP": r"C:\brokennes\kit\workshop\BrokenNes.Workshop.exe", "BNT1_MESEN": r"C:\brokennes\kit\mesen\Mesen.exe", "BNT1_BIZHAWK": r"C:\brokennes\kit\bizhawk\EmuHawk.exe",
                    "BNT1_SCRATCH": rf"C:\brokennes\work\{sid}", "BNT1_HEAVY": rf"C:\brokennes\work\{sid}\heavy", "BNT1_SLOTS": "1",
                    "BNT1_LANE": "fleet-" + sid}
-            cmd = rf"C:\brokennes\kit\py\python.exe -I C:\brokennes\kit\tools\compat-t1\t1.py work --console {a.console} --shard C:\brokennes\roms\{sid}"
+            cmd = rf"C:\brokennes\kit\py\python.exe -I C:\brokennes\kit\tools\compat-t1\t1.py work --console {a.console} --minutes {a.minutes} --shard C:\brokennes\roms\{sid}"
             ok = job(bs[n], sid, cmd, r"C:\brokennes", env, limit=a.hours * 3600, low=False)
             print("start", n, sid, cnt, ok)
 
@@ -109,7 +113,7 @@ def cmd_pull(a):
             dst = os.path.join(RESULTS, a.tag, n, sid)
             print(n, sid, pull(bs[n], rf"C:\brokennes\roms\{sid}\out", dst))
             if a.ingest:
-                p = t1_local("ingest", "--console", a.console, "--results", dst)
+                p = t1_local("ingest", "--console", a.console, "--results", dst, *(["--force"] if a.force else []))
                 print("  ", (p.stdout + p.stderr).strip()[-300:])
 
 
@@ -120,8 +124,9 @@ def main():
     q = sp.add_parser("plan"); q.add_argument("--console", default="nes"); q.add_argument("--per-pc", type=int, default=3)
     q.add_argument("--reverse", action="store_true"); q.add_argument("--names", default=None); q.add_argument("--limit", type=int, default=0)
     q.add_argument("--tag", required=True); q.add_argument("--hours", type=int, default=12)
+    q.add_argument("--redo-nonok", action="store_true", help="re-run every graded title that is not OK (with --minutes 3)"); q.add_argument("--minutes", type=float, default=1.0)
     o = sp.add_parser("poll"); o.add_argument("--tag", required=True)
-    u = sp.add_parser("pull"); u.add_argument("--tag", required=True); u.add_argument("--console", default="nes"); u.add_argument("--ingest", action="store_true")
+    u = sp.add_parser("pull"); u.add_argument("--tag", required=True); u.add_argument("--console", default="nes"); u.add_argument("--ingest", action="store_true"); u.add_argument("--force", action="store_true")
     a = p.parse_args()
     if getattr(a, "names", None):
         a.names = a.names.split(",")
