@@ -327,6 +327,13 @@ namespace BrokenNes
             return new[] { (double)profFrames, ms(profRun), ms(profAudio), ms(profPix), ms(profBody) };
         }
 
+        /// <summary>Lite's x86 touch keyboard (nesInterop.js toggleX86Keyboard): one key of the PC's keyboard, its scan code (set 1), <paramref name="extended"/> for the E0 keys (the arrows, Delete), down or up.</summary>
+        [JSInvokable]
+        public void PcKey(int scan, bool extended, bool down)
+        {
+            if (session is NesEmulator.X86.PcSession pc) pc.HostKey(scan, extended, down);
+        }
+
         [JSInvokable]
         public void ResetSessionProfile() { profRun = profAudio = profPix = profBody = profFrames = 0; }
 

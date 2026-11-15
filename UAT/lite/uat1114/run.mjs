@@ -15,6 +15,7 @@ export const ROMS = {
   sms: ['VRUN_CTW_SMS_2026-11-10_mmc3.sms', 'c_sonic2.sms'],
   gg: ['VRUN_Vaults_GG_9ea616a.gg', 'c_sonictails.gg'],
   md: ['supervrun_md_338a853.bin', 'c_sonic1.bin'],
+  x86: ['VRUNBOOT.IMG', 'SVRUNBT.IMG', 'SVRUN.EXE'],   // our own DOS boot floppies (FreeDOS + the game); the bare .EXE needs the FreeDOS disk Lite does not ship
 };
 const pick = A.roms ? A.roms.split(',') : null;
 const want = (con, rom) => !pick || pick.includes(con) || (rom && pick.includes(rom));
@@ -82,10 +83,26 @@ try {
         await p.s('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
         if (!await L.load(p, base, list[0])) { log({ con, orient, boot: false }); continue; }
         await sleep(1500);
-        await p.eval(`document.querySelector('${FS}')?.scrollIntoView({block:'center'})`); const r = await p.rect(FS);
+        await p.eval(`document.querySelector('${FS}')?.scrollIntoView({block:'center'})`);
+        // tap where the button IS: the page settles first (late rows above it - the speed badge, a console's options - move it, as a person would see)
+        let r = await p.rect(FS); for (let i = 0; i < 20; i++) { await sleep(300); const r2 = await p.rect(FS); if (r && r2 && r2.x === r.x && r2.y === r.y) break; r = r2; }
         if (r) await p.touch([{ x: r.x + r.w / 2, y: r.y + r.h / 2 }], 60);
         await sleep(1500); await p.shot(shotName('touch', con, orient, 'layout'));
         const lay = await p.eval(`(()=>{const tc=document.getElementById('touch-controller'); const cv=document.getElementById('nes-canvas').getBoundingClientRect(); const vis=e=>{const r=e.getBoundingClientRect(), cs=getComputedStyle(e); return cs.display!=='none'&&cs.visibility!=='hidden'&&r.width>0&&r.height>0}; const C={x:cv.x,y:cv.y,w:cv.width,h:cv.height}; if(!tc) return {present:false, canvas:C}; const btns=[...tc.querySelectorAll('[data-btn],[data-act]')].filter(vis).map(e=>{const r=e.getBoundingClientRect(); return {k:e.dataset.btn||('act:'+e.dataset.act), label:e.textContent.trim(), x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)}}); const inter=(a,b)=>!(a.x+a.w<=b.x||b.x+b.w<=a.x||a.y+a.h<=b.y||b.y+b.h<=a.y); const ab=tc.querySelector("[data-btn=a]"); const ar=ab?ab.getBoundingClientRect():null; const hit=ar?document.elementFromPoint(ar.x+ar.width/2,ar.y+ar.height/2):null; return {present:vis(tc), bound:!!tc._nesBound, hitA: hit?(hit.closest("[data-btn]")?.dataset.btn||hit.tagName+"#"+hit.id+"."+hit.className):null, layout:tc.dataset.layout, canvas:C, vw:innerWidth, vh:innerHeight, btns, overCanvas:btns.filter(b=>inter(b,C)).map(b=>b.k), offscreen:btns.filter(b=>b.y+b.h>innerHeight+1||b.x+b.w>innerWidth+1||b.x<0||b.y<0).map(b=>b.k), small:btns.filter(b=>Math.min(b.w,b.h)<40).map(b=>b.k+':'+b.w+'x'+b.h)}})()`);
+        lay.consoleBadge = await p.eval(`[...document.querySelectorAll('.overlay-status .badge')].map(b=>b.textContent.trim()).find(t=>/^(NES|SNES|WideMess|Game Boy|Game Boy Color|Master System|Game Gear|Genesis|x86)/.test(t))||null`);
+        lay.picture = await p.eval(`(()=>{const r=document.querySelector('.screen-aspect')?.getBoundingClientRect(); return r?{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height), fitsScreen: r.y>=-1 && r.bottom<=innerHeight+1 && r.x>=-1 && r.right<=innerWidth+1}:null})()`);
+        if (orient === 'landscape' && lay.present) { // the pad on both sides: d-pad left of the picture, face buttons right of it
+          const P = lay.picture, B = k => lay.btns.find(b => b.k === k);
+          lay.sides = { dpadLeft: !!B('left') && B('right').x + B('right').w <= P.x + 1, faceRight: !!B('a') && B('a').x >= P.x + P.w - 1 };
+        }
+        if (con === 'x86' && lay.present) { // the pop-up keyboard: opens, a key reaches PcKey (down then up), Hide closes it
+          await p.eval(`(()=>{ window.__pcKeys=[]; const f=nesInterop._pcKey.bind(nesInterop); nesInterop._pcKey=(s,e,d)=>{ __pcKeys.push([s,!!e,!!d]); f(s,e,d); }; })()`);
+          const kb = lay.btns.find(b => b.k === 'act:kbd');
+          if (kb) { await p.touch([{ x: kb.x + kb.w / 2, y: kb.y + kb.h / 2 }], 60); await sleep(400); }
+          const k = await p.eval(`(()=>{const kb=document.querySelector('#touch-controller .x86-kbd'); if(!kb||kb.hidden) return {open:false}; const r=kb.getBoundingClientRect(); const keys=[...kb.querySelectorAll('.x86-key')].map(e=>{const q=e.getBoundingClientRect(); return {t:e.textContent, x:q.x+q.width/2, y:q.y+q.height/2, w:Math.round(q.width), h:Math.round(q.height)}}); return {open:true, rect:{x:r.x,y:r.y,w:r.width,h:r.height}, n:keys.length, short:keys.filter(q=>q.h<30).length, y:keys.find(q=>q.t==='Y'), hide:keys.find(q=>q.t==='Hide')} })()`);
+          if (k.open) { await p.touch([{ x: k.y.x, y: k.y.y }], 80); await sleep(200); k.sent = await p.eval('__pcKeys'); await p.touch([{ x: k.hide.x, y: k.hide.y }], 60); await sleep(300); k.closedAfterHide = await p.eval(`!!document.querySelector('#touch-controller .x86-kbd')?.hidden`); }
+          lay.keyboard = k;
+        }
         log({ con, orient, layout: lay });
         if (!lay.present) continue;
         const per = {};
