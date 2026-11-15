@@ -118,11 +118,21 @@ def luma(img, w=None, h=None):
     return l
 
 
+RANK = False   # other consoles: compare brightness RANKS (Mesen's Game Gear / GBC colour correction makes the same picture darker)
+
+
+def ranks(l):
+    u, inv = np.unique(l, return_inverse=True)
+    return (inv.reshape(l.shape) * (255 // max(1, len(u) - 1))).astype(np.int32) if len(u) > 1 else np.zeros_like(l)
+
+
 def picdiff(a, b):
     """BrokenDev/mcp/Reference.cs PicDiff.Grid, ported: palette-blind (brightness cells + edge overlap). 0 same, <=0.02 same up
     to palette, <=0.12 close, else different."""
     h, w = min(a.shape[0], b.shape[0]), min(a.shape[1], b.shape[1])
     la, lb = luma(a, w, h), luma(b, w, h)
+    if RANK:
+        la, lb = ranks(la), ranks(lb)
     pixel = float(np.mean(np.abs(la - lb) > 42))
 
     def edges(l):
@@ -394,8 +404,8 @@ def con_run(rom, console, frames, png_at, out_dir, script=None):
 
 
 def check_console(rec, console, minutes, keep_dir):
-    global REF_LAG, WIN
-    REF_LAG, WIN = 4, 6   # SNES pictures sit ~6 frames lower on Mesen's counter, Game Boy ~3: search f-10..f+2
+    global REF_LAG, WIN, RANK
+    REF_LAG, WIN, RANK = 4, 6, True   # SNES pictures sit ~6 frames lower on Mesen's counter, Game Boy ~3: search f-10..f+2
     rom = rec.get("path") or rec["file"]["path"]
     work = os.path.join(SCRATCH, rec["sha1"])
     shutil.rmtree(work, ignore_errors=True)
@@ -746,6 +756,47 @@ def cmd_ingest(a):
     print(f"ingested {n}, skipped {skipped} (already T1 {T1_VERSION})")
 
 
+def cmd_regrade(a):
+    """re-score the kept checkpoint pictures (bn_/ref_ PNGs in the record's screenshots folder) with the current picdiff and grade again;
+    no emulator runs. For records graded by an older comparison."""
+    global RANK
+    RANK = a.console != "nes"
+    n = 0
+    for rec in catalog.iter_records(a.console):
+        t1 = (rec.get("extra") or {}).get("t1") or {}
+        if not t1.get("version", "").startswith("t1-") or not t1.get("checkpoints"):
+            continue
+        kd = rec.get("screenshots") or keep_dir_for(a.console, rec["sha1"])
+        cmp = t1["checkpoints"]
+        for r in cmp:
+            if r.get("bn") and r.get("ref") and os.path.exists(os.path.join(kd, r["bn"])) and os.path.exists(os.path.join(kd, r["ref"])):
+                bimg = load_png(os.path.join(kd, r["bn"]))
+                r["score"] = picdiff(bimg, load_png(os.path.join(kd, r["ref"])))
+                r["bnHash"] = hash(bimg.tobytes())
+            elif r.get("bn") and os.path.exists(os.path.join(kd, r["bn"])):
+                r["bnHash"] = hash(load_png(os.path.join(kd, r["bn"])).tobytes())
+        bn = t1.get("bn") or {}
+        p2 = dict(timeout=bn.get("timeout"), ok=bn.get("exit") == 0 and not bn.get("timeout"), code=bn.get("exit"))
+        old = (t1.get("grade"), t1.get("why"))
+        for k in ("summary", "playDiverges"):
+            t1.pop(k, None)
+        res = grade_compare(t1, p2, cmp, (t1.get("title") or {}).get("frame"))
+        for r in cmp:
+            r.pop("bnHash", None)
+        res["regraded"] = catalog.now()
+        if (res["grade"], res["why"]) != old:
+            for k in range(6):
+                try:
+                    write_record(a.console, rec, res, kd, git_version())
+                    n += 1
+                    break
+                except PermissionError as e:
+                    if k == 5:
+                        print("  skipped (locked):", rec["sha1"], e)
+                    time.sleep(3)
+    print(f"regraded {a.console}: {n} records changed")
+
+
 def main():
     p = argparse.ArgumentParser()
     sp = p.add_subparsers(dest="cmd", required=True)
@@ -757,7 +808,7 @@ def main():
         q.add_argument("--force", action="store_true")
         for x in args:
             q.add_argument("--" + x, required=True)
-    for name in ("run", "one", "report"):
+    for name in ("run", "one", "report", "regrade"):
         q = sp.add_parser(name)
         q.add_argument("--console", default="nes")
         q.add_argument("--minutes", type=float, default=1.0)
@@ -769,9 +820,9 @@ def main():
             q.add_argument("--sha1", required=True)
             q.add_argument("--write", action="store_true")
     a = p.parse_args()
-    if a.console not in ("nes", "md") + MESEN_CONSOLES and a.cmd not in ("report", "ingest", "export"):
+    if a.console not in ("nes", "md") + MESEN_CONSOLES and a.cmd not in ("report", "ingest", "export", "regrade"):
         sys.exit("T1 is wired up for nes, " + ", ".join(MESEN_CONSOLES) + " (md needs a reference emulator)")
-    {"run": cmd_run, "one": cmd_one, "report": cmd_report, "export": cmd_export, "work": cmd_work, "ingest": cmd_ingest}[a.cmd](a)
+    {"run": cmd_run, "one": cmd_one, "report": cmd_report, "export": cmd_export, "work": cmd_work, "ingest": cmd_ingest, "regrade": cmd_regrade}[a.cmd](a)
 
 
 if __name__ == "__main__":
