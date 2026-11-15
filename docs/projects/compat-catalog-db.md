@@ -143,3 +143,10 @@ existing one otherwise. Titles are grouped by name plus the curated aliases.
 SMW NES port). Skipped: 219 un-tagged files in `GameBoy Color` (DX/colour hacks), 185 GG / 113 Genesis / 37 GB
 flagged dumps, 18 Genesis 32X images. The inventory's SNES "2,122 top level" was wrong: the SNES top level holds only
 subfolders. Writing 4,114 records over T: took about an hour (about 1 s per locked write to `\STORAGE`).
+
+## Gap pass (2026-11-15, cc-gaps)
+
+`titles.py` re-run: +208 SNES records (Satellaview, Unreleased: Arcus Odyssey / Cooly Skunk / Jelly Boy 2, and the
+20 PAL-only titles from `PAL to NTSC`), +1 GBC (Gekido), 33 existing records marked `extra.aliasOf` (SNES 1, GB 2,
+Genesis 10, SMS 13, GG 7). Catalog now 4,323 records. `appid.py check`: all 4,114 earlier records match the app's own
+id rules (0 mismatches, 0 unloadable), so the exporter's ids were already right; no exporter change was needed.
