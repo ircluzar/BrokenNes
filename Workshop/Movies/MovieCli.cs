@@ -57,8 +57,18 @@ internal static class MovieCli
                 }
                 case "import":
                 {
-                    string fm2 = Opt("fm2"), rom = Opt("rom"), outFile = Opt("out");
-                    if (fm2.Length == 0 || rom.Length == 0 || outFile.Length == 0) { Console.Error.WriteLine("import needs --fm2, --rom and --out"); return 2; }
+                    string fm2 = Opt("fm2"), bk2 = Opt("bk2"), rom = Opt("rom"), outFile = Opt("out");
+                    if (bk2.Length > 0 && rom.Length > 0 && outFile.Length > 0)
+                    {
+                        using var bm = MovieMachine.Open(rom, Opt("console") is { Length: > 0 } bc ? bc : null, Opt("cores"), Opt("power-on", "fceux"), Has("ntsc"), false);
+                        var notes = new List<string>();
+                        var bmv = MovieExport.FromBk2(bk2, bm, int.Parse(Opt("key-every", "60"), CultureInfo.InvariantCulture), Opt("build"), notes);
+                        bmv.Save(outFile);
+                        Console.WriteLine($"imported {bk2} -> {outFile}: {bmv.Frames} frames, {bmv.Inputs.Count} input changes, {bm.ConsoleKey}");
+                        foreach (var n in notes) Console.WriteLine("note: " + n);
+                        return 0;
+                    }
+                    if (fm2.Length == 0 || rom.Length == 0 || outFile.Length == 0) { Console.Error.WriteLine("import needs (--fm2 F | --bk2 F), --rom and --out"); return 2; }
                     using var m = MovieMachine.Open(rom, "nes", Opt("cores"), Opt("power-on", "fceux"), Has("ntsc"), false);
                     var mv = MovieExport.FromFm2(fm2, m, int.Parse(Opt("key-every", "60"), CultureInfo.InvariantCulture), Opt("build"));
                     mv.Save(outFile);
@@ -93,7 +103,7 @@ internal static class MovieCli
                     if (!sha.Equals(mv.RomSha256, StringComparison.OrdinalIgnoreCase)) { Console.Error.WriteLine($"the ROM is not the movie's (sha256 {sha}, the movie's {mv.RomSha256}): an export names the ROM it plays on"); return 2; }
                     MovieExport.Result res;
                     if (Opt("fm2") is { Length: > 0 } f) res = MovieExport.ToFm2(mv, rom, f);
-                    else if (Opt("bk2") is { Length: > 0 } b) res = MovieExport.ToBk2(mv, rom, b, Opt("core"));
+                    else if (Opt("bk2") is { Length: > 0 } b) res = MovieExport.ToBk2(mv, rom, b, Opt("core"), Opt("pad"));
                     else { Console.Error.WriteLine("export needs --fm2 OUT or --bk2 OUT"); return 2; }
                     Console.WriteLine($"wrote {res.Path}: {res.Frames} frames");
                     foreach (var n in res.Notes) Console.WriteLine("note: " + n);
