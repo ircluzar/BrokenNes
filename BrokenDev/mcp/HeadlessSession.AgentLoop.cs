@@ -43,7 +43,7 @@ internal sealed partial class HeadlessSession
 
     // ================================================================================================ play_step
 
-    public ToolOut PlayStep(string[] buttons, string[] buttons2, int frames, string? until, int maxFrames, double scale, List<string> watch, bool refPicture)
+    public ToolOut PlayStep(string[] buttons, string[] buttons2, int frames, string? until, int maxFrames, double scale, List<string> watch, bool refPicture, List<NesEmulator.Debugging.Movies.AutoTasMilestone>? milestones = null)
     {
         if (frames < 0) throw new ToolError("frames is 0 or more");
         var sw = Stopwatch.StartNew();
@@ -62,18 +62,23 @@ internal sealed partial class HeadlessSession
         int ckBefore = CheckFrames();
         lock (padLock) { held[0] = p1; held[1] = p2; }
         string stoppedBy = "frames";
+        NesEmulator.Debugging.Movies.AutoTasMilestone? msHit = null;
         RunOutcome o = RunOutcome.Frames;
         // try/finally: a bad `until` (ToolError) or a run exception must not leave the pads held for the next tool's frames
         try {
-        if (until is { Length: > 0 })
+        bool hasMs = milestones is { Count: > 0 };
+        if (until is { Length: > 0 } || hasMs)
         {
             var d = Dbg;
-            int budget = Math.Clamp(maxFrames, 1, 36_000);
-            stoppedBy = "budget";
+            bool byUntil = until is { Length: > 0 };
+            int budget = byUntil ? Math.Clamp(maxFrames, 1, 36_000) : Math.Clamp(frames, 0, 36_000);
+            stoppedBy = byUntil ? "budget" : "frames";
             for (int i = 0; i < budget; i++)
             {
                 o = RunFrames(1);
                 if (o != RunOutcome.Frames) { stoppedBy = o.ToString().ToLowerInvariant(); break; }
+                if (hasMs && MilestoneHit(milestones!) is { } hit) { stoppedBy = "milestone"; msHit = hit; break; }
+                if (!byUntil) continue;
                 long v;
                 try { v = d.Evaluate(until); }
                 catch (Exception e) when (e is FormatException or ArgumentException) { throw new ToolError($"until: {e.Message}"); }
@@ -93,6 +98,8 @@ internal sealed partial class HeadlessSession
             ["frame"] = Interlocked.Read(ref framesStarted), ["framesRun"] = ran, ["stoppedBy"] = stoppedBy, ["pressed"] = p1.ToString(),
         };
         if (p2 != PadButtons.None) j["pressed2"] = p2.ToString();
+        if (msHit != null) j["milestone"] = new JsonObject { ["id"] = msHit.Id, ["until"] = msHit.Until, ["frame"] = Interlocked.Read(ref framesStarted), ["movieFrame"] = history?.FrameIndex };
+        else if (milestones is { Count: > 0 }) j["milestone"] = null;
         if (o == RunOutcome.Break && D?.LastBreak is { } b) j["break"] = BreakJson(b);
         if (o == RunOutcome.Error) j["error"] = R?.Error?.Message;
         // lag: from the checks' profiler (a frame where vblank came before the game reached its frame wait)
@@ -163,7 +170,7 @@ internal sealed partial class HeadlessSession
 
     // ================================================================================================ recording
 
-    public JsonObject Record(string action, string? path, string? text, string? state)
+    public JsonObject Record(string action, string? path, string? text, string? state, string? statePath = null)
     {
         var h = history ?? throw new ToolError(historyNote);
         switch (action)
@@ -182,7 +189,8 @@ internal sealed partial class HeadlessSession
                 string t = text is { Length: > 0 } ? text : $"checkpoint {recMarks.Count}";
                 recMarks.Add(new MovieMark(h.FrameIndex, t));
                 var j = new JsonObject { ["mark"] = t, ["frame"] = h.FrameIndex, ["marks"] = recMarks.Count };
-                if (state is { Length: > 0 }) { SaveState(state); j["state"] = state; }
+                if (statePath is { Length: > 0 }) j["stateFile"] = SaveStateFile(state, statePath);
+                else if (state is { Length: > 0 }) { SaveState(state); j["state"] = state; }
                 return j;
             }
             case "stop":

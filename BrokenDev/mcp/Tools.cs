@@ -309,10 +309,12 @@ internal static partial class Tools
             a => On(a, s => s.RecordSound(a.Double("seconds") ?? 2, a.Bool("wav", true))));
 
         // ------------------------------------------------------------------------------------------------ states
-        Add("save_state", "Saves the machine in a named state in this server's memory (headless; never a file, never the user's saves). A live session never saves.",
-            Schema(S(), ("name", P("string", "the state's name"), true)), a => On(a, s => s.SaveState(a.Req("name"))));
-        Add("load_state", "Loads a named state (headless), or the app's quick state (live: name \"quick\", control).", Schema(S(), ("name", P("string", "the state's name"), true)),
-            a => On(a, s => s.LoadState(a.Req("name"))));
+        Add("save_state", "Saves the machine in a named state in this server's memory (headless; with path also an AutoTAS state file; never the user's saves). A live session never saves.",
+            Schema(S(), ("name", P("string", "the state's name"), false), ("path", P("string", "headless: also write it to this file (an AutoTAS state file; name optional then)"), false)),
+            a => On(a, s => a.Str("path") is { Length: > 0 } p ? Headless(s).SaveStateFile(a.Str("name"), p) : s.SaveState(a.Req("name"))));
+        Add("load_state", "Loads a named state (headless), a state file (headless: path, an AutoTAS state; a recording started after it is a segment from it), or the app's quick state (live: name \"quick\", control).",
+            Schema(S(), ("name", P("string", "the state's name"), false), ("path", P("string", "headless: a state file written by save_state path / record mark state_path"), false)),
+            a => On(a, s => a.Str("path") is { Length: > 0 } p ? Headless(s).LoadStateFile(a.Str("name"), p) : s.LoadState(a.Req("name"))));
         Add("diff_states", "Compares two states (or a state and \"current\") by symbol: the variables that differ with both values, then the bytes without a symbol, per memory space.",
             Schema(S(), ("a", P("string", "a state name or current"), true), ("b", P("string", "a state name or current (default current)"), false), ("limit", P("integer", "variables to list (default 100)"), false)),
             a => On(a, s => s.DiffStates(a.Req("a"), a.Str("b") ?? "current", a.Int("limit", 100))), ro: true);

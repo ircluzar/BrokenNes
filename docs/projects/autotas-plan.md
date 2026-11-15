@@ -150,3 +150,47 @@ progress when quality slips or at the usage cap.
 3. Chapters 0-8 by agent jobs on the fleet.
 4. Clean-up pass + verify.
 5. AutoTAS side panel in desktop, tested on the SMB3 package.
+
+## Tools (built, branch autotas-tools)
+
+The format and the agents' calls, as built. Code: `Windows/NesEmulator/debug/movies/AutoTasPackage.cs` (package, manifest, stitcher,
+milestones, state files; no emulator dependency, so the desktop panel can use it), `BrokenDev/mcp/HeadlessSession.AutoTas.cs`,
+`BrokenDev/mcp/AutoTasCli.cs`, `BrokenDev/tools/catalog/catalog.py` (`autotas` record field).
+
+**State files** (`state\<ch>.raw.state`): `bnstate 1` + header lines (console, cores, frame, rom_sha256, format) + a blank line + the
+emulator's own state, gzip. The manifest's `core.state_format` is `<console>:<cores>:gzip1`.
+
+**One chapter job (MCP, also over the fleet bridge):**
+
+```
+open_rom      path=<rom>
+load_state    path=<pkg>/state/<prev>.raw.state     (chapter 0: skip, it starts at power-on)
+record        action=start text=<ch>
+play_step     buttons=[...] frames=20 milestone_file=<pkg>/milestones.json    (or milestones=["1-1=<expr>"]) ... repeat
+              -> stoppedBy "milestone", milestone.id = the chapter that ended
+record        action=mark text="milestone <ch>" state_path=<pkg>/state/<ch>.raw.state
+record        action=stop path=<pkg>/seg/<ch>.bnm
+```
+
+A movie recorded after `load_state path` starts from that state (`start state`); every session movie now ends on a keyframe, which
+is the chapter's end hash. Over the bridge (`--pc N`), `load_state path` is pushed to the PC, `state_path` and the segment are pulled
+back to the asked path, and `milestone_file` is read on this side and sent inline. The fleet PCs need the new MCP build deployed first.
+
+**Package:** `AutoTasPackage.PutChapter` (adds a chapter from its segment), `StitchAndSave` (full.bnm with a `chapter <id>: <title>`
+mark per chapter, chapter frames and hashes fixed from it), then:
+
+```
+BrokenNes.Mcp.exe --autotas stitch --package <pkg>
+BrokenNes.Mcp.exe --autotas verify --package <pkg> --rom <rom>    replays full.bnm from power-on, checks every keyframe and chapter end; writes verified_at
+BrokenNes.Mcp.exe --autotas info   --package <pkg>
+python BrokenDev/tools/catalog/catalog.py autotas-set --console nes --sha1 <sha1> --manifest <pkg>/autotas.json [--status pilot]
+python BrokenDev/tools/catalog/catalog.py autotas-get --console nes --sha1 <sha1>       exit 0 = the app offers AutoTAS
+python BrokenDev/tools/catalog/catalog.py autotas-list [--available]
+```
+
+The `autotas` object on a catalog record: game_id, version, status, chapters_done, chapters_total, core, core_build, state_format,
+path (relative to the catalog root), verified_at (only when the verify passed), quality_avg (A=3, B=2, C=1). Available = status
+pilot/complete and verified_at set. It is in the index rows too.
+
+**Tests:** `BrokenNes.Mcp.exe --autotas-test` (the movie tests' own game: two chapters across two sessions, a state file, both
+milestone forms, stitch, verify from power-on, a broken hash must fail) and `python -I BrokenDev/tools/catalog/test_autotas.py [manifest]`.

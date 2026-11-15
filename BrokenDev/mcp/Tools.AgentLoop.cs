@@ -26,9 +26,11 @@ internal static partial class Tools
                 ("max_frames", P("integer", "with until: the frame budget (default 600)"), false),
                 ("scale", P("number", "the picture: 0.5 (default: half size), 1, 2, or 0 for none"), false),
                 ("ram", P("string[]", "RAM to read after the step: expressions, optionally named (lives=[$075A], x={$0086}, [7E:0DBF])"), false),
-                ("ref_picture", P("boolean", "with a reference open: also return the reference's picture (default false: only its score)"), false)),
+                ("ref_picture", P("boolean", "with a reference open: also return the reference's picture (default false: only its score)"), false),
+                ("milestones", P("string[]", "AutoTAS milestones checked after every frame (id=expression, e.g. map1=[$0727]==0): the step stops at the first true one and says which (stoppedBy milestone, milestone.id); without until, frames is the budget"), false),
+                ("milestone_file", P("string", "AutoTAS: a milestones.json ({\"milestones\":[{\"id\",\"until\"}]}) whose conditions are checked like milestones"), false)),
             a => On(a, s => Headless(s).PlayStep(a.List("buttons").ToArray(), a.List("buttons2").ToArray(), a.Int("frames", 15), a.Str("until"), a.Int("max_frames", 600),
-                a.Double("scale") ?? 0.5, a.List("ram"), a.Bool("ref_picture", false))), false);
+                a.Double("scale") ?? 0.5, a.List("ram"), a.Bool("ref_picture", false), HeadlessSession.Milestones(a.List("milestones"), a.Str("milestone_file")))), false);
 
         add("record",
             "Recording a headless session as a BrokenNes movie (.bnm) for the catalog: start (from where the session is; the movie still holds the input from power-on, so it replays " +
@@ -38,8 +40,9 @@ internal static partial class Tools
                 ("action", P("string", "start, mark, save, stop or status", Enum("start", "mark", "save", "stop", "status")), true),
                 ("path", P("string", "start / save / stop: the movie file (default: the session's folder)"), false),
                 ("text", P("string", "the mark's text (start / mark / stop)"), false),
-                ("state", P("string", "mark: also save a state under this name (load_state goes back to it)"), false)),
-            a => On(a, s => (ToolOut)Headless(s).Record(a.Req("action").ToLowerInvariant(), a.Str("path"), a.Str("text"), a.Str("state"))), false);
+                ("state", P("string", "mark: also save a state under this name (load_state goes back to it)"), false),
+                ("state_path", P("string", "mark: also write the state to this file (an AutoTAS state: a chapter's milestone state; load_state path loads it)"), false)),
+            a => On(a, s => (ToolOut)Headless(s).Record(a.Req("action").ToLowerInvariant(), a.Str("path"), a.Str("text"), a.Str("state"), a.Str("state_path"))), false);
 
         add("reference",
             "The live reference for a headless session: another emulator on the same ROM, lock-stepped with play_step (it gets the same pads for the same frames and waits between steps). " +
