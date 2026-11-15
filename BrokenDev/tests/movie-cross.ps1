@@ -49,7 +49,9 @@ if (-not $firstPress.Success) { throw 'the movie presses nothing: no negative co
 # the frames where the BrokenNes movie's pad 1 changes, and what it then holds (BizHawk / FCEUX names differ: compared in lower case, sorted)
 $changes = [ordered]@{}
 foreach ($mm in [regex]::Matches($mtext, '(?m)^i (\d+) (\S+) ')) { $changes[[string]$mm.Groups[1].Value] = $mm.Groups[2].Value }
-function Norm { param([string]$B) if ($B -eq '-' -or -not $B) { return '-' } ((@($B -split '\+' | ForEach-Object { $_.ToLowerInvariant() }) | Sort-Object) -join '+') }
+# the Master System / Game Gear cores name BrokenNes's A / B / Select (pad 1, 2 and the Master System's Pause) B1 / B2 / Pause
+$segaName = @{ b1 = 'a'; b2 = 'b'; pause = 'select' }
+function Norm { param([string]$B) if ($B -eq '-' -or -not $B) { return '-' } ((@($B -split '\+' | ForEach-Object { $n = $_.ToLowerInvariant(); if ($console -in 'sms', 'gg' -and $segaName.ContainsKey($n)) { $segaName[$n] } else { $n } }) | Sort-Object) -join '+') }
 
 $J = Read-BdEmulators
 foreach ($id in $Emu) {

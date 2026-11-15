@@ -223,6 +223,63 @@ internal static class MovieTestCli
         Check("NEGATIVE: a movie that starts from a BrokenNes state is refused (the other emulator cannot load it)", Throws(() => MovieExport.ToBk2(stm, rom, Path.Combine(dir, "y.bk2")), out string w2) && w2.Contains("save state"), w2);
         var gbm = new Movie { Console = "gb", RomName = "x.gb", RomSha256 = "00", Frames = 2 }; gbm.SetPads(0, PadButtons.None, PadButtons.A);
         Check("NEGATIVE: a Game Boy movie that presses pad 2 is refused", Throws(() => MovieExport.ToBk2(gbm, new byte[4], Path.Combine(dir, "z.bk2")), out string w3) && w3.Contains("pad 2"), w3);
+
+        // the Sega pads (BizHawk 2.11.1's "SMS Controller", "GG Controller", "GPGX Genesis Controller")
+        string SegaLog(string console, PadButtons p1, PadButtons p2, string pad = "")
+        {
+            var sm = new Movie { Console = console, RomName = "x", RomSha256 = "00", Frames = 1 }; sm.SetPads(0, p1, p2);
+            string f = Path.Combine(dir, console + pad + ".bk2");
+            MovieExport.ToBk2(sm, new byte[] { 1, 2, 3 }, f, "", pad);
+            using var z = ZipFile.OpenRead(f); using var s = new StreamReader(z.GetEntry("Input Log.txt")!.Open());
+            var l = s.ReadToEnd().Split('\n'); return l[1] + " " + l[2];
+            // (the header names the core: Genplus-gx for the Master System and Genesis, SMSHawk for the Game Gear)
+        }
+        string sms = SegaLog("sms", PadButtons.A | PadButtons.Select | PadButtons.Mode, PadButtons.B);
+        Check(".bk2: the Master System pad on Genplus-gx (1 = A, 2 = B, Pause = Select, Reset = Mode)", sms == "LogKey:#Power|Reset|Pause|#P1 Up|P1 Down|P1 Left|P1 Right|P1 B1|P1 B2|#P2 Up|P2 Down|P2 Left|P2 Right|P2 B1|P2 B2| |.rp|....1.|.....2|", sms);
+        string gbl = SegaLog("gb", PadButtons.Start, PadButtons.None);
+        Check(".bk2: the Game Boy log as BizHawk's cores write it (one group, Power last)", gbl == "LogKey:#Up|Down|Left|Right|Start|Select|B|A|Power| |....S....|", gbl);
+        string gg = SegaLog("gg", PadButtons.Start | PadButtons.B, PadButtons.None);
+        Check(".bk2: the Game Gear pad (one pad with Start)", gg == "LogKey:#Reset|#P1 Up|P1 Down|P1 Left|P1 Right|P1 B1|P1 B2|P1 Start| |.|.....2S|", gg);
+        string md6 = SegaLog("md", PadButtons.R | PadButtons.Select | PadButtons.X, PadButtons.A);
+        Check(".bk2: the Genesis six-button pad (C = R, Mode = Select, as BrokenNes's pad)", md6 == "LogKey:#Power|Reset|#P1 Up|P1 Down|P1 Left|P1 Right|P1 A|P1 B|P1 C|P1 Start|P1 X|P1 Y|P1 Z|P1 Mode|#P2 Up|P2 Down|P2 Left|P2 Right|P2 A|P2 B|P2 C|P2 Start|P2 X|P2 Y|P2 Z|P2 Mode| |..|......C.X..M|....A.......|", md6);
+        string md3 = SegaLog("md", PadButtons.C | PadButtons.Start, PadButtons.None, "3");
+        Check(".bk2: the Genesis three-button pad (--pad 3)", md3 == "LogKey:#Power|Reset|#P1 Up|P1 Down|P1 Left|P1 Right|P1 A|P1 B|P1 C|P1 Start|#P2 Up|P2 Down|P2 Left|P2 Right|P2 A|P2 B|P2 C|P2 Start| |..|......CS|........|", md3);
+        using (var z = ZipFile.OpenRead(Path.Combine(dir, "md.bk2"))) { using var s = new StreamReader(z.GetEntry("SyncSettings.json")!.Open()); var t = s.ReadToEnd(); Check(".bk2: the Genesis movie names Genplus-gx's six-button pads", t.Contains("GPGXSyncSettings") && t.Contains("\"UseSixButton\":true"), t[..60]); }
+        var gm = new Movie { Console = "gg", RomName = "x", RomSha256 = "00", Frames = 1 }; gm.SetPads(0, PadButtons.None, PadButtons.A);
+        Check("NEGATIVE: a Game Gear movie that presses pad 2 is refused", Throws(() => MovieExport.ToBk2(gm, new byte[4], Path.Combine(dir, "g2.bk2")), out string w4) && w4.Contains("pad 2"), w4);
+        Check("NEGATIVE: --pad on a console without a Genesis pad is refused", Throws(() => MovieExport.ToBk2(gbm, new byte[4], Path.Combine(dir, "p.bk2"), "", "3"), out string w5) && w5.Contains("Genesis"), w5);
+
+        // import: the NES .bk2 above back into a movie (by its own LogKey), the same input and keyframes; a column order BizHawk could write
+        // differently, a Power press mid-movie, a save-state start and a foreign button are handled as said
+        Movie bback;
+        using (var m = MovieMachine.Open(good, "nes", "", "fceux", false, false)) bback = MovieExport.FromBk2(bk2, m, 60, "");
+        Check(".bk2 round trip: imported back, the same input and the same keyframe hashes", bback.ToScript(1) == movie.ToScript(1) && bback.Keys.Select(k => (k.Frame, k.Picture, k.Ram)).SequenceEqual(movie.Keys.Select(k => (k.Frame, k.Picture, k.Ram))),
+              $"{bback.ToScript(1)}; {bback.Keys.Count} keyframes");
+        string Rewrite(string name, Func<string, string> log, string? extra = null)
+        {
+            string f = Path.Combine(dir, name);
+            File.Copy(bk2, f, true);
+            using var z = ZipFile.Open(f, ZipArchiveMode.Update);
+            var e = z.GetEntry("Input Log.txt")!; string t; using (var s = new StreamReader(e.Open())) t = s.ReadToEnd();
+            e.Delete(); using (var w = new StreamWriter(z.CreateEntry("Input Log.txt").Open())) w.Write(log(t));
+            if (extra != null) z.CreateEntry(extra);
+            return f;
+        }
+        // the pad columns reversed (Start's column moves): read by the LogKey, the same movie
+        string rev = Rewrite("rev.bk2", t => string.Join('\n', t.Split('\n').Select(l =>
+        {
+            if (l.StartsWith("LogKey:")) { var g = l["LogKey:".Length..].Split('#', StringSplitOptions.RemoveEmptyEntries); return "LogKey:#" + g[0] + "#" + string.Join("|", g[1].Split('|', StringSplitOptions.RemoveEmptyEntries).Reverse()) + "|#" + g[2]; }
+            if (!l.StartsWith('|')) return l;
+            var p = l.Split('|'); return "|" + p[1] + "|" + new string(p[2].Reverse().ToArray()) + "|" + p[3] + "|";
+        })));
+        Movie rv; using (var m = MovieMachine.Open(good, "nes", "", "fceux", false, false)) rv = MovieExport.FromBk2(rev, m, 60, "");
+        Check(".bk2 import reads the columns by the movie's LogKey (pad columns reversed: the same movie)", rv.ToScript(1) == movie.ToScript(1), rv.ToScript(1));
+        string pw = Rewrite("power.bk2", t => { var l = t.Split('\n'); l[12] = "|.P" + l[12][3..]; return string.Join('\n', l); });
+        Check("NEGATIVE: a .bk2 that presses Power mid-movie is refused", Throws(() => { using var m = MovieMachine.Open(good, "nes", "", "fceux", false, false); MovieExport.FromBk2(pw, m, 60, ""); }, out string w6) && w6.Contains("Power"), w6);
+        string st = Rewrite("state.bk2", t => t, "Core.bin");
+        Check("NEGATIVE: a .bk2 that starts from a BizHawk savestate is refused", Throws(() => { using var m = MovieMachine.Open(good, "nes", "", "fceux", false, false); MovieExport.FromBk2(st, m, 60, ""); }, out string w7) && w7.Contains("savestate"), w7);
+        string fo = Rewrite("foreign.bk2", t => t.Replace("P1 Select", "P1 Turbo"));
+        Check("NEGATIVE: a .bk2 with a button BrokenNes's pad has not is refused", Throws(() => { using var m = MovieMachine.Open(good, "nes", "", "fceux", false, false); MovieExport.FromBk2(fo, m, 60, ""); }, out string w8) && w8.Contains("Turbo"), w8);
     }
 
     // ------------------------------------------------------------------------------------------------ diverge
