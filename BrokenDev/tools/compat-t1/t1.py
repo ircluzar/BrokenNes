@@ -694,7 +694,10 @@ def cmd_work(a):
     base = os.path.abspath(a.shard)
     sh = json.load(open(os.path.join(base, "shard.json"), encoding="utf-8"))
     out = os.path.join(base, "out")
-    for i, rec in enumerate(sh["records"]):
+    recs = list(enumerate(sh["records"]))
+    if a.reverse:   # a second worker on the same shard from the other end (they meet in the middle; a result file is the claim)
+        recs = recs[::-1]
+    for i, rec in recs:
         kd = os.path.join(out, rec["sha1"])
         if os.path.exists(os.path.join(kd, "result.json")):
             continue
@@ -748,6 +751,7 @@ def main():
     sp = p.add_subparsers(dest="cmd", required=True)
     for name, args in (("export", ("list", "out")), ("work", ("shard",)), ("ingest", ("results",))):
         q = sp.add_parser(name)
+        q.add_argument("--reverse", action="store_true")
         q.add_argument("--console", default="nes")
         q.add_argument("--minutes", type=float, default=1.0)
         q.add_argument("--force", action="store_true")
