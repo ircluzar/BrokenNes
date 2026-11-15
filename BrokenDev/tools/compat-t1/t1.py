@@ -208,14 +208,14 @@ MESEN_SETTINGS = {
 }
 
 
-def mesen_run(rom, script, shots, out_dir, frames):
+def mesen_run(rom, script, shots, out_dir, frames, console="nes"):
     home = os.path.join(SCRATCH, "_mesen_home")
     os.makedirs(home, exist_ok=True)
     exe = os.path.join(home, "Mesen.exe")
     if not os.path.exists(exe) or os.path.getsize(exe) != os.path.getsize(MESEN):
         shutil.copy2(MESEN, exe)
     with open(os.path.join(home, "settings.json"), "w") as f:
-        json.dump(MESEN_SETTINGS, f, indent=1)
+        json.dump(dict(MESEN_SETTINGS, **MESEN_EXTRA.get(console, {})), f, indent=1)
     for d in ("Saves", "SaveStates", "RecentGames"):   # every game boots clean (no battery save from an earlier run)
         shutil.rmtree(os.path.join(home, d), ignore_errors=True)
     os.makedirs(out_dir, exist_ok=True)
@@ -231,13 +231,23 @@ def mesen_run(rom, script, shots, out_dir, frames):
     return dict(code=code, secs=round(secs, 1), timeout=to, pics=pics)
 
 
+def fit_ref(ref, img):
+    """Mesen's picture can be bigger than BrokenNes's for the same frame (Game Gear: the SMS-sized 256x192 buffer with the
+    160x144 screen in its centre): crop the reference's centre to BrokenNes's size."""
+    if img is None or ref.shape[:2] == img.shape[:2] or ref.shape[0] < img.shape[0] or ref.shape[1] < img.shape[1]:
+        return ref
+    y = (ref.shape[0] - img.shape[0]) // 2
+    x = (ref.shape[1] - img.shape[1]) // 2
+    return ref[y:y + img.shape[0], x:x + img.shape[1]]
+
+
 def best_match(img, ref_pics, f):
     best = None
     for k in range(f - REF_LAG - WIN, f - REF_LAG + WIN + 1):
         p = ref_pics.get(k)
         if p is None:
             continue
-        s = picdiff(img, load_raw(p))
+        s = picdiff(img, fit_ref(load_raw(p), img))
         if best is None or s < best[0]:
             best = (s, k)
     return best
@@ -313,9 +323,93 @@ def check_nes(rec, minutes, keep_dir):
     m = mesen_run(rom, script, cps, os.path.join(work, "ref"), end)
     res["ref"] = dict(exit=m["code"], secs=m["secs"], timeout=m["timeout"], pictures=len(m["pics"]))
     # checkpoint screenshots (BrokenNes + reference, as PNG) and scores
+    cmp = compare_rows(cps, p2["pngs"], m["pics"], keep_dir)
+    res["checkpoints"] = cmp
+    out = grade_compare(res, p2, cmp, title)
+    for r in cmp:
+        r.pop("bnHash", None)
+    shutil.rmtree(work, ignore_errors=True)
+    return out
+
+
+# ------------------------------------------------------------------------------------------------ other consoles (--console-run)
+MESEN_CONSOLES = ("snes", "gb", "gbc", "sms", "gg")   # Mesen 2.1.1 plays these; md needs another reference (not wired)
+MESEN_EXTRA = {
+    "snes": {"Snes": {"Port1": {"Type": "SnesController"}, "RamPowerOnState": "AllZeros"}},
+    "gb": {"Gameboy": {"Model": "Auto", "RamPowerOnState": "AllZeros"}},
+    "gbc": {"Gameboy": {"Model": "GameboyColor", "RamPowerOnState": "AllZeros"}},
+    "sms": {"Sms": {"Port1": {"Type": "SmsController"}, "RamPowerOnState": "AllZeros"}},
+    "gg": {"Sms": {"RamPowerOnState": "AllZeros"}},
+}
+
+
+def con_run(rom, console, frames, png_at, out_dir, script=None):
+    os.makedirs(out_dir, exist_ok=True)
+    cmd = [WORKSHOP, "--console-run", "--rom", rom, "--console", console, "--frames", str(frames),
+           "--png-at", ",".join(map(str, sorted(set(png_at)))), "--out", out_dir, "--tag", "t"]
+    if script:
+        cmd += ["--input", script]
+    with Slot():
+        code, out, err, secs, to = run(cmd, timeout=max(180, frames // 20))
+    pngs = {}
+    for n in os.listdir(out_dir):
+        if n.startswith("t_") and n.endswith(".png") and "_f" in n:
+            try:
+                pngs[int(n.rsplit("_f", 1)[1][:-4])] = os.path.join(out_dir, n)
+            except ValueError:
+                pass
+    return dict(code=code, out=out, err=err, secs=round(secs, 1), timeout=to, pngs=pngs)
+
+
+def check_console(rec, console, minutes, keep_dir):
+    global REF_LAG, WIN
+    REF_LAG, WIN = 4, 6   # SNES pictures sit ~6 frames lower on Mesen's counter, Game Boy ~3: search f-10..f+2
+    rom = rec.get("path") or rec["file"]["path"]
+    work = os.path.join(SCRATCH, rec["sha1"])
+    shutil.rmtree(work, ignore_errors=True)
+    os.makedirs(work)
+    res = dict(version=T1_VERSION, at=catalog.now(), console=console)
+    p1 = con_run(rom, console, PROBE_FRAMES, range(PROBE_STEP, PROBE_FRAMES + 1, PROBE_STEP), os.path.join(work, "probe"))
+    res["probe"] = dict(exit=p1["code"], secs=p1["secs"], timeout=p1["timeout"])
+    if p1["timeout"]:
+        return grade_result(res, "Broken", ["crash", "timing"], "the boot hung (no frames for minutes)")
+    if p1["code"] != 0 or not p1["pngs"]:
+        txt = (p1["err"] + p1["out"]).strip()
+        res["probe"]["error"] = txt[-600:]
+        low = txt.lower()
+        if "unknown rom" in low or "not supported" in low or "unsupported" in low:
+            return grade_result(res, "Nothing", ["mapper"], f"BrokenNes does not load this cart: {txt.splitlines()[-1][:200] if txt else ''}")
+        return grade_result(res, "Broken", ["crash"], f"console-run exit {p1['code']}: {txt[-200:]}")
+    title, how = find_title(p1["pngs"])
+    res["title"] = dict(frame=title, how=how)
+    start = (title if title is not None else 600) + 30
+    script, end = generic_script(start, minutes)
+    cps = sorted(set([max(1, start - 30), start + 120, start + 300, start + 470] + list(range(start + 480 + 1200, end, 1200)) + [end]))
+    res.update(frames=end, start=start, input="generic-v1 start@%d" % start, tas=None)
+    os.makedirs(keep_dir, exist_ok=True)
+    p2 = con_run(rom, console, end + 1, cps, os.path.join(work, "bn"), script)
+    p2["ok"] = p2["code"] == 0 and not p2["timeout"]
+    res["bn"] = dict(exit=p2["code"], secs=p2["secs"], timeout=p2["timeout"])
+    if not p2["ok"]:
+        res["bn"]["error"] = (p2["err"] + p2["out"]).strip()[-400:]
+    if console in MESEN_CONSOLES:
+        m = mesen_run(rom, script, cps, os.path.join(work, "ref"), end, console)
+    else:
+        m = dict(code=None, secs=0, timeout=False, pics={})
+    res["ref"] = dict(exit=m["code"], secs=m["secs"], timeout=m["timeout"], pictures=len(m["pics"]))
+    cmp = compare_rows(cps, p2["pngs"], m["pics"], keep_dir)
+    res["checkpoints"] = cmp
+    out = grade_compare(res, p2, cmp, title)
+    for r in cmp:
+        r.pop("bnHash", None)
+    shutil.rmtree(work, ignore_errors=True)
+    return out
+
+
+def compare_rows(cps, bn_pngs, ref_pics, keep_dir):
     cmp = []
     for f in cps:
-        bp = p2["pngs"].get(f)
+        bp = bn_pngs.get(f)
         bimg = load_png(bp) if bp else None
         row = dict(frame=f, bn=None, ref=None, score=None, refFrame=None, bnBlank=None, refBlank=None)
         if bimg is not None:
@@ -323,22 +417,21 @@ def check_nes(rec, minutes, keep_dir):
             row["bn"] = f"bn_f{f:05d}.png"
             row["bnBlank"] = blank(bimg)
             row["bnHash"] = hash(bimg.tobytes())
-        bm = best_match(bimg, m["pics"], f) if bimg is not None else None
-        rk = bm[1] if bm else (f if f in m["pics"] else None)
-        if rk is not None and rk in m["pics"]:
-            rimg = load_raw(m["pics"][rk])
+        bm = best_match(bimg, ref_pics, f) if bimg is not None else None
+        rk = bm[1] if bm else (f if f in ref_pics else None)
+        if rk is not None and rk in ref_pics:
+            rimg = fit_ref(load_raw(ref_pics[rk]), bimg)
             Image.fromarray(rimg.astype(np.uint8)).save(os.path.join(keep_dir, f"ref_f{f:05d}.png"))
             row["ref"] = f"ref_f{f:05d}.png"
             row["refBlank"] = blank(rimg)
         if bm:
             row["score"], row["refFrame"] = bm
         cmp.append(row)
-    res["checkpoints"] = cmp
-    out = grade_compare(res, p2, cmp, title)
-    for r in cmp:
-        r.pop("bnHash", None)
-    shutil.rmtree(work, ignore_errors=True)
-    return out
+    return cmp
+
+
+def check_any(rec, console, minutes, keep_dir):
+    return check_nes(rec, minutes, keep_dir) if console == "nes" else check_console(rec, console, minutes, keep_dir)
 
 
 def grade_result(res, grade, tags, why):
@@ -410,7 +503,7 @@ def grade_compare(res, p2, cmp, title):
 def write_record(console, rec, res, keep_dir, version):
     changes = {
         "grade": res["grade"], "tier": max(1, int(rec.get("tier") or 0)) if res["grade"] != "Not tested" else max(1, int(rec.get("tier") or 0)),
-        "tags": sorted(set(res["tags"])), "screenshots": keep_dir, "core": CORES, "brokennesVersion": version,
+        "tags": sorted(set(res["tags"])), "screenshots": keep_dir, "core": CORES if console == "nes" else "default", "brokennesVersion": version,
         "extra": {"t1": res},
     }
     if res.get("tas"):
@@ -458,7 +551,7 @@ def cmd_run(a):
         kd = keep_dir_for(a.console, rec["sha1"])
         try:
             with Slot():
-                res = check_nes(rec, a.minutes, kd)
+                res = check_any(rec, a.console, a.minutes, kd)
         except Exception as e:  # a driver bug must not stop the sweep; recorded, not graded
             res = dict(version=T1_VERSION + "-error", grade="Not tested", tags=[], why=f"T1 driver error: {type(e).__name__}: {e}")
         res["seconds"] = round(time.time() - t, 1)
@@ -477,7 +570,7 @@ def cmd_one(a):
     rec = catalog.get(a.console, a.sha1)
     kd = keep_dir_for(a.console, a.sha1) if a.write else os.path.join(SCRATCH, "_one", a.sha1)
     t = time.time()
-    res = check_nes(rec, a.minutes, kd)
+    res = check_any(rec, a.console, a.minutes, kd)
     res["seconds"] = round(time.time() - t, 1); res["slotWait"] = round(Slot.waited, 1)
     print(json.dumps(res, indent=1, default=str))
     if a.write:
@@ -511,6 +604,39 @@ def cmd_report(a):
 # ------------------------------------------------------------------------------------------------ fleet (E:\fleet PCs)
 # export (here): records + ROMs of a shard -> a folder pushed to a PC; work (PC): no catalog, results to out\<sha1>\;
 # ingest (here): results -> catalog records, identical in form to `run` (a record that already has T1_VERSION is skipped).
+def unpack_rom(src, dest, want_sha1=None):
+    """the ROM (out of a .zip / .7z when it is one: the inner file that matches the dump's sha1, its own name kept, since Sega
+    consoles read the region from it) -> dest; returns its file name"""
+    import hashlib, zipfile
+    os.makedirs(dest, exist_ok=True)
+    src = src.split("#")[0]
+    low = src.lower()
+    if low.endswith(".zip") or low.endswith(".7z"):
+        tmp = dest + "_x"
+        shutil.rmtree(tmp, ignore_errors=True)
+        if low.endswith(".zip"):
+            with zipfile.ZipFile(src) as z:
+                z.extractall(tmp)
+        else:
+            sz = os.environ.get("SEVENZIP", os.path.join(os.environ.get("ProgramFiles", "C:/Program Files"), "7-Zip", "7z.exe"))
+            subprocess.run([sz, "x", "-y", "-o" + tmp, src], capture_output=True, check=True)
+        files = [os.path.join(r, f) for r, _, fs in os.walk(tmp) for f in fs]
+        pick = None
+        if want_sha1:
+            for f in files:
+                if hashlib.sha1(open(f, "rb").read()).hexdigest() == want_sha1.lower():
+                    pick = f
+                    break
+        pick = pick or max(files, key=os.path.getsize)
+        name = os.path.basename(pick)
+        shutil.move(pick, os.path.join(dest, name))
+        shutil.rmtree(tmp, ignore_errors=True)
+        return name
+    name = os.path.basename(src)
+    shutil.copy2(src, os.path.join(dest, name))
+    return name
+
+
 def cmd_export(a):
     shas = [l.strip() for l in open(a.list, encoding="utf-8") if l.strip()]
     os.makedirs(os.path.join(a.out, "roms"), exist_ok=True)
@@ -518,9 +644,8 @@ def cmd_export(a):
     for sha in shas:
         rec = catalog.get(a.console, sha)
         src = rec.get("path") or rec["file"]["path"]
-        name = sha + os.path.splitext(src)[1].lower()
-        shutil.copy2(src, os.path.join(a.out, "roms", name))
-        rec = dict(rec, path=os.path.join("roms", name))
+        name = unpack_rom(src, os.path.join(a.out, "roms", sha), (rec.get("dump") or {}).get("fileSha1"))
+        rec = dict(rec, path=os.path.join("roms", sha, name))
         rec.pop("file", None)
         recs.append(rec)
     with open(os.path.join(a.out, "shard.json"), "w", encoding="utf-8") as f:
@@ -539,7 +664,7 @@ def cmd_work(a):
         rec = dict(rec, path=os.path.join(base, rec["path"]))
         t = time.time()
         try:
-            res = check_nes(rec, a.minutes, kd)
+            res = check_any(rec, sh["console"], a.minutes, kd)
         except Exception as e:
             res = dict(version=T1_VERSION + "-error", grade="Not tested", tags=[], why=f"T1 driver error: {type(e).__name__}: {e}")
         res["seconds"] = round(time.time() - t, 1)
@@ -603,8 +728,8 @@ def main():
             q.add_argument("--sha1", required=True)
             q.add_argument("--write", action="store_true")
     a = p.parse_args()
-    if a.console != "nes" and a.cmd != "report":
-        sys.exit("only the NES is wired up in T1 so far")
+    if a.console not in ("nes",) + MESEN_CONSOLES and a.cmd not in ("report", "ingest", "export"):
+        sys.exit("T1 is wired up for nes, " + ", ".join(MESEN_CONSOLES) + " (md needs a reference emulator)")
     {"run": cmd_run, "one": cmd_one, "report": cmd_report, "export": cmd_export, "work": cmd_work, "ingest": cmd_ingest}[a.cmd](a)
 
 
