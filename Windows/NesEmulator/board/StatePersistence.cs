@@ -191,9 +191,9 @@ namespace BrokenNes
                     }
                     // If achievements are enabled, restore the latest paired achievements snapshot
                     try { if (_achEngine != null) await RestoreLatestAchievementSnapshotAsync(); } catch {}
-                    Status.Set("State loaded");
-                    StateHasChanged();
                     if (wasRunning) await StartEmulation();
+                    Status.Set("State loaded");   // after the restart: StartEmulation sets "Emulation running...", which hid this (the other consoles never pause for a load)
+                    StateHasChanged();
                 }
             }
             catch (Exception ex) { nesController.ErrorMessage = "Load error: " + ex.Message; }

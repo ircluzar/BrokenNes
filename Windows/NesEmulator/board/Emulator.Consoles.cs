@@ -47,6 +47,7 @@ namespace BrokenNes
                 GbLook.Palette = GbLook.FromKey(await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gblook"));
                 GbLook.InvertBackground = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gbinvbg") == "1";
                 GbLook.InvertSprites = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gbinvobj") == "1";
+                GbDualModeAsDmg = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gbdualdmg") == "1";
                 // The core picks. A pick of a retired core moves to its successor and is stored back (CoreIdMigration: the big-screen Game Boy chip
                 // NES:DMGX is the enhanced chip NES:DMGS now; the retired DMGXI / DMGSI also switch the sprite inversion on) - never a reset to the default.
                 bool invertSprites = false;
@@ -93,6 +94,19 @@ namespace BrokenNes
                 if (session != null && sessionRom != null) await StartSessionAsync(session.Console, sessionRom, sessionRomName);
                 else if (nes != null) ApplySelectedCores();   // rebuilds the Game Boy picture chip as a DMG or a GBC
             }
+            StateHasChanged();
+        }
+
+        /// <summary>A dual-mode cartridge (header $143 = $80: it runs on both) boots as a Game Boy Color unless this is on; then it boots as a plain Game Boy. Colour-only carts ($C0) always run in colour.</summary>
+        public bool GbDualModeAsDmg { get; private set; }
+
+        public async Task SetGbDualModeAsDmgAsync(bool on)
+        {
+            GbDualModeAsDmg = on;
+            try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_gbdualdmg", on ? "1" : "0"); } catch { }
+            // a running dual-mode game restarts on the console it now picks
+            if (session != null && sessionRom != null && Consoles.IsGameBoy(session.Console) && RomDetect.GameBoyConsole(sessionRom, session.Console, GbDualModeAsDmg) is var c && c != session.Console)
+                await StartSessionAsync(c, sessionRom, sessionRomName);
             StateHasChanged();
         }
 
@@ -165,9 +179,8 @@ namespace BrokenNes
                 return false;
             }
             var console = kind.Value;
-            // A Game Boy cartridge runs on whichever of Game Boy / Game Boy Color is selected (Color-only carts: Color).
-            if (Consoles.IsGameBoy(console) && Consoles.IsGameBoy(SelectedConsole) && !(console == ConsoleKind.GameBoyColor && (rom[0x143] & 0xC0) == 0xC0))
-                console = SelectedConsole;
+            // A Game Boy cartridge: colour-only and dual-mode carts boot in colour (dual-mode as a plain Game Boy when the menu says so); a plain Game Boy cart runs on whichever of the two is selected.
+            if (Consoles.IsGameBoy(console)) console = RomDetect.GameBoyConsole(rom, Consoles.IsGameBoy(SelectedConsole) ? SelectedConsole : console, GbDualModeAsDmg);
             // a SNES game runs on the WideMess when the WideMess is the selected console (it is a superset of the SNES: locked, it is a SNES), as on the desktop
             if (console == ConsoleKind.Snes && SelectedConsole == ConsoleKind.WideMess && Consoles.IsAvailable(ConsoleKind.WideMess)) console = ConsoleKind.WideMess;
             await StartSessionAsync(console, rom, romName);
@@ -243,19 +256,67 @@ namespace BrokenNes
         {
             var s = session;
             if (s == null) return;
+            ClearStateCoreFix();
             if (!s.SupportsState) { nesController.ErrorMessage = s.StateUnsupportedReason; Status.Set(s.StateUnsupportedReason); StateHasChanged(); return; }
+            byte[]? data = null;
             try
             {
-                var data = await JS.InvokeAsync<byte[]?>("nesInterop.idbGetBytes", ConsoleStateFile.SlotKey(s.Console, s.GameId));
+                data = await JS.InvokeAsync<byte[]?>("nesInterop.idbGetBytes", ConsoleStateFile.SlotKey(s.Console, s.GameId));
                 if (data == null || data.Length == 0) { Status.Set("No saved state for this game"); StateHasChanged(); return; }
                 s.LoadState(data);   // refuses a state of another game / sound unit with the reason; the game keeps running as it was
                 BugBreak("a state was loaded");
                 try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
+                if (nesController.ErrorMessage?.StartsWith("Load error", StringComparison.Ordinal) == true) nesController.ErrorMessage = "";   // an earlier refusal is answered
                 Status.Set("State loaded");
             }
-            catch (Exception ex) when (ex is System.IO.InvalidDataException or NotSupportedException) { nesController.ErrorMessage = "Load error: " + ex.Message; Status.Set(nesController.ErrorMessage); }
+            catch (Exception ex) when (ex is System.IO.InvalidDataException or NotSupportedException)
+            {
+                nesController.ErrorMessage = "Load error: " + ex.Message; Status.Set(nesController.ErrorMessage);
+                if (data != null) OfferStateCoreFix(s, data, ex.Message);
+            }
             catch (Exception ex) { nesController.ErrorMessage = "Load error: " + ex.Message; Status.Set(nesController.ErrorMessage); }
             StateHasChanged();
+        }
+
+        // ------------------------------------------------------------------ one tap for a state saved on other cores
+        // A state is never loaded into a different CPU / sound unit (no silent fallback). When the refusal is only that, the page offers a button that
+        // switches the named cores back (the same switch as picking them in the core menu, so the choice is kept) and loads the state again.
+
+        private List<(CoreSlot Slot, string Id)>? stateCoreFix;
+
+        /// <summary>The label of the "switch the cores and load" button after a refusal, or null when there is none to offer.</summary>
+        public string? StateCoreFixLabel { get; private set; }
+
+        private void ClearStateCoreFix() { stateCoreFix = null; StateCoreFixLabel = null; }
+
+        private void OfferStateCoreFix(IConsoleSession s, byte[] data, string refusal)
+        {
+            ClearStateCoreFix();
+            if (!(refusal.Contains("sound unit", StringComparison.Ordinal) || refusal.Contains("CPU core", StringComparison.Ordinal))) return;   // another game, model, region, chip or format: no core switch answers it
+            ConsoleStateInfo info;
+            try { info = ConsoleStateFile.Peek(data); } catch (System.IO.InvalidDataException) { return; }
+            if (info.Console != s.Console || !string.Equals(info.GameId, s.GameId, StringComparison.OrdinalIgnoreCase)) return;
+            var fix = new List<(CoreSlot, string)>();
+            foreach (var (unit, slot) in new[] { ("cpu", CoreSlot.Cpu), ("apu", CoreSlot.Apu) })
+            {
+                if (!info.Units.TryGetValue(unit, out var saved) || string.IsNullOrEmpty(saved)) continue;
+                if (string.Equals(ConsoleCore(s.Console, slot), saved, StringComparison.OrdinalIgnoreCase)) continue;
+                var opt = CoreCatalog.Options(s.Console, slot).FirstOrDefault(o => string.Equals(o.Id, saved, StringComparison.OrdinalIgnoreCase));
+                if (opt == null) return;   // that core is not in this build: nothing to switch to, the refusal stands alone
+                fix.Add((slot, opt.Id));
+            }
+            if (fix.Count == 0) return;
+            stateCoreFix = fix;
+            StateCoreFixLabel = "Switch to " + string.Join(" + ", fix.Select(f => $"{f.Item1.ToString().ToUpperInvariant()} {f.Item2}")) + " and load";
+        }
+
+        /// <summary>The one-tap answer to a refusal: switches to the cores the state was saved with, then loads it.</summary>
+        public async Task SwitchCoresAndLoadStateAsync()
+        {
+            var fix = stateCoreFix; ClearStateCoreFix();
+            if (fix == null || session == null) return;
+            foreach (var (slot, id) in fix) await SetConsoleCoreAsync(slot, id);
+            await LoadSessionStateAsync();
         }
 
         // ------------------------------------------------------------------ battery saves (IndexedDB kv)
@@ -325,6 +386,13 @@ namespace BrokenNes
         {
             double ms(long t) => t * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             return new[] { (double)profFrames, ms(profRun), ms(profAudio), ms(profPix), ms(profBody) };
+        }
+
+        /// <summary>Lite's x86 touch keyboard (nesInterop.js toggleX86Keyboard): one key of the PC's keyboard, its scan code (set 1), <paramref name="extended"/> for the E0 keys (the arrows, Delete), down or up.</summary>
+        [JSInvokable]
+        public void PcKey(int scan, bool extended, bool down)
+        {
+            if (session is NesEmulator.X86.PcSession pc) pc.HostKey(scan, extended, down);
         }
 
         [JSInvokable]

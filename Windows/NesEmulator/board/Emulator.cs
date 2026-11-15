@@ -992,7 +992,13 @@ namespace BrokenNes
                     soundFontMode = nes.EnableSoundFontMode(true, (ch, prog, midi, vel, on, _) => { try { JS.InvokeVoidAsync("nesInterop.noteEvent", ch, prog, midi, vel, on); } catch { } });
                     sampleFont = true;
                     try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.setPreferSampleBased && nesSoundFont.setPreferSampleBased(true);"); } catch {}
-                    try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.enableSampleMode && nesSoundFont.enableSampleMode();"); } catch {}
+                    // the samples come from the internet (unpkg.com): offline, WF says it plays its built-in oscillator voices instead of failing quietly
+                    _ = ((Func<Task>)(async () =>
+                    {
+                        bool samples = false;
+                        try { samples = await JS.InvokeAsync<bool>("nesSoundFont.enableSampleMode"); } catch { }
+                        if (!samples) await InvokeAsync(() => { Status.Set("WF: SoundFont samples unavailable (offline) - playing WF's built-in oscillator voices"); StateHasChanged(); });
+                    }))();
                 }
                 else if (string.Equals(nesController.ApuCoreSel, "MNES", StringComparison.OrdinalIgnoreCase))
                 {

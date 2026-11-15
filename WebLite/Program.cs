@@ -5,6 +5,9 @@ using BrokenNes;
 
 // WideMess, the souped-up SNES fantasy console (docs/projects/widemess-spec.md): Lite offers it since its milestone 7 (the console menu, .wms files, SNES games on it).
 NesEmulator.Systems.Consoles.WideMessEnabled = true;
+// The x86 PC (a DOS machine booting a disk image): on in Lite since the 2026-11-14 Lite fix round, with its own touch layout (the pad as arrows / Ctrl / Alt / Space / Esc / Enter and a pop-up keyboard, nesInterop.js).
+// A bootable floppy (.img: FreeDOS and the game on it) runs; a bare DOS program (.exe) needs the 33 MB FreeDOS disk, which Lite does not ship, and says so.
+NesEmulator.Systems.Consoles.X86Enabled = true;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");

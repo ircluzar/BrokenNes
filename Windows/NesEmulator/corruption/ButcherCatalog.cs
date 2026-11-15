@@ -129,6 +129,14 @@ public static class ButcherCatalog
 		(4, "floating", 96, "An open line nothing drives: it keeps the charge of the last value put on it (NMOS bus capacitance)."),
 	};
 
+	/// <summary>Effects disgraced by default (the user's tagging of 2026-11-12: they feel unnatural, so rolls leave them out unless "Include disgraced effects in rolls"
+	/// is ticked). Built in, so a lost or reset tags file keeps them; the tags file only holds the user's changes from this list.</summary>
+	public static readonly HashSet<string> DisgracedByDefault = new(StringComparer.OrdinalIgnoreCase)
+	{
+		"video.roll", "video.snow", "video.misconverge", "video.ghost", "palette",
+		"sound.sweep", "sound.inject", "sound.hum", "sound.wobble", "sound.caps",
+	};
+
 	public static Entry? Find(string path) => Effects.FirstOrDefault(e => string.Equals(e.Path, path, StringComparison.OrdinalIgnoreCase));
 
 	// Settings properties that are not effects of their own: the containers, the master switch, and parameters of another effect.

@@ -28,7 +28,7 @@ namespace BrokenNes.Windows.WebApi
         // The classification tags set from the board's right-click menu: per effect path, Unsafe (overrides the catalog's own
         // unsafe group either way) and Disgraced (kept out of rolls unless asked). One file for every console, beside the presets,
         // so the tagging work can be read back and folded into the catalog.
-        private sealed class ButcherTag { public bool? Unsafe { get; set; } public bool Disgraced { get; set; } }
+        private sealed class ButcherTag { public bool? Unsafe { get; set; } public bool? Disgraced { get; set; } }   // null = the catalog's default (ButcherCatalog.DisgracedByDefault)
         private sealed class ButcherTagRequest { public string? Path { get; set; } public bool? Unsafe { get; set; } public bool? Disgraced { get; set; } }
         private static string ButcherTagPath() => System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ButcherPresetPath("nes"))!, "tags.json");
         private static Dictionary<string, ButcherTag> LoadButcherTags()
@@ -170,7 +170,7 @@ namespace BrokenNes.Windows.WebApi
                         tags.TryGetValue(e.Path, out var tg);
                         bool builtInUnsafe = e.Group == "unsafe";
                         return new { path = e.Path, group = e.Group, name = e.Name, purity = e.Purity, purityHere = e.PurityOn(console), tier = NesEmulator.ButcherCatalog.TierOf(e.PurityOn(console)).ToString(), why = e.Why, byConsole = e.ByConsole,
-                            unsafeBuiltIn = builtInUnsafe, @unsafe = tg?.Unsafe ?? builtInUnsafe, disgraced = tg?.Disgraced ?? false };
+                            unsafeBuiltIn = builtInUnsafe, @unsafe = tg?.Unsafe ?? builtInUnsafe, disgracedBuiltIn = NesEmulator.ButcherCatalog.DisgracedByDefault.Contains(e.Path), disgraced = tg?.Disgraced ?? NesEmulator.ButcherCatalog.DisgracedByDefault.Contains(e.Path) };
                     }),
                     faults = NesEmulator.ButcherCatalog.Faults.Select(f => new { code = f.Code, name = f.Name, purity = f.Purity, why = f.Why }),
                     tiers = new[] { new { tier = "Pure", from = 90 }, new { tier = "Plausible", from = 70 }, new { tier = "MechanismReal", from = 40 }, new { tier = "Steered", from = 15 }, new { tier = "Forced", from = 0 } },
@@ -226,13 +226,14 @@ namespace BrokenNes.Windows.WebApi
                         var tg = d.TryGetValue(entry.Path, out var x) ? x : new ButcherTag();
                         bool builtIn = entry.Group == "unsafe";
                         if (r!.Unsafe is bool u) tg.Unsafe = u == builtIn ? null : u;
-                        if (r.Disgraced is bool g) tg.Disgraced = g;
-                        if (tg.Unsafe == null && !tg.Disgraced) d.Remove(entry.Path); else d[entry.Path] = tg;
+                        bool builtInDisgraced = NesEmulator.ButcherCatalog.DisgracedByDefault.Contains(entry.Path);
+                        if (r.Disgraced is bool g) tg.Disgraced = g == builtInDisgraced ? null : g;
+                        if (tg.Unsafe == null && tg.Disgraced == null) d.Remove(entry.Path); else d[entry.Path] = tg;
                         var p = ButcherTagPath();
                         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(p)!);
                         File.WriteAllText(p + ".tmp", JsonSerializer.Serialize(d, ButcherJson));
                         File.Move(p + ".tmp", p, true);
-                        return Results.Ok(new { success = true, path = entry.Path, @unsafe = tg.Unsafe ?? builtIn, disgraced = tg.Disgraced });
+                        return Results.Ok(new { success = true, path = entry.Path, @unsafe = tg.Unsafe ?? builtIn, disgraced = tg.Disgraced ?? builtInDisgraced });
                     }
                 }
                 catch (Exception ex) { return Results.BadRequest(new { success = false, error = ex.Message }); }

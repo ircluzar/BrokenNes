@@ -209,7 +209,9 @@ public class SmsSession : IConsoleSession, IButcherHost
                 ISmsSound next;
                 try { next = SmsSoundFactories.Create(id, new SmsSoundRequest(new SegaMachine(board.Timeline, GenesisModel.Model1, Rate), Console, variant)); }
                 catch (ArgumentException) { return false; }   // not a sound unit this console has: the app restarts the game, which says so
-                // the new unit picks up the channels as they are
+                // the new unit picks up the channels as they are. Two FM units of different families (the stock YM2413 and MAME 0.36's, say) do not share a state layout: the stock unit
+                // read another family's FM bytes as its own and indexed its tables with them (IndexOutOfRangeException in Ym2413.CommitSlotUpdate, Lite UAT 2026-11-14), so it starts from power-on instead.
+                if (!(board.Sound.HasFm && next.HasFm && FmFamily(board.Sound) != FmFamily(next)))
                 using (var ms = new MemoryStream())
                 {
                     using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) board.Sound.SaveState(w);
@@ -227,6 +229,9 @@ public class SmsSession : IConsoleSession, IButcherHost
             default: cpuId = id; return true;
         }
     }
+
+    /// <summary>The FM unit whose state layout a sound unit saves: a NES-chip bridge saves its inner unit's first.</summary>
+    private static Type FmFamily(ISmsSound unit) => unit is NesEmulator.Sega.SmsFmSoundOnNes b ? b.Inner.GetType() : unit.GetType();
 
     public void Dispose() { }
 }

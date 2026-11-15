@@ -1,7 +1,8 @@
 // Butchering mode's effects as controllers (controller standard C3, docs/projects/controller-standard-plan.md).
 // Every effect in the settings tree becomes parameters (BNControls.param) and a small default faceplate layout, by the shape of its
 // settings: on / off -> toggle, numbers -> knobs (ranges, units and tapers by property name), modes -> stepped knobs, bit lists ->
-// toggles named after the console's channels / attributes, pin groups -> fault count, flicker, bend writes and Clear.
+// toggles named after the console's channels / attributes, pin groups -> fault count, flicker, bend writes, Random, Clear and (`extra`) the
+// strip view's own per-line pin grid under the faceplate.
 //
 //   BNEffects.available(path, reach)                     -> true when this console / core can do it
 //   BNEffects.build(path, ctx) -> { title, params, layout }   ctx: { settings, reach, entry (catalog), onChange(), defaults() }
@@ -101,7 +102,7 @@
       add({ id: base + '_f', label: 'Flicker', min: 0, max: 100, step: 1, unit: '%', default: 0, get: () => u.padFlicker || 0, set: (v) => { u.padFlicker = v; changed(); } }, { type: 'knob', param: base + '_f' });
       controls.push({ type: 'button', id: base + '_rnd', label: 'Random', glyph: '?', action: () => { const a = u.padLines; a.fill(0); a[Math.floor(Math.random() * a.length)] = 1 + Math.floor(Math.random() * 3); changed(); } });
       controls.push({ type: 'button', id: base + '_clr', label: 'Clear', glyph: '×', action: () => { (u.padLines || []).fill(0); changed(); } });
-      return finishPins(title, params, controls);
+      return finishPins(title, params, controls, ctx.padUi && (() => ctx.padUi(changed)), 'pad' + (reach.padOrder || []).length);
     }
 
     const obj = get(settings, path);
@@ -115,7 +116,8 @@
       if (!path.startsWith('sound.dac') && !path.startsWith('videoDac')) add({ id: base + '_w', label: 'Bend writes', short: 'Writes', default: false, get: () => !!obj.bendWrites, set: (v) => { obj.bendWrites = v; changed(); } }, { type: 'toggle', param: base + '_w', label: 'Writes' });
       controls.push({ type: 'button', id: base + '_rnd', label: 'Random', glyph: '?', action: () => { const all = [...obj.address.map((_, i) => ['address', i]), ...obj.data.map((_, i) => ['data', i])]; if (!all.length) return; const [k, i] = all[Math.floor(Math.random() * all.length)]; obj[k][i] = 1 + Math.floor(Math.random() * 4); changed(); } });
       controls.push({ type: 'button', id: base + '_clr', label: 'Clear', glyph: '×', action: () => { obj.address.fill(0); obj.data.fill(0); changed(); } });
-      return finishPins(title, params, controls);
+      // every line, as in the strip view: click cycles its fault, right-click reconnects it
+      return finishPins(title, params, controls, ctx.pinsUi && (() => ctx.pinsUi([['A', obj.address], ['D', obj.data]], changed)), `pins${obj.address.length}.${obj.data.length}`);
     }
 
     // the switch first
@@ -124,7 +126,7 @@
     for (const key of ['bits', 'channels']) {
       if (!Array.isArray(obj[key])) continue;
       const names = bitNames(path, reach, obj[key].length);
-      names.slice(0, Math.min(8, obj[key].length)).forEach((nm, i) => {
+      names.slice(0, obj[key].length).forEach((nm, i) => {
         const id = `${base}_${key}${i}`;
         add({ id, label: nm, short: nm.slice(0, 7), default: false, get: () => !!obj[key][i], set: (v) => { obj[key][i] = v; changed(); } }, { type: 'toggle', param: id, label: nm.slice(0, 7) });
       });
@@ -147,7 +149,7 @@
 
   // a pin group: two frames side by side, full height. Faults: the read-out with the one-shot buttons that change it under it;
   // Bend: the settings that stay (flicker over bend writes).
-  function finishPins(title, params, controls) {
+  function finishPins(title, params, controls, extra, extraKey) {
     const by = (pred) => controls.find(pred);
     const at = (c, x, y, w) => c && Object.assign({}, c, { x, y, w: w || 1, h: 1 });
     const placed = [
@@ -158,7 +160,7 @@
       at(by(c => c.type === 'toggle'), 2, 1),
     ].filter(Boolean);
     const sections = [{ title: 'Faults', x: 0, y: 0, w: 2, h: 2 }, { title: 'Bend', x: 2, y: 0, w: 1, h: 2 }];
-    return { title, params, layout: { title, cols: 3, rows: 2, sections, controls: placed }, actions: actionsOf(controls) };
+    return { title, params, layout: { title, cols: 3, rows: 2, sections, controls: placed }, actions: actionsOf(controls), extra, extraKey };
   }
 
   // a default layout: controls on a grid three cells wide (displays take two). An On switch keeps column 0 to itself, so it is

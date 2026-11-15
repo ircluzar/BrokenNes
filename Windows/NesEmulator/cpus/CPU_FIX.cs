@@ -731,11 +731,11 @@ public class CPU_FIX : ICPU {
 	//Shifts
 	private int ASL(Func<AddrResult> mode, int baseCycles) {
 		var addr = mode();
-		byte value = mode == Accumulator ? A : bus.Read(addr.address);
+		byte value = ReferenceEquals(mode, Accumulator) ? A : bus.Read(addr.address);
 		SetFlag(FLAG_C, (value & 0x80) != 0);
 		byte result = (byte)(value << 1);
 
-		if (mode == Accumulator) {
+		if (ReferenceEquals(mode, Accumulator)) {
 			A = result;
 		} else {
 			bus.Write(addr.address, value); // dummy write-back of the unmodified value (real RMW hardware behavior)
@@ -749,11 +749,11 @@ public class CPU_FIX : ICPU {
 
 	private int LSR(Func<AddrResult> mode, int baseCycles) {
 		var addr = mode();
-		byte value = mode == Accumulator ? A : bus.Read(addr.address);
+		byte value = ReferenceEquals(mode, Accumulator) ? A : bus.Read(addr.address);
 		SetFlag(FLAG_C, (value & 0x01) != 0);
 		byte result = (byte)(value >> 1);
 
-		if (mode == Accumulator) {
+		if (ReferenceEquals(mode, Accumulator)) {
 			A = result;
 		} else {
 			bus.Write(addr.address, value); // dummy write-back of the unmodified value (real RMW hardware behavior)
@@ -767,12 +767,12 @@ public class CPU_FIX : ICPU {
 
 	private int ROL(Func<AddrResult> mode, int baseCycles) {
 		var addr = mode();
-		byte value = mode == Accumulator ? A : bus.Read(addr.address);
+		byte value = ReferenceEquals(mode, Accumulator) ? A : bus.Read(addr.address);
 		bool oldCarry = GetFlag(FLAG_C);
 		SetFlag(FLAG_C, (value & 0x80) != 0);
 		byte result = (byte)((value << 1) | (oldCarry ? 1 : 0));
 
-		if (mode == Accumulator) {
+		if (ReferenceEquals(mode, Accumulator)) {
 			A = result;
 		} else {
 			bus.Write(addr.address, value); // dummy write-back of the unmodified value (real RMW hardware behavior)
@@ -786,12 +786,12 @@ public class CPU_FIX : ICPU {
 
 	private int ROR(Func<AddrResult> mode, int baseCycles) {
 		var addr = mode();
-		byte value = mode == Accumulator ? A : bus.Read(addr.address);
+		byte value = ReferenceEquals(mode, Accumulator) ? A : bus.Read(addr.address);
 		bool oldCarry = GetFlag(FLAG_C);
 		SetFlag(FLAG_C, (value & 0x01) != 0);
 		byte result = (byte)((value >> 1) | (oldCarry ? 0x80 : 0));
 
-		if (mode == Accumulator) {
+		if (ReferenceEquals(mode, Accumulator)) {
 			A = result;
 		} else {
 			bus.Write(addr.address, value); // dummy write-back of the unmodified value (real RMW hardware behavior)
