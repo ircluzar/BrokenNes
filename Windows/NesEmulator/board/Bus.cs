@@ -372,6 +372,7 @@ public class Bus : IBus
 	public Bus(Cartridge cartridge)
 	{
 		this.cartridge = cartridge;
+		clockedMapper = cartridge?.mapper as ICpuClockedMapper;
 		_cpuCores = CoreRegistry.CreateInstances<ICPU>(this, "CPU_");
 		_apuTypes = new System.Collections.Generic.Dictionary<string, System.Type>(CoreRegistry.ApuTypes, System.StringComparer.OrdinalIgnoreCase);
 		_ppuTypes = new System.Collections.Generic.Dictionary<string, System.Type>(CoreRegistry.PpuTypes, System.StringComparer.OrdinalIgnoreCase);
@@ -805,6 +806,8 @@ public class Bus : IBus
 			if (Butcher is { SoundActive: true } bs) value = bs.FilterApuWrite(address, value);
 			activeApu.WriteAPURegister(address, value); return;
 		}
+	// $4020-$4FFF reaches only boards that decode registers there (ILowRegisterMapper: NINA-03/06, Sachen).
+	if (address >= 0x4020 && address < 0x5000) { if (cartridge.mapper is ILowRegisterMapper) cartridge.CPUWrite(address, value); return; }
 	// Mapper expansion registers (e.g., MMC5 $5000-$5FFF)
 	if (address >= 0x5000 && address < 0x6000)
 	{
@@ -1119,6 +1122,20 @@ public class Bus : IBus
 		ApuClock += apuCycles;
 		mmc5Audio?.Step(apuCycles);
 		instr.ApuSteps += apuCycles;
+		if (clockedMapper != null) ClockMapper(cpuCycles);
+	}
+	// Boards whose IRQ counter runs off the CPU clock (ICpuClockedMapper: mappers 64, 67, 69). Null for
+	// every other cartridge, so they pay one test. The board's IRQ output is a level: held while it is
+	// asserted, and released (RequestIRQ(false)) once the game acknowledges it.
+	private ICpuClockedMapper? clockedMapper;
+	private bool clockedMapperIrq;
+	private void ClockMapper(int cpuCycles)
+	{
+		clockedMapper!.CpuClock(cpuCycles);
+		bool line = clockedMapper.IrqLine;
+		if (line) cpu?.RequestIRQ(true);
+		else if (clockedMapperIrq) cpu?.RequestIRQ(false);
+		clockedMapperIrq = line;
 	}
 	public float[] GetAudioSamples(int max=0)
 	{

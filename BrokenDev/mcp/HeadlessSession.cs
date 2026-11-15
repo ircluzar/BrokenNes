@@ -445,6 +445,7 @@ internal sealed partial class HeadlessSession : Session
     public override void Close()
     {
         try { tf.CloseNow("closed: the session was closed"); } catch { }
+        CloseAgentLoop();   // the live reference (its emulator process) goes with the session
         try { port?.Detach(); } catch { }
         port = null;
         try { R?.Dispose(); } catch { }
@@ -1371,6 +1372,7 @@ internal sealed partial class HeadlessSession : Session
         m.RomBytes = file.Length; m.Emulator = "BrokenNes MCP server " + Program.Version;
         m.Cores = nes != null && cp.Length == 3 ? $"{Strip(cp[0], "CPU_")}/{Strip(cp[1], "PPU_")}/{Strip(cp[2], "APU_")}" : cores;
         m.Build = $"{romName} as opened in an MCP session at {DateTime.Now:s}";
+        AddRecordingMarks(m);
         if (path == null || path.Trim().Length == 0) path = Path.Combine(Folder, $"session-{Id}-{DateTime.Now:yyyyMMdd-HHmmss}{MovieFormat.Extension}");
         else if (!path.EndsWith(MovieFormat.Extension, StringComparison.OrdinalIgnoreCase)) path += MovieFormat.Extension;
         m.Save(path);

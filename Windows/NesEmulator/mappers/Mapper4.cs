@@ -44,7 +44,7 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
         ApplyBankMapping();
     }
 
-    public void RunScanlineIRQ() {
+    public virtual void RunScanlineIRQ() {
         if (irqCounter == 0) {
             irqCounter = irqLatch;
         } else {
@@ -66,7 +66,7 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
     // IRQ fires whenever the counter is 0 after the clock, reloads included - so a latch of 0 raises
     // an IRQ on every clocked scanline. Mega Man 3 enables its IRQ with latch 0 in vblank and relies
     // on the pre-render line's clock to fire it; the decrement-only rule never did.
-    public void ClockScanlineCounterHardware() {
+    public virtual void ClockScanlineCounterHardware() {
         if (irqCounter == 0 || irqReloadPending) {
             irqCounter = irqLatch;
             irqReloadPending = false;
@@ -78,11 +78,11 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
         }
     }
 
-    public bool IRQPending() {
+    public virtual bool IRQPending() {
         return irqAsserted;
     }
 
-    public void ClearIRQ() {
+    public virtual void ClearIRQ() {
         irqAsserted = false;
     }
 
