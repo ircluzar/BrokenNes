@@ -36,6 +36,14 @@ public class Cartridge
 			90 => "Mapper90",
 			228 => "Action52 (Mapper228)",
 			30 => "UNROM-512 (Mapper30)",
+			11 => "Color Dreams (Mapper11)",
+			41 => "Caltron 6-in-1 (Mapper41)",
+			66 => "GxROM (Mapper66)",
+			67 => "Sunsoft-3 (Mapper67)",
+			68 => "Sunsoft-4 (Mapper68)",
+			79 => "NINA-03/06 (Mapper79)",
+			113 => "NINA/Sachen (Mapper113)",
+			232 => "Camerica Quattro (Mapper232)",
 		_ => "Unknown"
 	};
 
@@ -82,6 +90,10 @@ public class Cartridge
 			mirroringMode = Mirroring.Horizontal;
 		}
 		mapperID = flag6 >> 4 | ((flag7 >> 4) << 4);
+		// "Old iNES" (DiskDude-era) headers: byte 7 bits 2-3 = 01 or 11 is neither iNES (00) nor NES 2.0 (10), so its upper
+		// nibble is junk, not the mapper's high bits - Mesen's and FCEUX's rule. Transformers (byte 7 = $44) otherwise reads
+		// as mapper 67 instead of its real CNROM.
+		if ((flag7 & 0x0C) == 0x04 || (flag7 & 0x0C) == 0x0C) mapperID = flag6 >> 4;
 		int prgSize = prgBanks * 16 * 1024;
 		int chrSize = chrBanks * 8 * 1024;
 		int offset = 16; // iNES header size
@@ -91,6 +103,12 @@ public class Cartridge
 			if (rom.Length < offset + 512)
 				throw new Exception("ROM truncated: trainer flag set but no 512-byte trainer present");
 			offset += 512; // advance past trainer
+		}
+		{
+			// Known dumps whose header names the wrong board (Mesen's game database agrees): CRC32 of PRG+CHR -> mapper.
+			int bodyLen = Math.Min(prgSize + chrSize, rom.Length - offset);
+			uint crc = Crc32(rom, offset, bodyLen);
+			if (HeaderFixups.TryGetValue(crc, out int fixedMapper)) mapperID = fixedMapper;
 		}
 		prgROM = new byte[prgSize];
 		Array.Copy(rom, offset, prgROM, 0, prgSize);
@@ -165,6 +183,14 @@ public class Cartridge
 			case 30:
 				mapper = new Mapper30(this); // UNROM-512
 				break;
+			case 11: mapper = new Mapper11(this); break;   // Color Dreams
+			case 41: mapper = new Mapper41(this); break;   // Caltron 6-in-1
+			case 66: mapper = new Mapper66(this); break;   // GxROM
+			case 67: mapper = new Mapper67(this); break;   // Sunsoft-3
+			case 68: mapper = new Mapper68(this); break;   // Sunsoft-4
+			case 79: mapper = new Mapper79(this); break;   // NINA-03/06
+			case 113: mapper = new Mapper113(this); break; // NINA/Sachen
+			case 232: mapper = new Mapper232(this); break; // Camerica BF9096
 			default:
 				#if DIAG_LOG
 				Console.WriteLine($"Mapper {mapperID} ({mapperName}) is not supported");
@@ -172,6 +198,22 @@ public class Cartridge
 				throw new UnsupportedMapperException(mapperID, mapperName);
 		}
 		mapper.Reset();
+	}
+
+	// CRC32 (PRG+CHR, no header) -> the board it really is. Only dumps verified against Mesen 2's NesDB.
+	private static readonly System.Collections.Generic.Dictionary<uint, int> HeaderFixups = new()
+	{
+		{ 0x8EAB381Cu, 79 },   // Deathbots (U): headered as 113, really AVE NINA-06 (79); as 113 its writes flip the mirroring
+	};
+	private static uint Crc32(byte[] data, int start, int length)
+	{
+		uint crc = 0xFFFFFFFFu;
+		for (int i = start; i < start + length; i++)
+		{
+			crc ^= data[i];
+			for (int k = 0; k < 8; k++) crc = (crc >> 1) ^ (0xEDB88320u & (uint)-(int)(crc & 1));
+		}
+		return ~crc;
 	}
 
 	public byte CPURead(ushort address)
