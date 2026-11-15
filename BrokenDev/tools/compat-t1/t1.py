@@ -336,7 +336,7 @@ def check_nes(rec, minutes, keep_dir):
 MESEN_CONSOLES = ("snes", "gb", "gbc", "sms", "gg")   # Mesen 2.1.1 plays these; md needs another reference (not wired)
 MESEN_EXTRA = {
     "snes": {"Snes": {"Port1": {"Type": "SnesController"}, "RamPowerOnState": "AllZeros"}},
-    "gb": {"Gameboy": {"Model": "Auto", "RamPowerOnState": "AllZeros"}},
+    "gb": {},   # (a "Gameboy" block with Model Gameboy/Auto makes Mesen 2.1.1 exit -1 at once; its default plays .gb)
     "gbc": {"Gameboy": {"Model": "GameboyColor", "RamPowerOnState": "AllZeros"}},
     "sms": {"Sms": {"Port1": {"Type": "SmsController"}, "RamPowerOnState": "AllZeros"}},
     "gg": {"Sms": {"RamPowerOnState": "AllZeros"}},
