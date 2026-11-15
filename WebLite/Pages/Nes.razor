@@ -30,6 +30,10 @@
 {
     <div class="alert alert-danger" role="alert">
         <strong>⚠️ SYSTEM ERROR:</strong> @emu!.Controller.ErrorMessage
+        @if (emu!.StateCoreFixLabel is { } stateFix)
+        {
+            <div class="mt-2"><button type="button" class="btn btn-warning btn-sm state-core-fix" @onclick="(()=>emu!.SwitchCoresAndLoadStateAsync())">@stateFix</button></div>
+        }
     </div>
 }
 

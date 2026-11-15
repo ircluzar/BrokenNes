@@ -160,12 +160,25 @@ try {
   if (phase === 'battery') { // VRUN CTW NES: save via pause+Select, then reload; plus two SRAM games
     const rom = ROMS.nes[0]; await L.load(p, base, rom); await sleep(2000); const k0 = await p.eval(L.IDB);
     for (let i = 0; i < 2; i++) { await p.key('Enter', 'Enter'); await sleep(2000); } await sleep(4000); await L.canvasShot(p, shotName('battery', 'ingame'));
-    await p.key('Enter', 'Enter'); await sleep(800); await p.key('Space', ' '); await sleep(3000); await L.canvasShot(p, shotName('battery', 'paused_select'));
-    await sleep(12000); const k1 = await p.eval(L.IDB);
-    await L.load(p, base, rom); await sleep(3000); await L.canvasShot(p, shotName('battery', 'title_after_reload'));
+    // The pause has to be on screen before Select: an Enter sent during a room transition is ignored, and Select in play does not save (the first
+    // version of this phase sent Select into the running game, so nothing was saved and CONTINUE stayed grey: a harness timing fault, not a Lite bug).
+    // paused = the picture stops changing; up to 4 tries
+    let paused = false;
+    for (let i = 0; i < 4 && !paused; i++) {
+      await p.key('Enter', 'Enter'); await sleep(1500);
+      const a = shotName('battery', 'pauseA'), b = shotName('battery', 'paused');
+      await L.canvasShot(p, a); await sleep(600); await L.canvasShot(p, b);
+      paused = fs.readFileSync(a).equals(fs.readFileSync(b));
+    }
+    await p.key('Space', ' '); await sleep(3000); await L.canvasShot(p, shotName('battery', 'paused_select'));
+    await sleep(12000); const k1 = await p.eval(L.IDB);   // the autosave runs every 600 frames (10 s)
+    await L.load(p, base, rom); await sleep(3000); const t0 = await L.canvasShot(p, shotName('battery', 'title_after_reload'));
+    await p.key('ArrowDown', 'ArrowDown'); await sleep(600); await p.key('Enter', 'Enter'); await sleep(5000); await L.canvasShot(p, shotName('battery', 'after_continue'));
     const diff = o => Object.fromEntries(Object.entries(o).map(([s, ks]) => [s, ks.filter(k => !(k0[s] || []).includes(k))]).filter(([, v]) => v.length));
-    log({ test: 'battery-vrun', newKeys: diff(k1) });
-    for (const rom2 of ['c_drmariodx.gbc', 'c_smw.smc']) { await L.load(p, base, rom2); await sleep(2000); await playKeys(p); await sleep(12000); log({ test: 'battery-sram', rom: rom2, newKeys: diff(await p.eval(L.IDB)) }); }
+    log({ test: 'battery-vrun', paused, newKeys: diff(k1), note: 'look at title_after_reload (CONTINUE white, not grey) and after_continue (in a room)' });
+    // SRAM games: up to a minute of play, then the keys written
+    for (const rom2 of ['VRUN_Vaults_of_Obsolete_Code_V6_68475f9.gbc', 'c_drmariodx.gbc', 'c_smw.smc']) { const before = await p.eval(L.IDB); const since = o => Object.fromEntries(Object.entries(o).map(([s, ks]) => [s, ks.filter(k => !(before[s] || []).includes(k) && !/^pref_/.test(k))]).filter(([, v]) => v.length));
+      await L.load(p, base, rom2); await sleep(2000); await playKeys(p); let nk = {}; for (let s = 0; s < 60 && !Object.keys(nk).length; s += 5) { await sleep(5000); nk = since(await p.eval(L.IDB)); } log({ test: 'battery-sram', rom: rom2, newKeys: nk }); }
   }
   if (phase === 'misc') {
     const romDir = A.romdir; const rows = () => p.eval(`[...document.querySelectorAll('#rom-table tbody tr')].map(r=>r.textContent.trim().replace(/\\s+/g,' ').slice(0,60))`);
