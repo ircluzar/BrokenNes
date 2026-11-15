@@ -26,7 +26,7 @@ local mem = ({ nes = emu.memType.nesDebug, snes = emu.memType.snesDebug, gb = em
 -- PadButtons bit -> Mesen's key name (Up Down Left Right A B X Y L R Start Select C Z Mode)
 local bits = { "up", "down", "left", "right", "a", "b", "x", "y", "l", "r", "start", "select", "c", "z", "mode" }
 if console == "sms" then bits[5] = "one"; bits[6] = "two"; bits[12] = "pause"; bits[15] = "reset" end
-if console == "gg" then bits[5] = "one"; bits[6] = "two"; bits[11] = "start" end
+if console == "gg" then bits[5] = "one"; bits[6] = "two"; bits[11] = "pause" end   -- Mesen's Game Gear Start is its pad's pause key
 
 local function pad(mask)
   local t = {}

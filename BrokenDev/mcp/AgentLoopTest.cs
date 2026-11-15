@@ -35,7 +35,7 @@ internal static class AgentLoopTest
                 row["console"] = open.Json["console"]?.DeepClone();
                 if (withRef)
                 {
-                    var r = Call("reference", new { session = id, action = "open", align_frames = 240, align_search = 40 });
+                    var r = Call("reference", new { session = id, action = "open", align_frames = 240, align_search = 90 });
                     row["refOpen"] = r.Json["ms"]?.DeepClone();
                     row["align"] = r.Json["align"]?.DeepClone();
                 }
@@ -45,10 +45,11 @@ internal static class AgentLoopTest
                 long lag = 0;
                 int pngBytes = 0;
                 var rng = new Random(7);
+                string start = (string?)open.Json["console"] == "sms" ? "A" : "Start";   // the Master System pad has no Start (button 1 starts most games)
                 for (int s = 0; s < steps; s++)
                 {
                     // a crude agent: Start every 8th step for the first 40, then mostly right with jumps
-                    string[] b = s < 40 ? (s % 8 == 4 ? new[] { "Start" } : Array.Empty<string>())
+                    string[] b = s < 40 ? (s % 8 == 4 ? new[] { start } : Array.Empty<string>())
                                        : (rng.Next(3) == 0 ? new[] { "Right", "A" } : new[] { "Right" });
                     var sw = Stopwatch.StartNew();
                     var o = Call("play_step", new { session = id, buttons = b, frames = 20, scale = 0.5, ram = new[] { "f=frame" } });

@@ -307,6 +307,15 @@ internal sealed partial class HeadlessSession
         // BrokenNes frames start+1 .. start+frames; the reference's rStart+1 .. rStart+frames+search
         for (int i = 0; i < frames; i++) { RunFrames(1); mine.Add(CurrentPic().Half()); }
         for (int i = 0; i < frames + search; i++) { var (_, _, p) = r.RunTo(rStart + i + 1, PadButtons.None, PadButtons.None, Array.Empty<long>(), true, half: true); theirs.Add(p!); }
+        // pictures of different sizes (a Game Gear screen inside Mesen's 256x240 frame): the reference's are cropped once, where the last
+        // BrokenNes picture fits best, so the offset search compares like sizes (a placement search per pair would take minutes)
+        var m0 = mine[^1];
+        if (theirs.Count > 0 && theirs[0].W >= m0.W && theirs[0].H >= m0.H && (theirs[0].W != m0.W || theirs[0].H != m0.H))
+        {
+            var fit = PicDiff.Compare(m0, theirs[Math.Min(theirs.Count - 1, mine.Count - 1 + (int)(rStart - start))]);
+            if (fit["dx"] is JsonNode dxn && fit["dy"] is JsonNode dyn)
+                theirs = theirs.Select(t => PicDiff.Crop(t, m0, (int)dxn, (int)dyn)).ToList();
+        }
         double best = double.MaxValue; long bestD = 0;
         var curve = new JsonArray();
         // mine[i] is BrokenNes frame start+1+i; theirs[k] is reference frame rStart+1+k; offset d = (rStart+1+k) - (start+1+i)

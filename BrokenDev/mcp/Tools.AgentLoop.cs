@@ -53,12 +53,12 @@ internal static partial class Tools
                 ("offset", P("integer", "open / offset: the reference's frame minus BrokenNes's"), false),
                 ("ram", P("string[]", "open / ram: name=$address pairs read on both machines after every step"), false),
                 ("align_frames", P("integer", "open / align: frames of no-pad boot to compare (open: default 0 = no align; align: default 180)"), false),
-                ("align_search", P("integer", "open / align: offsets tried each way (default 30)"), false),
+                ("align_search", P("integer", "open / align: offsets tried each way (default 60; the Game Boy boots ~40-60 frames apart on Mesen)"), false),
                 ("scale", P("number", "compare: the pictures' scale (default 1; 0.5 half)"), false)),
             a => On(a, s =>
             {
                 string act = a.Req("action").ToLowerInvariant();
-                return Headless(s).Reference(act, a.Str("emulator") ?? "auto", a.Long("offset"), a.List("ram"), a.Int("align_frames", act == "align" ? 180 : 0), a.Int("align_search", 30), a.Double("scale") ?? 1);
+                return Headless(s).Reference(act, a.Str("emulator") ?? "auto", a.Long("offset"), a.List("ram"), a.Int("align_frames", act == "align" ? 180 : 0), a.Int("align_search", 60), a.Double("scale") ?? 1);
             }), false);
     }
 }

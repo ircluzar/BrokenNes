@@ -58,12 +58,21 @@ internal sealed class RefEmu : IDisposable
         Directory.CreateDirectory(home);
         string shot = Path.Combine(home, emulator == "mesen" ? "shot.bin" : "shot.png");
         try { File.Delete(shot); } catch { }
-        // a ROM BizHawk could not tell the console of (.bin) goes in as a copy with the console's own extension
+        // a zipped ROM goes in unzipped (Mesen's test runner did not start its script on a zip: measured with Tetris (W).zip)
         string romArg = rom;
+        if (rom.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            using var z = System.IO.Compression.ZipFile.OpenRead(rom);
+            var e = z.Entries.Where(x => x.Length > 0).OrderByDescending(x => x.Length).FirstOrDefault() ?? throw new ToolError($"{rom} is an empty zip");
+            romArg = Path.Combine(home, "rom" + Path.GetExtension(e.Name).ToLowerInvariant());
+            System.IO.Compression.ZipFileExtensions.ExtractToFile(e, romArg, true);
+            rom = romArg;
+        }
+        // a ROM BizHawk could not tell the console of (.bin) goes in as a copy with the console's own extension
         if (emulator == "bizhawk")
         {
             string want = consoleKey switch { "md" => ".md", "sms" => ".sms", "gg" => ".gg", "gb" => ".gb", "gbc" => ".gbc", "nes" => ".nes", "snes" => ".sfc", _ => Path.GetExtension(rom) };
-            if (!Path.GetExtension(rom).Equals(want, StringComparison.OrdinalIgnoreCase) && !rom.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            if (!Path.GetExtension(rom).Equals(want, StringComparison.OrdinalIgnoreCase))
             {
                 romArg = Path.Combine(home, "rom" + want);
                 File.Copy(rom, romArg, true);
@@ -243,22 +252,12 @@ internal sealed class RefEmu : IDisposable
 /// <summary>A picture (0xAARRGGBB pixels).</summary>
 internal sealed record Pic(uint[] Px, int W, int H)
 {
-    /// <summary>Half size (2x2 boxes averaged), for small screenshots.</summary>
+    /// <summary>Half size: every other pixel of every other line (as the Mesen script halves its pictures, so align compares like with like).</summary>
     public Pic Half()
     {
         int w = Math.Max(1, W / 2), h = Math.Max(1, H / 2);
         var o = new uint[w * h];
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++)
-            {
-                uint r = 0, g = 0, b = 0;
-                for (int dy = 0; dy < 2; dy++) for (int dx = 0; dx < 2; dx++)
-                {
-                    uint p = Px[Math.Min(H - 1, y * 2 + dy) * W + Math.Min(W - 1, x * 2 + dx)];
-                    r += (p >> 16) & 255; g += (p >> 8) & 255; b += p & 255;
-                }
-                o[y * w + x] = 0xFF000000u | (r / 4) << 16 | (g / 4) << 8 | b / 4;
-            }
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) o[y * w + x] = Px[y * 2 * W + x * 2];
         return new Pic(o, w, h);
     }
 
@@ -279,6 +278,50 @@ internal sealed record Pic(uint[] Px, int W, int H)
 internal static class PicDiff
 {
     public static JsonObject Compare(Pic a, Pic b)
+    {
+        // one picture inside a bigger one (Mesen's SNES picture is 239 lines with the overscan where BrokenNes's is 224; its Game Gear picture is the
+        // 160x144 screen inside a 256x240 frame): the bigger one is cropped where it matches best (every line offset; the left edge, the centre or
+        // the same column), instead of being squashed onto the other's grid
+        if ((a.W != b.W || a.H != b.H) && a.W <= b.W == a.H <= b.H && Math.Abs(a.H - b.H) <= 120 && Math.Abs(a.W - b.W) <= 120)
+        {
+            bool aBig = a.W >= b.W && a.H >= b.H;
+            Pic big = aBig ? a : b, small = aBig ? b : a;
+            JsonObject? best = null;
+            var key = (a.W, a.H, b.W, b.H);
+            // the placement found last time for these sizes is tried first: kept when it matches well (align compares thousands of pairs)
+            if (Placements.TryGetValue(key, out var pl))
+            {
+                var c = aBig ? Grid(Crop(big, small, pl.dx, pl.dy), small) : Grid(small, Crop(big, small, pl.dx, pl.dy));
+                if ((double)c["score"]! <= 0.12) { c["cropped"] = $"{(aBig ? "brokennes" : "reference")} at x {pl.dx}, y {pl.dy}"; c["sizes"] = $"brokennes {a.W}x{a.H}, reference {b.W}x{b.H}"; c["dx"] = pl.dx; c["dy"] = pl.dy; return c; }
+            }
+            (int dx, int dy) bestAt = (0, 0);
+            foreach (int dx in new[] { 0, (big.W - small.W) / 2, big.W - small.W }.Distinct())
+                for (int dy = 0; dy <= big.H - small.H; dy++)
+                {
+                    var px = new uint[small.W * small.H];
+                    for (int y = 0; y < small.H; y++) Array.Copy(big.Px, (dy + y) * big.W + dx, px, y * small.W, small.W);
+                    var crop = new Pic(px, small.W, small.H);
+                    var c = aBig ? Grid(crop, small) : Grid(small, crop);
+                    if (best == null || (double)c["score"]! < (double)best["score"]!) { best = c; bestAt = (dx, dy); best["cropped"] = $"{(aBig ? "brokennes" : "reference")} at x {dx}, y {dy}"; }
+                }
+            if ((double)best!["score"]! <= 0.12) Placements[key] = bestAt;
+            best["dx"] = bestAt.dx; best["dy"] = bestAt.dy;
+            best!["sizes"] = $"brokennes {a.W}x{a.H}, reference {b.W}x{b.H}";
+            return best;
+        }
+        return Grid(a, b);
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(int, int, int, int), (int dx, int dy)> Placements = new();
+
+    public static Pic Crop(Pic big, Pic small, int dx, int dy)
+    {
+        var px = new uint[small.W * small.H];
+        for (int y = 0; y < small.H; y++) Array.Copy(big.Px, (dy + y) * big.W + dx, px, y * small.W, small.W);
+        return new Pic(px, small.W, small.H);
+    }
+
+    private static JsonObject Grid(Pic a, Pic b)
     {
         int w = Math.Min(a.W, b.W), h = Math.Min(a.H, b.H);
         var la = Luma(a, w, h); var lb = Luma(b, w, h);
