@@ -106,3 +106,21 @@ No-Intro style folders (GBC, SMS) a name with no region tag is a hack or colouri
 `[!]` first, then USA/World, Europe, Japan, others; then no `[a]`/`[c]` variant; then the highest revision. A second
 dump is kept (`revisionOf`) only when `default-db.json` already grades it. Re-runs only add records, never touch an
 existing one. Titles are grouped by name, so a game sold under different names per region stays two titles.
+
+## First build (2026-11-14, `T:\BrokenDev\Catalog\reports\titles-2026-11-15.json`)
+
+| Console | Titles = records (Not tested) | Dumps considered |
+|---|---|---|
+| NES | 752 | 752 |
+| SNES (U + Japan folders) | 865 | 866 |
+| Game Boy | 682 | 697 |
+| Game Boy Color (CGB flag) | 272 | 282 |
+| Master System | 364 | 415 |
+| Game Gear | 375 | 438 |
+| Genesis | 804 | 809 |
+| **Total** | **4,114** | |
+
+29 of the 31 `default-db.json` NES entries match a record id exactly (the other 2 are not in the set; one is the
+SMW NES port). Skipped: 219 un-tagged files in `GameBoy Color` (DX/colour hacks), 185 GG / 113 Genesis / 37 GB
+flagged dumps, 18 Genesis 32X images. The inventory's SNES "2,122 top level" was wrong: the SNES top level holds only
+subfolders. Writing 4,114 records over T: took about an hour (about 1 s per locked write to `\STORAGE`).
