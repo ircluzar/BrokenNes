@@ -696,13 +696,15 @@ def convert_once(data, settings, profile, traces, allow_hook):
             def ilen(a):
                 return z80.length(bytes(mem(a + k) for k in range(4)), 0)
             buf = bytes(mem(a) for a in range(dest, hi + 4))
-            rtg, a = set(), dest                   # jump targets inside the unpacked code (a linear sweep)
+            rtg, a, starts = set(), dest, set()    # jump targets and instruction starts inside the unpacked code (a linear sweep)
             while a < hi:
+                starts.add(a)
                 for t_ in z80.flow(buf, a - dest, a)[1]:
                     rtg.add(t_)
                 a += z80.length(buf, a - dest)
             pcs = sorted({x['pc'] for x in an.sites if x['off'] < 0 and x['write'] and 0x80 <= x['port'] < 0xC0 and dest <= x['pc'] < hi
-                          and x['pc'] not in getattr(an, 'ram_handled', ())})
+                          and x['pc'] not in getattr(an, 'ram_handled', ())
+                          and (x['port'] & 1 or x['cram'] or settings['vram_only_data_writes'] == 'patch')})
             sites_h = {}
             for pc in pcs:
                 o1, o2 = mem(pc), mem(pc + 1)
@@ -718,7 +720,7 @@ def convert_once(data, settings, profile, traces, allow_hook):
                     got = False
                     for back in (1, 2, 3):
                         q = st - back
-                        if ilen(q) == back and (mem(q) in SIMPLE) and q not in done_r and st not in rtg:
+                        if q in starts and ilen(q) == back and (mem(q) in SIMPLE) and q not in done_r and st not in rtg:
                             st, got = q, True
                             break
                     if not got:
