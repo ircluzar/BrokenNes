@@ -19,7 +19,8 @@
   {
    "id": "gg-demo-by-charles-macdonald",
    "name": "GG Demo by Charles MacDonald (PD)",
-   "rom": "GG Demo by Charles MacDonald (PD).gg"
+   "rom": "GG Demo by Charles MacDonald (PD).gg",
+   "profile": "profiles/gg-demo.json"
   },
   {
    "id": "columns",

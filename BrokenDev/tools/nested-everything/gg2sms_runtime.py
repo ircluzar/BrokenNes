@@ -25,13 +25,13 @@ VARS = ['V_MODE', 'V_ADDR', 'V_LO', 'V_PREV', 'V_START', 'V_TMP', 'V_ARG', 'V_BA
 def vars_list(settings):
     """The runtime's RAM: 11 bytes ($DFF0-$DFFA fits below the mapper registers), 13 with the shadowed control latch."""
     return VARS if settings.get('latch', 'heuristic') != 'heuristic' else VARS[:11]
-CHAIN = 16                 # index bytes CHAIN+n: the rest of an unrolled OUTI chain, n OUTIs, in one call (h_chain)
+CHAIN = 18                 # index bytes CHAIN+n: the rest of an unrolled OUTI chain, n OUTIs, in one call (h_chain)
 CHAIN_MAX = 120
 IDLE = [0xC0, 0x7F, 0xFF, 0x00, 0xFF, 0x00, 0xFF]   # port $00 (overridden by h_p0) and the link / stereo ports' idle values
-HANDLERS = ['h_be', 'h_bf', 'h_p0', 'oc_a', 'oc_b', 'oc_c', 'oc_d', 'oc_e', 'oc_h', 'oc_l', 'oc_0', 'h_outi', 'h_otir', 'h_outd', 'h_otdr', 'h_inca', 'h_sr']
+HANDLERS = ['h_be', 'h_bf', 'h_p0', 'oc_a', 'oc_b', 'oc_c', 'oc_d', 'oc_e', 'oc_h', 'oc_l', 'oc_0', 'h_outi', 'h_otir', 'h_outd', 'h_otdr', 'h_inca', 'h_sr', 'h_oidj']
 LD_A_NN, LD_NN_A = 0x3A, 0x32
 FAR_TABLE = 0xA000         # far layout: GG 12-bit colour -> SMS byte, 4 KB at this address of the runtime's bank (page | blue, GGGGRRRR)
-BLOCKS = ('h_outi', 'h_otir', 'h_outd', 'h_otdr')
+BLOCKS = ('h_outi', 'h_otir', 'h_outd', 'h_otdr', 'h_oidj')
 
 
 def _vars(ram):
@@ -167,6 +167,12 @@ def oc_block(a, v, far, used, deep=False):
             continue
         a.label(name)
         a.db(0xF5); rd(); a.op_w(0xCD, 'oc_one'); a.db(step, 0xF1, 0x05, 0xC9)
+    if 'h_oidj' in used:                                     # OUTI / DJNZ back to it: the whole loop in one call (B counted twice a turn)
+        a.label('h_oidj')
+        a.db(0xF5)
+        a.label('h_oidj_l')
+        rd(); a.op_w(0xCD, 'oc_one'); a.db(0x23, 0x05, 0x05); a.op_r(0x20, 'h_oidj_l')
+        a.db(0xF1, 0xC9)
     for name, step in (('h_otir', 0x23), ('h_otdr', 0x2B)):
         if name not in used:
             continue

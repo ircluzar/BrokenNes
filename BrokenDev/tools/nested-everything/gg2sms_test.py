@@ -32,6 +32,7 @@ CHECKS = [300, 900, 1500, 2100, 2700, 3300]
 SCRIPT = ("120:Start,126:,300:Start,306:,500:A,506:,700:Start,706:,900:A,906:,1000:Right,1300:Right+A,1320:Right,1600:Left+B,"
           "1620:Left,1900:Start,1906:,2000:Start,2006:,2200:Right+A,2400:Up,2500:Down,2600:B,2700:Right,3000:A,3006:")
 FRAMES = 3400
+HOLD = 12                       # frames each tap is held on the SMS side (hold_longer)
 
 
 def shift_script(script, lag):
@@ -44,6 +45,22 @@ def shift_script(script, lag):
     return ','.join(out)
 
 
+def hold_longer(script, hold):
+    """The converted game drops a frame now and then (the runtime's cost), so a 6-frame tap can land between its pad reads or
+    before a menu is ready: on the SMS side every tap is held `hold` frames (one press, one edge, still released before the next)."""
+    if not script or hold <= 6:
+        return script
+    items = [(int(f), k) for f, _, k in (x.partition(':') for x in script.split(','))]
+    out = []
+    for i, (f, k) in enumerate(items):
+        if k == '' and i and items[i - 1][1] and f - items[i - 1][0] <= 6:
+            nxt = items[i + 1][0] if i + 1 < len(items) else 1 << 30
+            f = min(items[i - 1][0] + hold, nxt - 1)
+        out.append(f'{f}:{k}')
+    return ','.join(out)
+
+
+DRIFT = 4                       # checkpoint pictures of the converted game: the best of +-DRIFT frames (its own lag frames add up)
 LAG_MAX, LAG_FRAMES = 120, 240
 
 
@@ -76,7 +93,7 @@ def boot_lag(exe, rom_gg, rom_sms, work, table):
 
 
 def run(exe, rom, console, tag, out, script, lag=0):
-    shots = sorted({f + lag + d for f in CHECKS for d in (-1, 0, 1)})
+    shots = sorted({f + lag + d for f in CHECKS for d in range(-DRIFT, DRIFT + 1)})
     script = shift_script(script, lag)
     args = [exe, '--sms-run', rom, '--console', console, '--frames', str(FRAMES + lag), '--png-at', ','.join(map(str, shots)),
             '--out', out, '--tag', tag, '--wav', os.path.join(out, tag + '.wav')]
@@ -127,7 +144,7 @@ def compare(work, tag, table, lag=0):
             continue
         ga = to_levels_gg(level_img(a, False, table), table)
         best = None
-        for d in (-1, 0, 1):
+        for d in range(-DRIFT, DRIFT + 1):
             b = os.path.join(work, f'{tag}_sms_f{f + lag + d}.png')
             if not os.path.exists(b):
                 continue
@@ -220,7 +237,7 @@ def one(game, work, exe):
         res['grade'] = 'Build fails'
         return res
     pause_ok = start in ('pause', 'both') and not any('Pause cannot be used' in w for w in res.get('warnings', []))
-    sms_script = SCRIPT.replace('Start', 'Select' if pause_ok else 'A+B')
+    sms_script = hold_longer(SCRIPT.replace('Start', 'Select' if pause_ok else 'A+B'), HOLD)
     res['smsStart'] = 'Pause' if pause_ok else 'buttons 1+2'
     res['runGg'] = run(exe, game['rom'], 'gg', tag + '_gg', gw, SCRIPT)[0]
     lag = boot_lag(exe, game['rom'], out_sms, gw, table)
@@ -234,7 +251,7 @@ def one(game, work, exe):
     for f in CHECKS:
         pa = os.path.join(gw, f'{tag}_ref_f{f}.png')
         best = None
-        for d in (-1, 0, 1):
+        for d in range(-DRIFT, DRIFT + 1):
             pb = os.path.join(gw, f'{tag}_sms_f{f + lag + d}.png')
             if os.path.exists(pa) and os.path.exists(pb):
                 x, y = to_levels_sms(level_img(pa, False, table)), to_levels_sms(level_img(pb, False, table))

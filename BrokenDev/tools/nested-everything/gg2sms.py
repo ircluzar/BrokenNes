@@ -241,7 +241,42 @@ def plan(rom, an, settings, profile):
             hits_of[pc] = [i for i in range(rom.n - 2) if b[i:i + 3] == pat and i not in an.code]
             if len(hits_of[pc]) == 1:
                 deltas.add(hits_of[pc][0] - pc)
+    # copy offsets voted by every RAM site whose 3 traced bytes occur in the ROM (code copied whole: one offset wins)
+    votes, bb = {}, bytes(b)
+    for (pc, port), hexb in ram_bytes.items():
+        pat = bytes.fromhex(hexb)
+        if len(pat) == 3:
+            i = bb.find(pat)
+            while i >= 0:
+                if i not in an.code:
+                    votes[i - pc] = votes.get(i - pc, 0) + 1
+                i = bb.find(pat, i + 1)
+    ram_srcs = set()
+    for dl, nv in votes.items():
+        if nv >= 3:
+            deltas.add(dl)
+    # VDP writes in code copied to RAM: the ROM source gets the same 2-byte RST + index as a ROM site (the index rides in the copy)
+    ram_vdp = sorted({(s['pc'], s['port']) for s in an.sites if s['off'] < 0 and s['write'] and 0x80 <= s['port'] < 0xC0})
+    cram_ram = any(s['cram'] for s in an.sites if s['off'] < 0)
+    handled = set()
+    for pc, port in ram_vdp if cram_ram else []:
+        pat = bytes.fromhex(ram_bytes.get((pc, port), ''))
+        h = None
+        if len(pat) >= 2 and pat[0] == 0xD3 and 0x80 <= pat[1] < 0xC0:
+            h = 'h_bf' if pat[1] & 1 else 'h_be'
+        elif len(pat) >= 2 and pat[0] == 0xED and pat[1] in BLOCK:
+            h = BLOCK[pat[1]]
+        elif len(pat) >= 2 and pat[0] == 0xED and pat[1] in OC_REG:
+            h = 'oc_' + OC_REG[pat[1]]
+        if h is None:
+            continue
+        hits = [x for x in (pc + dl for dl in deltas) if 0 <= x < rom.n - 2 and b[x:x + len(pat)] == pat]
+        if len(hits) == 1:
+            actions[hits[0]] = ('call', h, f'{h} for code copied to RAM ${pc:04X} (in the ROM source)', 0)
+            ram_srcs.add(hits[0]); handled.add(pc)
     for pc, port in ram_sites:
+        if pc in handled:
+            continue
         # code the game copied to RAM: a link / stereo write is patched in the ROM bytes it was copied from, when they are unique
         pat = bytes.fromhex(ram_bytes.get((pc, port), ''))
         if port in GG_PORTS and port != 0 and len(pat) == 3 and pat[0] == 0xD3:
@@ -252,6 +287,7 @@ def plan(rom, an, settings, profile):
                 actions[hits[0]] = ('bytes', bytes([0x00, 0x00]), f'OUT (${port:02X}),A copied to RAM ${pc:04X} -> NOP NOP (in the ROM source)')
                 continue
         unhandled.append({'off': None, 'pc': pc, 'why': f'code in RAM touches port ${port:02X} (cannot be patched in ROM)'})
+    an.ram_srcs = ram_srcs
     return actions, unhandled
 
 
@@ -585,11 +621,15 @@ def convert_once(data, settings, profile, traces, allow_hook):
     else:
         report['warnings'].append('reset code could not be hooked: the runtime RAM is not cleared at power-on')
     inplace = {}
+    ramcalls = []
     for o in calls:
         _, handler, what, slot = actions[o]
         idx = rt.HANDLERS.index(handler)
         if rst is not None and z80.length(rom.b, o) == 2:
             inplace[o] = idx
+            continue
+        if o in getattr(an, 'ram_srcs', ()):
+            ramcalls.append(o)
             continue
         n = z80.length(rom.b, o)
         c = cover(rom, an, o, n, protected - set(range(o, o + n)))
@@ -605,8 +645,42 @@ def convert_once(data, settings, profile, traces, allow_hook):
             report['unhandled'].append({'off': o, 'why': f'{what}: no free RST and no room for a jump (jump targets around it)'})
             del actions[o]
             continue
+        if handler == 'h_outi' and c[0] == o and c[1] == o + 4 and rom.b[o + 2:o + 4] == bytes([0x10, 0xFC]) and (o + 2) not in an.targets:
+            idx = rt.HANDLERS.index('h_oidj')          # OUTI / DJNZ -2 in the trampoline: one call does the loop, the DJNZ is left out
+            actions[o] = ('call', 'h_oidj', what.replace('OUTI -> dispatch', 'OUTI/DJNZ loop -> h_oidj'), slot)
         protected.update(range(c[0], c[1]))
         tramps.append([c[0], c[1], {o: idx}, None])
+    # code copied to RAM, no RST: the site and the simple instructions before it become CALL t / NOPs in the ROM source; the
+    # trampoline redoes them, calls the runtime and RETurns into the RAM copy (no jump back to a fixed address needed)
+    SIMPLE = {0x06, 0x0E, 0x16, 0x1E, 0x26, 0x2E, 0x3E, 0x01, 0x11, 0x21, 0xAF, 0x3A, 0x2A} | set(range(0x78, 0x80)) | {0x04, 0x05, 0x0C, 0x0D, 0x14, 0x15, 0x1C, 0x1D, 0x24, 0x25, 0x2C, 0x2D, 0x3C, 0x3D, 0x23, 0x2B, 0x13, 0x1B, 0x03, 0x0B}
+    rs = set(ramcalls)
+    for o in ramcalls:
+        if any(t[0] <= o < t[1] for t in tramps if t[3] == 'ram'):
+            continue
+        n = z80.length(rom.b, o)
+        st, en, sites = o, o + n, {o: rt.HANDLERS.index(actions[o][1])}
+        while en - st < 3:
+            got = False
+            for back in (1, 2, 3):
+                q = st - back
+                if q >= 0 and z80.length(rom.b, q) == back and (rom.b[q] in SIMPLE or q in rs) and q not in protected:
+                    if q in rs:
+                        sites[q] = rt.HANDLERS.index(actions[q][1])
+                    st, got = q, True
+                    break
+            if not got:
+                if en in rs or rom.b[en] in SIMPLE:
+                    if en in rs:
+                        sites[en] = rt.HANDLERS.index(actions[en][1])
+                    en += z80.length(rom.b, en)
+                else:
+                    break
+        if en - st < 3:
+            report['unhandled'].append({'off': o, 'why': f'{actions[o][2]}: no simple instructions around it to make room for a CALL'})
+            del actions[o]
+            continue
+        protected.update(range(st, en))
+        tramps.append([st, en, sites, 'ram'])
     # unrolled OUTI chains in place: each site's index says how many OUTIs are left, one call does them all (h_chain)
     outi = sorted(o for o in inplace if actions[o][1] == 'h_outi')
     runs_o, cur = [], []
@@ -627,6 +701,12 @@ def convert_once(data, settings, profile, traces, allow_hook):
             if len(r) - i > rt.CHAIN_MAX:
                 inplace[o] = rt.CHAIN + rt.CHAIN_MAX     # (a longer chain: the call does the first CHAIN_MAX and returns into the rest)
             actions[o] = ('call', 'h_chain', actions[o][2].replace('OUTI -> dispatch', 'OUTI chain -> h_chain'), actions[o][3])
+    # OUTI / DJNZ -2 (a colour upload loop): one call for the whole loop, the DJNZ becomes NOPs
+    for o in sorted(inplace):
+        if actions[o][1] == 'h_outi' and rom.b[o + 2:o + 4] == bytes([0x10, 0xFC]) and (o + 2) not in actions and (o + 2) not in an.targets:
+            inplace[o] = rt.HANDLERS.index('h_oidj')
+            actions[o] = ('call', 'h_oidj', actions[o][2].replace('OUTI -> dispatch', 'OUTI/DJNZ loop -> h_oidj'), actions[o][3])
+            actions[o + 2] = ('bytes', bytes(2), 'DJNZ of an OUTI loop -> NOP NOP (h_oidj loops)')
     used = {actions[o][1] for o in actions if actions[o][0] == 'call'}
     hookspec = None
     if hook:
@@ -670,6 +750,8 @@ def convert_once(data, settings, profile, traces, allow_hook):
                 n = z80.length(rom.b, q)
                 if q in tsites:
                     t.op_w(0xCD, 'disp'); t.db(tsites[q])
+                    if tsites[q] == rt.HANDLERS.index('h_oidj'):
+                        n += 2                     # its DJNZ: done by the handler
                 else:
                     if q == s and init == 'init':
                         rt.init_inline(t, ram, far_bank_of[0], nvars)
@@ -677,6 +759,10 @@ def convert_once(data, settings, profile, traces, allow_hook):
                     if jf is not None:
                         fixups.append(jf)
                 q += n
+            if init == 'ram':
+                t.db(0xC9)
+                out.append(t)
+                continue
             back = cpu_of(e, slot)
             for jf in fixups:
                 t.code[jf] = back & 0xFF; t.code[jf + 1] = back >> 8
@@ -781,10 +867,10 @@ def convert_once(data, settings, profile, traces, allow_hook):
         report['patches'].append({'off': o, 'what': actions[o][2] + f' (RST ${rst:02X},{idx})'})
     for s, e, tsites, init in tramps:
         t = labels[f't_{s:x}']
-        rom.b[s] = 0xC3; rom.b[s + 1] = t & 0xFF; rom.b[s + 2] = t >> 8
+        rom.b[s] = 0xCD if init == 'ram' else 0xC3; rom.b[s + 1] = t & 0xFF; rom.b[s + 2] = t >> 8
         for k in range(s + 3, e):
             rom.b[k] = 0x00
-        if init:
+        if init == 'init':
             report['patches'].append({'off': s, 'what': 'reset -> init', 'cover': [s, e], 'tramp': t})
         for site in sorted(tsites):
             report['patches'].append({'off': site, 'what': actions[site][2], 'cover': [s, e], 'tramp': t})
