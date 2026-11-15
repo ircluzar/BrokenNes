@@ -178,6 +178,31 @@ foreach (var rom in games)
     }
 }
 
+// ---------- S3b sound-swap pairs: every sound unit hot-swapped to every FM unit (a PSG-on-NES bridge's hub section was read as YM2413 state: bfuzz sms seed 318257) ----------
+{
+    var rom = games.FirstOrDefault();
+    if (rom != null && kind is ConsoleKind.MasterSystem or ConsoleKind.GameGear)
+    {
+        var apus = CoreCatalog.Options(kind, CoreSlot.Apu).Where(o => !o.Wall).Select(o => o.Id).ToArray();
+        var fms = apus.Where(id => id.Contains("FM", StringComparison.OrdinalIgnoreCase)).ToArray();
+        int swapPairs = 0, swapFails = 0;
+        foreach (var from in apus)
+        {
+            IM m;
+            try { m = Make(rom, apu: from); Run(m, new Random(3), 120, 0, false); } catch (Exception e) { Line("SKIP", "S3b", $"{G(rom)} apu={from}: cannot start ({e.GetType().Name})"); continue; }
+            var pr = new Random(4); int f = 120;
+            foreach (var to in fms)
+            {
+                if (to.Equals(from, StringComparison.OrdinalIgnoreCase)) continue;
+                swapPairs++;
+                try { ((SesM)m).S.TrySwapCore(CoreSlot.Apu, to); Run(m, pr, 20, f, false); f += 20; ((SesM)m).S.TrySwapCore(CoreSlot.Apu, from); Run(m, pr, 10, f, false); f += 10; }
+                catch (Exception e) { swapFails++; Line("FAIL", "S3b", $"{G(rom)} apu {from} -> {to}: {e.GetType().Name}: {e.Message} @ {e.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}"); try { m = Make(rom, apu: from); } catch { break; } }
+            }
+        }
+        if (swapFails == 0) Line("PASS", "S3b", $"{G(rom)}: {swapPairs} sound-unit swap pairs (to an FM unit and back) run on");
+    }
+}
+
 // ---------- S4 hostile-json ----------
 {
     var rom = games.FirstOrDefault();

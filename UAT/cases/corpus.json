@@ -2,7 +2,7 @@
   "schema": 1,
   "suite": "corpus",
   "description": "Mapper-coverage breadth, sampled from the 758 .nes files under SubProjects/65-o-borked/bin/Debug/net8.0/roms (the 2847-file count in that folder includes the .chr/.prg/.ines side files). One representative title per mapper. The corpus is NOT in the repo and is NOT redistributable, so these cases SKIP on a machine that does not have it.",
-  "howChosen": "Every .nes file's iNES header was read and grouped by mapper id. 25 distinct mappers are present: 0,1,2,3,4,5,7,9,11,13,34,41,47,64,66,67,68,69,71,79,113,118,119,228,232. Windows/NesEmulator/board/Cartridge.cs implemented 0,1,2,3,4,5,7,9,30,33,90,228 when this was written - so 9 of the corpus's mappers were runnable and 16 were not. All 16 are listed below as explicit skip entries with the reason, so they are visible rather than silently dropped; mappers 30, 33 and 90 are implemented but have no representative in this corpus (30 is covered by cases/mapper30.json). 2026-11-14 (compat catalog P0, lane mappersA): 11, 41, 66, 68, 79, 113, 232 (and 67) implemented; their skip entries became run cases.",
+  "howChosen": "Every .nes file's iNES header was read and grouped by mapper id. 25 distinct mappers are present: 0,1,2,3,4,5,7,9,11,13,34,41,47,64,66,67,68,69,71,79,113,118,119,228,232. Windows/NesEmulator/board/Cartridge.cs implemented 0,1,2,3,4,5,7,9,30,33,90,228 when this was written - so 9 of the corpus's mappers were runnable and 16 were not. All 16 are listed below as explicit skip entries with the reason, so they are visible rather than silently dropped; mappers 30, 33 and 90 are implemented but have no representative in this corpus (30 is covered by cases/mapper30.json). 2026-11-14 (compat catalog P0, lane mappersA): 11, 41, 66, 68, 79, 113, 232 (and 67) implemented; their skip entries became run cases. 2026-11-15 (lane nes-mappers-rest): 13, 47 and 118 implemented; the last three skip entries became run cases.",
   "roots": {
     "corpus": "SubProjects/65-o-borked/bin/Debug/net8.0/roms"
   },
@@ -256,11 +256,24 @@
     {
       "id": "corpus-m013-cprom",
       "rom": "{corpus}/Videomation (U).nes",
-      "skip": "Mapper 13 (CPROM) is not implemented. Verified: 'Mapper 13 (Unknown) is not supported'. 1 corpus ROM.",
       "tags": [
         "corpus",
-        "unsupported"
-      ]
+        "mapper13"
+      ],
+      "description": "Mapper 13 (CPROM). Videomation matches Mesen 2.1.1 (diff-nes, 2026-11-15; lane nes-mappers-rest).",
+      "kind": "romtest",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "65FAC54B2D67C8D9",
+        "framesRun": 600,
+        "distinctColors": 2,
+        "result": "ok",
+        "crashInfo": ""
+      }
     },
     {
       "id": "corpus-m041-caltron",
@@ -287,11 +300,24 @@
     {
       "id": "corpus-m047-mmc3-multicart",
       "rom": "{corpus}/Super Spike V'Ball + Nintendo World Cup (U) [!].nes",
-      "skip": "Mapper 47 (MMC3 multicart) is not implemented, even though plain mapper 4 is. 1 corpus ROM.",
       "tags": [
         "corpus",
-        "unsupported"
-      ]
+        "mapper47"
+      ],
+      "description": "Mapper 47 (NES-QJ, MMC3 + outer-block latch). Game select and both games match Mesen 2.1.1 (diff-nes, 2026-11-15).",
+      "kind": "romtest",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "16E9C57D6F2B16C9",
+        "framesRun": 600,
+        "distinctColors": 13,
+        "result": "ok",
+        "crashInfo": ""
+      }
     },
     {
       "id": "corpus-m066-gxrom",
@@ -406,11 +432,24 @@
     {
       "id": "corpus-m118-txsrom",
       "rom": "{corpus}/Alien Syndrome (U).nes",
-      "skip": "Mapper 118 (TxSROM / MMC3 with per-bank mirroring) is not implemented, despite plain mapper 4 being implemented. 4 corpus ROMs.",
       "tags": [
         "corpus",
-        "unsupported"
-      ]
+        "mapper118"
+      ],
+      "description": "Mapper 118 (TxSROM, CIRAM A10 from CHR bank bit 7). Alien Syndrome matches Mesen 2.1.1 (diff-nes, 2026-11-15).",
+      "kind": "romtest",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "0CA8477693AE33AB",
+        "framesRun": 600,
+        "distinctColors": 5,
+        "result": "ok",
+        "crashInfo": ""
+      }
     },
     {
       "id": "corpus-m232-camerica-quattro",

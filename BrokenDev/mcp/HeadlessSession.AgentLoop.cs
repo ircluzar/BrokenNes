@@ -63,6 +63,8 @@ internal sealed partial class HeadlessSession
         lock (padLock) { held[0] = p1; held[1] = p2; }
         string stoppedBy = "frames";
         RunOutcome o = RunOutcome.Frames;
+        // try/finally: a bad `until` (ToolError) or a run exception must not leave the pads held for the next tool's frames
+        try {
         if (until is { Length: > 0 })
         {
             var d = Dbg;
@@ -83,7 +85,7 @@ internal sealed partial class HeadlessSession
             o = RunFrames(Math.Clamp(frames, 0, 36_000));
             if (o != RunOutcome.Frames) stoppedBy = o.ToString().ToLowerInvariant();
         }
-        lock (padLock) { held[0] = PadButtons.None; held[1] = PadButtons.None; }
+        } finally { lock (padLock) { held[0] = PadButtons.None; held[1] = PadButtons.None; } }
         long ran = Interlocked.Read(ref framesStarted) - before;
 
         var j = new JsonObject

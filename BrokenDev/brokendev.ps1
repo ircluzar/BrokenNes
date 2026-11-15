@@ -91,6 +91,11 @@
                                  the recorded inputs replay (a branch), the divergence (first frame, instruction, variables) and the
                                  verdicts (never|sometime|always <condition>, query <query> expect <field> <op> <value>) on the new future
                                  and the old. 'verdict-promote' (explicit only) adds a verdict to the project's verify
+    catalog [view|progress|index|stats]
+                                 the Great Compatibility Catalog (tools\catalog, docs/projects/compat-catalog-db.md): 'view' (default) starts
+                                 its browse UI on http://127.0.0.1:8790/ (per-console grades, tiers, tags, notes, screenshots, TAS,
+                                 reference; filters, search, progress; -NoBrowser prints the address, -Stop stops it); 'progress' writes
+                                 reports\progress.json (the live-dashboard feed); 'index' rebuilds the index (and progress.json)
     mcp     install|uninstall|build|status|test
                                  the BrokenNes MCP server (BrokenDev/mcp): 'install' builds it into BROKENDEV_HOME\bnbuild\mcp and registers it
                                  for Claude Code at USER scope ('claude mcp add --scope user brokennes', every session and game repo);
@@ -227,6 +232,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\TimeflowPlay.ps1')
 . (Join-Path $here 'lib\Nested.ps1')
 . (Join-Path $here 'lib\Instrument.ps1')
+. (Join-Path $here 'lib\Catalog.ps1')
 
 function Show-BdHelp { Write-Host (Get-Help (Join-Path $here 'brokendev.ps1') -Full | Out-String) }
 
@@ -550,6 +556,7 @@ try {
             Write-BdInfo ("  {0} build(s); skipped (no build): {1}; can't tell: {2}" -f $r.builds, @($r.skipped).Count, @($r.cantTell).Count)
             if ($r.firstBad) { exit 0 } else { exit 1 }
         }
+        'catalog' { exit (Invoke-BdCatalog -Action $Target -NoBrowser:$NoBrowser -Stop:$Stop) }
         'nested' {
             switch ($Target.ToLowerInvariant()) {
                 'core'  { $r = Invoke-BdNestedCore -Profile $Profile; if ($Json) { $r | ConvertTo-Json }; exit 0 }

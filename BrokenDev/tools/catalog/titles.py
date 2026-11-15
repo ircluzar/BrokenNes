@@ -34,12 +34,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import catalog as cat  # noqa: E402
 
 SEVENZIP = r"C:\Program Files\7-Zip\7z.exe"
-ROM_EXT = {".nes", ".smc", ".sfc", ".gb", ".gbc", ".sms", ".gg", ".bin", ".gen", ".md"}
+ROM_EXT = {".nes", ".smc", ".sfc", ".bs", ".gb", ".gbc", ".sms", ".gg", ".bin", ".gen", ".md"}
 
 # console sources: (folder under src, console or None = decide from the header, naming style)
 SOURCES = {
     "nes": [("Nintendo Entertainment System", "nes")],
-    "snes": [(r"Super Nintendo\Super Nintendo (U)", "snes"), (r"Super Nintendo\Japan", "snes")],
+    "snes": [(r"Super Nintendo\Super Nintendo (U)", "snes"), (r"Super Nintendo\Japan", "snes"),
+             (r"Super Nintendo\Satellaview", "snes"), (r"Super Nintendo\Unreleased", "snes"),
+             (r"Super Nintendo\PAL to NTSC", "snes")],
     "gb": [("GameBoy", None), ("GameBoy Color", None)],
     "gbc": [("GameBoy", None), ("GameBoy Color", None)],
     "sms": [("Sega Master System", "sms")],
@@ -48,8 +50,27 @@ SOURCES = {
 }
 # folders deliberately not scanned (later lanes): reported in the summary
 SKIPPED_FOLDERS = [r"Super Nintendo\Hacks", r"Super Nintendo\SMW Hacks", r"Super Nintendo\Homebrew & Unlicensed",
-                   r"Super Nintendo\PAL to NTSC", r"Super Nintendo\Translations", r"Super Nintendo\NES PORTS",
-                   r"Super Nintendo\SPC700 Music", r"Super Nintendo\Satellaview", r"Super Nintendo\Unreleased"]
+                   r"Super Nintendo\Translations", r"Super Nintendo\NES PORTS", r"Super Nintendo\SPC700 Music"]
+# side folders scanned with their own rules (cc-gaps lane, 2026-11-15). "penalty" ranks a dump after every regular
+# dump of the same title, so it is only kept when it is the title's only dump.
+#   Satellaview: broadcast games, their own titles (a BS remake of a cart game is not that game): key prefix "bs:"
+#   Unreleased: betas/protos allowed (an unreleased game has nothing else); a released dump of the title wins
+#   PAL to NTSC: PAL-only games converted to 60 Hz, the only dump of those titles in the library
+FOLDER_RULES = {
+    r"Super Nintendo\Satellaview": {"key_prefix": "bs:", "extra": {
+        "satellaview": True, "needs": "BS-X base cartridge + Satellaview (not emulated yet)"}},
+    r"Super Nintendo\Unreleased": {"allow_beta": True, "penalty": 1, "extra": {"unreleased": True}},
+    r"Super Nintendo\PAL to NTSC": {"penalty": 1, "extra": {"ntscConversion": True}},
+}
+CURATED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "curated.json")
+
+
+def load_curated(path=CURATED):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
 
 BAD_FLAG = re.compile(r"\[(b|h|o|p|f|x|t|T[+-])[^\]]*\]", re.I)
 BAD_PAREN = re.compile(r"\((hack|pd|beta[^)]*|proto[^)]*|prototype|sample|demo|kiosk[^)]*|pirate|unl hack)\)", re.I)
@@ -97,10 +118,12 @@ def revision(name: str) -> str:
     return m.group(1).lower() if m else ""
 
 
-def skip_reason(name: str, nointro_folder: bool):
+def skip_reason(name: str, nointro_folder: bool, allow_beta: bool = False, force: bool = False):
+    if force:  # curated.json include_untagged: a real game whose file carries no tags
+        return None
     if BAD_FLAG.search(name):
         return "bad/hack/translation flag"
-    if BAD_PAREN.search(name):
+    if BAD_PAREN.search(name) and not (allow_beta and re.search(r"\((beta|proto)", name, re.I)):
         return "hack/PD/proto/beta"
     if "32x" in name.lower():
         return "32X image"
@@ -174,6 +197,20 @@ def identify(console_hint, data: bytes):
     return console, key, d
 
 
+def app_db_id(con: str, key: str) -> str:
+    """The game-db id: "<system>_" + the hash the app names the game by (appid.py has the per-console rules)."""
+    return f"{cat.DB_SYSTEM[con]}_{key}".lower()
+
+
+def known_revision(known, con, name):
+    """True when curated.json's known_revisions says this dump of its title is a revision worth its own record."""
+    tk, nl = title_key(name), name.lower()
+    for k in known:
+        if k.get("console") == con and title_key(k["title"]) == tk and any(r.lower() in nl for r in k["keep"]):
+            return True
+    return False
+
+
 # ---------- main ----------
 
 def load_cache(path):
@@ -196,13 +233,18 @@ def score(c):
     r = c["regionRank"] if c["regionRank"] is not None else 4
     variant = 1 if re.search(r"\[(a|c)[0-9]*\]", c["name"], re.I) else 0
     rv = c["revision"]
-    return (0 if c["verified"] else 1, r, variant, [-ord(x) for x in rv.ljust(6)], c["name"].lower())
+    return (c.get("penalty", 0), 0 if c["verified"] else 1, r, variant, [-ord(x) for x in rv.ljust(6)], c["name"].lower())
 
 
 def build(consoles, src, base, dry, db_path):
     cache_path = os.path.join(base, "cache", "scan.json")
     cache = load_cache(cache_path)
     dbids = known_db_ids(db_path)
+    cur = load_curated()
+    aliases = {con: {k.lower(): v.lower() for k, v in m.items()} for con, m in cur.get("aliases", {}).items()
+               if not con.startswith("_")}
+    include = {n.lower() for con, lst in cur.get("include_untagged", {}).items() if not con.startswith("_") for n in lst}
+    known_revs = cur.get("known_revisions", [])
     folders = []
     for c in consoles:
         for f, hint in SOURCES[c]:
@@ -214,10 +256,14 @@ def build(consoles, src, base, dry, db_path):
     for folder, hint in folders:
         sd = os.path.join(src, folder)
         nointro = folder in ("GameBoy Color", "Sega Master System")
+        rules = FOLDER_RULES.get(folder, {})
+        if not os.path.isdir(sd):
+            print(f"warning: missing folder {sd}", file=sys.stderr)
+            continue
         n = 0
         for name, path, member, loader in iter_files(sd):
             n += 1
-            why = skip_reason(name, nointro)
+            why = skip_reason(name, nointro, rules.get("allow_beta", False), name.lower() in include)
             if why:
                 skipped.setdefault((folder, why), 0)
                 skipped[(folder, why)] += 1
@@ -242,26 +288,38 @@ def build(consoles, src, base, dry, db_path):
             rk, rl = region_of(name)
             c = {"name": name, "path": path, "member": member, "console": con, "key": ent["key"],
                  "dump": dict(ent["dump"]), "regionRank": rk, "region": rl, "verified": "[!]" in name,
-                 "revision": revision(name), "title": display_title(name), "folder": folder}
+                 "revision": revision(name), "title": display_title(name), "folder": folder,
+                 "penalty": rules.get("penalty", 0), "extra": dict(rules.get("extra", {}))}
+            if name.lower() in include:
+                c["extra"]["untaggedRealGame"] = True
             if folder == "Sega Game Gear" and name.lower().endswith(".sms"):
                 c["dump"]["smsModeOnGameGear"] = True
-            cands[con].setdefault(title_key(name), []).append(c)
+            tk = rules.get("key_prefix", "") + title_key(name)
+            tk = aliases.get(con, {}).get(tk, tk)  # region-merged: the same game sold under another name
+            cands[con].setdefault(tk, []).append(c)
         print(f"scanned {folder}: {n} files", file=sys.stderr)
     if not dry:
         cat._atomic_write(cache_path, cache)
 
+    # what the catalog already holds (from the index: one read instead of one SMB call per record)
+    have = {(r["console"], r["sha1"]): r for r in cat.load_index(None, base)}
     report = {}
     for con in consoles:
         groups = cands[con]
-        added = existed = extra = 0
+        added = existed = extra = aliased = 0
         for tk, lst in sorted(groups.items()):
             lst.sort(key=score)
             main = lst[0]
             keep = [(main, "")]
             for o in lst[1:]:
-                gid = (f"nes_{o['key']}" if con == "nes" else f"{cat.DB_SYSTEM[con]}_{o['key']}").lower()
-                if gid in dbids:
+                if app_db_id(con, o["key"]) in dbids or known_revision(known_revs, con, o["name"]):
                     keep.append((o, main["key"]))
+                elif (con, o["key"]) in have and have[(con, o["key"])].get("aliasOf") != main["key"]:
+                    # an existing record now merged into another title (curated.json aliases): kept, never deleted,
+                    # but marked so the work queue plays the main dump only
+                    aliased += 1
+                    if not dry:
+                        cat.update(con, o["key"], {"extra": {"aliasOf": main["key"], "aliasTitle": main["title"]}}, base)
             for c, rev_of in keep:
                 if rev_of:
                     extra += 1
@@ -270,15 +328,17 @@ def build(consoles, src, base, dry, db_path):
                     dump=c["dump"] | {"goodName": os.path.splitext(c["name"])[0], "verified": c["verified"],
                                       "revision": c["revision"], "alternatives": len(lst) - 1},
                     file={"path": c["path"], "member": c["member"], "name": c["name"], "size": c["dump"]["size"]},
-                    gameDbId=(f"nes_{c['key']}" if con == "nes" else ""), revisionOf=rev_of)
-                if dry:
+                    gameDbId=app_db_id(con, c["key"]), revisionOf=rev_of, extra=c["extra"])
+                if (con, c["key"]) in have:
+                    existed += 1
+                elif dry:
                     added += 1
                 elif cat.add(rec, base):
                     added += 1
                 else:
                     existed += 1
         report[con] = {"titles": len(groups), "records_added": added, "records_existing": existed,
-                       "extra_revisions": extra,
+                       "extra_revisions": extra, "marked_alias": aliased,
                        "dumps_considered": sum(len(v) for v in groups.values())}
     report["skipped"] = {f"{k[0]}: {k[1]}": v for k, v in sorted(skipped.items())}
     report["folders_not_scanned"] = SKIPPED_FOLDERS

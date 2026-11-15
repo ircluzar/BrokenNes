@@ -16,7 +16,7 @@ namespace BrokenNes.Workshop.Movies;
 /// name and extension: <see cref="MovieFormat"/>).
 /// <code>
 ///   --movie record  --rom R --frames N [--input "120:Start,132:"] [--input2 S] [--console c] [--cores C/P/A] [--power-on fceux|zeros|ones] [--ntsc]
-///                   [--key-every 60] [--sym F]... [--var name=expr]... [--build TEXT] [--start-state FILE] --out M.bnm
+///                   [--key-every 60] [--sym F]... [--var name=expr]... [--build TEXT] [--start-state FILE] [--png-at f1,f2 --png-dir D] --out M.bnm
 ///   --movie import  --fm2 F --rom R [--key-every 60] [--build TEXT] --out M.bnm          (an FCEUX movie, replayed here to fill the keyframes)
 ///   --movie play    --movie M [--rom R] [--cores C/P/A] [--sym F]... [--frames N] [--json]   0 every keyframe matched | 1 off course or crashed
 ///   --movie info    --movie M
@@ -50,7 +50,16 @@ internal static class MovieCli
                     var vars = All("var").Select(v => { int e = v.IndexOf('='); return e > 0 ? (v[..e].Trim(), v[(e + 1)..].Trim()) : throw new ArgumentException($"--var '{v}': name=expression"); }).ToList();
                     using var m = MovieMachine.Open(rom, Opt("console") is { Length: > 0 } c ? c : null, Opt("cores"), Opt("power-on", "fceux"), Has("ntsc"), true, All("sym"));
                     byte[]? st = Opt("start-state") is { Length: > 0 } sp ? File.ReadAllBytes(sp) : null;
-                    var mv = MoviePlayer.Record(m, Opt("input"), Opt("input2"), frames, int.Parse(Opt("key-every", "60"), CultureInfo.InvariantCulture), vars, Opt("build"), st);
+                    // --png-at f1,f2 --png-dir D: the picture after those frames (the NES: the compat T1 checker's checkpoints, one run for movie + pictures)
+                    var pngAt = Opt("png-at").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(long.Parse).ToHashSet();
+                    string pngDir = Opt("png-dir", ".");
+                    Action<long>? after = pngAt.Count == 0 || m.Host.Nes == null ? null : f =>
+                    {
+                        if (!pngAt.Contains(f)) return;
+                        Directory.CreateDirectory(pngDir);
+                        BrokenNes.Workshop.MixLab.MixLabCli.SaveRgba(m.Host.Nes.GetFrameBuffer(), 256, 240, Path.Combine(pngDir, $"f{f:D5}.png"));
+                    };
+                    var mv = MoviePlayer.Record(m, Opt("input"), Opt("input2"), frames, int.Parse(Opt("key-every", "60"), CultureInfo.InvariantCulture), vars, Opt("build"), st, after);
                     mv.Save(outFile);
                     Console.WriteLine($"recorded {outFile}: {mv.Frames} frames, {mv.Inputs.Count} input changes, {mv.Keys.Count} keyframes, {m.ConsoleKey} {m.Cores}{(mv.Vars.Count > 0 ? ", course: " + string.Join(", ", mv.Vars.Select(v => v.Name)) : "")}");
                     return 0;
