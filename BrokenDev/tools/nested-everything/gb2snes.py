@@ -84,16 +84,48 @@ def flags_needed(an, bank, pc, n):
     return need | (15 & ~written)
 
 
+# ------------------------------------------------------------------------------------------------- SM83 timing
+
+def gb_cycles(op, b1=0):
+    """T-cycles of an SM83 instruction (conditional ones: the not-taken time + half the difference)."""
+    x, y, z = op >> 6, (op >> 3) & 7, op & 7
+    if op == 0xCB:
+        if b1 & 7 != 6: return 8
+        return 12 if b1 >> 6 == 1 else 16
+    if x == 0:
+        if z == 0: return {0: 4, 1: 20, 2: 4, 3: 12}.get(y, 10)
+        if z == 1: return 8 if y & 1 else 12
+        if z == 2: return 8
+        if z == 3: return 8
+        if z in (4, 5): return 12 if y == 6 else 4
+        if z == 6: return 12 if y == 6 else 8
+        return 4
+    if x == 1: return 8 if (y == 6 or z == 6) and op != 0x76 else 4
+    if x == 2: return 8 if z == 6 else 4
+    T = {0xC9: 16, 0xD9: 16, 0xE9: 4, 0xF9: 8, 0xE0: 12, 0xF0: 12, 0xE8: 16, 0xF8: 12, 0xE2: 8, 0xF2: 8, 0xEA: 16,
+         0xFA: 16, 0xC3: 16, 0xF3: 4, 0xFB: 4, 0xCD: 24}
+    if op in T: return T[op]
+    if z == 0: return 14
+    if z == 1: return 12
+    if z == 2: return 14
+    if z == 4: return 18
+    if z == 5: return 16
+    if z == 6: return 8
+    if z == 7: return 16
+    return 4
+
+
 # ------------------------------------------------------------------------------------------------- code generation
 
 class Gen:
     """65816 text for one SM83 instruction. mode 'static': operands and targets known (translation); 'interp':
     operands in $0C/$0D, the next PC in $16 (interpreter handlers)."""
 
-    def __init__(self, label_of, count=False):
+    def __init__(self, label_of, count=False, tcyc=False):
         self.label_of = label_of          # (gb address, from (bank, pc)) -> label or None
         self.k = 0
         self.count = count
+        self.tcyc = tcyc                  # GB timer on GB time: each instruction adds its cycles to $3C
 
     def u(self):
         self.k += 1
@@ -112,12 +144,12 @@ class Gen:
 
     def rd_const(self, a):
         if a < 0xE000 or 0xFF80 <= a: return ['lda.w $%04X' % a]
-        if 0xFF00 <= a < 0xFF80 and (a & 0xFF) not in (0x00, 0x04, 0x41, 0x44): return ['lda.w $%04X' % a]
+        if 0xFF00 <= a < 0xFF80 and (a & 0xFF) not in (0x00, 0x04, 0x05, 0x41, 0x44) + ((0x0F,) if self.tcyc else ()): return ['lda.w $%04X' % a]
         return ['ldx #$%04X' % a, 'jsl rdx']
 
     def wr_const(self, a):
         if 0xA000 <= a < 0xE000 or 0xFF80 <= a < 0xFFFF: return ['sta.w $%04X' % a]
-        if 0xFF00 <= a < 0xFF80 and (a & 0xFF) not in (0x01, 0x02, 0x04, 0x0F, 0x46): return ['sta.w $%04X' % a]
+        if 0xFF00 <= a < 0xFF80 and (a & 0xFF) not in (0x01, 0x02, 0x04, 0x05, 0x07, 0x0F, 0x46): return ['sta.w $%04X' % a]
         return ['ldx #$%04X' % a, 'jsl wrx']
 
     # flags ---------------------------------------------------------------------------------------------------
@@ -175,6 +207,9 @@ class Gen:
         if self.count:
             c = self.u()
             out += ['inc $18', 'bne ' + c, 'inc $19', 'bne ' + c, 'inc $1A', c + ':']
+        if self.tcyc:
+            c = self.u()
+            out += ['lda $3C', 'clc', 'adc #%d' % gb_cycles(op, b1 if not I else 0), 'sta $3C', 'bcc ' + c, 'inc $3D', c + ':']
         x, y, z = op >> 6, (op >> 3) & 7, op & 7
         R = sm83.R8
 
@@ -418,8 +453,160 @@ def rot_a(gen, op, fl):
 
 # ------------------------------------------------------------------------------------------------- runtime
 
-def runtime_text(chunks_tab, lytab):
-    return r'''
+REAL_PRO = r'''tupd:   php
+        sei
+        phx
+        inc $3E
+        sep #$20
+        .a8
+        lda.l $00213F
+        lda.l $002137
+        lda.l $00213D
+        sta $27
+        lda.l $00213D
+        and #$01
+        sta $28
+        rep #$20
+        .a16
+        lda $27
+        sta.l $7E3F06               ; raw V (the IRQ handler sets the next V-IRQ from it)
+        sec
+        sbc #225
+        bcs .r0
+        adc #262
+.r0:    sta $34                     ; lines since the last NMI
+        sec
+        sbc.l $7E3F02
+        sta $27
+        lda $1C
+        sec
+        sbc.l $7E3F00
+        tax
+.fr:    beq .fd
+        lda $27
+        clc
+        adc #262
+        sta $27
+        dex
+        bra .fr
+.fd:    lda $1C
+        sta.l $7E3F00
+        lda $34
+        sta.l $7E3F02
+        lda $27
+        bpl .pos                    ; (a glitch at the NMI edge)
+        jmp .out
+.pos:   cmp #1024
+        bcc .dk
+        lda #1023
+        sta $27
+.dk:    sep #$20
+        .a8
+        lda.l $7FFF07
+        and #$04
+        bne .on
+        jmp .out
+.on:    lda.l $7FFF07
+        and #$03
+        asl a
+        tax
+        rep #$20
+        .a16
+        lda.l KTAB,x
+        sta $34
+        stz $36
+        lda.l $7E3F04
+        and #$00FF
+        sta $38
+        stz $3A
+.m:     lda $27
+        beq .md
+        lsr a
+        sta $27
+        bcc .n
+        lda $38
+        clc
+        adc $34
+        sta $38
+        lda $3A
+        adc $36
+        sta $3A
+.n:     asl $34
+        rol $36
+        bra .m
+.md:    sep #$20
+        .a8
+        lda $38
+        sta.l $7E3F04
+        rep #$20
+        .a16
+        lda $39                     ; whole ticks (16 bits)
+'''
+CYC_PRO = r'''tupd:   php
+        sei
+        phx
+        inc $3E
+        sep #$20
+        .a8
+        lda.l $7FFF07
+        and #$04
+        bne .on
+        stz $3C
+        stz $3D
+        jmp .out
+.on:    lda.l $7FFF07
+        and #$03
+        asl a
+        tax
+        rep #$20
+        .a16
+        lda $3C
+        clc
+        adc.l $7E3F04
+        stz $3C
+        sta $38
+        and.l TMASK,x
+        sta.l $7E3F04
+        lda.l TSHIFT,x
+        tay
+        lda $38
+.sh:    lsr a
+        dey
+        bne .sh
+        cmp #$0000
+'''
+
+# halt with the GB timer on GB time: no instructions run while halted, so the time to the next overflow passes at once
+HALT_FF = r'''        jsr tupd
+        lda.w $FFFF
+        and.w $FF0F
+        and #$1F
+        bne .w
+        lda.w $FFFF
+        and #$04
+        beq .w
+        lda.w $FF07
+        and #$04
+        beq .w
+        lda.w $FF06
+        sta.w $FF05
+        lda #$00
+        sta.l $7E3F04
+        sta.l $7E3F05
+        lda.w $FF0F
+        ora #$04
+        sta.w $FF0F
+        jsr updp
+'''
+NMI_T = r'''        lda $3E
+        bne .nt
+        jsr tupd
+.nt:
+'''
+
+
+def runtime_text(chunks_tab, lytab, tcyc=False):
+    return (r'''
 ; ============================================================ reset (entered at $00:8xxx, continues in FastROM $C0)
 reset:  sei
         clc
@@ -519,6 +706,9 @@ fast:   lda #$80
         sta $1C
         sta $20
         sta.l $7E3FFE
+        sta.l $7E3F00
+        sta.l $7E3F02
+        sta.l $7E3F04
         sep #$20
         .a8
         ldx #$0000
@@ -538,6 +728,7 @@ fast:   lda #$80
         lda #$00
         xba
         lda #$00
+        cli
         ldx #$0100
         jml dispatch
 
@@ -621,7 +812,14 @@ rdx:    cpx #$FE00
         beq .stat
         cmp #$04
         beq .div
+        cmp #$05
+        beq .tima
+        cmp #$0F
+        beq .tima
 .pl:    lda.w $0000,x
+        rtl
+.tima:  jsr tupd
+        lda.w $0000,x
         rtl
 .div:   lda.l $00213F
         lda.l $002137
@@ -765,9 +963,19 @@ wrx:    cpx #$8000
         sta $40,x
         pla
         rtl
-.io:    sta.w $0000,x
+.io:    pha
+        txa
+        cmp #$05
+        beq .tw
+        cmp #$07
+        bne .io2
+.tw:    jsr tupd
+.io2:   pla
+        sta.w $0000,x
         pha
         txa
+        cmp #$07
+        beq .tac
         cmp #$02
         beq .sc
         cmp #$0F
@@ -779,6 +987,15 @@ wrx:    cpx #$8000
         pla
         rtl
 .if:    jsr updp
+        pla
+        rtl
+.tac:   lda.w $FF07                 ; timer on: a V-IRQ every 16 lines keeps TIMA moving and raises its interrupt
+        and #$04
+        beq .toff
+        lda #$A1
+        bra .tset
+.toff:  lda #$81
+.tset:  sta.l $004200
         pla
         rtl
 .div:   lda #$00
@@ -884,7 +1101,7 @@ irqtake: stx $0E
         jml dispatch
 
 halt_rt: stx $0E
-.w:     lda.w $FFFF
+@@HALTFF@@.w:     lda.w $FFFF
         and.w $FF0F
         and #$1F
         bne .wake
@@ -1008,7 +1225,7 @@ nmi:    rep #$30
         pha
         plb
         lda.w $4210
-        rep #$20
+@@NMIT@@        rep #$20
         .a16
         inc $1C
         sep #$20
@@ -1340,6 +1557,90 @@ dma1:   lda $2E
         sta.w $420B
         rts
 
+; ============================================================ GB timer (TIMA/TMA/TAC) on SNES real time
+; time base: SNES lines since power-on (NMI count * 262 + lines since the NMI at V=225); TIMA ticks per SNES line in
+; 8.8 fixed point (KTAB). tupd brings TIMA up to date; an overflow reloads TMA and raises IF bit 2.
+@@TUPD@@        bne .tk
+        jmp .out
+.tk:
+        sta $34
+        lda.l $7FFF05
+        and #$00FF
+        clc
+        adc $34
+        cmp #$0100
+        bcc .st
+        sbc #$0100
+        sta $34
+        lda.l $7FFF06
+        and #$00FF
+        eor #$FFFF
+        inc a
+        clc
+        adc #$0100
+        sta $36
+.mod:   lda $34
+        cmp $36
+        bcc .mq
+        sbc $36
+        sta $34
+        bra .mod
+.mq:    lda.l $7FFF06
+        and #$00FF
+        clc
+        adc $34
+        sep #$20
+        .a8
+        sta.l $7FFF05
+        lda.l $7FFF0F
+        ora #$04
+        sta.l $7FFF0F
+        lda $14
+        beq .out
+        lda.l $7FFFFF
+        and.l $7FFF0F
+        and #$1F
+        sta $15
+        bra .out
+.st:    sep #$20
+        .a8
+        sta.l $7FFF05
+.out:   stz $3E
+        rep #$10
+        plx
+        plp
+        rts
+        .a8
+
+tirq:   rep #$30
+        .a16
+        pha
+        phx
+        phy
+        sep #$20
+        .a8
+        lda.l $004211
+        jsr tupd
+        rep #$20
+        .a16
+        lda.l $7E3F06
+        clc
+        adc #16
+        cmp #262
+        bcc .v
+        sbc #262
+.v:     sta.l $004209
+        rep #$30
+        ply
+        plx
+        pla
+        rti
+        .a8
+
+KTAB:   dw 67, 4262, 1066, 266
+TMASK:  dw $03FF, $000F, $003F, $00FF
+TSHIFT: dw 10, 4, 6, 8
+
 irqv:   rti
 cop:    rti
 
@@ -1349,7 +1650,7 @@ ZC_ADD: db $00,$10,$80,$90
 ZC_SUB: db $50,$40,$D0,$C0
 ZERO:   dw $0000
 CHUNKS: ''' + chunks_tab + r'''
-LYTAB:  ''' + lytab + '\n'
+LYTAB:  ''' + lytab + chr(10)).replace('@@TUPD@@', CYC_PRO if tcyc else REAL_PRO).replace('@@HALTFF@@', HALT_FF if tcyc else '').replace('@@NMIT@@', NMI_T if tcyc else '')
 
 
 def chunks_table():
@@ -1376,8 +1677,8 @@ def ly_table():
 
 # ------------------------------------------------------------------------------------------------- interpreter
 
-def interp_text(count):
-    g = Gen(lambda t, k: None, count)
+def interp_text(count, tcyc=False):
+    g = Gen(lambda t, k: None, count, tcyc)
     parts = [r'''
 interp: stx $16
         lda.w $0000,x
@@ -1437,7 +1738,7 @@ def unit_key_label(bank, pc):
     return 'G_%s_%04X' % ('R' if bank < 0 else '%X' % bank, pc)
 
 
-def convert(data, pcs, report, count=False):
+def convert(data, pcs, report, count=False, tcyc=False):
     cart = sm83.Cart(data)
     if cart.banks > 2:
         report['warning'] = 'PoC back end: only 32KB ROMs (bank 0 + bank 1); MBC1 banks beyond 1 are not translated'
@@ -1454,7 +1755,7 @@ def convert(data, pcs, report, count=False):
         if k[0] == 1 and (1, t) not in keyset: return None
         return unit_key_label(*k) if k in keyset and t not in an.volatile else None
 
-    g = Gen(label_of, count)
+    g = Gen(label_of, count, tcyc)
     units = []
     stats = {'flags_skipped': 0, 'flags_kept': 0}
     for k in keys:
@@ -1502,12 +1803,12 @@ def convert(data, pcs, report, count=False):
         texts[placed[i]].append('\n'.join(lines))
     # runtime + interpreter first (their symbols are needed by the code), then the code banks (twice: forward labels)
     rom = bytearray(0x200000)
-    rt_text = runtime_text(chunks_table(), ly_table())
+    rt_text = runtime_text(chunks_table(), ly_table(), tcyc)
     syms = dict(dummy)
     for rnd in range(2):
         rt, rtl = assemble(rt_text, 0xC08000, syms)
         syms.update(rtl)
-        it, itl = assemble(interp_text(count), 0xC10000, syms)
+        it, itl = assemble(interp_text(count, tcyc), 0xC10000, syms)
         syms.update(itl)
         labels = {}
         code = []
@@ -1545,7 +1846,8 @@ def convert(data, pcs, report, count=False):
     rom[0xFFDA] = 0x00
     rom[0xFFDB] = 0x00
     def vec(o, lab): v = syms[lab] & 0xFFFF; rom[o] = v & 0xFF; rom[o + 1] = v >> 8
-    for o in (0xFFE4, 0xFFE6, 0xFFE8, 0xFFEE): vec(o, 'irqv')
+    for o in (0xFFE4, 0xFFE6, 0xFFE8): vec(o, 'irqv')
+    vec(0xFFEE, 'tirq')
     vec(0xFFEA, 'nmi')
     for o in (0xFFF4, 0xFFF8, 0xFFFA, 0xFFFE): vec(o, 'irqv')
     vec(0xFFFC, 'reset')
@@ -1573,7 +1875,7 @@ def runtime_symbols_dummy():
 
 # ------------------------------------------------------------------------------------------------- harness hook
 
-def test_case(exe, rom, work, frames, gb_reference, run):
+def test_case(exe, rom, work, frames, gb_reference, run, extra=()):
     import re, subprocess
     ref = gb_reference(exe, rom, work, frames)
     res = dict(ref)
@@ -1583,6 +1885,7 @@ def test_case(exe, rom, work, frames, gb_reference, run):
             if os.path.exists(f): os.remove(f)
         args = [sys.executable, os.path.join(HERE, 'gb2snes.py'), 'convert', rom, out_rom, '--pcs', ref['pcs'], '--report', out_rom + '.json']
         if cnt: args.append('--count')
+        args += list(extra)
         conv = run(args)
         if not os.path.exists(out_rom): raise SystemExit('gb2snes failed: ' + conv[-2000:])
         o = run([exe, '--snesrun', '--rom', out_rom, '--frames', str(frames * 12), '--dump-wram', '0:%d' % 0x6000,
@@ -1626,6 +1929,7 @@ def main():
         p.add_argument('--pcs'); p.add_argument('--report'); p.add_argument('--frames', type=int, default=1800)
         p.add_argument('--input', default=''); p.add_argument('--workshop'); p.add_argument('--profile')
         p.add_argument('--set', action='append', default=[]); p.add_argument('--count', action='store_true')
+        p.add_argument('--timer', choices=['real', 'gb'], default='real', help='GB timer on SNES real time (games) or GB instruction time (test ROMs)')
     a = ap.parse_args()
     data = open(a.inp, 'rb').read()
     report = {'pipeline': 'gb2snes', 'in': a.inp, 'out': a.out}
@@ -1636,7 +1940,7 @@ def main():
         report['feedback'] = {'pcs': len(pcs), 'run': out.strip().splitlines()[:3]}
     elif a.pcs:
         pcs = sm83.read_pcs(a.pcs)
-    rom = convert(data, pcs, report, a.count)
+    rom = convert(data, pcs, report, a.count, a.timer == 'gb')
     open(a.out, 'wb').write(rom)
     with open(os.path.splitext(a.out)[0] + '.sym', 'w') as f:      # WLA-DX symbols: the GB address of each block
         f.write('[labels]' + chr(10))
