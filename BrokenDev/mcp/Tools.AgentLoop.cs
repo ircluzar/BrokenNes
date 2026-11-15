@@ -15,7 +15,7 @@ internal static partial class Tools
         add("play_step",
             "The agent play loop's one call (headless): holds the pads for some frames (or until a condition is true, within a frame budget), releases them, and returns " +
             "a small picture (PNG), the RAM values asked for, the frame number and whether the game lagged (lag needs the session opened with checks:true). " +
-            "With a reference open (the reference tool), the reference emulator gets the same pads for the same frames and its difference score comes back too " +
+            "With a reference open (the reference tool), the reference emulator gets the same pads for the same frames and its difference score comes back too (diff.score: shift-tolerant, the best within +-2 px and +-1 frame; diff.raw: exact; stats: median / max so far) " +
             "(and its picture, with ref_picture). The pads are released after each step: a held button is pressed again by the next step (a press of one frame then frames:1). " +
             "Typical: frames 15-30 per decision, scale 0.5.",
             Schema(S(),
@@ -38,8 +38,9 @@ internal static partial class Tools
                 ("action", P("string", "start, mark, save, stop or status", Enum("start", "mark", "save", "stop", "status")), true),
                 ("path", P("string", "start / save / stop: the movie file (default: the session's folder)"), false),
                 ("text", P("string", "the mark's text (start / mark / stop)"), false),
-                ("state", P("string", "mark: also save a state under this name (load_state goes back to it)"), false)),
-            a => On(a, s => (ToolOut)Headless(s).Record(a.Req("action").ToLowerInvariant(), a.Str("path"), a.Str("text"), a.Str("state"))), false);
+                ("state", P("string", "mark: also save a state under this name (load_state goes back to it)"), false),
+                ("frame", P("integer", "mark: put the mark at this earlier frame (a step's `frame`) instead of now"), false)),
+            a => On(a, s => (ToolOut)Headless(s).Record(a.Req("action").ToLowerInvariant(), a.Str("path"), a.Str("text"), a.Str("state"), a.Long("frame"))), false);
 
         add("reference",
             "The live reference for a headless session: another emulator on the same ROM, lock-stepped with play_step (it gets the same pads for the same frames and waits between steps). " +
@@ -54,11 +55,12 @@ internal static partial class Tools
                 ("ram", P("string[]", "open / ram: name=$address pairs read on both machines after every step"), false),
                 ("align_frames", P("integer", "open / align: frames of no-pad boot to compare (open: default 0 = no align; align: default 180)"), false),
                 ("align_search", P("integer", "open / align: offsets tried each way (default 60; the Game Boy boots ~40-60 frames apart on Mesen)"), false),
-                ("scale", P("number", "compare: the pictures' scale (default 1; 0.5 half)"), false)),
+                ("scale", P("number", "compare: the pictures' scale (default 1; 0.5 half)"), false),
+                ("advance", P("boolean", "align / offset during a recording: allow BrokenNes to run frames with no pads (refused otherwise; always reported)"), false)),
             a => On(a, s =>
             {
                 string act = a.Req("action").ToLowerInvariant();
-                return Headless(s).Reference(act, a.Str("emulator") ?? "auto", a.Long("offset"), a.List("ram"), a.Int("align_frames", act == "align" ? 180 : 0), a.Int("align_search", 60), a.Double("scale") ?? 1);
+                return Headless(s).Reference(act, a.Str("emulator") ?? "auto", a.Long("offset"), a.List("ram"), a.Int("align_frames", act == "align" ? 180 : 0), a.Int("align_search", 60), a.Double("scale") ?? 1, a.Bool("advance", false));
             }), false);
     }
 }
