@@ -15,7 +15,7 @@ from jobs import put, job, poll  # noqa: E402
 from pull import pull  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-WS = r"C:\BrokenNes-work\bn_gg2sms\Workshop\bin\Release\net10.0-windows"
+WS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stage_g2s_ws")   # self-contained publish (Application Control blocks plain apphosts on some PCs)
 TOOLS = r"C:\BrokenNes-work\gg2sms_r3\BrokenDev\tools\nested-everything"
 ROSTER = r"C:\BrokenNes-work\gg2sms_r3\BrokenDev\projects\nested-gg2sms\roster-wide.json"
 DONE = r"C:\BrokenNes-work\gg2sms_r3_work\wide-r3.json"

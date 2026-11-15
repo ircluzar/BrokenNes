@@ -106,7 +106,7 @@ def cmd_pull(a):
     bs = boxes()
     for n, sids in load_plan(a.tag).items():
         for sid in sids:
-            dst = os.path.join(RESULTS, a.tag, sid)
+            dst = os.path.join(RESULTS, a.tag, n, sid)
             print(n, sid, pull(bs[n], rf"C:\brokennes\roms\{sid}\out", dst))
             if a.ingest:
                 p = t1_local("ingest", "--console", a.console, "--results", dst)

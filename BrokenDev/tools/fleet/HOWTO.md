@@ -61,6 +61,21 @@ python C:\BrokenNes-work\fleet\t1fleet.py pull --tag <tag> --ingest     # result
 `t1.py export/work/ingest` (branch fleet-kit): `ingest` writes the same record form as `t1.py run`. It skips a record that already
 has `t1-2`, so overlap with a local sweep is safe. Only NES is wired in t1.py so far.
 
+## GG -> SMS wide roster (gg2sms_test.py) on the fleet
+```
+python C:\BrokenNes-work\fleet\gg2smsfleet.py kit [--ws <your Workshop bin dir>] [--tools <nested-everything dir>]
+python C:\BrokenNes-work\fleet\gg2smsfleet.py run --tag <tag> [--roster ..] [--done <results already graded>] [--per-pc 3]
+python C:\BrokenNes-work\fleet\gg2smsfleet.py poll --tag <tag>
+python C:\BrokenNes-work\fleet\gg2smsfleet.py collect --tag <tag> [--out merged.json] [--pictures]
+```
+- **Ship Workshop builds SELF-CONTAINED** (`dotnet publish -r win-x64 --self-contained true -o <dir>`, in your own worktree, under a
+  local heavy slot). On 4 of the 7 PCs, Windows Application Control blocks a plain `dotnet build` apphost exe
+  ("WinError 4551 ... An Application Control policy has blocked this file"). Our self-contained exes run everywhere. Do not touch
+  Defender or Application Control. The default `--ws` is `C:\BrokenNes-work\fleet\stage_g2s_ws`: the self-contained publish of
+  bn_gg2sms HEAD 88fead62. (`C:\brokennes\kit\dotnet` is a copy of the .NET 10 runtime. It works only where the exe is not blocked.)
+- The tools are laid out as `C:\brokennes\gg2sms\BrokenDev\tools\nested-everything` + `...\BrokenDev\projects\nested-gg2sms`,
+  because gg2sms.py finds pipeline.json by a relative path.
+
 ## Your own job shapes
 ```python
 import sys; sys.path.insert(0, r"E:\fleet")
