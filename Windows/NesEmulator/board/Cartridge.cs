@@ -44,6 +44,7 @@ public class Cartridge
 			79 => "NINA-03/06 (Mapper79)",
 			113 => "NINA/Sachen (Mapper113)",
 			232 => "Camerica Quattro (Mapper232)",
+			144 => "AGCI 50282 (Mapper144)",
 		_ => "Unknown"
 	};
 
@@ -191,6 +192,7 @@ public class Cartridge
 			case 79: mapper = new Mapper79(this); break;   // NINA-03/06
 			case 113: mapper = new Mapper113(this); break; // NINA/Sachen
 			case 232: mapper = new Mapper232(this); break; // Camerica BF9096
+			case 144: mapper = new Mapper144(this); break; // AGCI 50282 (Death Race)
 			default:
 				#if DIAG_LOG
 				Console.WriteLine($"Mapper {mapperID} ({mapperName}) is not supported");
@@ -204,6 +206,7 @@ public class Cartridge
 	private static readonly System.Collections.Generic.Dictionary<uint, int> HeaderFixups = new()
 	{
 		{ 0x8EAB381Cu, 79 },   // Deathbots (U): headered as 113, really AVE NINA-06 (79); as 113 its writes flip the mirroring
+		{ 0x5CAA3E61u, 144 },  // Death Race (U): headered as 11, really AGCI 50282 (144); as 11 it crashes on frame 14
 	};
 	private static uint Crc32(byte[] data, int start, int length)
 	{
