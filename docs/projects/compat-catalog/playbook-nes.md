@@ -50,6 +50,11 @@ see, follow the picture, and write what worked in your notes (the next agent get
   frames) cannot be skipped: wait with `frames=600` steps.
 - **Y/N or YES/NO prompts**: the cursor moves with Up/Down or Left/Right, A picks (B often means No). **Uncharted Waters**' "Is this
   OK? (Y/N)" accepted no pad input on either emulator in the pilot: grade Not tested ("game waits") at that point, do not spend steps.
+- **Name grids (any game)**: one direction press per step (10 frames, no idle step in between: the next step's picture shows the
+  result); the cursor moves one cell per press whatever the hold length. Count the cells to END before pressing.
+- **Metroid**: Start on the title, Start again on START/CONTINUE; gameplay ~frame 740; Right+A moves Samus off the elevator.
+- **Mega Man 2**: Start may be ignored several times on the title: wait 300 idle frames, then Start; stage select Right, Start.
+- **Castlevania**: the gate opens with the whip (B 20 frames) then A, not Up.
 - **Pinbot**: Start, Start, wait 120: the table drawing is the verdict; the plunger input is unknown (same on Mesen).
 
 ## Spotting progress (RAM watch patterns)

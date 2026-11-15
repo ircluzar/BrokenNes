@@ -54,7 +54,7 @@ def main(argv=None):
     ap.add_argument("--console", required=True); ap.add_argument("--sha1", required=True)
     ap.add_argument("--rom"); ap.add_argument("--title"); ap.add_argument("--region")
     ap.add_argument("--max-steps", type=int, default=60); ap.add_argument("--max-frames", type=int, default=4000)
-    ap.add_argument("--menu-steps", type=int, default=20); ap.add_argument("--max-calls", type=int, default=110)
+    ap.add_argument("--menu-steps", type=int, default=30); ap.add_argument("--max-calls", type=int, default=110)
     ap.add_argument("--bridge", default=os.path.join(HERE, "bridge", "mcp.mjs"))
     ap.add_argument("--shots-root", default="C:/BrokenNes-work/cc_shots")
     ap.add_argument("--movie-root", default="T:/BrokenDev/Catalog/tas")
