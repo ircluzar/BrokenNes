@@ -45,12 +45,21 @@ REF_NAME = "Mesen 2.1.1"
 PROBE_FRAMES = 1200
 PROBE_STEP = 30
 WIN = 3
+REF_LAG = 3   # Mesen's script counts its first frames late: the same picture is ~3 frames lower on its counter (SMB: exactly 3)
 
 
 # ------------------------------------------------------------------------------------------------ heavy-job slots
 class Slot:
+    waited = 0.0
+    held = 0   # one game's runs are one sequential job: the outer Slot holds it, inner ones reuse it
+
     def __enter__(self):
+        Slot.held += 1
+        if Slot.held > 1:
+            self.path = None
+            return self
         os.makedirs(HEAVY, exist_ok=True)
+        t0 = time.time()
         while True:
             for i in range(1, 5):
                 p = os.path.join(HEAVY, f"slot{i}")
@@ -61,11 +70,14 @@ class Slot:
                 with open(os.path.join(p, "owner.txt"), "w") as f:
                     f.write(f"{LANE} PID {os.getpid()} {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
                 self.path = p
+                Slot.waited += time.time() - t0
                 return self
             time.sleep(30)
 
     def __exit__(self, *a):
-        shutil.rmtree(self.path, ignore_errors=True)
+        Slot.held -= 1
+        if self.path:
+            shutil.rmtree(self.path, ignore_errors=True)
 
 
 def run(cmd, timeout, env=None, cwd=None):
@@ -171,12 +183,18 @@ def nes_romtest(rom, frames, png_at, out_dir, script=None):
     return dict(code=code, out=out, err=err, secs=round(secs, 1), timeout=to, report=j, pngs=pngs)
 
 
-def nes_record(rom, frames, script, out):
+def nes_record(rom, frames, script, out, png_at, png_dir):
+    """The scripted run on BrokenNes: --movie record writes the .bnm and the checkpoint pictures in one run."""
+    os.makedirs(png_dir, exist_ok=True)
     cmd = [WORKSHOP, "--movie", "record", "--rom", rom, "--frames", str(frames), "--input", script, "--cores", "FIX/FIX/FIX",
-           "--power-on", "zeros", "--build", T1_VERSION, "--out", out]
+           "--power-on", "zeros", "--build", T1_VERSION, "--png-at", ",".join(map(str, sorted(set(png_at)))), "--png-dir", png_dir, "--out", out]
     with Slot():
-        code, o, e, secs, to = run(cmd, timeout=max(120, frames // 40))
-    return code == 0 and os.path.exists(out), (o + e).strip()[-300:]
+        code, o, e, secs, to = run(cmd, timeout=max(180, frames // 30))
+    pngs = {}
+    for n in os.listdir(png_dir):
+        if n.startswith("f") and n.endswith(".png"):
+            pngs[int(n[1:-4])] = os.path.join(png_dir, n)
+    return dict(code=code, out=o, err=e, secs=round(secs, 1), timeout=to, pngs=pngs, ok=code == 0 and os.path.exists(out))
 
 
 MESEN_SETTINGS = {
@@ -199,7 +217,7 @@ def mesen_run(rom, script, shots, out_dir, frames):
     for d in ("Saves", "SaveStates", "RecentGames"):   # every game boots clean (no battery save from an earlier run)
         shutil.rmtree(os.path.join(home, d), ignore_errors=True)
     os.makedirs(out_dir, exist_ok=True)
-    env = dict(os.environ, BNT1_INPUT=script or "", BNT1_SHOTS=",".join(map(str, shots)), BNT1_WIN=str(WIN), BNT1_OUT=out_dir)
+    env = dict(os.environ, BNT1_INPUT=script or "", BNT1_SHOTS=",".join(str(max(0, f - REF_LAG)) for f in shots), BNT1_WIN=str(WIN), BNT1_OUT=out_dir)
     secs_limit = max(60, frames // 300 + 60)
     cmd = [exe, rom, "--luaScriptsToLoad", os.path.join(HERE, "mesen_t1.lua"), "--testRunner", f"--timeout={secs_limit}"]
     with Slot():
@@ -213,7 +231,7 @@ def mesen_run(rom, script, shots, out_dir, frames):
 
 def best_match(img, ref_pics, f):
     best = None
-    for k in range(f - WIN, f + WIN + 1):
+    for k in range(f - REF_LAG - WIN, f - REF_LAG + WIN + 1):
         p = ref_pics.get(k)
         if p is None:
             continue
@@ -250,12 +268,25 @@ def check_nes(rec, minutes, keep_dir):
     p1 = nes_romtest(rom, PROBE_FRAMES, range(PROBE_STEP, PROBE_FRAMES + 1, PROBE_STEP), os.path.join(work, "probe"))
     res["probe"] = dict(exit=p1["code"], secs=p1["secs"], timeout=p1["timeout"])
     rep = p1["report"] or {}
-    mapper = rep.get("Mapper") if isinstance(rep, dict) else None
+    mapper = (rec.get("dump") or {}).get("mapper")
     res["mapper"] = mapper
     errtxt = (p1["err"] + p1["out"] + json.dumps(rep))[-4000:]
     if p1["timeout"]:
         return grade_result(res, "Broken", ["crash", "timing"], "the boot hung (no frames for minutes)")
+    if p1["code"] == 3:
+        # --romtest refuses the core request (exit 3) before it says why the cart did not load: probe once on the default cores
+        with Slot():
+            c3, o3, e3, _, _ = run([WORKSHOP, "--romtest", "--rom", rom, "--frames", "1", "--json", "--out", os.path.join(work, "why.json")], 120)
+        errtxt += o3 + e3
+        try:
+            with open(os.path.join(work, "why.json"), encoding="utf-8-sig") as f:
+                errtxt += json.dumps(json.load(f))
+        except Exception:
+            pass
+    if isinstance(rep, dict) and rep.get("CrashInfo"):
+        return grade_result(res, "Broken", ["crash"], f"CPU crash during boot (frame {rep.get('CrashFrame')}): {str(rep['CrashInfo'])[:200]}")
     if p1["code"] not in (0, 1) or not p1["pngs"]:
+        res["probe"]["error"] = errtxt[-600:]
         low = errtxt.lower()
         if "mapper" in low and ("not supported" in low or "unsupported" in low):
             return grade_result(res, "Nothing", ["mapper"], f"unsupported board (mapper {mapper})")
@@ -268,22 +299,16 @@ def check_nes(rec, minutes, keep_dir):
     cps = sorted(set([max(1, start - 30), start + 120, start + 300, start + 470] + list(range(start + 480 + 1200, end, 1200)) + [end]))
     res["frames"] = end
     res["input"] = "generic-v1 start@%d" % start
-    # pass 2: the script on BrokenNes, pictures at the checkpoints
-    p2 = nes_romtest(rom, end, cps, os.path.join(work, "bn"), script)
-    res["bn"] = dict(exit=p2["code"], secs=p2["secs"], timeout=p2["timeout"])
-    rep2 = p2["report"] or {}
-    if isinstance(rep2, dict):
-        res["bn"].update({k: rep2.get(k) for k in ("FrameBufferHash", "DistinctColors", "Result", "CrashInfo") if k in rep2})
-    # reference: Mesen with the same script
-    m = mesen_run(rom, script, cps, os.path.join(work, "ref"), end)
-    res["ref"] = dict(exit=m["code"], secs=m["secs"], timeout=m["timeout"], pictures=len(m["pics"]))
-    # the movie
+    # pass 2: the script on BrokenNes (movie + checkpoint pictures), then the same script on the reference
     os.makedirs(keep_dir, exist_ok=True)
     bnm = os.path.join(keep_dir, "t1.bnm")
-    ok, msg = nes_record(rom, end, script, bnm)
-    res["tas"] = bnm if ok else None
-    if not ok:
-        res["tasError"] = msg
+    p2 = nes_record(rom, end + 1, script, bnm, cps, os.path.join(work, "bn"))
+    res["bn"] = dict(exit=p2["code"], secs=p2["secs"], timeout=p2["timeout"])
+    res["tas"] = bnm if p2["ok"] else None
+    if not p2["ok"]:
+        res["bn"]["error"] = (p2["err"] + p2["out"]).strip()[-400:]
+    m = mesen_run(rom, script, cps, os.path.join(work, "ref"), end)
+    res["ref"] = dict(exit=m["code"], secs=m["secs"], timeout=m["timeout"], pictures=len(m["pics"]))
     # checkpoint screenshots (BrokenNes + reference, as PNG) and scores
     cmp = []
     for f in cps:
@@ -294,6 +319,7 @@ def check_nes(rec, minutes, keep_dir):
             shutil.copy2(bp, os.path.join(keep_dir, f"bn_f{f:05d}.png"))
             row["bn"] = f"bn_f{f:05d}.png"
             row["bnBlank"] = blank(bimg)
+            row["bnHash"] = hash(bimg.tobytes())
         bm = best_match(bimg, m["pics"], f) if bimg is not None else None
         rk = bm[1] if bm else (f if f in m["pics"] else None)
         if rk is not None and rk in m["pics"]:
@@ -305,8 +331,11 @@ def check_nes(rec, minutes, keep_dir):
             row["score"], row["refFrame"] = bm
         cmp.append(row)
     res["checkpoints"] = cmp
+    out = grade_compare(res, p2, cmp, title)
+    for r in cmp:
+        r.pop("bnHash", None)
     shutil.rmtree(work, ignore_errors=True)
-    return grade_compare(res, p2, cmp, title)
+    return out
 
 
 def grade_result(res, grade, tags, why):
@@ -317,12 +346,9 @@ def grade_result(res, grade, tags, why):
 def grade_compare(res, p2, cmp, title):
     if p2["timeout"]:
         return grade_result(res, "Broken", ["crash", "timing"], "hung during the input script")
-    if p2["code"] not in (0, 1) or not p2["pngs"]:
-        crash = (res["bn"].get("CrashInfo") or p2["err"] or "").strip()[:200]
+    if not p2["ok"]:
+        crash = res["bn"].get("error", "")[:240]
         return grade_result(res, "Broken", ["crash"], f"crashed during the input script (exit {p2['code']}): {crash}")
-    rep = p2["report"] or {}
-    if isinstance(rep, dict) and rep.get("CrashInfo"):
-        return grade_result(res, "Broken", ["crash"], "CPU crash: " + str(rep["CrashInfo"])[:200])
     have_ref = [r for r in cmp if r["score"] is not None]
     bn_rows = [r for r in cmp if r["bn"]]
     all_blank = all(r["bnBlank"] for r in bn_rows)
@@ -341,7 +367,7 @@ def grade_compare(res, p2, cmp, title):
     worst = max(scores)
     first_bad = next((r for r in have_ref if r["score"] > 0.12), None)
     first_off = next((r for r in have_ref if r["score"] > 0.03), None)
-    distinct_bn = len({open(os.path.join(os.path.dirname(p2["pngs"][min(p2["pngs"])]), os.path.basename(p2["pngs"][f])), "rb").read().__hash__() for f in p2["pngs"]})
+    distinct_bn = len({r["bnHash"] for r in bn_rows})
     res["summary"] = dict(titleScore=title_row["score"], worst=worst, mean=round(sum(scores) / len(scores), 4),
                           same=sum(s <= 0.03 for s in scores), close=sum(0.03 < s <= 0.12 for s in scores),
                           different=sum(s > 0.12 for s in scores), n=len(scores), bnDistinct=distinct_bn)
@@ -412,10 +438,12 @@ def cmd_run(a):
         t = time.time()
         kd = keep_dir_for(a.console, rec["sha1"])
         try:
-            res = check_nes(rec, a.minutes, kd)
+            with Slot():
+                res = check_nes(rec, a.minutes, kd)
         except Exception as e:  # a driver bug must not stop the sweep; recorded, not graded
             res = dict(version=T1_VERSION + "-error", grade="Not tested", tags=[], why=f"T1 driver error: {type(e).__name__}: {e}")
         res["seconds"] = round(time.time() - t, 1)
+        res["slotWait"] = round(Slot.waited, 1); Slot.waited = 0.0
         try:
             write_record(a.console, rec, res, kd, version)
         except Exception as e:
@@ -429,7 +457,9 @@ def cmd_run(a):
 def cmd_one(a):
     rec = catalog.get(a.console, a.sha1)
     kd = keep_dir_for(a.console, a.sha1) if a.write else os.path.join(SCRATCH, "_one", a.sha1)
+    t = time.time()
     res = check_nes(rec, a.minutes, kd)
+    res["seconds"] = round(time.time() - t, 1); res["slotWait"] = round(Slot.waited, 1)
     print(json.dumps(res, indent=1, default=str))
     if a.write:
         write_record(a.console, rec, res, kd, git_version())
@@ -465,7 +495,7 @@ def main():
     for name in ("run", "one", "report"):
         q = sp.add_parser(name)
         q.add_argument("--console", default="nes")
-        q.add_argument("--minutes", type=float, default=2.0)
+        q.add_argument("--minutes", type=float, default=1.0)
         if name == "run":
             q.add_argument("--limit", type=int, default=0)
             q.add_argument("--only", default="")
