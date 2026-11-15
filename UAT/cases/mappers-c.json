@@ -1,0 +1,178 @@
+{
+  "schema": 1,
+  "suite": "mappers-c",
+  "description": "Compatibility catalog, the NES mappers left after P0 (13, 47, 118): one case per catalog title, played past its title screen. The ROMs are the user's library (X:), not in the repo: the cases skip on a machine without it.",
+  "roots": {
+    "lib": "X:/EMULATION/Nintendo Entertainment System"
+  },
+  "cases": [
+    {
+      "id": "mapc-m013-cprom-videomation",
+      "description": "Mapper 13. CPROM: 16KB CHR-RAM, $1000-$1FFF page switched, bus conflicts. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-15): same final frame, the differing frames are one- to four-frame input-latency skews.",
+      "kind": "romtest",
+      "rom": "{lib}/Videomation (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-c",
+        "mapper13"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "7D403E1226E7560D",
+        "framesRun": 900,
+        "distinctColors": 8,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapc-m047-qj-vball",
+      "description": "Mapper 47. NES-QJ: MMC3 + $6000 outer-block latch; block 0 (Super Spike V'Ball). Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-15): same final frame, the differing frames are one- to four-frame input-latency skews.",
+      "kind": "romtest",
+      "rom": "{lib}/Super Spike V'Ball + Nintendo World Cup (U) [!].nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-c",
+        "mapper47"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "A23039F88D2EFD7D",
+        "framesRun": 900,
+        "distinctColors": 2,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapc-m047-qj-worldcup",
+      "description": "Mapper 47. NES-QJ: block 1 (Nintendo World Cup), chosen with Down on the game-select menu; played to the team-position screen. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-15): same final frame, the differing frames are one- to four-frame input-latency skews.",
+      "kind": "romtest",
+      "rom": "{lib}/Super Spike V'Ball + Nintendo World Cup (U) [!].nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "170:Down,180:,200:Start,210:,400:Start,410:,600:Start,610:,800:Start,810:",
+      "tags": [
+        "corpus",
+        "mappers-c",
+        "mapper47"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "34B39A41A6AED2FB",
+        "framesRun": 900,
+        "distinctColors": 11,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapc-m118-txsrom-aliensyndrome",
+      "description": "Mapper 118. TxSROM: MMC3 with CIRAM A10 from CHR bank bit 7. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-15): same final frame, the differing frames are one- to four-frame input-latency skews.",
+      "kind": "romtest",
+      "rom": "{lib}/Alien Syndrome (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-c",
+        "mapper118"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "D285289C33FE0E6D",
+        "framesRun": 900,
+        "distinctColors": 4,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapc-m118-txsrom-goaltwo",
+      "description": "Mapper 118. TxSROM. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-15): same final frame, the differing frames are one- to four-frame input-latency skews.",
+      "kind": "romtest",
+      "rom": "{lib}/Goal! Two (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-c",
+        "mapper118"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "16BADE0AFC2FDBBF",
+        "framesRun": 900,
+        "distinctColors": 5,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapc-m118-txsrom-prosporthockey",
+      "description": "Mapper 118. TxSROM. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-15): same final frame, the differing frames are one- to four-frame input-latency skews.",
+      "kind": "romtest",
+      "rom": "{lib}/Pro Sport Hockey (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-c",
+        "mapper118"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "839ED6C3F3A4923D",
+        "framesRun": 900,
+        "distinctColors": 8,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapc-m118-txsrom-playactionfootball",
+      "description": "Mapper 118. TxSROM. Played past the title (Start presses), FIX/FIX/FIX. Golden recorded from the build that added the mapper; the picture was cross-checked against Mesen 2.1.1 with BrokenDev/tools/diff-nes.ps1 (2026-11-15): same final frame, the differing frames are one- to four-frame input-latency skews.",
+      "kind": "romtest",
+      "rom": "{lib}/NES Play Action Football (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,700:A,710:",
+      "tags": [
+        "corpus",
+        "mappers-c",
+        "mapper118"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "C08E9D16CAF61DDD",
+        "framesRun": 900,
+        "distinctColors": 7,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    }
+  ]
+}
