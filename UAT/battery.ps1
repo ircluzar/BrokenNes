@@ -106,6 +106,31 @@ if ($Skip -notcontains 'fuzz' -and $FuzzMinutes -gt 0 -and $Consoles.Count -gt 0
     $groups['Fuzz campaign'] = [pscustomobject]@{ ok = ($real -eq 0); line = "$trials trials, $real finding(s)"; details = $findings }
 }
 
+# ---- 4a. replay determinism (compat catalog P0 item 2): movie replay, lock-step twins, save-state round trips on every console's default cores
+if ($Skip -notcontains 'determinism' -and $Consoles.Count -gt 0) {
+    Note "replay determinism" White
+    $dd = Join-Path $Out 'determinism'; New-Item -ItemType Directory -Force -Path $dd | Out-Null
+    $dc = @($Consoles | ForEach-Object { if ($_ -eq 'wm') { 'wms' } else { $_ } })
+    # two shards (at most 2 heavy jobs on the shared machine)
+    $half = [Math]::Ceiling($dc.Count / 2)
+    $shards = @(@($dc[0..($half - 1)]), @(if ($dc.Count -gt $half) { $dc[$half..($dc.Count - 1)] }))
+    $dps = for ($i = 0; $i -lt $shards.Count; $i++) {
+        if ($shards[$i].Count -eq 0) { continue }
+        $p = Start-Process -FilePath $exe -ArgumentList @('--determinism-test', '--frames', '1200', '--roms', (Join-Path $PSScriptRoot 'determinism-roms.txt'), '--consoles', ($shards[$i] -join ','), '--keep', (Join-Path $dd "movies$i")) -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $dd "shard$i.txt") -RedirectStandardError (Join-Path $dd "shard$i.err.txt")
+        $null = $p.Handle; $p
+    }
+    $dps | Wait-Process
+    $dp = 0; $df = 0; $dn = 0; $det = @()
+    foreach ($i in 0..($shards.Count - 1)) {
+        $txt = Get-Content (Join-Path $dd "shard$i.txt") -ErrorAction SilentlyContinue
+        foreach ($l in $txt) {
+            if ($l -match '^determinism tests: (\d+) passed, (\d+) failed, (\d+) not run') { $dp += [int]$Matches[1]; $df += [int]$Matches[2]; $dn += [int]$Matches[3] }
+            elseif ($l -like '  FAILED *') { $det += $l.Trim().Substring(7) }
+        }
+    }
+    $groups['Replay determinism'] = [pscustomobject]@{ ok = ($df -eq 0 -and $dp -gt 0); line = "$dp pass, $df fail, $dn not run"; details = $det }
+}
+
 # ---- 4b. the x86 PC console
 if ($runPc -and $Skip -notcontains 'x86') {
     Note "x86 PC console checks" White
