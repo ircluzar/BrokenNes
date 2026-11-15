@@ -45,6 +45,11 @@ public class Cartridge
 			113 => "NINA/Sachen (Mapper113)",
 			232 => "Camerica Quattro (Mapper232)",
 			144 => "AGCI 50282 (Mapper144)",
+		34 => "BNROM / NINA-001 (Mapper34)",
+		64 => "Tengen RAMBO-1 (Mapper64)",
+		69 => "Sunsoft FME-7 (Mapper69)",
+		71 => "Camerica (Mapper71)",
+		119 => "TQROM (Mapper119)",
 		_ => "Unknown"
 	};
 
@@ -193,6 +198,11 @@ public class Cartridge
 			case 113: mapper = new Mapper113(this); break; // NINA/Sachen
 			case 232: mapper = new Mapper232(this); break; // Camerica BF9096
 			case 144: mapper = new Mapper144(this); break; // AGCI 50282 (Death Race)
+			case 34: mapper = new Mapper34(this); break;
+			case 64: mapper = new Mapper64(this); break;
+			case 69: mapper = new Mapper69(this); break;
+			case 71: mapper = new Mapper71(this); break;
+			case 119: mapper = new Mapper119(this); break;
 			default:
 				#if DIAG_LOG
 				Console.WriteLine($"Mapper {mapperID} ({mapperName}) is not supported");

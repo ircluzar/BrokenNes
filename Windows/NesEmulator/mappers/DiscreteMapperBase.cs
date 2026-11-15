@@ -122,6 +122,5 @@ public abstract class DiscreteMapperBase : IMapper
 // A marker rather than forwarding to every mapper keeps the existing mappers' behaviour (and goldens) untouched.
 public interface ILowRegisterMapper { }
 
-// A board with a CPU-cycle IRQ counter (Sunsoft-3). Bus.StepAPU clocks it; true from ClockCpu = raise the IRQ now.
-public interface ICpuClockedMapper { bool ClockCpu(int cpuCycles); }
+// CPU-cycle IRQ boards implement ICpuClockedMapper (declared in RegisterMapperBase.cs).
 }

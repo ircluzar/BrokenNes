@@ -372,6 +372,7 @@ public class Bus : IBus
 	public Bus(Cartridge cartridge)
 	{
 		this.cartridge = cartridge;
+		clockedMapper = cartridge?.mapper as ICpuClockedMapper;
 		_cpuCores = CoreRegistry.CreateInstances<ICPU>(this, "CPU_");
 		_apuTypes = new System.Collections.Generic.Dictionary<string, System.Type>(CoreRegistry.ApuTypes, System.StringComparer.OrdinalIgnoreCase);
 		_ppuTypes = new System.Collections.Generic.Dictionary<string, System.Type>(CoreRegistry.PpuTypes, System.StringComparer.OrdinalIgnoreCase);
@@ -1121,7 +1122,20 @@ public class Bus : IBus
 		ApuClock += apuCycles;
 		mmc5Audio?.Step(apuCycles);
 		instr.ApuSteps += apuCycles;
-		if (cartridge?.mapper is ICpuClockedMapper cm && cm.ClockCpu(cpuCycles)) cpu?.RequestIRQ(true);   // Sunsoft-3's cycle counter
+		if (clockedMapper != null) ClockMapper(cpuCycles);
+	}
+	// Boards whose IRQ counter runs off the CPU clock (ICpuClockedMapper: mappers 64, 67, 69). Null for
+	// every other cartridge, so they pay one test. The board's IRQ output is a level: held while it is
+	// asserted, and released (RequestIRQ(false)) once the game acknowledges it.
+	private ICpuClockedMapper? clockedMapper;
+	private bool clockedMapperIrq;
+	private void ClockMapper(int cpuCycles)
+	{
+		clockedMapper!.CpuClock(cpuCycles);
+		bool line = clockedMapper.IrqLine;
+		if (line) cpu?.RequestIRQ(true);
+		else if (clockedMapperIrq) cpu?.RequestIRQ(false);
+		clockedMapperIrq = line;
 	}
 	public float[] GetAudioSamples(int max=0)
 	{

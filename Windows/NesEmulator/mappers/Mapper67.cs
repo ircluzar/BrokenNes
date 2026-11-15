@@ -7,9 +7,9 @@ namespace NesEmulator
 // enabled; going $0000 -> $FFFF raises the IRQ and disables counting.
 public class Mapper67 : DiscreteMapperBase, ICpuClockedMapper
 {
-    private int counter, irqEnabled, toggle;
+    private int counter, irqEnabled, toggle, irqPending;
     public Mapper67(Cartridge c) : base(c) { }
-    protected override void ResetBoard() { counter = 0; irqEnabled = 0; toggle = 0; SetPrg16(0, 0); SetPrg16(1, LastPrg16); }
+    protected override void ResetBoard() { counter = 0; irqEnabled = 0; toggle = 0; irqPending = 0; SetPrg16(0, 0); SetPrg16(1, LastPrg16); }
     protected override void WriteRegister(ushort address, byte value)
     {
         if ((address & 0x0800) == 0) return;
@@ -22,17 +22,18 @@ public class Mapper67 : DiscreteMapperBase, ICpuClockedMapper
             case 0xC000:
                 if (toggle == 0) counter = (counter & 0x00FF) | (value << 8); else counter = (counter & 0xFF00) | value;
                 toggle ^= 1; break;
-            case 0xD000: irqEnabled = (value >> 4) & 1; toggle = 0; break;
+            case 0xD000: irqEnabled = (value >> 4) & 1; toggle = 0; irqPending = 0; break;
             case 0xE000: SetMirror((value & 3) switch { 0 => Mirroring.Vertical, 1 => Mirroring.Horizontal, 2 => Mirroring.SingleScreenA, _ => Mirroring.SingleScreenB }); break;
             case 0xF000: SetPrg16(0, value & 0x0F); break;
         }
     }
-    public bool ClockCpu(int cpuCycles)
+    public bool IrqLine => irqPending != 0;
+    public void CpuClock(int cpuCycles)
     {
-        if (irqEnabled == 0) return false;
-        if (counter >= cpuCycles) { counter -= cpuCycles; return false; }
-        counter = (counter - cpuCycles) & 0xFFFF; irqEnabled = 0; return true;
+        if (irqEnabled == 0) return;
+        if (counter >= cpuCycles) { counter -= cpuCycles; return; }
+        counter = (counter - cpuCycles) & 0xFFFF; irqEnabled = 0; irqPending = 1;
     }
-    protected override int[] ExtraState { get => new[] { counter, irqEnabled, toggle }; set { if (value.Length == 3) { counter = value[0]; irqEnabled = value[1]; toggle = value[2]; } } }
+    protected override int[] ExtraState { get => new[] { counter, irqEnabled, toggle, irqPending }; set { if (value.Length >= 3) { counter = value[0]; irqEnabled = value[1]; toggle = value[2]; irqPending = value.Length > 3 ? value[3] : 0; } } }
 }
 }
