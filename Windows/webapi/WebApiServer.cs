@@ -315,6 +315,7 @@ namespace BrokenNes.Windows.WebApi
             RegisterDebugEndpoints(app);     // the debugger (BrokenDev D1): state always readable, control behind enableDebuggerControl
             RegisterBugEndpoints(app);
             RegisterTimeflowEndpoints(app);   // Timeflow (BrokenDev T1/T2): status, timelines, an agent's request (the user answers in the app)
+            RegisterAutoTasEndpoints(app);    // AutoTAS: the package of the running game, the chapter panel's controls
             RegisterDebugPortEndpoints(app);   // the debug port (BrokenDev D7): its events and timers, on / off       // the bug capture (BrokenDev D6): status, capture with a note, on / off
 
             return app;

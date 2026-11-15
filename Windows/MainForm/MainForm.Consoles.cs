@@ -129,6 +129,7 @@ namespace BrokenNes.Windows
             server.QuickStateReason = () => quickStateReason;
             WireBugApi(server);
             WireTimeflowApi(server);
+            WireAutoTasApi(server);    // AutoTAS (MainForm.AutoTas.cs)
             server.GetLanShare = LanShareStatus;   // the LAN share's state (D8, MainForm.LanShare.cs): never the token
             WirePortApi(server);       // the debug port (BrokenDev D7, MainForm.DebugPort.cs)        // the bug capture (BrokenDev D6, MainForm.BugCapture.cs)
             WireWideMessApi(server);   // WideMess milestone 6 (MainForm.WideMess.cs)
@@ -688,6 +689,7 @@ namespace BrokenNes.Windows
                 FarmBeforeFrame(p1, p2);
                 PortBeforeFrame(s);                 // the debug port (D7): returns at once when it is off
                 TfReplayPads(ref p1, ref p2);       // Timeflow (T2): a replay hands the recorded pads
+                AtPads(ref p1, ref p2);              // AutoTAS: while the TAS plays, the segment's pads
                 uint ptr = FramePointer(s);         // the WideMess pointer port (spec 10): the mouse / touch / pen, or a replay's (MainForm.WmsPointer.cs)
                 BugBeforeSessionFrame(s, p1, p2);   // the bug capture (D6): returns at once when it is off
                 TfBeforeSessionFrame(s, p1, p2, ptr); // Timeflow (T1): returns at once unless the user switched recording on

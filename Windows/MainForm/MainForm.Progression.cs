@@ -540,6 +540,7 @@ namespace BrokenNes.Windows
                 toolsMenu.DropDownItems.Add(new ToolStripSeparator());
             }
             AddModuleItems(tools);
+            AtAddMenuItem(toolsMenu);   // AutoTAS: only when the running game has a package (MainForm.AutoTas.cs)
 
             if (currentToolOrActivityModule != null)
             {
