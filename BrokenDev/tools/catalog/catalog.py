@@ -263,7 +263,7 @@ def load_index(console: str | None = None, base: str | None = None):
 
 
 INDEX_KEYS = ["console", "sha1", "title", "region", "grade", "tier", "tags", "core", "updated", "worker", "rev",
-              "gameDbId", "revisionOf", "screenshots", "tas", "reference", "brokennesVersion"]
+              "gameDbId", "revisionOf", "aliasOf", "screenshots", "tas", "reference", "brokennesVersion"]
 NOTES_PREVIEW = 300  # index rows carry the start of the notes; the full record has all of them
 
 PROGRESS_SCHEMA = "brokennes-catalog-progress/v1"
@@ -325,7 +325,8 @@ def rebuild_index(base: str | None = None) -> dict:
     allrows = []
     by_console = {}
     for c in CONSOLES:
-        rows = [{k: r.get(k) for k in INDEX_KEYS} | {"path": (r.get("file") or {}).get("path", ""),
+        rows = [{k: r.get(k) for k in INDEX_KEYS} | {"aliasOf": (r.get("extra") or {}).get("aliasOf", ""),
+                                                      "path": (r.get("file") or {}).get("path", ""),
                                                       "notes": (r.get("notes") or "")[:NOTES_PREVIEW]}
                 for r in iter_records(c, b)]
         if not rows and not os.path.isdir(os.path.join(b, "records", c)):
@@ -360,9 +361,16 @@ def _atomic_write_lines(path: str, lines) -> None:
     os.replace(tmp, path)
 
 
-def query(console=None, grade=None, tag=None, title=None, tier=None, base=None, use_index=True):
+def is_primary(r: dict) -> bool:
+    """The title's own dump: not a kept extra revision, not a region alias of another title (the work queue's set)."""
+    return not r.get("revisionOf") and not (r.get("aliasOf") or (r.get("extra") or {}).get("aliasOf"))
+
+
+def query(console=None, grade=None, tag=None, title=None, tier=None, base=None, use_index=True, primary=False):
     src = load_index(console, base) if use_index else iter_records(console, base)
     for r in src:
+        if primary and not is_primary(r):
+            continue
         if grade and r["grade"] != grade:
             continue
         if tag and tag not in (r.get("tags") or []):
@@ -477,6 +485,7 @@ def main(argv=None):
     p = sp.add_parser("query"); p.add_argument("--console", choices=CONSOLES); p.add_argument("--grade", choices=GRADES)
     p.add_argument("--tag", choices=TAGS); p.add_argument("--title"); p.add_argument("--tier", type=int)
     p.add_argument("--live", action="store_true", help="scan records instead of the index"); p.add_argument("--json", action="store_true")
+    p.add_argument("--primary", action="store_true", help="one record per title: skip extra revisions and region aliases")
     sp.add_parser("index"); sp.add_parser("stats")
     sp.add_parser("progress", help="write reports/progress.json from the index (index also writes it)")
     p = sp.add_parser("export-db"); p.add_argument("--db", required=True); p.add_argument("--write", action="store_true")
@@ -516,7 +525,7 @@ def main(argv=None):
         print(json.dumps(r, indent=1, ensure_ascii=False))
     elif a.cmd == "query":
         n = 0
-        for r in query(a.console, a.grade, a.tag, a.title, a.tier, base, use_index=not a.live):
+        for r in query(a.console, a.grade, a.tag, a.title, a.tier, base, use_index=not a.live, primary=a.primary):
             n += 1
             print(json.dumps(r, ensure_ascii=False) if a.json else
                   f"{r['console']:4} {r['grade']:10} T{r['tier']} {r['sha1'][:12]} {r['title']}")

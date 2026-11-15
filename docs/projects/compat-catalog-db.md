@@ -61,7 +61,7 @@ Measured: 8 parallel writers x 10 appends each to one record kept all 80 notes a
 | `reference` | object | reference comparison, e.g. `{"emulator":"Mesen 2.1.1","frames":3600,"diff":0.0,"verdict":"match"}` |
 | `core` | string | core set tested, e.g. `CPU_FIX/PPU_FIX/APU_FIX` |
 | `brokennesVersion` | string | BrokenNes build tested (commit) |
-| `gameDbId` | string | id in `Windows/Data/default-db.json` when it differs from `<system>_<sha1>` (NES: `nes_<sha1>`) |
+| `gameDbId` | string | id in `Windows/Data/default-db.json`: `<system>_<sha1>` (written for every console since 2026-11-15; older non-NES records leave it empty = the same) |
 | `revisionOf` | sha1 | set on a kept extra revision: the main dump's sha1 |
 | `extra` | object | free-form per-lane data |
 | `created`, `updated` | UTC ISO | timestamps |
@@ -97,15 +97,34 @@ Library use: `import catalog; catalog.update("nes", sha1, {"grade": "OK", "tier"
 
 Sources (read only): `X:\EMULATION\Nintendo Entertainment System`, `Super Nintendo\Super Nintendo (U)` +
 `Super Nintendo\Japan`, `GameBoy` (zips) + `GameBoy Color` (console decided by the CGB header flag), `Sega Master
-System` (.7z), `Sega Game Gear`, `Sega Genesis`. Not scanned (later lanes): the SNES `Hacks`, `SMW Hacks`,
-`Homebrew & Unlicensed`, `PAL to NTSC`, `Translations`, `NES PORTS`, `SPC700 Music`, `Satellaview`, `Unreleased`
-folders. WideMess has no library (the user's own builds).
+System` (.7z), `Sega Game Gear`, `Sega Genesis`; since 2026-11-15 (cc-gaps) also `Super Nintendo\Satellaview`
+(own titles, key prefix `bs:`, `extra.satellaview` + `extra.needs`: BS-X is not emulated yet), `Unreleased` (betas
+allowed, `extra.unreleased`) and `PAL to NTSC` (`extra.ntscConversion`); the last two rank after any regular dump of
+the same title. Not scanned: the SNES `Hacks`, `SMW Hacks`, `Homebrew & Unlicensed`, `Translations`, `NES PORTS`,
+`SPC700 Music` folders. WideMess has no library (the user's own builds).
+
+`curated.json` (hand-kept, names only) adds: **aliases** (region-merged titles, e.g. Rockman Megaworld -> Mega Man -
+The Wily Wars; the alias record stays but gets `extra.aliasOf`, and `catalog.py query --primary` leaves it and extra
+revisions out), **include_untagged** (real games among the untagged No-Intro files: of the 219 in `GameBoy Color`, 30
+are byte-identical to a catalog dump, one is a real game (`gekido.gbc`), the rest are hacks/colourisations/fan games),
+**known_revisions** (titles whose listed revisions each get a record, from default-db and the TAS parity work), and
+**missing_originals** (titles with only a translation in the library: `T:\BrokenDev\Catalog\reports\missing-originals-2026-11-15.json`,
+414 SNES translation titles with no Japanese original dump, plus 3 GBC).
+
+## Game ids (`appid.py`)
+
+`appid.py` ports the app's id rules and `appid.py check` re-reads every record's file and compares. NES =
+`nes_` + sha1(PRG||CHR) with PRG/CHR sizes from header bytes 4/5 only (the app ignores the NES 2.0 MSBs) and no id
+for a file shorter than its header says; SNES session id = `sfc` + sha1(whole file, copier header included); GB/GBC,
+SMS/GG, Genesis = sha1(whole file, .smd before normalising). The game db only creates ids for NES (the ROM manager
+gives anything else `unknown_<time>`), so the non-NES db id is defined here as `<system>_` + that session hash, which
+is what the exporter writes.
 
 Rule: skip `[b] [h] [o] [p] [f] [x] [t] [T+/-]`, `(Hack) (PD)`, betas/protos/samples/demos, 32X images; in the
 No-Intro style folders (GBC, SMS) a name with no region tag is a hack or colourisation and is skipped. Per title:
 `[!]` first, then USA/World, Europe, Japan, others; then no `[a]`/`[c]` variant; then the highest revision. A second
-dump is kept (`revisionOf`) only when `default-db.json` already grades it. Re-runs only add records, never touch an
-existing one. Titles are grouped by name, so a game sold under different names per region stays two titles.
+dump is kept (`revisionOf`) when `default-db.json` already grades it or `curated.json` lists it. Re-runs only add records (and mark aliases), never touch an
+existing one otherwise. Titles are grouped by name plus the curated aliases.
 
 ## First build (2026-11-14, `T:\BrokenDev\Catalog\reports\titles-2026-11-15.json`)
 
@@ -170,3 +189,10 @@ view at `/api/summary`.
  "total": {"titles": n, "tested": n, "playable": n, "certified": n, "testedPct": 0.0, "playablePct": 0.0}
 }
 ```
+
+## Gap pass (2026-11-15, cc-gaps)
+
+`titles.py` re-run: +208 SNES records (Satellaview, Unreleased: Arcus Odyssey / Cooly Skunk / Jelly Boy 2, and the
+20 PAL-only titles from `PAL to NTSC`), +1 GBC (Gekido), 33 existing records marked `extra.aliasOf` (SNES 1, GB 2,
+Genesis 10, SMS 13, GG 7). Catalog now 4,323 records. `appid.py check`: all 4,114 earlier records match the app's own
+id rules (0 mismatches, 0 unloadable), so the exporter's ids were already right; no exporter change was needed.
