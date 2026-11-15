@@ -187,6 +187,7 @@ public partial class MdVdp
         lineActive = Line < ActiveLines && Line < PictureMaxHeight;
         if (lineActive && LineObserver != null) LineObserver(Line);   // a foreign renderer drawing beside this chip (PPU harvest: md/GpgxRender.cs)
         if (!lineActive) return;
+        if (!Mode5) { BeginLineM4(); return; }
         lineY = Line;
         dbl = Interlace == 3;
         imgRow = dbl ? lineY * 2 + (oddFrame ? 1 : 0) : lineY;
@@ -223,8 +224,9 @@ public partial class MdVdp
         if (Line + 1 >= ActiveLines || Line + 1 >= PictureMaxHeight)
         {
             // the last active line: the frame is finished, hand it over
+            if (!Mode5) FinishFrameM4();
             (picture, building) = (building, picture);
-            PictureWidth = lineWidth; PictureHeight = Math.Min(ActiveLines, PictureMaxHeight);
+            PictureWidth = lineWidth; PictureHeight = Mode5 ? Math.Min(ActiveLines, PictureMaxHeight) : M4FrameHeight;
             wovenValid = dbl; WovenHeight = Math.Min(ActiveLines, PictureMaxHeight) * 2;
             FramesRendered++;
         }
@@ -263,8 +265,9 @@ public partial class MdVdp
         if (x1 > lineWidth) x1 = lineWidth;
         if (x1 <= renderX) return;
         int x0 = renderX; renderX = x1;
+        if (!Mode5) { RenderM4(x0, x1); return; }
         int bd = BackdropIndex;
-        if (!DisplayEnabled || !Mode5)
+        if (!DisplayEnabled)
         {
             for (int x = x0; x < x1; x++) lineIdx[x] = (byte)bd;
             return;
