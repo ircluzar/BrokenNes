@@ -1,0 +1,11 @@
+{
+  "game": "smb3",
+  "verified": false,
+  "note": "Clean-state rules (address, length, value; only_kind optional). Applied on the world map only. Addresses UNVERIFIED until step 0.",
+  "rules": [
+    {"what": "lives at the start value", "address": "$0736", "length": 1, "value": 4},
+    {"what": "score 0", "address": "$0715", "length": 3, "value": 0},
+    {"what": "coins 0", "address": "$7DA2", "length": 1, "value": 0},
+    {"what": "Big Mario, no suit", "address": "$00ED", "length": 1, "value": 1}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "game": "smb3",
+  "verified": false,
+  "note": "Design conditions with UNVERIFIED addresses. Step 0 replaces map_mode / cleared_* with the exact game-mode byte and cleared bits found by diffing memory around clearing 1-1. Each until is a play_step expression (true = chapter ends).",
+  "milestones": [
+    {"id": "boot",     "kind": "area",  "until": "[$0727] == 0 && [MAP_MODE] == MAP", "todo": "MAP_MODE byte"},
+    {"id": "1-1",      "kind": "level", "until": "([$7D00] & 0x01) != 0",            "todo": "cleared bit"},
+    {"id": "1-2",      "kind": "level", "until": "([$7D00] & 0x02) != 0",            "todo": "cleared bit"},
+    {"id": "1-3",      "kind": "level", "until": "([$7D00] & 0x04) != 0",            "todo": "cleared bit"},
+    {"id": "fortress", "kind": "boss",  "until": "LOCK_REMOVED",                      "todo": "lock byte"},
+    {"id": "1-4",      "kind": "level", "until": "([$7D00] & 0x08) != 0",            "todo": "cleared bit"},
+    {"id": "1-5",      "kind": "level", "until": "([$7D00] & 0x10) != 0",            "todo": "cleared bit"},
+    {"id": "1-6",      "kind": "level", "until": "([$7D00] & 0x20) != 0",            "todo": "cleared bit"},
+    {"id": "airship",  "kind": "boss",  "until": "[$0727] == 1"}
+  ],
+  "fail": [
+    {"id": "died", "until": "[$0736] < LIVES_AT_START", "todo": "lives byte; agents add it to milestones to stop the step on a death"}
+  ]
+}

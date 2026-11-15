@@ -1,0 +1,15 @@
+{
+  "game": "smb3",
+  "title": "Super Mario Bros. 3",
+  "console": "nes",
+  "verified": false,
+  "sources": "public SMB3 RAM maps (Data Crystal / TASVideos), recalled by the design agent 2026-11-15; NOT yet checked in the emulator: step 0 of the pilot confirms each with search_memory and sets verified per variable",
+  "variables": [
+    {"name": "world", "expr": "[$0727]", "format": "u8, 0 = World 1", "priority": 1, "verified": false},
+    {"name": "lives", "expr": "[$0736]", "format": "u8, lives minus one?", "priority": 1, "verified": false},
+    {"name": "powerup", "expr": "[$00ED]", "format": "u8: 0 small, 1 big, 2 fire, 3 leaf, 4 frog, 5 tanooki, 6 hammer", "priority": 1, "verified": false},
+    {"name": "score", "expr": "[$0715]", "format": "3 bytes $0715-$0717", "priority": 2, "verified": false},
+    {"name": "coins", "expr": "[$7DA2]", "format": "u8", "priority": 2, "verified": false},
+    {"name": "cleared_w1", "expr": "[$7D00]", "format": "per-world cleared table at $7D00+ (layout unknown)", "priority": 2, "verified": false}
+  ]
+}
