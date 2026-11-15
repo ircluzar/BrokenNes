@@ -22,6 +22,7 @@ import argparse
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -35,7 +36,8 @@ sys.path.insert(0, os.path.join(HERE, "..", "catalog"))
 import catalog  # noqa: E402
 
 T1_VERSION = "t1-2"
-HEAVY = r"C:\BrokenNes-work\heavy"
+HEAVY = os.environ.get("BNT1_HEAVY", r"C:\BrokenNes-work\heavy")
+SLOTS = int(os.environ.get("BNT1_SLOTS", "4"))
 WORKSHOP = os.environ.get("BNT1_WORKSHOP", r"C:\BrokenNes-work\cc_t1_bin\BrokenNes.Workshop.exe")
 MESEN = os.environ.get("BNT1_MESEN", r"T:\BrokenDev\env\emulators\mesen-2.1.1\Mesen.exe")
 SCRATCH = os.environ.get("BNT1_SCRATCH", r"C:\BrokenNes-work\cc_t1_run\work")
@@ -61,7 +63,7 @@ class Slot:
         os.makedirs(HEAVY, exist_ok=True)
         t0 = time.time()
         while True:
-            for i in range(1, 5):
+            for i in range(1, SLOTS + 1):
                 p = os.path.join(HEAVY, f"slot{i}")
                 try:
                     os.mkdir(p)
@@ -422,6 +424,8 @@ def write_record(console, rec, res, keep_dir, version):
 
 
 def git_version():
+    if os.environ.get("BNT1_VERSION"):
+        return os.environ["BNT1_VERSION"]
     try:
         return subprocess.run(["git", "-C", HERE, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
     except Exception:
@@ -504,9 +508,89 @@ def cmd_report(a):
         print(f"  {c:4d}  {k:28s} {w}")
 
 
+# ------------------------------------------------------------------------------------------------ fleet (E:\fleet PCs)
+# export (here): records + ROMs of a shard -> a folder pushed to a PC; work (PC): no catalog, results to out\<sha1>\;
+# ingest (here): results -> catalog records, identical in form to `run` (a record that already has T1_VERSION is skipped).
+def cmd_export(a):
+    shas = [l.strip() for l in open(a.list, encoding="utf-8") if l.strip()]
+    os.makedirs(os.path.join(a.out, "roms"), exist_ok=True)
+    recs = []
+    for sha in shas:
+        rec = catalog.get(a.console, sha)
+        src = rec.get("path") or rec["file"]["path"]
+        name = sha + os.path.splitext(src)[1].lower()
+        shutil.copy2(src, os.path.join(a.out, "roms", name))
+        rec = dict(rec, path=os.path.join("roms", name))
+        rec.pop("file", None)
+        recs.append(rec)
+    with open(os.path.join(a.out, "shard.json"), "w", encoding="utf-8") as f:
+        json.dump(dict(console=a.console, records=recs), f)
+    print(f"exported {len(recs)} records to {a.out}")
+
+
+def cmd_work(a):
+    base = os.path.abspath(a.shard)
+    sh = json.load(open(os.path.join(base, "shard.json"), encoding="utf-8"))
+    out = os.path.join(base, "out")
+    for i, rec in enumerate(sh["records"]):
+        kd = os.path.join(out, rec["sha1"])
+        if os.path.exists(os.path.join(kd, "result.json")):
+            continue
+        rec = dict(rec, path=os.path.join(base, rec["path"]))
+        t = time.time()
+        try:
+            res = check_nes(rec, a.minutes, kd)
+        except Exception as e:
+            res = dict(version=T1_VERSION + "-error", grade="Not tested", tags=[], why=f"T1 driver error: {type(e).__name__}: {e}")
+        res["seconds"] = round(time.time() - t, 1)
+        res["slotWait"] = round(Slot.waited, 1); Slot.waited = 0.0
+        res["fleetHost"] = socket.gethostname()
+        os.makedirs(kd, exist_ok=True)
+        with open(os.path.join(kd, "result.json"), "w", encoding="utf-8") as f:
+            json.dump(res, f, default=str)
+        print(f"[{i + 1}/{len(sh['records'])}] {rec['title']}: {res['grade']} {res['tags']} - {res['why']} ({res['seconds']}s)", flush=True)
+
+
+def cmd_ingest(a):
+    version = git_version()
+    n = skipped = 0
+    for sha in sorted(os.listdir(a.results)):
+        rj = os.path.join(a.results, sha, "result.json")
+        if not os.path.exists(rj):
+            continue
+        rec = catalog.get(a.console, sha)
+        if rec is None:
+            print("no record", sha); continue
+        if not a.force and ((rec.get("extra") or {}).get("t1") or {}).get("version") == T1_VERSION:
+            skipped += 1; continue
+        res = json.load(open(rj, encoding="utf-8"))
+        kd = keep_dir_for(a.console, sha)
+        os.makedirs(kd, exist_ok=True)
+        for fn in os.listdir(os.path.join(a.results, sha)):
+            if fn != "result.json":
+                shutil.copy2(os.path.join(a.results, sha, fn), os.path.join(kd, fn))
+        if res.get("tas"):
+            res["tas"] = os.path.join(kd, "t1.bnm")
+        write_record(a.console, rec, res, kd, version)
+        log = os.path.join(SCRATCH, f"t1-{a.console}.jsonl")
+        os.makedirs(SCRATCH, exist_ok=True)
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sha1": sha, "title": rec["title"], "grade": res["grade"], "tags": res["tags"], "why": res["why"],
+                                "mapper": res.get("mapper"), "seconds": res.get("seconds"), "host": res.get("fleetHost")}) + "\n")
+        n += 1
+    print(f"ingested {n}, skipped {skipped} (already T1 {T1_VERSION})")
+
+
 def main():
     p = argparse.ArgumentParser()
     sp = p.add_subparsers(dest="cmd", required=True)
+    for name, args in (("export", ("list", "out")), ("work", ("shard",)), ("ingest", ("results",))):
+        q = sp.add_parser(name)
+        q.add_argument("--console", default="nes")
+        q.add_argument("--minutes", type=float, default=1.0)
+        q.add_argument("--force", action="store_true")
+        for x in args:
+            q.add_argument("--" + x, required=True)
     for name in ("run", "one", "report"):
         q = sp.add_parser(name)
         q.add_argument("--console", default="nes")
@@ -521,7 +605,7 @@ def main():
     a = p.parse_args()
     if a.console != "nes" and a.cmd != "report":
         sys.exit("only the NES is wired up in T1 so far")
-    {"run": cmd_run, "one": cmd_one, "report": cmd_report}[a.cmd](a)
+    {"run": cmd_run, "one": cmd_one, "report": cmd_report, "export": cmd_export, "work": cmd_work, "ingest": cmd_ingest}[a.cmd](a)
 
 
 if __name__ == "__main__":
