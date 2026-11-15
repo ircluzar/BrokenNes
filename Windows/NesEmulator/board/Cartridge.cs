@@ -36,6 +36,14 @@ public class Cartridge
 			90 => "Mapper90",
 			228 => "Action52 (Mapper228)",
 			30 => "UNROM-512 (Mapper30)",
+		34 => "BNROM / NINA-001 (Mapper34)",
+		41 => "Caltron 6-in-1 (Mapper41)",
+		64 => "Tengen RAMBO-1 (Mapper64)",
+		66 => "GxROM (Mapper66)",
+		67 => "Sunsoft-3 (Mapper67)",
+		69 => "Sunsoft FME-7 (Mapper69)",
+		71 => "Camerica (Mapper71)",
+		119 => "TQROM (Mapper119)",
 		_ => "Unknown"
 	};
 
@@ -165,6 +173,14 @@ public class Cartridge
 			case 30:
 				mapper = new Mapper30(this); // UNROM-512
 				break;
+			case 34: mapper = new Mapper34(this); break;
+			case 41: mapper = new Mapper41(this); break;
+			case 64: mapper = new Mapper64(this); break;
+			case 66: mapper = new Mapper66(this); break;
+			case 67: mapper = new Mapper67(this); break;
+			case 69: mapper = new Mapper69(this); break;
+			case 71: mapper = new Mapper71(this); break;
+			case 119: mapper = new Mapper119(this); break;
 			default:
 				#if DIAG_LOG
 				Console.WriteLine($"Mapper {mapperID} ({mapperName}) is not supported");
