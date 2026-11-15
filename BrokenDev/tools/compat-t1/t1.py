@@ -34,7 +34,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "catalog"))
 import catalog  # noqa: E402
 
-T1_VERSION = "t1-1"
+T1_VERSION = "t1-2"
 HEAVY = r"C:\BrokenNes-work\heavy"
 WORKSHOP = os.environ.get("BNT1_WORKSHOP", r"C:\BrokenNes-work\cc_t1_bin\BrokenNes.Workshop.exe")
 MESEN = os.environ.get("BNT1_MESEN", r"T:\BrokenDev\env\emulators\mesen-2.1.1\Mesen.exe")
@@ -433,7 +433,7 @@ def keep_dir_for(console, sha):
 
 
 def cmd_run(a):
-    recs = sorted(catalog.iter_records(a.console), key=lambda r: r["title"].lower())
+    recs = sorted(catalog.load_index(a.console), key=lambda r: r["title"].lower())
     if a.only:
         want = set(a.only.split(","))
         recs = [r for r in recs if r["sha1"] in want or r["title"] in want]
@@ -446,6 +446,7 @@ def cmd_run(a):
             break
         if rec.get("revisionOf"):
             continue
+        rec = catalog.get(a.console, rec["sha1"]) or rec
         if not a.force and ((rec.get("extra") or {}).get("t1") or {}).get("version") == T1_VERSION:
             continue
         n += 1
