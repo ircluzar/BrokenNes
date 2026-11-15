@@ -197,6 +197,23 @@ So the interpreter route is measured dead (8-10 fps), and the translation route 
 - **What it took.** Three fixes mattered. Stack pushes must move S before writing, so a VInt between the two 68000 instructions cannot overwrite the byte (that was a real crash). The plane behind must point at a blank tile. Native JSR/RTS took the cost from 36.5 to 30.5 cycles per instruction.
 - **Verdict on the PoC.** Donkey Kong plays at full speed. The CPU cost (~2.3x the clock ratio) leaves headroom only for light NROM games. A heavier game such as SMB1 would need the 68000 code to be optimised further, or it would lag in busy scenes.
 
+**Round 2 (2026-11-15, branch `nested-nesgen-poc2`). All numbers [measured]** with the same harness (now `--feedback --profile` runs the feedback loop first; profiles in `BrokenDev/projects/nested-nes2md/profiles/`).
+- **Built.** Vertical mirroring uses a 64x32 plane, so horizontal nametable scrolling works ($2000 bit 0 -> HScroll). Horizontal mirroring uses a 32x128 plane with NT0/NT1/NT0/NT1 at rows 0/30/60/90, so vertical scrolling sees 240-line nametables. Plane A is high priority and NES behind-background sprites are low, which gives the per-pixel NES result. `$2002` bit 6 is a real-ish sprite-0 hit: set from sprite 0's first opaque CHR row (V counter) to the end of the picture, clear in vblank. zp,X and (zp,X) wrap exactly in 2 instructions. Carry is kept as 0/$FF (BCC/BCS reuse the 68000 carry) and JSR writes its return address as immediates. Pulses and triangle play on YM2612 channels 1-3 (duty = modulator ratio/depth, triangle = sine; `-Set sound=psg` keeps the old path). The pad read waits longer after TH and ignores a 6-button mid-sequence read (the BizHawk pad issue: changed, **not re-tested on BizHawk**).
+- **Cost.** Donkey Kong 28.9-30.9 68000 cycles per 6502 instruction (was 30.5-32): JSR immediates and the cheaper carry give only ~5%. A per-opcode profile (`-Set opprof=on`) shows a flat mix (STA/LDA zp, branches, JSR/RTS); the next real cut needs a cheaper JSR/RTS frame and a leaner `$2007` path, not single-opcode tweaks.
+- **Games** (1,000 frames, scripted pads; grade from the harness):
+
+| Game | Mirroring | Grade | Picture match (best of 4 checks) | Lost VInts | NMI share of frame | Notes |
+|---|---|---|---|---|---|---|
+| Donkey Kong | H | Playable | 0.983-1.000 | 38-55 | 51% | unchanged with the new paths |
+| Balloon Fight | H | Playable | 0.982-0.996 | 11 | 8% | |
+| Mario Bros. | H | Playable | 0.990-0.999 | 11 | 11% | 7 feedback entries |
+| Super Mario Bros. | V | Glitchy | 0.957-1.000 | 89 | 96% | plays 1-1, scrolls, status bar split correct; part of the 96% is the sprite-0 spin; 30 feedback entries |
+| Excitebike | V | Glitchy | 0.997-1.000 | 172 | 137% | plays but lags (NMI longer than a frame) |
+| Ice Climber | H | Boots only | 0.71-0.83 | 124 | 16% | runs and takes input; the picture is offset vertically from the NES at the checks (vertical scroll state differs) |
+
+- **Not done.** CNROM (none of the five needs it), sweep, DMC, `$2006` mid-frame scroll.
+
+
 ---
 
 ## Ranking (most to least likely to work)
