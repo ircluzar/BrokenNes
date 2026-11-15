@@ -43,7 +43,7 @@ MESEN = os.environ.get("BNT1_MESEN", r"T:\BrokenDev\env\emulators\mesen-2.1.1\Me
 SCRATCH = os.environ.get("BNT1_SCRATCH", r"C:\BrokenNes-work\cc_t1_run\work")
 LANE = os.environ.get("BNT1_LANE", "cc-t1")
 CORES = "CPU_FIX/PPU_FIX/APU_FIX"
-REF_NAME = "Mesen 2.1.1"
+REF_NAME = "Mesen 2.1.1"   # (md: BizHawk 2.11.1 Genplus-gx)
 PROBE_FRAMES = 1200
 PROBE_STEP = 30
 WIN = 3
@@ -95,6 +95,10 @@ def run(cmd, timeout, env=None, cwd=None):
 # ------------------------------------------------------------------------------------------------ pictures
 def load_png(path):
     return np.asarray(Image.open(path).convert("RGB"), dtype=np.int32)
+
+
+def load_ref(path):
+    return load_png(path) if path.endswith(".png") else load_raw(path)
 
 
 def load_raw(path):
@@ -241,13 +245,39 @@ def fit_ref(ref, img):
     return ref[y:y + img.shape[0], x:x + img.shape[1]]
 
 
+BIZHAWK = os.environ.get("BNT1_BIZHAWK", r"T:\BrokenDev\env\emulatorsizhawk-2.11.1\EmuHawk.exe")
+BIZHAWK_CFG = os.environ.get("BNT1_BIZHAWK_CFG", os.path.join(HERE, "bizhawk_config_md.json"))   # its paths say C:\BHSCRATCH
+
+
+def bizhawk_run(rom, script, shots, out_dir, frames):
+    home = os.path.join(SCRATCH, "_bizhawk_home")
+    shutil.rmtree(os.path.join(home, "bizhawk", "SaveRAM"), ignore_errors=True)
+    os.makedirs(home, exist_ok=True)
+    cfg = open(BIZHAWK_CFG, encoding="utf-8").read().replace(json.dumps("C:" + chr(92) + "BHSCRATCH")[1:-1], json.dumps(home)[1:-1])
+    with open(os.path.join(home, "config.ini"), "w", encoding="utf-8") as f:
+        f.write(cfg)
+    os.makedirs(out_dir, exist_ok=True)
+    env = dict(os.environ, BNT1_INPUT=script or "", BNT1_SHOTS=",".join(str(max(0, f - REF_LAG)) for f in shots), BNT1_WIN=str(WIN), BNT1_OUT=out_dir)
+    secs_limit = frames // 15 + 90
+    cmd = [BIZHAWK, "--config=" + os.path.join(home, "config.ini"), "--chromeless", "--lua=" + os.path.join(HERE, "bizhawk_t1.lua"), rom]
+    with Slot():
+        code, o, e, secs, to = run(cmd, timeout=secs_limit, env=env, cwd=os.path.dirname(BIZHAWK))
+    pics = {}
+    for n in os.listdir(out_dir):
+        if n.startswith("m_") and n.endswith(".png"):
+            pics[int(n[2:-4])] = os.path.join(out_dir, n)
+    if os.path.exists(os.path.join(out_dir, "error.txt")):
+        e = open(os.path.join(out_dir, "error.txt")).read()
+    return dict(code=code, secs=round(secs, 1), timeout=to, pics=pics, err=(e or "")[-300:])
+
+
 def best_match(img, ref_pics, f):
     best = None
     for k in range(f - REF_LAG - WIN, f - REF_LAG + WIN + 1):
         p = ref_pics.get(k)
         if p is None:
             continue
-        s = picdiff(img, fit_ref(load_raw(p), img))
+        s = picdiff(img, fit_ref(load_ref(p), img))
         if best is None or s < best[0]:
             best = (s, k)
     return best
@@ -396,6 +426,8 @@ def check_console(rec, console, minutes, keep_dir):
         res["bn"]["error"] = (p2["err"] + p2["out"]).strip()[-400:]
     if console in MESEN_CONSOLES:
         m = mesen_run(rom, script, cps, os.path.join(work, "ref"), end, console)
+    elif console == "md":
+        m = bizhawk_run(rom, script, cps, os.path.join(work, "ref"), end)
     else:
         m = dict(code=None, secs=0, timeout=False, pics={})
     res["ref"] = dict(exit=m["code"], secs=m["secs"], timeout=m["timeout"], pictures=len(m["pics"]))
@@ -422,7 +454,7 @@ def compare_rows(cps, bn_pngs, ref_pics, keep_dir):
         bm = best_match(bimg, ref_pics, f) if bimg is not None else None
         rk = bm[1] if bm else (f if f in ref_pics else None)
         if rk is not None and rk in ref_pics:
-            rimg = fit_ref(load_raw(ref_pics[rk]), bimg)
+            rimg = fit_ref(load_ref(ref_pics[rk]), bimg)
             Image.fromarray(rimg.astype(np.uint8)).save(os.path.join(keep_dir, f"ref_f{f:05d}.png"))
             row["ref"] = f"ref_f{f:05d}.png"
             row["refBlank"] = blank(rimg)
@@ -512,7 +544,7 @@ def write_record(console, rec, res, keep_dir, version):
         changes["tas"] = res["tas"]
     s = res.get("summary")
     if s:
-        changes["reference"] = {"emulator": REF_NAME, "frames": res.get("frames"), "diff": s["worst"], "mean": s["mean"],
+        changes["reference"] = {"emulator": "BizHawk 2.11.1 Genplus-gx" if console == "md" else REF_NAME, "frames": res.get("frames"), "diff": s["worst"], "mean": s["mean"],
                                 "verdict": "match" if s["worst"] <= 0.03 else "close" if s["worst"] <= 0.12 else "differs",
                                 "checkpoints": s["n"]}
     catalog.update(console, rec["sha1"], changes, append_notes=f"T1 {res['grade']}: {res['why']}")
@@ -733,7 +765,7 @@ def main():
             q.add_argument("--sha1", required=True)
             q.add_argument("--write", action="store_true")
     a = p.parse_args()
-    if a.console not in ("nes",) + MESEN_CONSOLES and a.cmd not in ("report", "ingest", "export"):
+    if a.console not in ("nes", "md") + MESEN_CONSOLES and a.cmd not in ("report", "ingest", "export"):
         sys.exit("T1 is wired up for nes, " + ", ".join(MESEN_CONSOLES) + " (md needs a reference emulator)")
     {"run": cmd_run, "one": cmd_one, "report": cmd_report, "export": cmd_export, "work": cmd_work, "ingest": cmd_ingest}[a.cmd](a)
 

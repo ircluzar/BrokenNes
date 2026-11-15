@@ -78,7 +78,7 @@ def cmd_plan(a):
     bs = boxes(list(plan))
     for n, items in plan.items():
         for sid, d, cnt in items:
-            env = {"BNT1_WORKSHOP": r"C:\brokennes\kit\workshop\BrokenNes.Workshop.exe", "BNT1_MESEN": r"C:\brokennes\kit\mesen\Mesen.exe",
+            env = {"BNT1_WORKSHOP": r"C:\brokennes\kit\workshop\BrokenNes.Workshop.exe", "BNT1_MESEN": r"C:\brokennes\kit\mesen\Mesen.exe", "BNT1_BIZHAWK": r"C:\brokennes\kit\bizhawk\EmuHawk.exe",
                    "BNT1_SCRATCH": rf"C:\brokennes\work\{sid}", "BNT1_HEAVY": rf"C:\brokennes\work\{sid}\heavy", "BNT1_SLOTS": "1",
                    "BNT1_LANE": "fleet-" + sid}
             cmd = rf"C:\brokennes\kit\py\python.exe -I C:\brokennes\kit\tools\compat-t1\t1.py work --console {a.console} --shard C:\brokennes\roms\{sid}"
