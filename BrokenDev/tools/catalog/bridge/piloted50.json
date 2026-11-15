@@ -1,0 +1,352 @@
+[
+  {
+    "title": "Super Mario Bros.",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Super Mario Bros. (JU) (PRG0) [!].nes",
+    "sha1": "facee9c577a5262dbe33ac4930bb0b58c8c037f7",
+    "mapper": "0",
+    "why": "platformer; known-good (golden, reference same)"
+  },
+  {
+    "title": "Balloon Fight",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Balloon Fight (JU) [!].nes",
+    "sha1": "0f85a4d325b97d7977177b9c7808f0558239766e",
+    "mapper": "0",
+    "why": "action; Works in db"
+  },
+  {
+    "title": "Excitebike",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Excitebike (JU) [!].nes",
+    "sha1": "ba8d9227a0d02b62ee6cb9e691fa5a5134c303a8",
+    "mapper": "0",
+    "why": "racing; Certified 2026-09"
+  },
+  {
+    "title": "Donkey Kong",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Donkey Kong (JU).nes",
+    "sha1": "d222dbba5bd3716bbf62ca91167c6a9d15c60065",
+    "mapper": "0",
+    "why": "arcade; Works"
+  },
+  {
+    "title": "Galaga",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Galaga (U).nes",
+    "sha1": "87e536b900db2976e6b3bd682a4d7ed88ac19dcd",
+    "mapper": "0",
+    "why": "shooter; Works"
+  },
+  {
+    "title": "Ice Climber",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Ice Climber (U) [!].nes",
+    "sha1": "22d57ac6066529d199fcd299159d94820042c7d0",
+    "mapper": "0",
+    "why": "platformer; Works"
+  },
+  {
+    "title": "Legend of Zelda, The",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Legend of Zelda, The (U) (PRG1).nes",
+    "sha1": "be2f5dc8c5ba8ec1a344a71f9fb204750af24fe7",
+    "mapper": "1",
+    "why": "adventure, battery save; Certified (Mesen .sav trap)"
+  },
+  {
+    "title": "Metroid",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Metroid (U) [!].nes",
+    "sha1": "fdbfc7871962f72a1ef57e5a7e456164fb93430b",
+    "mapper": "1",
+    "why": "platformer, password; Certified (default-mode enemy phase note)"
+  },
+  {
+    "title": "Mega Man 2",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Mega Man 2 (U).nes",
+    "sha1": "2ec08f9341003ded125458df8697ca5ef09d2209",
+    "mapper": "1",
+    "why": "platformer, password; reference same (P0)"
+  },
+  {
+    "title": "Zelda II - The Adventure of Link",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Zelda II - The Adventure of Link (U).nes",
+    "sha1": "11333adb723a5975e0ecca3aee8f4747aa8d2d26",
+    "mapper": "1",
+    "why": "action RPG, battery; Certified; pause-menu sprite-0 fix 08f92f8"
+  },
+  {
+    "title": "Dragon Warrior",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Dragon Warrior (U) (PRG1).nes",
+    "sha1": "240e445ab95c3a5afbef63e9239eacc9f9fe1e19",
+    "mapper": "1",
+    "why": "RPG, battery; menus/text"
+  },
+  {
+    "title": "Final Fantasy",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Final Fantasy (U) [!].nes",
+    "sha1": "c9cfbf5455085e198dce039298b083cd6fc88bce",
+    "mapper": "1",
+    "why": "RPG, battery; menus/text"
+  },
+  {
+    "title": "Tetris",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Tetris (U) [!].nes",
+    "sha1": "fd9079cb5e8479eb06d93c2ae5175bfce871746a",
+    "mapper": "1",
+    "why": "puzzle; Works"
+  },
+  {
+    "title": "Ninja Gaiden",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Ninja Gaiden (U) [!].nes",
+    "sha1": "15f245161179ab1959b7dc20e82add024d23aa3d",
+    "mapper": "1",
+    "why": "action, cutscenes; raster splits in cutscenes"
+  },
+  {
+    "title": "Blaster Master",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Blaster Master (U).nes",
+    "sha1": "98845d5716525e68ef7417e6fb55be30a4c7130d",
+    "mapper": "1",
+    "why": "action; MMC1 + scroll"
+  },
+  {
+    "title": "Castlevania",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Castlevania (U) (PRG1).nes",
+    "sha1": "3dcb69a8c861c041aeb56c04e39adf6d332eda3a",
+    "mapper": "2",
+    "why": "platformer; lag detector misses its wait loop"
+  },
+  {
+    "title": "Contra",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Contra (U) [!].nes",
+    "sha1": "979494e7869ac7ab4815fdbd1dc99f893f713fbf",
+    "mapper": "2",
+    "why": "run and gun, Konami code; UNROM"
+  },
+  {
+    "title": "Duck Tales",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Duck Tales (U).nes",
+    "sha1": "6e700e8f72f767918b096f6a5f17f8cd1e2d0866",
+    "mapper": "2",
+    "why": "platformer; UNROM"
+  },
+  {
+    "title": "Lifeforce",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Lifeforce (U).nes",
+    "sha1": "351edb1fdf4bce3bfc56d1eecccfdc6a21bb14f4",
+    "mapper": "2",
+    "why": "shooter; NMI phase 17/18 cert"
+  },
+  {
+    "title": "Rygar",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Rygar (U).nes",
+    "sha1": "b76593a8fbd39447cc5a5d85e525427b9eceb6f8",
+    "mapper": "2",
+    "why": "action; UNROM"
+  },
+  {
+    "title": "Gradius",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Gradius (U).nes",
+    "sha1": "9282e87c643557682aee674174821bf3a0fe3876",
+    "mapper": "3",
+    "why": "shooter; CNROM"
+  },
+  {
+    "title": "Arkanoid",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Arkanoid (U).nes",
+    "sha1": "230fc31d2c2eb20e78711c82574f29f28117eba3",
+    "mapper": "3",
+    "why": "paddle game; Vaus controller: pad fallback only - expect stuck"
+  },
+  {
+    "title": "Super Mario Bros. 3",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Super Mario Bros. 3 (U) (PRG1) [!].nes",
+    "sha1": "bb894d104c796f69ba16587eb66c0275f5c2fc02",
+    "mapper": "4",
+    "why": "platformer; Certified; red-clouds IRQ fix"
+  },
+  {
+    "title": "Kirby's Adventure",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Kirby's Adventure (U) (PRG1) [!].nes",
+    "sha1": "118307da6c77a592f0884baad14120301d8d3a1b",
+    "mapper": "4",
+    "why": "platformer; cert 46/47"
+  },
+  {
+    "title": "Mega Man 3",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Mega Man 3 (U) [!].nes",
+    "sha1": "6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+    "mapper": "4",
+    "why": "platformer; MMC3 split 1px rows"
+  },
+  {
+    "title": "Mega Man 6",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Mega Man 6 (U).nes",
+    "sha1": "26d33987cff21c651fe3d638f4a739c33a18c240",
+    "mapper": "4",
+    "why": "platformer; Certified"
+  },
+  {
+    "title": "M.C. Kids",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\M.C. Kids (U).nes",
+    "sha1": "f8faa774708e108984158fcd9bbc5482ed7165c4",
+    "mapper": "4",
+    "why": "platformer; Certified"
+  },
+  {
+    "title": "Startropics",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Startropics (U).nes",
+    "sha1": "74c53fe9ac779f146c59ac01e701c9bf912b3c7b",
+    "mapper": "4",
+    "why": "adventure, battery; MMC6"
+  },
+  {
+    "title": "Shadowgate",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Shadowgate (U).nes",
+    "sha1": "e7869c683bd93275cde4536cd2ddf37f230dd8d0",
+    "mapper": "4",
+    "why": "point and click; menus"
+  },
+  {
+    "title": "Low G Man",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Low G Man (U) [!].nes",
+    "sha1": "93b758fccb9a4d9e69e851172d2647aebabad461",
+    "mapper": "4",
+    "why": "action; MMC3 IRQ"
+  },
+  {
+    "title": "Little Nemo - The Dream Master",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Little Nemo - The Dream Master (U).nes",
+    "sha1": "0a0c3c8693df47b988c12f720428473800b67640",
+    "mapper": "4",
+    "why": "platformer; MMC3"
+  },
+  {
+    "title": "Castlevania III - Dracula's Curse",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Castlevania III - Dracula's Curse (U) [!].nes",
+    "sha1": "23c4dafcc17fa75e8d682931702277659cd59735",
+    "mapper": "5",
+    "why": "platformer; MMC5, Certified"
+  },
+  {
+    "title": "Uncharted Waters",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Uncharted Waters (U).nes",
+    "sha1": "37267833c984f176db4b0bc9d45daba0fff45304",
+    "mapper": "5",
+    "why": "strategy, MMC5 battery; MMC5 ExRAM"
+  },
+  {
+    "title": "Battletoads",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Battletoads (U).nes",
+    "sha1": "d85c9ff489672534fbf61a15f8fa56fff489a34b",
+    "mapper": "7",
+    "why": "beat em up; AxROM, sprite-0 sensitive: known hard"
+  },
+  {
+    "title": "Marble Madness",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Marble Madness (U).nes",
+    "sha1": "eaaa0f6d5d94ec692eaf9a61f593674829289914",
+    "mapper": "7",
+    "why": "action; AxROM, mid-frame CHR"
+  },
+  {
+    "title": "Solstice",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Solstice (U).nes",
+    "sha1": "db8a165b40542394c6f13914f4722743cd5ab511",
+    "mapper": "7",
+    "why": "isometric; AxROM"
+  },
+  {
+    "title": "Mike Tyson's Punch-Out!!",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Mike Tyson's Punch-Out!! (U) (PRG1).nes",
+    "sha1": "b6f6bd9d78cdd264a117d4b647aee3309993e9a9",
+    "mapper": "9",
+    "why": "boxing, password; MMC2"
+  },
+  {
+    "title": "Bible Adventures",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Bible Adventures (U) (V1.3).nes",
+    "sha1": "d84c1c88fd0d5b0a65f6d8f28b1ca37a5ad36c91",
+    "mapper": "11",
+    "why": "unlicensed; mapper 11; black left column at times"
+  },
+  {
+    "title": "Death Race",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Death Race (U).nes",
+    "sha1": "80cd18bb63a5b52b1f3ad36c9191845eb29dd807",
+    "mapper": "11",
+    "why": "unlicensed; mapper 144 (CRC fixup)"
+  },
+  {
+    "title": "Deadly Towers",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Deadly Towers (U).nes",
+    "sha1": "764c9a41db58d9a0f8dd56499cf1ea84c10addf8",
+    "mapper": "34",
+    "why": "action RPG; mapper 34 BNROM"
+  },
+  {
+    "title": "Caltron 6-in-1",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Caltron 6-in-1 (U).nes",
+    "sha1": "c0c1e49cb73067f76aaf0a3858fa718fa99321b7",
+    "mapper": "41",
+    "why": "multicart; mapper 41; drifts from Mesen"
+  },
+  {
+    "title": "Skull & Crossbones",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Skull & Crossbones (U).nes",
+    "sha1": "085ee66db817a06d97670e8a80a0c41ccad49e96",
+    "mapper": "64",
+    "why": "action; mapper 64; split one line late"
+  },
+  {
+    "title": "Super Mario Bros. + Duck Hunt",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Super Mario Bros. + Duck Hunt (U).nes",
+    "sha1": "36e695ba6cacc8a5098fb67d9c1f8e6828d6c2c6",
+    "mapper": "66",
+    "why": "multicart, Zapper; mapper 66; pick SMB, Duck Hunt needs Zapper"
+  },
+  {
+    "title": "Transformers",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Transformers.nes",
+    "sha1": "0d5f7ac10c1d116271a1064e4fada35f37882022",
+    "mapper": "67",
+    "why": "action; old iNES header -> CNROM rule"
+  },
+  {
+    "title": "After Burner",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\After Burner (U).nes",
+    "sha1": "56c3d55654d0e837082978505653f6e1e0d52d6f",
+    "mapper": "68",
+    "why": "shooter; mapper 68 CHR nametables"
+  },
+  {
+    "title": "Batman - Return of the Joker",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Batman - Return of the Joker (U).nes",
+    "sha1": "14289a6dfa8b85ef2c06fa81d6ed61ae7c2868d1",
+    "mapper": "69",
+    "why": "action; mapper 69; no 5B audio"
+  },
+  {
+    "title": "Micro Machines",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Micro Machines (U).nes",
+    "sha1": "8a670df6cf4bc9f99f2fb9932633a0164891122f",
+    "mapper": "71",
+    "why": "racing; mapper 71 Camerica"
+  },
+  {
+    "title": "Dudes With Attitude",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Dudes With Attitude (U).nes",
+    "sha1": "721514be25e33105853bed9d7e318a5390253bcd",
+    "mapper": "79",
+    "why": "puzzle; mapper 79"
+  },
+  {
+    "title": "Deathbots",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Deathbots (U).nes",
+    "sha1": "0ae47bd83202a5a2235b0bc16278f56d66038ab5",
+    "mapper": "113",
+    "why": "shooter; mapper 113 (CRC fixup to 79)"
+  },
+  {
+    "title": "Pinbot",
+    "rom": "X:\\EMULATION\\Nintendo Entertainment System\\Pinbot (U) [!].nes",
+    "sha1": "c649505dce1607ed1b5d201003194629c9c3a86c",
+    "mapper": "119",
+    "why": "pinball; mapper 119 TQROM"
+  }
+]
