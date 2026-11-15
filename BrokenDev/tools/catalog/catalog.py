@@ -10,6 +10,7 @@ several machines writing at once. See docs/projects/compat-catalog-db.md.
   catalog.py query   [--console nes] [--grade Broken] [--tag mapper] [--title zelda] [--json]
   catalog.py index                      (rebuild index/*.jsonl + catalog.csv; run on the catalog box)
   catalog.py stats
+  catalog.py progress                   (reports/progress.json, the live-dashboard feed; index writes it too)
   catalog.py export-db --db Windows/Data/default-db.json [--write]   (dry run + diff unless --write)
   catalog.py titles  [--console nes ...] [--dry-run]   (see titles.py)
 
@@ -262,7 +263,59 @@ def load_index(console: str | None = None, base: str | None = None):
 
 
 INDEX_KEYS = ["console", "sha1", "title", "region", "grade", "tier", "tags", "core", "updated", "worker", "rev",
-              "gameDbId", "revisionOf"]
+              "gameDbId", "revisionOf", "screenshots", "tas", "reference", "brokennesVersion"]
+NOTES_PREVIEW = 300  # index rows carry the start of the notes; the full record has all of them
+
+PROGRESS_SCHEMA = "brokennes-catalog-progress/v1"
+CONSOLE_NAMES = {"nes": "NES", "snes": "SNES", "gb": "Game Boy", "gbc": "Game Boy Color", "sms": "Master System",
+                 "gg": "Game Gear", "md": "Genesis", "wms": "WideMess"}
+
+
+def progress(rows_by_console: dict, built: str | None = None) -> dict:
+    """Per-console progress from index rows (format: docs/projects/compat-catalog-db.md, 'Progress export')."""
+    out = {"schema": PROGRESS_SCHEMA, "built": built or now(), "by": worker_id(), "consoles": {}, "total": {}}
+    tot = {"titles": 0, "tested": 0, "playable": 0, "certified": 0}
+    for c, rows in rows_by_console.items():
+        g = {k: 0 for k in GRADES}; t = {str(k): 0 for k in TIERS}; tg = {k: 0 for k in TAGS}
+        ref = {"match": 0, "differs": 0, "none": 0}; last = ""
+        tas = shots = 0
+        for x in rows:
+            g[x.get("grade") or "Not tested"] = g.get(x.get("grade") or "Not tested", 0) + 1
+            t[str(x.get("tier") or 0)] = t.get(str(x.get("tier") or 0), 0) + 1
+            for tag in x.get("tags") or []:
+                tg[tag] = tg.get(tag, 0) + 1
+            v = ((x.get("reference") or {}).get("verdict") or "").lower()
+            ref["match" if v == "match" else ("none" if not v else "differs")] += 1
+            tas += bool(x.get("tas")); shots += bool(x.get("screenshots"))
+            if x.get("grade") != "Not tested" and (x.get("updated") or "") > last:
+                last = x.get("updated") or ""
+        n = len(rows); tested = n - g.get("Not tested", 0)
+        playable = g.get("OK", 0) + g.get("Certified", 0)
+        pct = lambda a: round(100.0 * a / n, 1) if n else 0.0
+        out["consoles"][c] = {"name": CONSOLE_NAMES.get(c, c), "titles": n, "grades": g, "tiers": t, "tags": tg,
+                              "reference": ref, "withTas": tas, "withScreenshots": shots,
+                              "tested": tested, "playable": playable, "certified": g.get("Certified", 0),
+                              "testedPct": pct(tested), "playablePct": pct(playable), "lastGraded": last}
+        tot["titles"] += n; tot["tested"] += tested; tot["playable"] += playable; tot["certified"] += g.get("Certified", 0)
+    n = tot["titles"]
+    tot["testedPct"] = round(100.0 * tot["tested"] / n, 1) if n else 0.0
+    tot["playablePct"] = round(100.0 * tot["playable"] / n, 1) if n else 0.0
+    out["total"] = tot
+    return out
+
+
+def write_progress(base: str | None = None, rows_by_console: dict | None = None) -> str:
+    b = base or root()
+    if rows_by_console is None:
+        rows_by_console = {}
+        for c in CONSOLES:
+            rows = list(load_index(c, b))
+            if rows:
+                rows_by_console[c] = rows
+    p = os.path.join(b, "reports", "progress.json")
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    _atomic_write(p, progress(rows_by_console))
+    return p
 
 
 def rebuild_index(base: str | None = None) -> dict:
@@ -270,8 +323,10 @@ def rebuild_index(base: str | None = None) -> dict:
     d = os.path.join(b, "index")
     counts = {}
     allrows = []
+    by_console = {}
     for c in CONSOLES:
-        rows = [{k: r.get(k) for k in INDEX_KEYS} | {"path": (r.get("file") or {}).get("path", "")}
+        rows = [{k: r.get(k) for k in INDEX_KEYS} | {"path": (r.get("file") or {}).get("path", ""),
+                                                      "notes": (r.get("notes") or "")[:NOTES_PREVIEW]}
                 for r in iter_records(c, b)]
         if not rows and not os.path.isdir(os.path.join(b, "records", c)):
             continue
@@ -281,6 +336,7 @@ def rebuild_index(base: str | None = None) -> dict:
         for x in rows:
             g[x["grade"]] = g.get(x["grade"], 0) + 1
         counts[c] = {"total": len(rows), "grades": g}
+        by_console[c] = rows
         allrows += rows
     tmp = os.path.join(d, f".tmp-{uuid.uuid4().hex}.csv")
     with open(tmp, "w", encoding="utf-8", newline="") as f:
@@ -291,6 +347,7 @@ def rebuild_index(base: str | None = None) -> dict:
                         x["core"], x["updated"], x["worker"], x["path"]])
     os.replace(tmp, os.path.join(d, "catalog.csv"))
     _atomic_write(os.path.join(d, "summary.json"), {"schema": SCHEMA, "built": now(), "by": worker_id(), "consoles": counts})
+    write_progress(b, by_console)
     return counts
 
 
@@ -421,6 +478,7 @@ def main(argv=None):
     p.add_argument("--tag", choices=TAGS); p.add_argument("--title"); p.add_argument("--tier", type=int)
     p.add_argument("--live", action="store_true", help="scan records instead of the index"); p.add_argument("--json", action="store_true")
     sp.add_parser("index"); sp.add_parser("stats")
+    sp.add_parser("progress", help="write reports/progress.json from the index (index also writes it)")
     p = sp.add_parser("export-db"); p.add_argument("--db", required=True); p.add_argument("--write", action="store_true")
     p.add_argument("--override-hand", action="store_true")
     a = ap.parse_args(argv)
@@ -469,6 +527,8 @@ def main(argv=None):
     elif a.cmd == "stats":
         p = os.path.join(base or root(), "index", "summary.json")
         print(open(p, encoding="utf-8").read() if os.path.exists(p) else "no index yet: run `catalog.py index`")
+    elif a.cmd == "progress":
+        print(write_progress(base))
     elif a.cmd == "export-db":
         export_db(a.db, a.write, base, override_hand=a.override_hand)
 

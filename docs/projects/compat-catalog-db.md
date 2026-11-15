@@ -124,3 +124,49 @@ existing one. Titles are grouped by name, so a game sold under different names p
 SMW NES port). Skipped: 219 un-tagged files in `GameBoy Color` (DX/colour hacks), 185 GG / 113 Genesis / 37 GB
 flagged dumps, 18 Genesis 32X images. The inventory's SNES "2,122 top level" was wrong: the SNES top level holds only
 subfolders. Writing 4,114 records over T: took about an hour (about 1 s per locked write to `\STORAGE`).
+
+## Browse view (P1, `brokendev.ps1 catalog view`)
+
+`BrokenDev/tools/catalog/view.py` + `view.html`: a local, read-only web UI on `http://127.0.0.1:8790/` (standard
+library Python; `brokendev.ps1 catalog view [-NoBrowser] [-Stop]`, or `python view.py [--port N] [--root DIR]`).
+
+- one card per console: grade bar, titles, tested %, OK / Certified / Jank / Broken counts, T1-T3 counts, TAS and
+  reference-match counts; click a card to list that console;
+- the list: title, region, grade, tier, tags, reference verdict, the start of the notes, last update; sortable columns;
+  filters for grade, tier, tag, reference (match / differs / none), has TAS, has screenshots; search over title, sha1,
+  region, notes and db id;
+- the detail pane reads the **record file itself** (never stale): dump, core, build, reference, notes, grade history,
+  the screenshots folder as thumbnails, TAS files as download links. Files are served only from inside the catalog root.
+
+Lists come from `index/<console>.jsonl`, so they are as fresh as the last `catalog.py index`. The index rows now also
+carry `screenshots`, `tas`, `reference`, `brokennesVersion` and the first 300 characters of `notes`.
+
+## Progress export (`reports/progress.json`)
+
+Written by `catalog.py index` (every rebuild) and by `catalog.py progress` / `brokendev.ps1 catalog progress` (from the
+current index). Atomic replace, so a dashboard poller never reads half a file. The same object is served live by the
+view at `/api/summary`.
+
+```
+{
+ "schema": "brokennes-catalog-progress/v1",
+ "built": "2026-11-15T13:32:32Z",          UTC, when computed
+ "by": "<worker>",
+ "consoles": {
+  "nes": {
+   "name": "NES", "titles": 752,
+   "grades":  {"Not tested": n, "Nothing": n, "Broken": n, "Jank": n, "OK": n, "Certified": n},
+   "tiers":   {"0": n, "1": n, "2": n, "3": n},
+   "tags":    {"picture": n, "sound": n, "timing": n, "crash": n, "input": n, "mapper": n, "save": n},
+   "reference": {"match": n, "differs": n, "none": n},   from reference.verdict ("match" / anything else / empty)
+   "withTas": n, "withScreenshots": n,
+   "tested": n,         titles - Not tested
+   "playable": n,       OK + Certified
+   "certified": n,
+   "testedPct": 0.0, "playablePct": 0.0,                 one decimal, of titles
+   "lastGraded": "ISO" newest `updated` among graded records, "" when none
+  }, ...                only consoles that have an index
+ },
+ "total": {"titles": n, "tested": n, "playable": n, "certified": n, "testedPct": 0.0, "playablePct": 0.0}
+}
+```

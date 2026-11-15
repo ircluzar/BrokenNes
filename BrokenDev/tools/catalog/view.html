@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compatibility Catalog</title>
+<style>
+:root { --bg:#f6f6f4; --panel:#fff; --ink:#1c1c1c; --mute:#6b6b6b; --line:#dedcd6; --acc:#3b5bdb;
+  --g-nt:#b8b8b8; --g-nothing:#7a2e2e; --g-broken:#d9480f; --g-jank:#e0a800; --g-ok:#2f9e44; --g-cert:#1971c2; }
+@media (prefers-color-scheme: dark) { :root { --bg:#16171a; --panel:#1f2125; --ink:#e8e8e8; --mute:#9a9a9a; --line:#33363c; --acc:#7c9cff; --g-nt:#55585e; } }
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.4 system-ui,Segoe UI,sans-serif }
+header { padding:12px 16px; border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:baseline; flex-wrap:wrap }
+header h1 { font-size:17px; margin:0 } header .m { color:var(--mute); font-size:12px }
+#cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; padding:12px 16px }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px; cursor:pointer }
+.card.on { outline:2px solid var(--acc) } .card h3 { margin:0 0 4px; font-size:14px } .card .n { color:var(--mute); font-size:12px }
+.bar { display:flex; height:8px; border-radius:4px; overflow:hidden; margin:6px 0; background:var(--g-nt) }
+.bar span { display:block; height:100% }
+#filters { display:flex; gap:8px; flex-wrap:wrap; padding:0 16px 10px; align-items:center }
+input,select,button { font:inherit; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 8px }
+main { display:grid; grid-template-columns:minmax(0,1fr) 420px; gap:12px; padding:0 16px 16px }
+@media (max-width:900px){ main { grid-template-columns:1fr } }
+table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line) }
+th,td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:top }
+th { position:sticky; top:0; background:var(--panel); cursor:pointer; font-size:12px; color:var(--mute) }
+tr.row:hover { background:color-mix(in srgb,var(--acc) 8%,transparent); cursor:pointer } tr.sel { background:color-mix(in srgb,var(--acc) 16%,transparent) }
+.wrap { max-height:70vh; overflow:auto } .note { color:var(--mute); font-size:12px; max-width:380px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.g { display:inline-block; padding:1px 7px; border-radius:10px; font-size:12px; color:#fff; white-space:nowrap }
+.tag { display:inline-block; padding:0 5px; margin-right:3px; border:1px solid var(--line); border-radius:4px; font-size:11px }
+#detail { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; align-self:start; position:sticky; top:8px; max-height:90vh; overflow:auto }
+#detail h2 { margin:0 0 6px; font-size:16px } #detail pre { white-space:pre-wrap; font:12px/1.4 ui-monospace,Consolas,monospace; margin:4px 0 }
+#detail dl { display:grid; grid-template-columns:110px 1fr; gap:3px 8px; margin:8px 0 } #detail dt { color:var(--mute) } #detail dd { margin:0; word-break:break-all }
+.shots { display:flex; flex-wrap:wrap; gap:6px } .shots img { width:128px; image-rendering:pixelated; border:1px solid var(--line) }
+#pager { padding:6px 0; color:var(--mute); font-size:12px }
+</style>
+</head>
+<body>
+<header><h1>Great Compatibility Catalog</h1><span class="m" id="meta">loading...</span>
+  <button id="reload" title="re-read the index">Reload</button></header>
+<section id="cards"></section>
+<section id="filters">
+  <input id="q" type="search" placeholder="Search title, sha1, notes, region" size="32">
+  <select id="fg"><option value="">any grade</option></select>
+  <select id="ft"><option value="">any tier</option></select>
+  <select id="ftag"><option value="">any tag</option></select>
+  <select id="fref"><option value="">any reference</option><option value="match">reference: match</option><option value="differs">reference: differs</option><option value="none">reference: none</option></select>
+  <label><input type="checkbox" id="ftas"> has TAS</label>
+  <label><input type="checkbox" id="fshot"> has screenshots</label>
+  <span id="count" class="m"></span>
+</section>
+<main>
+  <div><div class="wrap"><table><thead><tr>
+    <th data-k="title">Title</th><th data-k="region">Region</th><th data-k="grade">Grade</th><th data-k="tier">Tier</th>
+    <th data-k="tags">Tags</th><th data-k="ref">Ref</th><th data-k="notes">Notes</th><th data-k="updated">Updated</th>
+  </tr></thead><tbody id="rows"></tbody></table></div><div id="pager"></div></div>
+  <aside id="detail"><span class="m">Pick a game to see its record.</span></aside>
+</main>
+<script>
+const GC = {"Not tested":"var(--g-nt)","Nothing":"var(--g-nothing)","Broken":"var(--g-broken)","Jank":"var(--g-jank)","OK":"var(--g-ok)","Certified":"var(--g-cert)"};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let S = null, cur = null, rows = [], sortK = "title", sortD = 1, limit = 500, sel = null;
+const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
+const refOf = r => { const v = ((r.reference || {}).verdict || "").toLowerCase(); return v === "match" ? "match" : v ? "differs" : "none"; };
+const gb = (g) => `<span class="g" style="background:${GC[g] || "var(--g-nt)"}">${esc(g)}</span>`;
+function bar(grades, n) { return `<div class="bar">` + S.grades.filter(g => g !== "Not tested").map(g => `<span title="${g} ${grades[g]||0}" style="width:${n ? 100*(grades[g]||0)/n : 0}%;background:${GC[g]}"></span>`).join("") + `</div>`; }
+async function loadSummary() {
+  S = await (await fetch("api/summary")).json();
+  $("meta").textContent = `${S.root}  |  ${S.total.titles} titles, ${S.total.tested} tested (${S.total.testedPct}%), ${S.total.playable} OK/Certified (${S.total.playablePct}%)  |  computed ${S.built}`;
+  if ($("fg").options.length === 1) {
+    S.grades.forEach(g => $("fg").add(new Option(g, g))); S.tiers.forEach(t => $("ft").add(new Option("T" + t, t))); S.tags.forEach(t => $("ftag").add(new Option(t, t)));
+  }
+  const cs = Object.keys(S.consoles);
+  $("cards").innerHTML = cs.map(c => { const p = S.consoles[c];
+    return `<div class="card" data-c="${c}"><h3>${esc(p.name)}</h3>${bar(p.grades, p.titles)}
+      <div class="n">${p.titles} titles · tested ${p.tested} (${p.testedPct}%)<br>OK ${p.grades.OK||0} · Certified ${p.certified} · Jank ${p.grades.Jank||0} · Broken ${(p.grades.Broken||0)+(p.grades.Nothing||0)}<br>T1 ${p.tiers["1"]||0} · T2 ${p.tiers["2"]||0} · T3 ${p.tiers["3"]||0} · TAS ${p.withTas} · ref match ${p.reference.match}</div></div>`; }).join("");
+  document.querySelectorAll(".card").forEach(el => el.onclick = () => pick(el.dataset.c));
+  const want = cur || ls("cc.console"); if (want && cs.includes(want)) await pick(want); else if (cs.length) await pick(cs[0]);
+}
+async function pick(c) {
+  cur = c; ls("cc.console", c); limit = 500;
+  document.querySelectorAll(".card").forEach(el => el.classList.toggle("on", el.dataset.c === c));
+  rows = (await (await fetch("api/console/" + c)).json()).rows; render();
+}
+function filtered() {
+  const q = $("q").value.trim().toLowerCase(), g = $("fg").value, t = $("ft").value, tag = $("ftag").value, rf = $("fref").value;
+  return rows.filter(r => (!g || r.grade === g) && (t === "" || String(r.tier) === t) && (!tag || (r.tags || []).includes(tag))
+    && (!rf || refOf(r) === rf) && (!$("ftas").checked || r.tas) && (!$("fshot").checked || r.screenshots)
+    && (!q || [r.title, r.sha1, r.region, r.notes, r.gameDbId].some(x => String(x || "").toLowerCase().includes(q))));
+}
+function render() {
+  const key = r => sortK === "ref" ? refOf(r) : sortK === "grade" ? S.grades.indexOf(r.grade) : sortK === "tags" ? (r.tags || []).join(",") : (r[sortK] ?? "");
+  const f = filtered().sort((a, b) => { const x = key(a), y = key(b); return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * sortD; });
+  $("count").textContent = `${f.length} of ${rows.length}`;
+  $("rows").innerHTML = f.slice(0, limit).map(r => `<tr class="row${r.sha1 === sel ? " sel" : ""}" data-s="${r.sha1}"><td>${esc(r.title)}${r.revisionOf ? ' <span class="tag">rev</span>' : ""}</td><td>${esc(r.region)}</td><td>${gb(r.grade)}</td><td>T${r.tier ?? 0}</td>
+    <td>${(r.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("")}</td><td>${refOf(r) === "none" ? "" : esc(refOf(r))}</td><td class="note" title="${esc(r.notes)}">${esc(r.notes)}</td><td class="m">${esc((r.updated || "").slice(0, 10))}</td></tr>`).join("");
+  $("pager").innerHTML = f.length > limit ? `showing ${limit} of ${f.length} <button id="more">show more</button>` : "";
+  if ($("more")) $("more").onclick = () => { limit += 1000; render(); };
+  document.querySelectorAll("tr.row").forEach(tr => tr.onclick = () => detail(tr.dataset.s));
+}
+async function detail(sha) {
+  sel = sha; document.querySelectorAll("tr.row").forEach(tr => tr.classList.toggle("sel", tr.dataset.s === sha));
+  const d = await (await fetch(`api/record/${cur}/${sha}`)).json();
+  if (!d.record) { $("detail").textContent = "record not found"; return; }
+  const r = d.record, dump = r.dump || {}, ref = r.reference || {};
+  const shots = d.screenshotFiles.map(n => `<a href="shot/${cur}/${sha}/x/${encodeURIComponent(n)}" target="_blank"><img loading="lazy" src="shot/${cur}/${sha}/x/${encodeURIComponent(n)}" title="${esc(n)}"></a>`).join("");
+  const tas = d.tasFiles.map(n => `<a href="tas/${cur}/${sha}/x/${encodeURIComponent(n)}">${esc(n)}</a>`).join("<br>");
+  $("detail").innerHTML = `<h2>${esc(r.title)}</h2>${gb(r.grade)} <b>T${r.tier}</b> ${(r.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("")}
+  <dl><dt>Region</dt><dd>${esc(r.region)}</dd><dt>Game id</dt><dd>${esc(r.sha1)}</dd><dt>Dump</dt><dd>${esc(dump.goodName || (r.file || {}).name)}${dump.mapper !== undefined ? " · mapper " + esc(dump.mapper) : ""}</dd>
+  <dt>Core</dt><dd>${esc(r.core) || "-"}</dd><dt>Build</dt><dd>${esc(r.brokennesVersion) || "-"}</dd>
+  <dt>Reference</dt><dd>${ref.verdict ? `${esc(ref.verdict)} vs ${esc(ref.emulator)}${ref.frames ? ", " + esc(ref.frames) + " frames" : ""}${ref.diff !== undefined ? ", diff " + esc(ref.diff) : ""}` : "-"}</dd>
+  <dt>TAS</dt><dd>${tas || esc(r.tas) || "-"}</dd><dt>Updated</dt><dd>${esc(r.updated)} by ${esc(r.worker)} (rev ${r.rev})</dd></dl>
+  <b>Notes</b><pre>${esc(r.notes) || "-"}</pre>
+  <b>Screenshots</b><div class="shots">${shots || (r.screenshots ? `<span class="m">${esc(r.screenshots)} (none found)</span>` : "-")}</div>
+  ${(r.history || []).length ? `<b>History</b><pre>${r.history.map(h => `${esc(h.at)} ${esc(h.worker)} ${esc(h.grade)} T${h.tier} ${esc(h.core || "")}`).join("\n")}</pre>` : ""}`;
+}
+["q", "fg", "ft", "ftag", "fref", "ftas", "fshot"].forEach(id => $(id).addEventListener("input", () => { limit = 500; render(); }));
+document.querySelectorAll("th").forEach(th => th.onclick = () => { const k = th.dataset.k; sortD = sortK === k ? -sortD : 1; sortK = k; render(); });
+$("reload").onclick = loadSummary;
+loadSummary();
+</script>
+</body>
+</html>
