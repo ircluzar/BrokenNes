@@ -11,7 +11,8 @@ pause, Select = menu cursor or weapon switch. Two players: `buttons2`. No Zapper
 ## Starting a game
 
 - Title screens appear 60-400 frames after power-on. Wait with `play_step frames=120` (no buttons), look, then press Start for
-  **4-6 frames** (`buttons=[Start] frames=5`), then `frames=30` with none. Dry run 2026-11-15: Mega Man 2's stage select ignored a
+  **8-12 frames** (`buttons=[Start] frames=10`), then `frames=30` with none (pilot 2026-11-15: 5-6 frame presses were dropped on
+  Arkanoid, Mega Man 3, Punch-Out, Batman and Ninja Gaiden titles). Nothing happened: wait 60 frames, press once more. Dry run 2026-11-15: Mega Man 2's stage select ignored a
   1-2 frame Start that arrived as the menu appeared; a 6-frame press after 10 idle frames worked. Many titles also ignore a press during
   their fade-in: press again after 30-60 frames.
 - A menu with "1 PLAYER / 2 PLAYERS": the cursor starts on 1 player; just Start. A menu that needs Select to move: Select moves, Start picks.
@@ -24,21 +25,49 @@ pause, Select = menu cursor or weapon switch. Two players: `buttons2`. No Zapper
 - Passwords: only use one from the game's own manual/common knowledge for a T3 resume if the game has no battery; never for T2.
   Common: Contra's code (Up Up Down Down Left Right Left Right B A Start, on the title) gives 30 lives: allowed for T3 only, note it.
 
+## Per-game menu recipes (harvested from the NES pilot, 2026-11-15)
+
+Every press below is 10 frames, with 20-30 idle frames after it; look at the picture after each. If a recipe does not match what you
+see, follow the picture, and write what worked in your notes (the next agent gets it).
+
+- **The Legend of Zelda**: title, Start -> file select (a heart cursor at file 1). Select moves the heart down: file 1, 2, 3,
+  REGISTER YOUR NAME, ELIMINATION MODE. Select x3 to REGISTER YOUR NAME, Start. On the name screen A types the letter under the
+  grid cursor (the D-pad moves the grid cursor; it starts on A, so one A press gives a one-letter name), then Select moves the heart
+  to the next row: Select until the heart is at END (below file 3), Start. Back on file select the heart is on file 1: Start, Start.
+- **Zelda II**: Start, Select to REGISTER, Start, A to type a letter, Select x3 to END, Start, Start (pilot route, worked).
+- **Dragon Warrior**: Begin a new quest (A); name entry: A types, move to END (bottom right), A, then Start/A to confirm.
+- **Final Fantasy**: class screen: A on a slot opens the class (Left/Right changes, A takes it) and goes straight to name entry:
+  type **4 letters with A** (the screen goes back by itself after the 4th; Start does not end it). Four slots, then Start on the
+  class screen. Budget: about 16 steps for the whole party; Right/Down move the letter cursor if A keeps typing the same letter.
+- **StarTropics**: file select: pick a file, name entry as Zelda-style (A types, move the cursor to END, A or Start). If END cannot be
+  found in 8 steps, stop: "Not tested (menu)".
+- **Marble Madness**: Start, 1P, name entry (A letter, cursor to END, A), control type (A), practice race.
+- **Contra / Micro Machines**: Select moves the 1P/2P cursor, Start picks; on Micro Machines press Select once before Start.
+- **Super Mario Bros. 3**: after 1 PLAYER GAME, the World 1 map: wait 120 frames (the "WORLD 1" box must be gone), Right 10 frames
+  (Mario walks to the 1 panel), wait 40, A 10 frames to enter. Pictures: Mario is the small figure left of the "1" panel.
+- **Solstice**: the title and copyright screens are timed; Start is ignored until about frame 1250. `frames=600` twice, then Start.
+- **Mega Man 6 / Caltron 6-in-1**: long timed intros; Start skips MM6's after it has run ~300 frames; Caltron's (Cosmos Cop, ~2300
+  frames) cannot be skipped: wait with `frames=600` steps.
+- **Y/N or YES/NO prompts**: the cursor moves with Up/Down or Left/Right, A picks (B often means No). **Uncharted Waters**' "Is this
+  OK? (Y/N)" accepted no pad input on either emulator in the pilot: grade Not tested ("game waits") at that point, do not spend steps.
+- **Pinbot**: Start, Start, wait 120: the table drawing is the verdict; the plunger input is unknown (same on Mesen).
+
 ## Spotting progress (RAM watch patterns)
 
-Put these in `ram` when the engine is known. NES RAM is `$0000-$07FF`; `$6000-$7FFF` is cartridge (save) RAM on boards that have it.
+Put these in `ram` when the engine is known; only rows marked verified are trusted, an unverified row is a guess to check against
+the HUD once (drop it if it does not match). NES RAM is `$0000-$07FF`; `$6000-$7FFF` is cartridge (save) RAM on boards that have it.
 Addresses below are the well-known community ones; check one value against the picture before trusting it (lives shown on screen = the
 value or value+1).
 
 | Game / engine | Watches |
 |---|---|
 | Super Mario Bros. (and SMB + Duck Hunt's SMB) | `lives=[$075A]` (shown +1: 2 = "x 3"), `world=[$075F]` (0-based), `level=[$0760]`, `x=[$0086]`, `page=[$006D]`, `state=[$000E]` (8 = normal play, $0B = dying; verified 2026-11-15) |
-| Super Mario Bros. 3 | `world=[$0727]`, `lives=[$0736]` |
+| Super Mario Bros. 3 | `world=[$0727]`, `lives=[$0736]` (unverified: guesses) |
 | Mega Man 2 | `hp=[$06C0]` (28 = full, verified), `stage=[$002A]` (Wood Man = 2, verified), `screen=[$0020]`. Other Mega Mans: different addresses, search |
-| The Legend of Zelda | `room=[$00EB]`, `hearts=[$066F]` |
-| Metroid | `energy=[$0107]`, `area=[$0074]` |
-| Castlevania | `stage=[$0028]`, `hp=[$0045]`, `lives=[$002A]` |
-| Contra | `lives=[$0032]`, `level=[$0030]` |
+| The Legend of Zelda | `room=[$00EB]`, `hearts=[$066F]` (unverified) |
+| Metroid | `energy=[$0107]`, `area=[$0074]` (unverified; the pilot's energy value did not match the HUD) |
+| Castlevania | `stage=[$0028]`, `hp=[$0045]`, `lives=[$002A]` (unverified) |
+| Contra | `lives=[$0032]`, `level=[$0030]` (unverified) |
 | Unknown engine | `search_memory` for the on-screen lives value right after a death (value, then value-1): at most 5 calls, then picture only |
 
 Cheap generic progress signals that work with no addresses: the picture `hash` changes; the scroll moves (the background slides); a
