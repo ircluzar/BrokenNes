@@ -131,7 +131,17 @@ class RecordLock:
             except OSError:
                 try:
                     if time.time() - os.path.getmtime(self.lock) > LOCK_STALE_S:
-                        os.rmdir(self.lock)
+                        # break it by an atomic rename: two workers that both saw it stale cannot both remove it, and the loser
+                        # can no longer rmdir a fresh lock another worker took in between (it puts a fresh one back)
+                        grave = f"{self.lock}.stale-{uuid.uuid4().hex}"
+                        os.rename(self.lock, grave)
+                        if time.time() - os.path.getmtime(grave) > LOCK_STALE_S:
+                            os.rmdir(grave)
+                        else:
+                            try:
+                                os.rename(grave, self.lock)
+                            except OSError:
+                                os.rmdir(grave)
                         continue
                 except OSError:
                     pass
