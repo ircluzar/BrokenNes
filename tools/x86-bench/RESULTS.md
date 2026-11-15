@@ -26,7 +26,16 @@ Battery x86 checks (--x86test, --x86dev, --x86engines, --x86cards, --x86session 
 `--x86test --ref` (step-by-step vs tiny386) now reports mismatches on these opcodes on purpose: tiny386 has the bugs.
 
 ## Speed
-See the table in the lane report (BENCH x20, host wall time vs machine time).
+BENCH scale 20, JIT on, 60M instr/s machine clock, this dev box (shared with other agents), boot included:
+
+| program | machine time | host wall | real-time factor | kernel ms (machine): sieve crc32 qsort div ll fib mat str |
+|---|---|---|---|---|
+| BENCH16 (real mode) | 28.3 s | 15.0 s | 1.9x | 1263 3296 3185 3131 10656 1812 1044 1593 |
+| BENCH32 (DOS/32A) | 10.7 s | 6.7 s | 1.6x | 1208 659 1593 384 440 1593 933 1538 |
+
+Machine time is an instruction clock (no cycle timing), so a "vs real PC" figure needs Dhrystone/TopBench (below): at 60M
+instr/s the console is roughly a fast 486DX4 / slow Pentium in instruction throughput, but per-kernel ratios differ from real hardware
+(every instruction costs one tick: 64-bit `ll` in 16-bit code is 24x slower than in 32-bit, as library-call heavy code is).
 
 ## Well-known suites that need a download (for the user's approval)
 - test386.asm (Marco Bortolin), 386 CPU test ROM: https://github.com/barotto/test386.asm (git archive of master; the prebuilt
