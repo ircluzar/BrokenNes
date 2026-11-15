@@ -35,7 +35,7 @@ internal static class MoviePlayer
     /// machine: the input, the keyframe hashes and the course variables. <paramref name="fromState"/>: a state loaded first (the movie then
     /// starts from it).
     /// </summary>
-    public static Movie Record(MovieMachine m, string script1, string script2, long frames, int keyEvery, IEnumerable<(string, string)> vars, string build, byte[]? fromState = null)
+    public static Movie Record(MovieMachine m, string script1, string script2, long frames, int keyEvery, IEnumerable<(string, string)> vars, string build, byte[]? fromState = null, Action<long>? afterFrame = null)
     {
         var mv = NewFor(m, frames, keyEvery, build);
         foreach (var v in vars) mv.Vars.Add(v);
@@ -50,6 +50,7 @@ internal static class MoviePlayer
             mv.SetPads(f, p1, p2);
             m.Frame(p1, p2);
             if (m.Crashed) throw new InvalidOperationException($"the game crashed at frame {f + 1} while recording: {m.CrashInfo}");
+            afterFrame?.Invoke(f + 1);
             if (Movie.IsKeyFrame(f + 1, frames, keyEvery)) mv.Keys.Add(new MovieKey { Frame = f + 1, Picture = m.Picture(), Ram = m.Ram(), Vars = m.EvalVars(mv) });
         }
         mv.Marks.AddRange(m.MarksSeen.Where(k => k.Frame < frames));   // the debug port's markers (D7) as 'm' lines
