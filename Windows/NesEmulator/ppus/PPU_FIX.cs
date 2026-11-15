@@ -143,8 +143,11 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		// cartridge the power-on test pattern is left on screen.
 		mmc5TileHooks = bus?.cartridge?.mapper is Mapper5;
 		hasCartridge = bus?.cartridge != null;
+		// speed: these mappers (exact types) keep IMapper's default nametable hooks (no override, -1 / false), so a nametable fetch can skip the two interface calls
+		var mt = bus?.cartridge?.mapper?.GetType();
+		ntPlainMapper = mt == typeof(Mapper0) || mt == typeof(Mapper1) || mt == typeof(Mapper2) || mt == typeof(Mapper3) || mt == typeof(Mapper4) || mt == typeof(Mapper7) || mt == typeof(Mapper30);
 	}
-	private bool mmc5TileHooks, hasCartridge;
+	private bool mmc5TileHooks, hasCartridge, ntPlainMapper;
 	// PPUMASK-derived colour-output state, refreshed whenever $2001 changes and at the top of every
 	// scanline. Both are pure output-stage effects - they never touch what is stored in palette RAM.
 	//   greyMask  - PPUMASK bit 0 (greyscale) ANDs the palette INDEX with $30 on its way out of
@@ -211,6 +214,14 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		ppuDotCounter += elapsedCycles;
 		for (int c = 0; c < elapsedCycles; c++)
 		{
+			// Speed (Lite AOT, 2026-11-14): lines 240-260 (after 241's dot 1) do nothing per dot but count - no fetches, no pixels, no loopy-v, no events -
+			// so the dots up to the line's last one are counted in one step; the last dot runs below as always (the end of line). With a $2006 copy
+			// in flight (vUpdateDelay) every dot runs.
+			if (scanline >= 240 && scanline <= 260 && vUpdateDelay == 0 && (scanline != 241 || scanlineCycle > 1))
+			{
+				int k = Math.Min(340 - scanlineCycle, elapsedCycles - 1 - c);
+				if (k > 0) { scanlineCycle += k; c += k; }
+			}
 			if (vUpdateDelay > 0 && --vUpdateDelay == 0) v = vUpdatePending;
 			// Hardware clears VBlank (bit 7), sprite-0 hit (bit 6) and sprite overflow (bit 5) at
 			// PRE-RENDER scanline 261, dot 1 - not at scanline 0 dot 0, and not only bits 7/6.
@@ -491,6 +502,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		return t;
 	}
 
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	private void RenderDot()
 	{
 		int dot = scanlineCycle;
@@ -1051,6 +1063,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		else if (address >= 0x2000 && address <= 0x3EFF)
 		{
 			// Allow mapper to override nametable reads (MMC5 $5105 ExRAM/Fill)
+			if (ntPlainMapper) return vram[MirrorVRAMAddress(address)];
 			if (bus?.cartridge?.mapper is IMapper mNt && mNt.TryPpuNametableRead(address, out byte v)) return v;
 			// If mapper provides per-quadrant NT mode 0/1, resolve CIRAM A/B directly
 			if (bus?.cartridge?.mapper is IMapper mMode)
