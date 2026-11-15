@@ -7,3 +7,4 @@
 - Grading: OK = boot/title/first ~8 s after Start match Mesen (palette-blind PicDiff <= 0.03); later blind-play divergence is
   recorded as extra.t1.playDiverges, not a defect. Jank = close/different right after Start or blank in play; Broken = crash/hang/freeze/title differs;
   Nothing = unsupported mapper or blank while Mesen shows a picture; Not tested = no reference pictures or both blank.
+- 2026-11-15 10:26: relaunched after the 4th reboot (23 records done, python PID 9376); only 2 heavy slots open (slot3/4 reserved by main session), so it waits for a slot.
