@@ -26,6 +26,19 @@ Inventory of what exists today (consoles, cores, ROM counts, tools, TAS formats,
 - Fix what blocks a swarm before it starts: movie recording/replay on every console's accuracy core, savestates, a fast agent loop over MCP (frame advance, screenshot, input, RAM read), progress signals (RAM watches for level/lives/score per game where known), and a way to drive the reference emulator in lock step with BrokenNes for the live side-by-side play.
 - Build the title list per console: dedupe the GoodTools sets to one dump per title, with the console's game db ids.
 
+#### P0 scope (interview 2026-11-14)
+
+| # | Item | Decision |
+|---|---|---|
+| 1 | Grade store | **New catalog database on T:** (one record per ROM hash: grade, tier, notes, TAS, reference result); BrokenNes's own `default-db.json` is updated from it in batches. |
+| 2 | Replay determinism | **Prove and fix on every console's accuracy core** (movie and savestate round trips, frame-hash match) before the swarm reaches that console. |
+| 3 | Movie export | **BizHawk `.bk2` export and import for every console** (adds SMS, GG and Genesis); keep `.fm2` for NES/FCEUX. |
+| 4 | Agent loop | **A single MCP "step" call** (inputs held for N frames or until a RAM condition, returns a small screenshot plus RAM watches) **and movie recording from headless sessions**. The Sega debugger comes later. |
+| 5 | Live reference | **Behind the same step call**: it drives BrokenNes and the reference emulator in lock step (Mesen through Lua/test-runner for NES, SNES, GB, SMS, GG; Genesis Plus GX through BizHawk's Lua) and returns both screenshots plus a difference score. |
+| 6 | Fleet packaging | **One-script worker install** on the share: copies a pinned BrokenNes headless build, the MCP server, Mesen/BizHawk and the agent runner, maps the X:/T: shares, registers the box with the job queue on this PC. Update = rerun the script. |
+| 7 | Known holes | **Implement the 16 missing NES mappers in P0** so the NES pilot isn't skewed. The WideMess reference and Genesis interlace are left to the fix waves. |
+| 8 | Title lists | One dump per title per console, deduped from the GoodTools sets (decided earlier). |
+
 ### P1. Catalog format and storage
 - One record per game: title, console, dump hash, tier reached, grade (BrokenNes's own scale: Nothing / Broken / Jank / OK / Certified, plus Not tested), the agent's notes, screenshots at checkpoints, the TAS file, the reference comparison result, problem tags (picture, sound, timing, crash, input, mapper/board, save), and the core/version tested.
 - Storage on T: (catalog database + TAS files + screenshots). TAS files hold inputs only, never ROM data. Commercial ROMs and their screenshots never go in git.
