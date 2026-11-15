@@ -805,6 +805,8 @@ public class Bus : IBus
 			if (Butcher is { SoundActive: true } bs) value = bs.FilterApuWrite(address, value);
 			activeApu.WriteAPURegister(address, value); return;
 		}
+	// $4020-$4FFF reaches only boards that decode registers there (ILowRegisterMapper: NINA-03/06, Sachen).
+	if (address >= 0x4020 && address < 0x5000) { if (cartridge.mapper is ILowRegisterMapper) cartridge.CPUWrite(address, value); return; }
 	// Mapper expansion registers (e.g., MMC5 $5000-$5FFF)
 	if (address >= 0x5000 && address < 0x6000)
 	{
@@ -1119,6 +1121,7 @@ public class Bus : IBus
 		ApuClock += apuCycles;
 		mmc5Audio?.Step(apuCycles);
 		instr.ApuSteps += apuCycles;
+		if (cartridge?.mapper is ICpuClockedMapper cm && cm.ClockCpu(cpuCycles)) cpu?.RequestIRQ(true);   // Sunsoft-3's cycle counter
 	}
 	public float[] GetAudioSamples(int max=0)
 	{

@@ -2,7 +2,7 @@
   "schema": 1,
   "suite": "corpus",
   "description": "Mapper-coverage breadth, sampled from the 758 .nes files under SubProjects/65-o-borked/bin/Debug/net8.0/roms (the 2847-file count in that folder includes the .chr/.prg/.ines side files). One representative title per mapper. The corpus is NOT in the repo and is NOT redistributable, so these cases SKIP on a machine that does not have it.",
-  "howChosen": "Every .nes file's iNES header was read and grouped by mapper id. 25 distinct mappers are present: 0,1,2,3,4,5,7,9,11,13,34,41,47,64,66,67,68,69,71,79,113,118,119,228,232. Windows/NesEmulator/board/Cartridge.cs implements 0,1,2,3,4,5,7,9,30,33,90,228 - so 9 of the corpus's mappers are runnable and 16 are not. All 16 are listed below as explicit skip entries with the reason, so they are visible rather than silently dropped; mappers 30, 33 and 90 are implemented but have no representative in this corpus (30 is covered by cases/mapper30.json).",
+  "howChosen": "Every .nes file's iNES header was read and grouped by mapper id. 25 distinct mappers are present: 0,1,2,3,4,5,7,9,11,13,34,41,47,64,66,67,68,69,71,79,113,118,119,228,232. Windows/NesEmulator/board/Cartridge.cs implemented 0,1,2,3,4,5,7,9,30,33,90,228 when this was written - so 9 of the corpus's mappers were runnable and 16 were not. All 16 are listed below as explicit skip entries with the reason, so they are visible rather than silently dropped; mappers 30, 33 and 90 are implemented but have no representative in this corpus (30 is covered by cases/mapper30.json). 2026-11-14 (compat catalog P0, lane mappersA): 11, 41, 66, 68, 79, 113, 232 (and 67) implemented; their skip entries became run cases.",
   "roots": {
     "corpus": "SubProjects/65-o-borked/bin/Debug/net8.0/roms"
   },
@@ -234,11 +234,24 @@
     {
       "id": "corpus-m011-colordreams",
       "rom": "{corpus}/Adventures of Captain Comic, The (U).nes",
-      "skip": "Mapper 11 (Color Dreams) is not implemented - Cartridge.cs throws UnsupportedMapperException. Verified: --romtest reports 'Mapper 11 (Unknown) is not supported'. 30 corpus ROMs use it.",
       "tags": [
         "corpus",
-        "unsupported"
-      ]
+        "mapper11"
+      ],
+      "description": "Mapper 11 (Color Dreams). Captain Comic.",
+      "kind": "romtest",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "679C7D3C672BD1BB",
+        "framesRun": 600,
+        "distinctColors": 12,
+        "result": "ok",
+        "crashInfo": ""
+      }
     },
     {
       "id": "corpus-m013-cprom",
@@ -261,11 +274,24 @@
     {
       "id": "corpus-m041-caltron",
       "rom": "{corpus}/Caltron 6-in-1 (U).nes",
-      "skip": "Mapper 41 (Caltron 6-in-1) is not implemented. 1 corpus ROM.",
       "tags": [
         "corpus",
-        "unsupported"
-      ]
+        "mapper41"
+      ],
+      "description": "Mapper 41 (Caltron 6-in-1). Menu and Cosmos Cop title match Mesen 2.1.1 frame for frame.",
+      "kind": "romtest",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "55D4B1F54AAFDF0C",
+        "framesRun": 600,
+        "distinctColors": 10,
+        "result": "ok",
+        "crashInfo": ""
+      }
     },
     {
       "id": "corpus-m047-mmc3-multicart",
@@ -288,29 +314,68 @@
     {
       "id": "corpus-m066-gxrom",
       "rom": "{corpus}/Super Mario Bros. + Duck Hunt (U).nes",
-      "skip": "Mapper 66 (GxROM) is not implemented. 4 corpus ROMs. Worth noting: GxROM is one of the simplest mappers left unimplemented, so it is the cheapest coverage win available here.",
       "tags": [
         "corpus",
-        "unsupported"
-      ]
+        "mapper66"
+      ],
+      "description": "Mapper 66 (GxROM). Super Mario Bros. + Duck Hunt.",
+      "kind": "romtest",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "2A394118B865A40B",
+        "framesRun": 600,
+        "distinctColors": 7,
+        "result": "ok",
+        "crashInfo": ""
+      }
     },
     {
       "id": "corpus-m067-sunsoft3",
       "rom": "{corpus}/Transformers.nes",
-      "skip": "Mapper 67 (Sunsoft-3) is not implemented. 1 corpus ROM.",
       "tags": [
         "corpus",
-        "unsupported"
-      ]
+        "mapper3"
+      ],
+      "description": "Headered as mapper 67 but byte 7 = $44 is an old-iNES (DiskDude-era) header: by Mesen's and FCEUX's rule the mapper is 3 (CNROM), which is what this case now runs. Mapper 67 itself (Mapper67.cs) has no title in the corpus.",
+      "kind": "romtest",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "77E472CBAE9CB793",
+        "framesRun": 600,
+        "distinctColors": 6,
+        "result": "ok",
+        "crashInfo": ""
+      }
     },
     {
       "id": "corpus-m068-sunsoft4",
       "rom": "{corpus}/After Burner (U).nes",
-      "skip": "Mapper 68 (Sunsoft-4) is not implemented. 1 corpus ROM.",
       "tags": [
         "corpus",
-        "unsupported"
-      ]
+        "mapper68"
+      ],
+      "description": "Mapper 68 (Sunsoft-4). After Burner: CHR-ROM nametables, PRG-RAM.",
+      "kind": "romtest",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "A898EC02DF72716D",
+        "framesRun": 600,
+        "distinctColors": 3,
+        "result": "ok",
+        "crashInfo": ""
+      }
     },
     {
       "id": "corpus-m069-fme7",
@@ -333,20 +398,46 @@
     {
       "id": "corpus-m079-nina003",
       "rom": "{corpus}/Blackjack (U).nes",
-      "skip": "Mapper 79 (NINA-003/006, American Video Entertainment) is not implemented. 11 corpus ROMs.",
       "tags": [
         "corpus",
-        "unsupported"
-      ]
+        "mapper79"
+      ],
+      "description": "Mapper 79 (AVE NINA-03/06). Blackjack: registers at $4100.",
+      "kind": "romtest",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "6B4C1986A3A8AAF5",
+        "framesRun": 600,
+        "distinctColors": 4,
+        "result": "ok",
+        "crashInfo": ""
+      }
     },
     {
       "id": "corpus-m113-nina003-alt",
       "rom": "{corpus}/Deathbots (U).nes",
-      "skip": "Mapper 113 (NINA-003 variant with mirroring control) is not implemented. 2 corpus ROMs.",
       "tags": [
         "corpus",
-        "unsupported"
-      ]
+        "mapper79"
+      ],
+      "description": "Headered as mapper 113, but Deathbots (U) is AVE NINA-06: Cartridge's CRC fixup (from Mesen's NesDB) runs it as mapper 79. Rad Racket is the corpus's real mapper-113 title.",
+      "kind": "romtest",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "965B02D1D8A98AF9",
+        "framesRun": 600,
+        "distinctColors": 11,
+        "result": "ok",
+        "crashInfo": ""
+      }
     },
     {
       "id": "corpus-m118-txsrom",
@@ -369,12 +460,25 @@
     {
       "id": "corpus-m232-camerica-quattro",
       "rom": "{corpus}/Quattro Adventure (U).nes",
-      "skip": "Mapper 232 (Camerica Quattro) is not implemented. Verified: 'Mapper 232 (Unknown) is not supported'. 3 corpus ROMs.",
       "tags": [
         "corpus",
-        "unsupported"
-      ]
+        "mapper232"
+      ],
+      "description": "Mapper 232 (Camerica BF9096). Quattro Adventure.",
+      "kind": "romtest",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "984AF4AEA6CF02EB",
+        "framesRun": 600,
+        "distinctColors": 2,
+        "result": "ok",
+        "crashInfo": ""
+      }
     }
   ],
-  "goldenGeneratedUtc": "2026-09-03T04:16:42Z"
+  "goldenGeneratedUtc": "2026-11-15T03:21:33Z"
 }
