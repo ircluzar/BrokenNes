@@ -67,13 +67,17 @@ def main():
     ap.add_argument('--work', required=True)
     ap.add_argument('--workshop')
     ap.add_argument('--results')
+    ap.add_argument('--profile')
+    ap.add_argument('--feedback', action='store_true', help='run the feedback loop into --profile first')
     a = ap.parse_args()
     exe = nes2md.workshop_exe(a.workshop)
     w = os.path.abspath(a.work)
     os.makedirs(w, exist_ok=True)
     md, mdc = os.path.join(w, 'game.md'), os.path.join(w, 'game_count.md')
-    rep = nes2md.convert(a.rom, md, None, {}, os.path.join(w, 'build'))
-    nes2md.convert(a.rom, mdc, None, {'count': 'on'}, os.path.join(w, 'build_count'))
+    if a.feedback:
+        nes2md.feedback(a.rom, md, a.profile, {}, os.path.join(w, 'fb'), None, exe, frames=FRAMES, inputs=SCRIPT_MD, rounds=60)
+    rep = nes2md.convert(a.rom, md, a.profile, {}, os.path.join(w, 'build'))
+    nes2md.convert(a.rom, mdc, a.profile, {'count': 'on'}, os.path.join(w, 'build_count'))
     res = {'rom': os.path.basename(a.rom), 'insns': rep['insns'], 'out_sha256': rep['out_sha256']}
 
     shots = sorted({f + d for f in CHECKS for d in range(-30, 31, 2)})

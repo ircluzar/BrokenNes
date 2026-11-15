@@ -2,28 +2,86 @@
   "schema": 1,
   "id": "nes2md",
   "name": "Nested NesGen: NES -> Genesis / Mega Drive",
-  "source": { "console": "nes", "extensions": [".nes"] },
-  "target": { "console": "md", "extension": ".md" },
+  "source": {
+    "console": "nes",
+    "extensions": [
+      ".nes"
+    ]
+  },
+  "target": {
+    "console": "md",
+    "extension": ".md"
+  },
   "tool": "BrokenDev/tools/nested-everything/nes2md.py",
   "cli": "brokendev.ps1 nested-everything nes2md <in.nes> <out.md> [-Profile <game id or file>] [-Feedback none|brokennes] [-Set key=value,...]",
   "description": "Static 6502 -> 68000 translation (recursive descent from the vectors, every instruction labelled, a 32 K dispatch table for RTS/RTI/JMP (ind)) linked with a 68000 runtime: the NMI runs from the VInt, PPU writes go to plane A (H32, top 8 lines cropped), attributes to palette bits, $3F00 to CRAM, $4014 to the sprite table, the pad to $4016, the 2A03 to the PSG. NROM with CHR-ROM only (the CHR is converted once at build time). The dynamic fallback is a dispatch miss: the ROM stops with the 6502 address in RAM ($FF8040) and -Feedback brokennes adds it as an entry and translates again.",
   "settings": [
-    { "id": "count", "type": "choice", "choices": ["off", "on"], "default": "off",
-      "what": "Measurement build: count every 6502 instruction run ($FF8018 total, $FF8034 inside NMIs). Slower; for the cost numbers only" }
+    {
+      "id": "count",
+      "type": "choice",
+      "choices": [
+        "off",
+        "on"
+      ],
+      "default": "off",
+      "what": "Measurement build: count every 6502 instruction run ($FF8018 total, $FF8034 inside NMIs). Slower; for the cost numbers only"
+    },
+    {
+      "id": "sound",
+      "type": "choice",
+      "choices": [
+        "fm",
+        "psg"
+      ],
+      "default": "fm",
+      "what": "fm: pulses and triangle on YM2612 channels 1-3 (duty as the modulator ratio/depth, triangle as a sine), noise on the PSG; psg: everything on the PSG (50% squares)"
+    },
+    {
+      "id": "spr0lag",
+      "type": "int",
+      "default": 0,
+      "what": "Lines added to the sprite-0 hit line (the hit reads set from OAM Y + 1 - 8 + spr0lag to the end of the picture)"
+    },
+    {
+      "id": "opprof",
+      "type": "choice",
+      "choices": [
+        "off",
+        "on"
+      ],
+      "default": "off",
+      "what": "Measurement build: count each 6502 opcode run inside NMIs (256 longs at $FF8400)"
+    }
   ],
   "defaultInputs": [
-    { "id": "boot", "frames": 1000, "input": "" },
-    { "id": "start", "frames": 1000, "input": "120:Start,126:,400:Right,480:,500:Start,506:,600:Right,680:,700:C,706:,800:Left,880:" }
+    {
+      "id": "boot",
+      "frames": 1000,
+      "input": ""
+    },
+    {
+      "id": "start",
+      "frames": 1000,
+      "input": "120:Start,126:,400:Right,480:,500:Start,506:,600:Right,680:,700:C,706:,800:Left,880:"
+    }
   ],
   "pads": "NES A = Genesis C, B = B, Select = A, Start = Start",
   "harness": "python BrokenDev/tools/nested-everything/nes2md_test.py <game.nes> --work <scratch dir> --results <json>",
-  "grades": ["Perfect", "Playable", "Glitchy", "Boots only", "Black screen", "Build fails"],
+  "grades": [
+    "Perfect",
+    "Playable",
+    "Glitchy",
+    "Boots only",
+    "Black screen",
+    "Build fails"
+  ],
   "limits": [
     "mapper 0 with CHR-ROM only; no CHR-RAM, no banking",
-    "one 32x64 plane: nametables by mirroring into rows 0 and 32, no horizontal nametable scrolling",
-    "sprites always in front of the background (the NES behind-background bit is ignored); sprite 0 hit always reads as set",
-    "pulse duty, sweep and DMC are not reproduced; triangle is a PSG square",
-    "zp,X does not wrap at $FF for bases below $80 (a fast path); a changed return address with an unchanged S is not caught by the native RTS"
+    "vertical mirroring: one 64x32 plane (horizontal nametable scrolling); horizontal mirroring: one 32x64 plane (the 240-line nametable height is not modelled, rows 30-31 show between the halves)",
+    "mid-frame splits only through $2005 writes (the scroll register takes effect on the next line); $2006 mid-frame scroll is not modelled",
+    "sprite 0 hit is timed from the V counter and sprite 0's Y, not from pixels; it reads clear in vblank",
+    "sweep and DMC are not reproduced; pulse duty is an FM timbre, not a real pulse width",
+    "a changed return address with an unchanged S is not caught by the native RTS"
   ],
   "profiles": "BrokenDev/projects/nested-nes2md/profiles/<game id>.json: entries [\"C123\", ...] (extra 6502 entry points; written by feedback)"
 }

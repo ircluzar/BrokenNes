@@ -35,8 +35,9 @@
 	.equ	ic_sum,  0x34        | long: 6502 instructions run inside NMIs (count builds)
 	.equ	missed,  0x40        | word: 6502 address of a dispatch miss
 	.equ	missflag,0x42        | $A5 after a miss
-	.equ	spr0line,0x7C        | word: Genesis line sprite 0 hit starts on (OAM Y + 1 - 8 + SPR0_LAG)
-	.equ	ymduty,  0x7E        | 2 bytes: duty last written to FM channels 0/1
+	.equ	spr0line,0x7C        | word: Genesis line sprite 0 hit starts on (OAM Y + 1 + first opaque row - 8 + SPR0_LAG)
+	.equ	ymduty,  0x7E
+	.equ	vcextra, 0x80        | word: extra VRAM offset for vram_cell (the second plane copy, horizontal mirroring)        | 2 bytes: duty last written to FM channels 0/1
 	.equ	apu,     0x44        | 24 bytes: $4000-$4017 as written
 	.equ	sq,      0x5C        | 4 channels x 8 bytes: +0 length, +1 env vol, +2 env acc, +3 linear, +4 last atten, +5 last noise ctl
 	.equ	oam,     0x100       | 256 bytes
@@ -74,7 +75,7 @@ exc:	move.w	#0x2700,sr
 hint:	rte
 
 vdpregs:
-	.byte	0x04, 0x24, 0x30, 0x2C, 0x07, 0x7C, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x3F, 0x00, 0x02
+	.byte	0x04, 0x24, 0x30, 0x2C, 0x05, 0x7C, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x3F, 0x00, 0x02
 	.byte	0x10, 0x00, 0x00
 	.even
 
@@ -99,6 +100,8 @@ start:	move.w	#0x2700,sr
 	dbra	d0,3b
 .if MIRBIT == 10
 	move.w	#0x9001,(a4)                  | plane 64x32
+.else
+	move.w	#0x9030,(a4)                  | plane 32x128: NT0, NT1, NT0, NT1 at rows 0/30/60/90 (240-line nametables)
 .endif
 	move.l	#0x40000000,(a4)              | clear 64 KB VRAM
 	move.w	#0x7FFF,d0
@@ -111,8 +114,8 @@ start:	move.w	#0x2700,sr
 	move.l	#0x40000010,(a4)              | VSRAM: 8 lines down (the NES's top 8 lines are cropped)
 	move.w	#8,(a3)
 	move.w	#8,(a3)
-	move.l	#0x60000003,(a4)              | plane B ($E000) -> blank tile 1024 (tile 0 is a real NES tile)
-	move.w	#2047,d0
+	move.l	#0x60000002,(a4)              | plane B ($A000, 8 KB) -> blank tile 1024 (tile 0 is a real NES tile)
+	move.w	#4095,d0
 7:	move.w	#0x0400,(a3)
 	dbra	d0,7b
 	move.l	#0x40000000,(a4)              | tiles -> VRAM $0000
@@ -466,7 +469,7 @@ apply_scroll:                                 | plane A scroll from scrollx/y an
 .if MIRBIT == 11
 	btst	#1,ppuctrl(a6)
 	beq.s	1f
-	addi.w	#256,d0
+	addi.w	#240,d0
 .endif
 1:	move.l	#0x40000010,(a4)
 	move.w	d0,(a3)
@@ -562,6 +565,12 @@ io_wr_2007:
 	bsr	nt_entry                      | d0.w = plane word for cell d5 (a0 = half base)
 	bsr	vram_cell
 	move.w	d0,(a3)
+.if MIRBIT == 11
+	move.w	#60*64,vcextra(a6)            | the copy 480 lines down, so a vertical scroll never meets the wrap
+	bsr	vram_cell
+	move.w	d0,(a3)
+	clr.w	vcextra(a6)
+.endif
 9:	movem.l	(sp)+,d0-d2/d5/a0
 	rts
 vram_cell:                                    | set the VDP write address for cell d5 of half d2
@@ -578,7 +587,8 @@ vram_cell:                                    | set the VDP write address for ce
 	add.w	d5,d5                         | horizontal mirroring: a 32x64 plane, halves one above the other
 	tst.b	d2
 	beq.s	1f
-	addi.w	#0x800,d5
+	addi.w	#30*64,d5                     | 32x128: NT1 at row 30 (+ the copies 60 rows down, vcextra)
+1:	add.w	vcextra(a6),d5
 .endif
 1:	addi.w	#0x4000,d5                    | $C000 & $3FFF = $0000 ... plane at $C000: (addr & $3FFF) | $4000, top bits 3
 	swap	d5
@@ -631,6 +641,17 @@ wr_attr:                                      | rewrite the 4x4 cells under attr
 	move.w	d0,(a3)
 	addq.w	#1,d5
 	dbra	d7,2b
+.if MIRBIT == 11
+	subq.w	#4,d5
+	move.w	#60*64,vcextra(a6)
+	bsr	vram_cell
+	moveq	#3,d7
+2:	bsr	nt_entry
+	move.w	d0,(a3)
+	addq.w	#1,d5
+	dbra	d7,2b
+	clr.w	vcextra(a6)
+.endif
 	addi.w	#28,d5
 	dbra	d1,1b
 3:	movem.l	(sp)+,d0-d2/d5/a0
@@ -672,9 +693,26 @@ io_wr_4014:                                   | 64 NES sprites -> the SAT (Y+121
 	andi.w	#7,d7
 	lsl.w	#8,d7
 	lea	0(a5,d7.w),a0
-	lea	sprattr,a1
+	moveq	#0,d0                         | sprite 0's first opaque row (the hit needs a sprite pixel)
+	move.b	1(a0),d0
+	lsl.w	#4,d0
+	btst	#3,ppuctrl(a6)
+	beq.s	0f
+	addi.w	#0x1000,d0
+0:	lea	chrraw,a1
+	adda.w	d0,a1
+	moveq	#0,d2
+	moveq	#7,d3
+1:	move.b	8(a1),d1
+	or.b	(a1)+,d1
+	bne.s	2f
+	addq.w	#1,d2
+	dbra	d3,1b
+	moveq	#0,d2
+2:	lea	sprattr,a1
 	moveq	#0,d0                         | sprite 0's first line for the $2002 hit
 	move.b	(a0),d0
+	add.w	d2,d0
 	addi.w	#1-8+SPR0_LAG,d0
 	bpl.s	0f
 	moveq	#0,d0

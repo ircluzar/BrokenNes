@@ -507,6 +507,13 @@ class Emitter:
                 else:
                     self.e('move.w #0x%04x,d5' % nx)
                     self.e('jra miss')
+        # targets the walk could not decode (a branch into a bad opcode): a miss stub each, so the link works
+        used = set(re.findall(r'\bL([0-9A-F]{4})\b', '\n'.join(self.out)))
+        for t in sorted(used):
+            if int(t, 16) not in self.insns:
+                self.out.append('L%s:' % t)
+                self.e('move.w #0x%s,d5' % t)
+                self.e('jra miss')
         return '\n'.join(self.out) + '\n'
 
 
