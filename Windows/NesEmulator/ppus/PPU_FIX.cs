@@ -153,12 +153,12 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	//   greyMask  - PPUMASK bit 0 (greyscale) ANDs the palette INDEX with $30 on its way out of
 	//               palette RAM, collapsing all four colour columns onto the grey one.
 	//   emphBase  - byte offset into EmphasisPaletteBytes selected by PPUMASK bits 5/6/7.
-	private int emphBase;
+	private int emphBase, emphRow;   // emphRow: the same block as a row of EmphasisPaletteRgba (emphBase / 3)
 	private int greyMask = 0x3F;
 
 	private void RefreshColorMask()
 	{
-		emphBase = ((PPUMASK >> 5) & 0x07) * 192;
+		emphBase = ((PPUMASK >> 5) & 0x07) * 192; emphRow = emphBase / 3;
 		greyMask = (PPUMASK & 0x01) != 0 ? 0x30 : 0x3F;
 		UpdateVPipelineFlag(); // PPUMASK bits 3/4 also gate the loopy-v pipeline
 	}
@@ -706,9 +706,9 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			int bgPix = 0, bgPal = 0;
 			if ((mask & 0x08) != 0 && (x >= 8 || (mask & 0x02) != 0))
 			{
-				int m = 0x8000 >> fineX;
-				bgPix = ((bgShiftLo & m) != 0 ? 1 : 0) | ((bgShiftHi & m) != 0 ? 2 : 0);
-				bgPal = ((atShiftLo & m) != 0 ? 1 : 0) | ((atShiftHi & m) != 0 ? 2 : 0);
+				int sh = 15 - fineX;   // bit 15 - fineX of each shifter, without branches
+				bgPix = ((bgShiftLo >> sh) & 1) | (((bgShiftHi >> sh) & 1) << 1);
+				bgPal = ((atShiftLo >> sh) & 1) | (((atShiftHi >> sh) & 1) << 1);
 			}
 			int spPix = 0, spPal = 0; bool spFront = false;
 			if ((mask & 0x10) != 0 && x >= sprSpanLo && x < sprSpanHi && (x >= 8 || (mask & 0x04) != 0))
@@ -727,13 +727,12 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 					break;
 				}
 			}
-			if (spPix != 0 && (bgPix == 0 || spFront)) colour = PR(0x10 | (spPal << 2) | spPix);
-			else if (bgPix != 0) colour = PR((bgPal << 2) | bgPix);
-			else colour = PR(0);
+			int pal = spPix != 0 && (bgPix == 0 || spFront) ? 0x10 | (spPal << 2) | spPix : bgPix != 0 ? (bgPal << 2) | bgPix : 0;
+			colour = bus.Butcher == null ? paletteRAM[pal] : PR(pal);   // speed: Butchering mode off is the common case
 		}
 		int fi = (scanline * ScreenWidth + x) * 4;
 		// one 32-bit store of R, G, B, 255 (little-endian, as on every target: x64, ARM64, WebAssembly) instead of four byte stores
-		System.Runtime.CompilerServices.Unsafe.WriteUnaligned(ref fb[fi], EmphasisPaletteRgba[emphBase / 3 + (colour & greyMask)]);
+		System.Runtime.CompilerServices.Unsafe.WriteUnaligned(ref fb[fi], EmphasisPaletteRgba[emphRow + (colour & greyMask)]);
 	}
 
 	// Pipeline state for savestates: a state is taken wherever RunFrame stopped, usually mid-line,
