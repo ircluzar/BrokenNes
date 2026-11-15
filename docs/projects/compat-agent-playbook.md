@@ -99,6 +99,28 @@ Rules:
 - RAM addresses are CPU bus addresses: NES `$0000-$07FF`, SNES `7E:xxxx`, Game Boy `$C000-$DFFF` / `$FF80`, Master System / Game Gear
   `$C000-$DFFF`, Genesis `$FF0000-$FFFFFF` (BizHawk reads the 68K RAM domain).
 
+## Measured (2026-11-14, this machine, shared with other agents; 20 frames per step, scale 0.5)
+
+| console, game | step ms (checks off / on / + reference) | aligned offset | reference score over the play |
+|---|---|---|---|
+| NES Super Mario Bros. | 136 / 239 / 506 | 0 | 60 of 60 steps "same" |
+| NES Mega Man 2 | - / 367 / 336 | -10 | 50 of 50 "same" |
+| NES Castlevania | - / - / 435 | 0 | 59 of 60 "same" |
+| SNES Super Mario World | - / - / 502 | 0 | 47 of 50 "same" (Mesen's 239-line picture cropped at lines 7-230) |
+| SNES Donkey Kong Country | - / - / 926 | 2 | measured before the crop fix only |
+| SNES Super Metroid | 167 / - / - | - | - |
+| Game Boy Tetris | - / - / 155 | 83 | 26 of 50 "close" |
+| Game Boy Super Mario Land | - / - / 171 | 82 | steady 0.20 ("different"): a candidate finding |
+| Game Boy Color Link's Awakening DX | - / - / 296 | 13 (search was too narrow then) | 0.20 median |
+| Master System Alex Kidd, Sonic | - / - / 257-280 | 0-1 | 50 of 50 "same" (Mesen's frame cropped at y 24) |
+| Game Gear Sonic Blast, Sonic & Tails | - / - / 350-394 | -1, 5 | final 0.04-0.11 ("close"), the screen at x 48, y 48 of Mesen's 256x240 |
+| Genesis Sonic 1 (BizHawk Genplus-gx) | 213 / - / 365 | 2 | 41 of 50 "close", median 0.034 |
+
+Boot offsets: Mesen's Game Boy runs ~80 frames ahead of BrokenNes at the same picture (use align_search 90 there); the others are within
+10. The movies of every run above replayed in sync (open_movie) with their 3 marks. The lag figure needs `checks:true` and is only as good as
+the checks' frame-wait detection: a game whose wait loop is not recognised counts every frame as lag (Castlevania showed 1202 of 1200):
+treat a lag count close to the frame count as "unknown".
+
 ## What the server copies are
 
 The reference runs from private homes in the session's folder (`%LOCALAPPDATA%\BrokenNes\mcp\sessions\<pid>-<session>\reference-mesen` /
