@@ -47,6 +47,7 @@ namespace BrokenNes
                 GbLook.Palette = GbLook.FromKey(await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gblook"));
                 GbLook.InvertBackground = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gbinvbg") == "1";
                 GbLook.InvertSprites = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gbinvobj") == "1";
+                GbDualModeAsDmg = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gbdualdmg") == "1";
                 // The core picks. A pick of a retired core moves to its successor and is stored back (CoreIdMigration: the big-screen Game Boy chip
                 // NES:DMGX is the enhanced chip NES:DMGS now; the retired DMGXI / DMGSI also switch the sprite inversion on) - never a reset to the default.
                 bool invertSprites = false;
@@ -93,6 +94,19 @@ namespace BrokenNes
                 if (session != null && sessionRom != null) await StartSessionAsync(session.Console, sessionRom, sessionRomName);
                 else if (nes != null) ApplySelectedCores();   // rebuilds the Game Boy picture chip as a DMG or a GBC
             }
+            StateHasChanged();
+        }
+
+        /// <summary>A dual-mode cartridge (header $143 = $80: it runs on both) boots as a Game Boy Color unless this is on; then it boots as a plain Game Boy. Colour-only carts ($C0) always run in colour.</summary>
+        public bool GbDualModeAsDmg { get; private set; }
+
+        public async Task SetGbDualModeAsDmgAsync(bool on)
+        {
+            GbDualModeAsDmg = on;
+            try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_gbdualdmg", on ? "1" : "0"); } catch { }
+            // a running dual-mode game restarts on the console it now picks
+            if (session != null && sessionRom != null && Consoles.IsGameBoy(session.Console) && RomDetect.GameBoyConsole(sessionRom, session.Console, GbDualModeAsDmg) is var c && c != session.Console)
+                await StartSessionAsync(c, sessionRom, sessionRomName);
             StateHasChanged();
         }
 
@@ -165,9 +179,8 @@ namespace BrokenNes
                 return false;
             }
             var console = kind.Value;
-            // A Game Boy cartridge runs on whichever of Game Boy / Game Boy Color is selected (Color-only carts: Color).
-            if (Consoles.IsGameBoy(console) && Consoles.IsGameBoy(SelectedConsole) && !(console == ConsoleKind.GameBoyColor && (rom[0x143] & 0xC0) == 0xC0))
-                console = SelectedConsole;
+            // A Game Boy cartridge: colour-only and dual-mode carts boot in colour (dual-mode as a plain Game Boy when the menu says so); a plain Game Boy cart runs on whichever of the two is selected.
+            if (Consoles.IsGameBoy(console)) console = RomDetect.GameBoyConsole(rom, Consoles.IsGameBoy(SelectedConsole) ? SelectedConsole : console, GbDualModeAsDmg);
             // a SNES game runs on the WideMess when the WideMess is the selected console (it is a superset of the SNES: locked, it is a SNES), as on the desktop
             if (console == ConsoleKind.Snes && SelectedConsole == ConsoleKind.WideMess && Consoles.IsAvailable(ConsoleKind.WideMess)) console = ConsoleKind.WideMess;
             await StartSessionAsync(console, rom, romName);
