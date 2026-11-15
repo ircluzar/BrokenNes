@@ -1,0 +1,16 @@
+{
+  "game": "smb3",
+  "apply": "load raw state (on the world map), write each rule, run 1 frame, save clean state",
+  "rules": [
+    {"addr": "$0736", "len": 1, "value": [4],       "what": "lives = starting 4"},
+    {"addr": "$0715", "len": 3, "value": [0,0,0],   "what": "score = 0"},
+    {"addr": "$7D9F", "len": 3, "value": [0,0,0],   "what": "score backup = 0"},
+    {"addr": "$7DA2", "len": 1, "value": [0],       "what": "coins = 0"},
+    {"addr": "$7D9C", "len": 3, "value": [0,0,0],   "what": "no goal cards"},
+    {"addr": "$7D80", "len": 28, "value": "01 then 27 x 00", "what": "inventory = one mushroom"},
+    {"addr": "$0746", "len": 1, "value": [1],       "what": "Big Mario, no suit"}
+  ],
+  "untouched": ["$7D00-$7D3F completions (route progress)", "$0727 world", "RNG", "timer (reset by the game on level entry)"],
+  "verified": "chapter 1-2 start (after 1-1 clear): HUD score 0, lives 4, coins 0, cards gone in-level, entered 1-2 as Big ($00ED=1), timer 299, played on without glitches",
+  "caveat": "the map Mario sprite keeps its old look until the next level entry; the HUD card slots redraw on level entry. Cosmetic only."
+}
