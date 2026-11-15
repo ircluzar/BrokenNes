@@ -32,6 +32,10 @@ MDV = np.array([0, 2, 5, 7]) * 255 // 7
 MDV4 = np.array([0, 2, 4, 6]) * 255 // 7   # back end A (Mode 4): the VDP shows each SMS 2-bit level as the top of a 3-bit one
 GEOM = {'top': 0, 'lev': MDV}               # back end A: the 192-line picture sits 16 rows down in the 224-row frame
 SETS = []
+# source console: 'sms', or 'gg' (gg2md: the reference is the GG original on the GG core, 160x144, and the Genesis
+# picture is cut to the GG window: SMS columns 6-25, rows 3-20)
+SRC = {'console': 'sms'}
+GG2 = np.array([0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3])   # gg2sms colours=round
 MAP = {'A': 'B', 'B': 'C', 'Select': 'Start'}
 
 
@@ -66,6 +70,10 @@ def sms_img(d, f):
     if not os.path.exists(p):
         return None
     a = np.asarray(Image.open(p).convert('RGB'), dtype=np.int32)
+    if SRC['console'] == 'gg':
+        if a.shape[0] != 144:   # a full 256x192 frame: cut the GG window
+            a = a[24:168, 48:208]
+        return GG2[np.clip((a + 8) // 17, 0, 15)]
     return np.clip((a + 42) // 85, 0, 3)
 
 
@@ -75,6 +83,8 @@ def md_img(d, f):
         return None
     t = GEOM['top']
     a = np.asarray(Image.open(p).convert('RGB'), dtype=np.int32)[t:t + 192]
+    if SRC['console'] == 'gg':
+        a = a[24:168, 48:208]
     return np.abs(a[..., None] - GEOM['lev'][None, None, None, :]).argmin(-1)
 
 
@@ -109,7 +119,19 @@ def test_game(g, work, exe, bizhawk=False):
     rom = g['rom']
     prof = g.get('profileData', {})
     out = os.path.join(work, g['id'] + '.md')
-    a = [sys.executable, os.path.join(HERE, 'sms2md.py'), 'feedback', rom, out, '--work', os.path.join(work, 'build'),
+    src = rom
+    if SRC['console'] == 'gg':
+        # gg2md: GG -> SMS (gg2sms) first, then SMS -> Genesis; the reference stays the GG original
+        src = os.path.join(work, g['id'] + '.sms')
+        ga = [sys.executable, os.path.join(HERE, 'gg2sms.py'), 'feedback', rom, src, '--work', os.path.join(work, 'ggbuild'),
+              '--report', os.path.join(work, 'gg2sms-report.json'), '--workshop', exe]
+        if g.get('ggprofile'):
+            ga += ['--profile', g['ggprofile']]
+        code, log = run(ga)
+        if code or not os.path.exists(src):
+            res.update(grade='Build fails', log=log[-600:])
+            return res
+    a = [sys.executable, os.path.join(HERE, 'sms2md.py'), 'feedback', src, out, '--work', os.path.join(work, 'build'),
          '--report', os.path.join(work, 'report.json'), '--workshop', exe]
     if g.get('profile'):
         a += ['--profile', g['profile']]
@@ -131,7 +153,7 @@ def test_game(g, work, exe, bizhawk=False):
     sb, mb = os.path.join(work, 'sboot'), os.path.join(work, 'mboot')
     os.makedirs(sb, exist_ok=True)
     os.makedirs(mb, exist_ok=True)
-    run([exe, '--sms-run', rom, '--console', 'sms', '--frames', str(tf + 1), '--png-at', str(tf), '--out', sb, '--tag', 's'])
+    run([exe, '--sms-run', rom, '--console', SRC['console'], '--frames', str(tf + 1), '--png-at', str(tf), '--out', sb, '--tag', 's'])
     bootn = tf * 8
     run([exe, '--md-run', out, '--frames', str(bootn), '--png-at', ','.join(str(x) for x in range(tf, bootn)), '--png-dir', mb, '--quiet'])
     ref = sms_img(sb, tf)
@@ -160,7 +182,7 @@ def test_game(g, work, exe, bizhawk=False):
         # that frame shows the same seed byte as on the SMS
         f0 = parse_script(script)[0][0]
         a0 = int(seed, 16) - 0xC000
-        run([exe, '--sms-run', rom, '--console', 'sms', '--frames', str(f0 + 1), '--ram-at', str(f0), '--out', sb, '--tag', 'seed'])
+        run([exe, '--sms-run', rom, '--console', SRC['console'], '--frames', str(f0 + 1), '--ram-at', str(f0), '--out', sb, '--tag', 'seed'])
         want = open(os.path.join(sb, 'seed_f%d.ram.bin' % f0), 'rb').read()[a0]
         lo, hi = f0 + delay - 20, f0 + delay + 60
         run([exe, '--md-run', out, '--frames', str(hi + 1), '--ram-at', ','.join(str(x) for x in range(lo, hi)), '--png-dir', mb, '--quiet'])
@@ -175,7 +197,7 @@ def test_game(g, work, exe, bizhawk=False):
         chk = prof.get('seed_check_frame', f0 + 200)
         cs = os.path.join(work, 'seedchk')
         os.makedirs(cs, exist_ok=True)
-        run([exe, '--sms-run', rom, '--console', 'sms', '--frames', str(chk + 1), '--png-at', str(chk), '--out', cs, '--tag', 's',
+        run([exe, '--sms-run', rom, '--console', SRC['console'], '--frames', str(chk + 1), '--png-at', str(chk), '--out', cs, '--tag', 's',
              '--input', script])
         sref = sms_img(cs, chk)
         best_d, best_sc = delay, -1
@@ -197,7 +219,7 @@ def test_game(g, work, exe, bizhawk=False):
     os.makedirs(sp, exist_ok=True)
     os.makedirs(mp, exist_ok=True)
     allf = ','.join(str(x) for x in range(frames))
-    run([exe, '--sms-run', rom, '--console', 'sms', '--frames', str(frames), '--png-at', allf, '--out', sp, '--tag', 's',
+    run([exe, '--sms-run', rom, '--console', SRC['console'], '--frames', str(frames), '--png-at', allf, '--out', sp, '--tag', 's',
          '--wav', os.path.join(sp, 's.wav'), '--input', script, '--watch-pc', prof.get('halt_pc', '21DD')])
     mf = frames + delay
     run([exe, '--md-run', out, '--frames', str(mf), '--png-at', ','.join(str(x) for x in range(mf)), '--png-dir', mp,
@@ -283,9 +305,11 @@ def main():
     ap.add_argument('--only')
     ap.add_argument('--results')
     ap.add_argument('--workshop')
+    ap.add_argument('--source', choices=['sms', 'gg'], default='sms', help='gg = gg2md (GG -> SMS -> Genesis)')
     ap.add_argument('--set', action='append', default=[], help='translator setting key=value (e.g. video=mode5)')
     a = ap.parse_args()
     SETS[:] = a.set
+    SRC['console'] = a.source
     exe = sms2md.workshop_exe(a.workshop)
     games = []
     if a.rom:
@@ -302,6 +326,9 @@ def main():
         if os.path.exists(pid):
             g['profile'] = pid
             g['profileData'] = json.load(open(pid, encoding='utf-8'))
+            gp = g['profileData'].get('ggprofile')
+            if gp:
+                g['ggprofile'] = gp if os.path.isabs(gp) else os.path.join(sms2md.BD, gp)
         else:
             g['profile'] = None
         if not os.path.exists(g['rom']):

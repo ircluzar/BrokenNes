@@ -1,0 +1,7 @@
+{
+  "pipeline": "gg2md",
+  "note": "ROM paths are local; ROMs never go in git. Run: python tools/nested-everything/sms2md_test.py projects/nested-gg2md/roster.json --source gg --work <dir>",
+  "games": [
+    { "id": "vaults_gg", "rom": "T:/BrokenDev/Releases/VRUN_Vaults_GG/2026-11-10_9ea616a/VRUN_Vaults_GG_9ea616a.gg" }
+  ]
+}

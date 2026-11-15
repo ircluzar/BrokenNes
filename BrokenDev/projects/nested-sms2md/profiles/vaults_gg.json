@@ -1,0 +1,30 @@
+{
+  "game": "VRUN: Vaults of Obsolete Code, Game Gear build (9ea616a), through gg2sms then sms2md (gg2md)",
+  "ggprofile": "projects/nested-gg2sms/profiles/vaults-gg.json",
+  "settings": {},
+  "title_frame": 110,
+  "frames": 1500,
+  "input": "60:A,61:,200:Start,206:,300:Start,306:,400:Right,401:,600:A,601:,900:Left,901:,1200:Start,1206:,1300:A+B,1320:",
+  "inputs": [
+    {
+      "id": "boot",
+      "frames": 1800,
+      "input": ""
+    },
+    {
+      "id": "run",
+      "frames": 3600,
+      "input": "60:A,61:,200:Start,206:,300:Start,306:,400:Right,401:,600:A,601:,900:Left,901:,1200:Start,1206:,1300:A+B,1320:,1500:Right,2000:A,2001:,2500:Start,2506:,2600:Start,2606:"
+    },
+    {
+      "id": "harness",
+      "frames": 1700,
+      "input": "60:A,61:,200:Start,206:,300:Start,306:,400:Right,401:,600:A,601:,900:Left,901:,1200:Start,1206:,1300:A+B,1320:"
+    },
+    {
+      "id": "pause",
+      "frames": 3000,
+      "input": "60:A,61:,200:Start,206:,300:Start,306:,400:Right,460:,500:Start,506:,600:Up,606:,700:Down,706:,800:A,806:,900:B,906:,1000:A+B,1030:,1100:Start,1106:,1200:Right+A,1300:Left+B,1400:Up+A,1500:Down+B,1600:,1700:Start,1706:,1800:A+B,1830:,1900:Start,1906:,2000:Right,2500:Left,3000:"
+    }
+  ]
+}

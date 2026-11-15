@@ -836,13 +836,22 @@ class Gen:
         if op == 'EI':
             self.emit('jsr     (z_ei).l')
             return
-        if op == 'LDAI':
+        if op in ('LDAI', 'LDAR'):
+            # P/V = IFF2: code that saves the interrupt state this way (LD A,I / PUSH AF / DI ... POP AF / JP PO / EI, the
+            # gg2sms runtime's colour trap does) must see interrupts on, or it never re-enables them
             self.clobber()
-            self.producer('clr.b   d0', live_out, S | Z | V, False, False)
-            return
-        if op == 'LDAR':
-            self.emit('move.b  (HVC+1).l,d0')
-            self.producer('tst.b   d0', live_out, S | Z | V, False, False)
+            self.raw('clr.b   d0' if op == 'LDAI' else 'move.b  (HVC+1).l,d0')
+            self.raw('tst.b   d0')
+            self.raw('move    sr,d5')
+            self.raw('andi.w  #0xC,d5')
+            self.raw('tst.b   (IFF).w')
+            self.raw('beq.s   1f')
+            self.raw('ori.w   #2,d5')
+            self.out.append('1:')
+            self.raw('andi.w  #0xFFF1,d4')
+            self.raw('or.w    d5,d4')
+            self.ccr_has = False
+            self.ccr_live = 0
             return
         if op == 'OUT':
             return self.out_(i)
