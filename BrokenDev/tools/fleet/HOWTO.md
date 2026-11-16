@@ -94,3 +94,14 @@ pull(b, r"C:\brokennes\work\mylane_1\out", r"C:\BrokenNes-work\mylane\fleet\OPAL
 - The job log is `C:\fleet\jobs\<id>.log` on the PC. Past `limit` seconds the job is ended (rc 124).
 - Throughput (2026-11-15, 3 jobs per PC): NES T1 about 45-60 s per game per job, so about 90 games/hour per PC and about 600/hour
   across the fleet. Nested: about 1.5-2 min per game per job (build + measure), so about 100 games/hour per PC.
+
+## Work-stealing queue (preferred for T1) and the other fleet tools (2026-11-16)
+- `python C:\BrokenNes-work\fleet\fleetq.py --t1 <consoles> [--batch 6] [--minutes 3] [--deep 10] [--noref]`: one global backlog of small batches. Each PC
+  keeps up to 6 jobs running (5 on 8 GB PCs), counting every other running FleetJob. Batches are exported ahead of time, and results are pulled and
+  ingested (--force) as each batch ends. State: queue_state*.json (a restart skips finished batches). Log: queue*.out / queue.log.
+- New PCs: `python provision_new.py <PC> ...` (kit, BizHawk, dotnet, pwsh, Nested fork + fork_x, MCP folders, gg2sms). Then `python hold.py record ...`.
+- Nested: `nestedfleet.py run --fork-dir fork_x --env NESTED_FEEDBACK_ALL=1 --env "NESTED_EXTRA=NmiMode.AtVblank=True;NmiMode.AutoDetect=False"`.
+  The fork copy must include `tools\m30pipe\core\pristine\Project_Nested.pristine.smc` (srm2calls needs it).
+- Unstick sweep: `unstick\unstickfleet.py run|collect`. Fuzz: `stage_fuzz_run.cmd <seed>` on the PCs, then `fuzzcollect.py`. Run the fuzz at NORMAL priority:
+  at BelowNormal on a full PC, bfuzz's wall-clock hang watchdog reports false hangs.
+- MD reference: BizHawk needs `PreferredPlatformsForExtensions` (.bin -> GEN) in its config, or a "Choose a Platform" dialog blocks the run.
