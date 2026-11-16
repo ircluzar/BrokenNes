@@ -826,7 +826,7 @@ public sealed partial class I386
         uint sp = R[4], n = _opsz16 ? 2u : 4u;
         var m = new OptAddr();
         if (!Translate(ref m, 1, SEG_SS, sp & _spm, 2)) return false;
-        if (!SetSeg(seg, Load16(ref m))) return false;
+        if (!LoadSegChecked(seg, Load16(ref m))) return false;
         SetSp(sp + n, _spm);
         return true;
     }
@@ -1136,7 +1136,7 @@ public sealed partial class I386
         if (!Translate(ref m1, 1, _curSeg, addr, n)) return false;
         if (!Translate(ref m2, 1, _curSeg, addr + (uint)n, 2)) return false;
         uint r = Load(bits, ref m1), s = Load16(ref m2);
-        if (!SetSeg(seg, s)) return false;
+        if (!LoadSegChecked(seg, s)) return false;
         SReg(bits, reg, r);
         return true;
     }
@@ -1456,7 +1456,7 @@ public sealed partial class I386
                 if (!DecodeE(16, 1)) return FAIL;
                 if (_reg == SEG_CS || _reg > 5) return K(Throw0(EX_UD));
                 if (_reg == SEG_SS) _steps++;
-                return K(SetSeg(_reg, ReadE(16)));
+                return K(LoadSegChecked(_reg, ReadE(16)));
             }
             case 0x8f: return K(PopE());
             case 0x90: return OK;

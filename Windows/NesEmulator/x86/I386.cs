@@ -666,6 +666,33 @@ public sealed partial class I386
         return true;
     }
 
+    /// <summary>MOV Sreg / POP Sreg / LDS..LSS in protected mode: the privilege and type checks of a data or stack segment load (386 manual,
+    /// MOV): SS needs a writable data segment with RPL = DPL = CPL; DS/ES/FS/GS a data or readable code segment, and unless conforming code
+    /// DPL >= max(CPL, RPL). test386 POST 0Bh (mov ds, DPL-0 selector from ring 3).</summary>
+    private bool LoadSegChecked(int seg, uint sel)
+    {
+        sel &= 0xffff;
+        if ((Cr0 & 1) == 0 || (Flags & VM) != 0) return SetSeg(seg, sel);
+        if ((sel & ~3u) == 0)
+        {
+            if (seg == SEG_SS) return Throw(EX_GP, 0);
+            return SetSeg(seg, sel);
+        }
+        if (!ReadDesc(sel, out _, out uint w2, false)) return false;
+        bool s = ((w2 >> 12) & 1) != 0, code = ((w2 >> 11) & 1) != 0, rw = ((w2 >> 9) & 1) != 0, conf = ((w2 >> 10) & 1) != 0;
+        int dpl = (int)((w2 >> 13) & 3), rpl = (int)(sel & 3);
+        if (seg == SEG_SS)
+        {
+            if (rpl != Cpl || !s || code || !rw || dpl != Cpl) return Throw(EX_GP, sel & ~3u);
+        }
+        else if (s)
+        {
+            if (code && !rw) return Throw(EX_GP, sel & ~3u);
+            if ((!code || !conf) && dpl < Math.Max(Cpl, rpl)) return Throw(EX_GP, sel & ~3u);
+        }
+        return SetSeg(seg, sel);
+    }
+
     private bool SetSeg(int seg, uint sel)
     {
         sel &= 0xffff;
