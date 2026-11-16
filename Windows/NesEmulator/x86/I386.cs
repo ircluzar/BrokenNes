@@ -247,6 +247,14 @@ public sealed partial class I386
 
     private uint PRead32Safe(uint a) => a <= MemSize - 4 ? P32(a) : 0;
 
+    private uint _refillPde = 0xffffffff, _refillPte;
+    private void RefillDone(bool ok)
+    {
+        if (_refillPde == 0xffffffff) return;
+        if (ok) { Mem[_refillPde] |= 1 << 5; Mem[_refillPte] |= 1 << 5; }
+        _refillPde = 0xffffffff;
+    }
+
     private bool TlbRefill(int e, uint lpgno)
     {
         uint baseAddr = Cr3 & ~0xfffu;
@@ -254,12 +262,11 @@ public sealed partial class I386
         uint pdeAddr = baseAddr + i * 4;
         uint pde = PRead32Safe(pdeAddr);
         if ((pde & 1) == 0) return false;
-        Mem[pdeAddr] |= 1 << 5; // accessed
         uint base2 = pde & ~0xfffu;
         uint pteAddr = base2 + j * 4;
         uint pte = PRead32Safe(pteAddr);
         if ((pte & 1) == 0) return false;
-        Mem[pteAddr] |= 1 << 5; // accessed
+        _refillPde = pdeAddr; _refillPte = pteAddr;   // the accessed bits are set once the access passes the protection check (a 386 sets no A bit on a faulting walk; test386 POST 11h)
         _tlbLpgno[e] = lpgno;
         _tlbXaddr[e] = (pte & ~0xfffu) ^ (lpgno << 12);
         pte &= (pde & 7) | 0xfffffff8;
@@ -288,8 +295,10 @@ public sealed partial class I386
             if ((rwm & 2) != 0) Excerr |= 2;
             if (cpl == 3) Excerr |= 4;
             _tlbLpgno[e] = 0xffffffff;
+            RefillDone(false);
             return false;
         }
+        RefillDone(true);
         paddr = _tlbXaddr[e] ^ laddr;
         if ((rwm & 2) != 0) Mem[_tlbPpte[e]] |= 1 << 6; // dirty
         return true;
@@ -349,8 +358,10 @@ public sealed partial class I386
             {
                 Cr2 = laddr; Excno = EX_PF; Excerr = Cpl == 3 ? 5u : 1u;
                 _tlbLpgno[e] = 0xffffffff;
+                RefillDone(false);
                 return false;
             }
+            RefillDone(true);
             res.Two = false; res.A1 = _tlbXaddr[e] ^ laddr;
         }
         else { res.Two = false; res.A1 = laddr; }
