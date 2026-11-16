@@ -75,6 +75,7 @@ public sealed partial class PcMachine : IX86Bus
         Cmos = new Cmos(() => PitNow, MemKb);
         Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64);
         S3 = Vga.S3;
+        _vramNs = Cpu.Model.Legacy ? 0 : S3 != null ? 150 : Cpu.Model.Gen <= 3 ? 650 : 450;
         Speaker = new PcSpeaker(this);
         Opl = new Opl2(() => PitNow);
         Dma = new Dma8237(this);
@@ -88,23 +89,34 @@ public sealed partial class PcMachine : IX86Bus
 
     public bool MapsIoMem => true;
 
-    public byte MemRead8(uint a) => a < 0xc0000 ? Vga.MemRead(a) : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
-    public void MemWrite8(uint a, byte v) { if (a < 0xc0000) Vga.MemWrite(a, v); else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
-    public ushort MemRead16(uint a) => (ushort)(MemRead8(a) | (MemRead8(a + 1) << 8));
-    public void MemWrite16(uint a, ushort v)
+    // the CPU's accesses to the video card's memory (and the S3's registers) wait for the bus: ISA VGA ~650 ns on a 386 board, ~450 ns on a 486, the PCI S3 ~150 ns per
+    // access, charged as machine time on a CPU model (the classic machine: no wait, as before)
+    public byte MemRead8(uint a) { VramWait(); return RawRead8(a); }
+    public void MemWrite8(uint a, byte v) { VramWait(); RawWrite8(a, v); }
+    public ushort MemRead16(uint a) { VramWait(); return RawRead16(a); }
+    public void MemWrite16(uint a, ushort v) { VramWait(); RawWrite16(a, v); }
+    public uint MemRead32(uint a) { VramWait(); return RawRead32(a); }
+    public void MemWrite32(uint a, uint v) { VramWait(); RawWrite32(a, v); }
+    private readonly int _vramNs;
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private void VramWait() { if (_vramNs != 0) _idle += Math.Max(1, _vramNs * InstructionsPerSecond / 1_000_000_000); }
+    private byte RawRead8(uint a) => a < 0xc0000 ? Vga.MemRead(a) : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
+    private void RawWrite8(uint a, byte v) { if (a < 0xc0000) Vga.MemWrite(a, v); else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
+    private ushort RawRead16(uint a) => (ushort)(RawRead8(a) | (RawRead8(a + 1) << 8));
+    private void RawWrite16(uint a, ushort v)
     {
         if (S3 != null && (S3.InLfb(a) && S3.InLfb(a + 1) ? WriteLfb16(a, v) : a < 0xc0000 && S3.MmioWrite(a, v, 16))) return;
-        MemWrite8(a, (byte)v); MemWrite8(a + 1, (byte)(v >> 8));
+        RawWrite8(a, (byte)v); RawWrite8(a + 1, (byte)(v >> 8));
     }
-    public uint MemRead32(uint a) => S3 != null && S3.InLfb(a) ? S3.LfbRead32(a) : (uint)(MemRead16(a) | (MemRead16(a + 2) << 16));
-    public void MemWrite32(uint a, uint v)
+    private uint RawRead32(uint a) => S3 != null && S3.InLfb(a) ? S3.LfbRead32(a) : (uint)(RawRead16(a) | (RawRead16(a + 2) << 16));
+    private void RawWrite32(uint a, uint v)
     {
         if (S3 != null)
         {
             if (S3.InLfb(a)) { S3.LfbWrite32(a, v); return; }
             if (a < 0xc0000 && S3.MmioWrite(a, v, 32)) return;
         }
-        MemWrite16(a, (ushort)v); MemWrite16(a + 2, (ushort)(v >> 16));
+        RawWrite16(a, (ushort)v); RawWrite16(a + 2, (ushort)(v >> 16));
     }
     private bool WriteLfb16(uint a, ushort v) { S3!.LfbWrite8(a, (byte)v); S3.LfbWrite8(a + 1, (byte)(v >> 8)); return true; }
 

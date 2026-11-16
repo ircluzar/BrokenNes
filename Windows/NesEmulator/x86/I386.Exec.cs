@@ -98,6 +98,7 @@ public sealed partial class I386
                 }
                 if (!Fetch8(out b1)) return FAIL;
             }
+            if (_opCost != null) Cycle += _opCost[b1];
             if (lockPfx && !LockAllowed(b1)) { Throw0(EX_UD); return FAIL; }
             // the everyday opcodes are dispatched here, to small handlers: going through ExecOne's big switch costs about as much as
             // the instruction itself (measured with Workshop --x86bench); everything else still goes to ExecOne
@@ -302,7 +303,7 @@ public sealed partial class I386
     {
         if (!Fetch8(out uint modrm)) return false;
         _mod = (int)(modrm >> 6); _reg = (int)((modrm >> 3) & 7); _rm = (int)(modrm & 7);
-        if (_mod != 3) return Modsib(_adsz16, _mod, _rm, out _addr, ref _curSeg);
+        if (_mod != 3) { Cycle += _memCost; return Modsib(_adsz16, _mod, _rm, out _addr, ref _curSeg); }
         return true;
     }
 
@@ -688,6 +689,7 @@ public sealed partial class I386
                 WriteE(bits, _ccDst);
                 return true;
         }
+        if (_mulCost != null) Cycle += _reg < 6 ? _mulCost[SizeIdx(bits)] : _divCost![SizeIdx(bits)];
         if (!TranslateE(bits, 1)) return false;
         uint v = ReadE(bits);
         switch (_reg)
@@ -872,6 +874,7 @@ public sealed partial class I386
         var m1 = new OptAddr();
         if (!Fetch8(out uint modrm)) return false;
         _mod = (int)(modrm >> 6); _rm = (int)(modrm & 7);
+        if (_mod != 3) Cycle += _memCost;
         uint sp = R[4];
         if (!Translate(ref m1, 1, SEG_SS, sp & _spm, bits / 8)) return false;
         uint src = Load(bits, ref m1);
@@ -1178,16 +1181,19 @@ public sealed partial class I386
         if (_curSeg == -1) _curSeg = SEG_DS;
         int dir = Dir(bits), n = bits / 8;
         var ms = new OptAddr(); var md = new OptAddr();
+        uint it = 0;
         while (_rep == 0 || CxNonZero())
         {
-            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) return false;
+            it++;
+            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) { RepCharge(RepMovs, it); return false; }
             uint v = Load(bits, ref ms);
-            if (!Translate(ref md, 2, SEG_ES, LReg(A, 7), n)) return false;
+            if (!Translate(ref md, 2, SEG_ES, LReg(A, 7), n)) { RepCharge(RepMovs, it); return false; }
             Store(bits, ref md, v);
             Adv(6, dir); Adv(7, dir);
             if (_rep == 0) break;
             CxDec();
         }
+        RepCharge(RepMovs, it);
         return true;
     }
 
@@ -1196,14 +1202,17 @@ public sealed partial class I386
         int dir = Dir(bits), n = bits / 8;
         uint ax = R[0];
         var md = new OptAddr();
+        uint it = 0;
         while (_rep == 0 || CxNonZero())
         {
-            if (!Translate(ref md, 2, SEG_ES, LReg(A, 7), n)) return false;
+            it++;
+            if (!Translate(ref md, 2, SEG_ES, LReg(A, 7), n)) { RepCharge(RepStos, it); return false; }
             Store(bits, ref md, ax);
             Adv(7, dir);
             if (_rep == 0) break;
             CxDec();
         }
+        RepCharge(RepStos, it);
         return true;
     }
 
@@ -1212,14 +1221,17 @@ public sealed partial class I386
         if (_curSeg == -1) _curSeg = SEG_DS;
         int dir = Dir(bits), n = bits / 8;
         var ms = new OptAddr();
+        uint it = 0;
         while (_rep == 0 || CxNonZero())
         {
-            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) return false;
+            it++;
+            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) { RepCharge(RepLods, it); return false; }
             SReg(bits, 0, Load(bits, ref ms));
             Adv(6, dir);
             if (_rep == 0) break;
             CxDec();
         }
+        RepCharge(RepLods, it);
         return true;
     }
 
@@ -1228,9 +1240,11 @@ public sealed partial class I386
         int dir = Dir(bits), n = bits / 8;
         uint ax0 = LReg(bits, 0);
         var md = new OptAddr();
+        uint it = 0;
         while (_rep == 0 || CxNonZero())
         {
-            if (!Translate(ref md, 1, SEG_ES, LReg(A, 7), n)) return false;
+            it++;
+            if (!Translate(ref md, 1, SEG_ES, LReg(A, 7), n)) { RepCharge(RepScas, it); return false; }
             uint ax = Load(bits, ref md);
             Adv(7, dir);
             if (_rep != 0) CxDec();
@@ -1239,6 +1253,7 @@ public sealed partial class I386
             bool zf = GetZF() != 0;
             if ((zf && _rep == 2) || (!zf && _rep == 1)) break;
         }
+        RepCharge(RepScas, it);
         return true;
     }
 
@@ -1247,11 +1262,13 @@ public sealed partial class I386
         if (_curSeg == -1) _curSeg = SEG_DS;
         int dir = Dir(bits), n = bits / 8;
         var ms = new OptAddr();
+        uint it = 0;
         while (_rep == 0 || CxNonZero())
         {
-            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) return false;
+            it++;
+            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) { RepCharge(RepCmps, it); return false; }
             uint ax0 = Load(bits, ref ms);
-            if (!Translate(ref ms, 1, SEG_ES, LReg(A, 7), n)) return false;
+            if (!Translate(ref ms, 1, SEG_ES, LReg(A, 7), n)) { RepCharge(RepCmps, it); return false; }
             uint ax = Load(bits, ref ms);
             Adv(6, dir); Adv(7, dir);
             if (_rep != 0) CxDec();
@@ -1260,6 +1277,7 @@ public sealed partial class I386
             bool zf = GetZF() != 0;
             if ((zf && _rep == 2) || (!zf && _rep == 1)) break;
         }
+        RepCharge(RepCmps, it);
         return true;
     }
 
@@ -1269,14 +1287,17 @@ public sealed partial class I386
         // (F2 is a REP here too, as for MOVS/STOS/LODS: a 386 runs REPNE INS/OUTS; SingleStepTests F2 6C)
         int dir = Dir(bits), n = bits / 8;
         var md = new OptAddr();
+        uint it = 0;
         while (_rep == 0 || CxNonZero())
         {
-            if (!Translate(ref md, 2, SEG_ES, LReg(A, 7), n)) return false;
+            it++;
+            if (!Translate(ref md, 2, SEG_ES, LReg(A, 7), n)) { RepCharge(RepIns, it); return false; }
             Store(bits, ref md, PortIn(bits, (int)L16(2)));
             Adv(7, dir);
             if (_rep == 0) break;
             CxDec();
         }
+        RepCharge(RepIns, it);
         return true;
     }
 
@@ -1287,14 +1308,17 @@ public sealed partial class I386
         // (F2 is a REP here too, as for MOVS/STOS/LODS: a 386 runs REPNE INS/OUTS; SingleStepTests F2 6C)
         int dir = Dir(bits), n = bits / 8;
         var ms = new OptAddr();
+        uint it = 0;
         while (_rep == 0 || CxNonZero())
         {
-            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) return false;
+            it++;
+            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) { RepCharge(RepOuts, it); return false; }
             PortOut(bits, (int)L16(2), Load(bits, ref ms));
             Adv(6, dir);
             if (_rep == 0) break;
             CxDec();
         }
+        RepCharge(RepOuts, it);
         return true;
     }
 
@@ -1685,6 +1709,7 @@ public sealed partial class I386
     {
         if (!Fetch8(out uint b1)) return FAIL;
         uint imm;
+        if (_opCost0F != null) Cycle += _opCost0F[b1];
         if (!_legacy)
         {
             if (!ModelAllows0F(b1)) return K(Throw0(EX_UD));

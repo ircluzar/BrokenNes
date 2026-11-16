@@ -106,6 +106,9 @@ public sealed partial class I386
         _legacy = model.Legacy;
         _hasFpu = !_legacy && model.Fpu; _has486 = !_legacy && model.Ops486; _hasCpuid = !_legacy && model.Cpuid;
         _has586 = !_legacy && model.Ops586; _hasMmx = !_legacy && model.Mmx;
+        _repCost16 = RepCosts(model);
+        _memCost = MemCost(model);
+        BuildOpCosts(model, out _opCost, out _opCost0F, out _mulCost, out _divCost);
         Mem = new byte[memSize + 16];
         MemSize = (uint)memSize;
         _bus = bus;

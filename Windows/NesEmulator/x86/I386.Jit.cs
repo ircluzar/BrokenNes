@@ -652,7 +652,7 @@ public sealed partial class I386
                 Continue(k, () => IpAt(pe), pe, true);   // (falls into the next instruction's code, which follows)
                 continue;
             }
-            il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldc_I4_1); il.Emit(OpCodes.Conv_I8); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, cyc);
+            il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldc_I4, 1 + JitExtraCost(e.Kind, e.Reg, bits, mem)); il.Emit(OpCodes.Conv_I8); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, cyc);
 
             // effective address and linear address of a memory operand
             if (mem)
