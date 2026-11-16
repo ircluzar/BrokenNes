@@ -74,6 +74,7 @@ internal static class X86SpeedCli
 
         m.Profiling = true;
         if (Arg(args, "--batch") is string bt) m.Batch = int.Parse(bt);
+        using var tiers = args.Contains("--jittier") ? new JitTierListener() : null;
         var swBoot = Stopwatch.StartNew();
         m.PowerOn();
         int maxFrames = int.Parse(Arg(args, "--frames") ?? "200000");
@@ -126,6 +127,7 @@ internal static class X86SpeedCli
             foreach (var l in m.Cpu.InterpTop(30)) Console.WriteLine("  interp " + l);
             foreach (var l in m.Cpu.OutOfLineTop(30)) Console.WriteLine("  ool " + l);
         }
+        if (tiers != null) Console.WriteLine("x86speed: jittier " + tiers.Report());
         if (args.Contains("--out") && outTxt != null) Console.WriteLine(outTxt.TrimEnd());
         return ok && m.Stopped == null ? 0 : 1;
     }
@@ -135,4 +137,27 @@ internal static class X86SpeedCli
     private static double ThreadCpuSeconds() => OperatingSystem.IsWindows() && GetThreadTimes(GetCurrentThread(), out _, out _, out long k, out long u) ? (k + u) / 1e7 : 0;
 
     private static string? Arg(string[] a, string k) { int i = Array.FindIndex(a, x => x.Equals(k, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
+}
+
+/// <summary>--jittier: counts the .NET JIT's dynamic methods (the x86 regions) by optimisation tier (MinOpts or fully optimised), from the
+/// runtime's own MethodLoadVerbose events, with their native code sizes.</summary>
+internal sealed class JitTierListener : System.Diagnostics.Tracing.EventListener
+{
+    private readonly Dictionary<string, (int n, long bytes)> _t = new();
+    protected override void OnEventSourceCreated(System.Diagnostics.Tracing.EventSource s)
+    {
+        if (s.Name == "Microsoft-Windows-DotNETRuntime") EnableEvents(s, System.Diagnostics.Tracing.EventLevel.Verbose, (System.Diagnostics.Tracing.EventKeywords)0x10);
+    }
+    protected override void OnEventWritten(System.Diagnostics.Tracing.EventWrittenEventArgs e)
+    {
+        if (e.EventName is not ("MethodLoadVerbose_V1" or "MethodLoadVerbose_V2" or "MethodLoadVerbose") || e.Payload == null) return;
+        int i = e.PayloadNames!.IndexOf("MethodFlags"); int ns = e.PayloadNames.IndexOf("MethodNamespace"); int sz = e.PayloadNames.IndexOf("MethodSize");
+        if (i < 0) return;
+        uint f = Convert.ToUInt32(e.Payload[i]);
+        if ((f & 1) == 0) return;   // dynamic methods only
+        string tier = ((f >> 7) & 7) switch { 1 => "MinOpts", 2 => "Optimized", 3 => "QuickJitted", 4 => "Tier0", 5 => "Tier1", 6 => "OSR", _ => "t" + ((f >> 7) & 7) };
+        long b = sz >= 0 ? Convert.ToInt64(e.Payload[sz]) : 0;
+        lock (_t) { var o = _t.GetValueOrDefault(tier); _t[tier] = (o.n + 1, o.bytes + b); }
+    }
+    public string Report() { lock (_t) return string.Join(" ", _t.Select(kv => $"{kv.Key}={kv.Value.n}/avg{kv.Value.bytes / Math.Max(1, kv.Value.n)}B")); }
 }

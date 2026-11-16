@@ -160,6 +160,28 @@ public sealed partial class I386
         return true;
     }
 
+    // the m32 / m64 forms without _fbuf (as FRead / FWrite: every piece translated before any is read or written)
+    private bool FLd32(out uint v)
+    {
+        if (!Translate(ref _fpm[0], 1, _curSeg, FAddr(0), 4)) { v = 0; return false; }
+        v = Load32(ref _fpm[0]); return true;
+    }
+    private bool FLd64(out ulong v)
+    {
+        if (!Translate(ref _fpm[0], 1, _curSeg, FAddr(0), 4) || !Translate(ref _fpm[1], 1, _curSeg, FAddr(4), 4)) { v = 0; return false; }
+        v = Load32(ref _fpm[0]) | (ulong)Load32(ref _fpm[1]) << 32; return true;
+    }
+    private bool FSt32(uint v)
+    {
+        if (!Translate(ref _fpm[0], 2, _curSeg, FAddr(0), 4)) return false;
+        Store32(ref _fpm[0], v); return true;
+    }
+    private bool FSt64(ulong v)
+    {
+        if (!Translate(ref _fpm[0], 2, _curSeg, FAddr(0), 4) || !Translate(ref _fpm[1], 2, _curSeg, FAddr(4), 4)) return false;
+        Store32(ref _fpm[0], (uint)v); Store32(ref _fpm[1], (uint)(v >> 32)); return true;
+    }
+
     private void FPut16(int o, uint v) { _fbuf[o] = (byte)v; _fbuf[o + 1] = (byte)(v >> 8); }
     private void FPut32(int o, uint v) { FPut16(o, v); FPut16(o + 2, v >> 16); }
     private void FPut64(int o, ulong v) { FPut32(o, (uint)v); FPut32(o + 4, (uint)(v >> 32)); }
@@ -298,15 +320,10 @@ public sealed partial class I386
         {
             case 0: case 2: case 4: case 6:
             {   // arithmetic with a memory operand: D8 m32real, DA m32int, DC m64real, DE m16int
-                int n = esc == 4 ? 8 : esc == 6 ? 2 : 4;
-                if (!FRead(n)) return FAIL;
-                double b = esc switch
-                {
-                    0 => BitConverter.Int32BitsToSingle((int)FGet32(0)),
-                    2 => (int)FGet32(0),
-                    4 => BitConverter.Int64BitsToDouble((long)FGet64(0)),
-                    _ => (short)FGet16(0),
-                };
+                double b;
+                if (esc == 4) { if (!FLd64(out ulong q)) return FAIL; b = BitConverter.Int64BitsToDouble((long)q); }
+                else if (esc == 6) { if (!FRead(2)) return FAIL; b = (short)FGet16(0); }
+                else { if (!FLd32(out uint d)) return FAIL; b = esc == 0 ? BitConverter.Int32BitsToSingle((int)d) : (int)d; }
                 if (reg == 2 || reg == 3)
                 {
                     if (FUnder(0)) FCompareEmpty(); else FCompare(St(0), b, false);
@@ -320,14 +337,13 @@ public sealed partial class I386
             case 1:
                 switch (reg)
                 {
-                    case 0: if (!FRead(4)) return FAIL; FPush(BitConverter.Int32BitsToSingle((int)FGet32(0))); return OK;
+                    case 0: { if (!FLd32(out uint d)) return FAIL; FPush(BitConverter.Int32BitsToSingle((int)d)); return OK; }
                     case 2: case 3:
                     {
                         uint bits;
                         if (FUnder(0)) { if (!IeMasked) return OK; bits = 0xffc00000u; }
                         else bits = (uint)BitConverter.SingleToInt32Bits((float)St(0));
-                        FPut32(0, bits);
-                        if (!FWrite(4)) return FAIL;
+                        if (!FSt32(bits)) return FAIL;
                         if (reg == 3) FPop();
                         return OK;
                     }
@@ -340,7 +356,7 @@ public sealed partial class I386
             case 3:
                 switch (reg)
                 {
-                    case 0: { if (!FRead(4)) return FAIL; LongToExt((int)FGet32(0), out ulong m, out ushort se); FPushRaw(m, se); return OK; }
+                    case 0: { if (!FLd32(out uint d)) return FAIL; LongToExt((int)d, out ulong m, out ushort se); FPushRaw(m, se); return OK; }
                     case 2: case 3: return FIntStore(32, reg == 3);
                     case 5: { if (!FRead(10)) return FAIL; FPushRaw(FGet64(0), (ushort)FGet16(8)); return OK; }
                     case 7:
@@ -358,12 +374,13 @@ public sealed partial class I386
             case 5:
                 switch (reg)
                 {
-                    case 0: { if (!FRead(8)) return FAIL; FPush(BitConverter.Int64BitsToDouble((long)FGet64(0))); return OK; }
+                    case 0: { if (!FLd64(out ulong q)) return FAIL; FPush(BitConverter.Int64BitsToDouble((long)q)); return OK; }
                     case 2: case 3:
                     {
-                        if (FUnder(0)) { if (!IeMasked) return OK; FPut64(0, 0xfff8000000000000UL); }
-                        else FPut64(0, (ulong)BitConverter.DoubleToInt64Bits(St(0)));
-                        if (!FWrite(8)) return FAIL;
+                        ulong q;
+                        if (FUnder(0)) { if (!IeMasked) return OK; q = 0xfff8000000000000UL; }
+                        else q = (ulong)BitConverter.DoubleToInt64Bits(St(0));
+                        if (!FSt64(q)) return FAIL;
                         if (reg == 3) FPop();
                         return OK;
                     }
