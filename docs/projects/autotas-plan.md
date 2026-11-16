@@ -17,6 +17,9 @@ T:\BrokenDev\Catalog\tas\<console>\<game_id>\v<N>\
   state\<chapter>.clean.state  clean-up pass applied (section 3)
   thumb\<chapter>.png   frame at chapter start
   notes\<chapter>.md    agent notes: route, tricks, retries, judge verdict
+  variables.json        the game dossier's variable list (copy of BrokenDev/tools/autotas/games/<game>/dossier.json):
+                        the app's left "variables" stripe shows priority 1-2 live (All: 3 too); optional per-variable
+                        "unit" and "display" {kind u8|s8|hex|le|be|digits|hilo|popcount|bytes|enum|bits, hi, scale, mask, plus, enum, bits}
   cleanup.json          per-game clean-up recipe (shared by all chapters)
 ```
 
