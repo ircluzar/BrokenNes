@@ -1858,6 +1858,7 @@ public sealed partial class I386
                         uint nc = R[rm];
                         if (_hasFpu) nc |= 0x10;   // ET is hardwired on a chip with its FPU
                         if (((nc ^ Cr0) & (CR0_PG | CR0_WP | 1)) != 0) TlbClear();
+                        Cr0Log?.Invoke(Cr0, nc);
                         Cr0 = nc;
                         break;
                     case 2: Cr2 = R[rm]; break;

@@ -54,6 +54,10 @@ public sealed partial class I386
     public readonly uint[] Dr = new uint[8];
     public long Cycle;                               // instructions executed (tiny386's cycle counter)
     public int Excno;
+    /// <summary>Debug tools: called with (vector, error code) before each CPU exception is delivered (CS:EIP still the faulting instruction).</summary>
+    public Action<int, uint>? ExceptionLog;
+    /// <summary>Debug tools: called with (old, new) on MOV CR0 (CS:EIP still the MOV).</summary>
+    public Action<uint, uint>? Cr0Log;
     public uint Excerr;
     public bool Intr;
     public readonly int Gen;
@@ -914,6 +918,7 @@ public sealed partial class I386
         {
             bool pusherr = Excno is EX_DF or EX_TS or EX_NP or EX_SS or EX_GP or EX_PF;
             NextIp = Ip;
+            ExceptionLog?.Invoke(Excno, Excerr);
             if (!CallIsr(Excno, pusherr, 1)) Abort($"exception {Excno} delivery failed");
         }
     }

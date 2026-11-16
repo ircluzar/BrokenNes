@@ -69,6 +69,66 @@ internal static class X86BootCli
         m.PowerOn();
         // --loadstate: carry on from a --savestate of the same machine (its disks come from the state; the CD stays the one given)
         if (Arg(args, "--loadstate") is string ls) m.LoadState(File.ReadAllBytes(ls));
+        // --exclog N: the last N CPU exceptions other than page faults (printed at the end), with a count per vector
+        var excRing = new Queue<string>(); var excCount = new long[32]; int excKeep = int.Parse(Arg(args, "--exclog") ?? "0");
+        string biosIn = "";
+        if (excKeep > 0 && args.Contains("--bioslog"))   // BIOS services called from V86 mode (under Windows), with the registers before and after
+            m.BiosLog = (n, before) =>
+            {
+                if ((m.Cpu.Cr0 & 1) == 0 || n is 0x108 or 0x109) return;
+                var c = m.Cpu.R;
+                string regs = $"AX {c[0] & 0xffff:X4} BX {c[3] & 0xffff:X4} CX {c[1] & 0xffff:X4} DX {c[2] & 0xffff:X4} ES {m.Cpu.SegSel[0]:X4} DI {c[7] & 0xffff:X4}";
+                if (before) { biosIn = regs; return; }
+                excRing.Enqueue($"BIOS {n:X3} in [{biosIn}] out [{regs}] cyc {m.Cpu.Cycle}");
+                if (excRing.Count > excKeep) excRing.Dequeue();
+            };
+        if (excKeep > 0)
+            m.Cpu.ExceptionLog = (v, e) =>
+            {
+                excCount[v & 31]++;
+                if (v == 14 || (((m.Cpu.Flags >> 17) & 1) != 0 && v is 6 or 13 && !(v == 13 && m.Cpu.SegSel[1] == 0xf000 && m.Cpu.Ip < 0xe800))) return;   // (V86 monitor traps: the usual traffic)
+                excRing.Enqueue($"#{v} err {e:X} at {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} CR0 {m.Cpu.Cr0:X} VM {(m.Cpu.Flags >> 17) & 1} EAX {m.Cpu.R[0]:X8} ESI {m.Cpu.R[6]:X8} EDI {m.Cpu.R[7]:X8} EBX {m.Cpu.R[3]:X8} DS {m.Cpu.SegSel[3]:X4}/{m.Cpu.SegBase[3]:X}/{m.Cpu.SegLimit[3]:X} ES {m.Cpu.SegSel[0]:X4}/{m.Cpu.SegLimit[0]:X} CSbase {m.Cpu.SegBase[1]:X} cyc {m.Cpu.Cycle} | " + string.Join(" ", Enumerable.Range(0, 10).Select(i => m.Phys8(m.Cpu.SegBase[1] + m.Cpu.Ip + (uint)i).ToString("X2"))));
+                if (excRing.Count > excKeep) excRing.Dequeue();
+            };
+        if (excKeep > 0)
+            m.Cpu.Cr0Log = (o, nv) =>
+            {
+                if (((o ^ nv) & 0x80000001) == 0) return;
+                var c = m.Cpu.R;
+                if ((o & 0x80000000) != 0 && (nv & 0x80000000) == 0)   // paging going off: what the registers point at, through the page tables
+                {
+                    uint Lin(uint la) { uint pde = m.Phys32((m.Cpu.Cr3 & ~0xfffu) + (la >> 22) * 4); if ((pde & 1) == 0) return 0xffffffff; if ((pde & 0x80) != 0) return (pde & 0xffc00000) | (la & 0x3fffff); uint pte = m.Phys32((pde & ~0xfffu) + ((la >> 12) & 0x3ff) * 4); return (pte & 1) == 0 ? 0xffffffff : (pte & ~0xfffu) | (la & 0xfff); }
+                    foreach (var (nm, la) in new[] { ("EAX", c[0]), ("EBX", c[3]), ("ECX", c[1]), ("EDX", c[2]), ("ESI", c[6]), ("EDI", c[7]), ("EBP", c[5]) })
+                    {
+                        var sb = new StringBuilder();
+                        for (uint k = 0; k < 96; k++) { uint p = Lin(la + k); if (p == 0xffffffff) { sb.Append('?'); break; } byte b = m.Phys8(p); sb.Append(b is >= 32 and < 127 ? (char)b : '.'); }
+                        excRing.Enqueue($"   [{nm} {la:X8}] {sb}");
+                    }
+                    // --memgrep TEXT (repeatable): where physical memory holds it, with the text around it
+                    foreach (var pat in Args(args, "--memgrep"))
+                    {
+                        var pb = Encoding.ASCII.GetBytes(pat); var mem = m.Cpu.Mem; int hits = 0;
+                        for (int a = 0; a + pb.Length < mem.Length && hits < 12; a++)
+                        {
+                            if (mem[a] != pb[0] || !mem.AsSpan(a, pb.Length).SequenceEqual(pb)) continue;
+                            hits++;
+                            var sb = new StringBuilder();
+                            for (int k = Math.Max(0, a - 64); k < Math.Min(mem.Length, a + 160); k++) sb.Append(mem[k] is >= 32 and < 127 ? (char)mem[k] : '.');
+                            excRing.Enqueue($"   grep {pat} @{a:X}: {sb}");
+                        }
+                    }
+                    // the stack: 24 dwords
+                    excRing.Enqueue("   stack " + string.Join(" ", Enumerable.Range(0, 24).Select(k => { uint p = Lin(m.Cpu.SegBase[2] + c[4] + (uint)k * 4); return p == 0xffffffff ? "?" : m.Phys32(p).ToString("X8"); })));
+                }
+                excRing.Enqueue($"CR0 {o:X}->{nv:X} at {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} EAX {c[0]:X8} EBX {c[3]:X8} ECX {c[1]:X8} EDX {c[2]:X8} ESI {c[6]:X8} EDI {c[7]:X8} EBP {c[5]:X8} ESP {c[4]:X8} cyc {m.Cpu.Cycle}");
+                if (excRing.Count > excKeep) excRing.Dequeue();
+            };
+        // --poke "HEXADDR=B1 B2 ...": patch physical memory (e.g. a state's copy of the BIOS ROM after the ROM changed)
+        foreach (var pk in Args(args, "--poke"))
+        {
+            int i = pk.IndexOf('='); uint a = Convert.ToUInt32(pk[..i], 16);
+            foreach (var b in pk[(i + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries)) m.PhysW8(a++, Convert.ToByte(b, 16));
+        }
         var shotAt = Args(args, "--shotat").Select(x => { int i = x.IndexOf('='); return (f: int.Parse(x[..i]), p: x[(i + 1)..]); }).OrderBy(x => x.f).ToList();
         int n = 0;
         foreach (var (sf, sp) in shotAt) { n += RunUntil(m, null, sf - n); X86Shots.SavePng(m.Vga, sp); Console.WriteLine($"x86boot: frame {n} at {sw.Elapsed.TotalSeconds:F1} s, cycle {m.Cpu.Cycle}"); }
@@ -121,6 +181,19 @@ internal static class X86BootCli
             n += RunUntil(m, null, 35);   // let the keys land before looking for the next screen
         }
         if (Arg(args, "--after") is string aft) { n += RunUntil(m, null, int.Parse(aft)); }
+        if (Arg(args, "--trace") is string trc)   // one instruction at a time: where a hang loops
+        {
+            Console.WriteLine("  IVT " + string.Join(" ", Enumerable.Range(0, 32).Select(i => $"{i:X2}={m.Phys16((uint)i * 4 + 2):X4}:{m.Phys16((uint)i * 4):X4}")) + $" | 40:67 {m.Phys32(0x467):X8} CMOS0F {m.Cmos.Ram[0x0f]:X2} 40:72 {m.Phys16(0x472):X4}");
+        }
+        if (Arg(args, "--trace") is string trc2)
+            for (int k = 0; k < int.Parse(trc2); k++)
+            {
+                uint lin = m.Cpu.SegBase[1] + m.Cpu.Ip, sp = m.Cpu.SegBase[2] + (m.Cpu.R[4] & 0xffff);
+                var bytes = string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(lin + (uint)i).ToString("X2")));
+                var stk = string.Join(" ", Enumerable.Range(0, 6).Select(i => m.Phys16(sp + (uint)i * 2).ToString("X4")));
+                Console.WriteLine($"  {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} SS {m.Cpu.SegSel[2]:X4} ESP {m.Cpu.R[4]:X8} EAX {m.Cpu.R[0]:X8} CR0 {m.Cpu.Cr0:X} FL {m.Cpu.Flags:X} | {bytes} | stk {stk}");
+                m.Cpu.Step(1);
+            }
         if (Arg(args, "--sample") is string smp)
             for (int k = 0; k < int.Parse(smp); k++)
             {
@@ -138,6 +211,11 @@ internal static class X86BootCli
         Console.WriteLine("----------------");
         if (shot != null) X86Shots.SavePng(m.Vga, shot);
         if (Arg(args, "--savestate") is string ss) File.WriteAllBytes(ss, m.SaveState());
+        if (excKeep > 0)
+        {
+            Console.WriteLine("exceptions: " + string.Join(" ", Enumerable.Range(0, 32).Where(i => excCount[i] > 0).Select(i => $"#{i}={excCount[i]}")));
+            foreach (var l in excRing) Console.WriteLine("  " + l);
+        }
         if (Arg(args, "--save") is string save && m.Hdd[0] != null) File.WriteAllBytes(save, m.Hdd[0]!.Data);
         foreach (var g in Args(args, "--get"))
         {

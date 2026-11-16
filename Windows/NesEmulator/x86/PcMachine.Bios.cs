@@ -25,10 +25,12 @@ public sealed partial class PcMachine
         IretStub = 0xff53, Int19Stub = 0xe850;
     private readonly Dictionary<uint, int> _special = new();   // ROM offset of an OUT E0 -> pseudo-vector (0x100 + n)
 
-    private const int I_INT08 = 0x108, I_INT09 = 0x109, I_INT16 = 0x116, I_INT19 = 0x119;
+    private const int I_INT08 = 0x108, I_INT09 = 0x109, I_INT16 = 0x116, I_INT19 = 0x119, I_RESET = 0x1ff, I_INT09A = 0x1f9;
 
     /// <summary>The drive booted from (0x00 = A:, 0x80 = C:).</summary>
     public int BootDrive = -1;
+    /// <summary>Debug tools: called with (service, true) before and (service, false) after each BIOS service (n &lt; 0x100 = INT n).</summary>
+    public Action<int, bool>? BiosLog;
 
     // ================= registers of the caller =================
 
@@ -74,9 +76,11 @@ public sealed partial class PcMachine
         int n;
         if (off >= StubBase && off < StubBase + 0x400 && (off & 3) == 0) n = (int)((off - StubBase) / 4);
         else if (!_special.TryGetValue(off, out n)) return;
+        BiosLog?.Invoke(n, true);
         try { Service(n); }
         catch (I386AbortException) { throw; }
         catch (Exception e) { Stopped = $"BIOS INT {n & 0xff:X2}h AX={AX:X4} failed: {e.Message}"; C.EndBatch(); }
+        BiosLog?.Invoke(n, false);
     }
 
     private void Service(int n)
@@ -84,9 +88,11 @@ public sealed partial class PcMachine
         switch (n)
         {
             case I_INT08: Timer(); break;
-            case I_INT09: KeyboardIrq(); break;
+            case I_INT09: KeyboardIrq(Kbc.In(0x60)); break;   // (the old stub, in states saved before I_INT09A)
+            case I_INT09A: KeyboardIrq((byte)AL); break;
             case I_INT16: Int16(); break;
             case I_INT19: Boot(); break;
+            case I_RESET: CpuResetRequest(); break;   // a jump to FFFF:0000 (Windows 9x restarting): a real reset, POST included
             case 0x10: Int10(); break;
             case 0x11: AX = Phys16(0x410); break;
             case 0x12: AX = Phys16(0x413); break;
@@ -104,7 +110,7 @@ public sealed partial class PcMachine
     /// <summary>The stubs whose OUT E0h is not at a generic slot (fixed ROM layout: a loaded state needs them too).</summary>
     private void RegisterTraps()
     {
-        _special[Int08Stub] = I_INT08; _special[Int09Stub] = I_INT09; _special[Int16Stub + 1] = I_INT16; _special[Int19Stub] = I_INT19;
+        _special[Int08Stub] = I_INT08; _special[Int09Stub] = I_INT09; _special[Int09Stub + 3] = I_INT09A; _special[Int16Stub + 1] = I_INT16; _special[Int19Stub] = I_INT19; _special[0xfff0] = I_RESET;
     }
 
     private void Post()
@@ -116,16 +122,19 @@ public sealed partial class PcMachine
         void Code(uint off, int id, params byte[] b) { Array.Copy(b, 0, m, Rom + off, b.Length); if (id >= 0) _special[off] = id; }
         // INT 08h: the C# tick, INT 1Ch, EOI
         Code(Int08Stub, I_INT08, 0xe6, 0xe0, 0xcd, 0x1c, 0x50, 0xb0, 0x20, 0xe6, 0x20, 0x58, 0xcf);
-        // INT 09h: the C# key handler (reads port 60h), EOI
-        Code(Int09Stub, I_INT09, 0xe6, 0xe0, 0x50, 0xb0, 0x20, 0xe6, 0x20, 0x58, 0xcf);
+        // INT 09h: IN AL,60h in machine code (so a V86 monitor sees the key read: Windows 98's VKD re-sent IRQ 1 forever when the C# handler read
+        // the port behind its back, and DOS's STACKS overflowed), then the C# key handler on AL, EOI
+        Code(Int09Stub, -1, 0x50, 0xe4, 0x60, 0xe6, 0xe0, 0xb0, 0x20, 0xe6, 0x20, 0x58, 0xcf);
+        _special[Int09Stub + 3] = I_INT09A;
         // INT 16h: STI first, so waiting for a key can halt until IRQ 1
         Code(Int16Stub, -1, 0xfb); _special[Int16Stub + 1] = I_INT16; Code(Int16Stub + 1, -1, 0xe6, 0xe0, 0xcf);
         Code(IrqMasterStub, -1, 0x50, 0xb0, 0x20, 0xe6, 0x20, 0x58, 0xcf);
         Code(IrqSlaveStub, -1, 0x50, 0xb0, 0x20, 0xe6, 0xa0, 0xe6, 0x20, 0x58, 0xcf);
         Code(Int19Stub, I_INT19, 0xe6, 0xe0, 0xcf);
         Code(IretStub, -1, 0xcf);
-        // reset vector: JMP F000:Int19Stub (a jump to FFFF:0000 reboots from the disk)
-        Code(0xfff0, -1, 0xea, (byte)(Int19Stub & 0xff), (byte)(Int19Stub >> 8), 0x00, 0xf0);
+        // reset vector: OUT E0h = a full reset (POST, then boot) like a real BIOS. A jump to FFFF:0000 used to go straight to INT 19h, which kept the
+        // old OS's hooked vectors and hung Windows 98 Setup's restart ("Waiting for system shutdown").
+        Code(0xfff0, I_RESET, 0xe6, 0xe0, 0xeb, 0xfc);
         Code(0xfff5, -1, Encoding.ASCII.GetBytes("06/01/94"));
         m[Rom + 0xfffe] = 0xfc;
         Array.Copy(VgaFont.Font16, 0, m, Rom + FontOff, 4096);
