@@ -184,6 +184,15 @@ public sealed class S3Trio64
 
     private readonly int[] _pal = new int[256];
 
+    // dirty lines: the video memory bytes each picture line was last drawn from; a line whose bytes are unchanged (same mode, start,
+    // stride, palette, the frame not drawn by another path since) keeps its pixels. The picture is the same as drawing every line.
+    private byte[] _shadow = Array.Empty<byte>();
+    private readonly int[] _shadowPal = new int[256];
+    private int[]? _shadowFrame;
+    private long _shadowSerial = -10, _shadowKey;
+    private int _curTop = -1, _curBot = -1;   // the lines the hardware cursor covered in the last picture
+    public void InvalidateLines() => _shadowFrame = null;
+
     public void Render()
     {
         int w = Width, h = Height, stride = Stride, bpp = BytesPerPixel;
@@ -192,10 +201,28 @@ public sealed class S3Trio64
         var fr = _v.Frame; var ram = _v.Ram;
         int start = StartByte;
         if (bpp == 1) for (int i = 0; i < 256; i++) _pal[i] = _v.Dac(i & _v.DacMask);
+        bool r555k = (_v.Cr[0x67] >> 4) == 0x3;
+        long key = ((long)w << 48) ^ ((long)h << 36) ^ ((long)stride << 20) ^ ((long)bpp << 16) ^ (r555k ? 1L << 15 : 0) ^ ((long)start << 22);
+        int lineBytes = w * bpp;
+        bool valid = _shadowFrame == fr && _shadowSerial == _v.RenderSerial - 1 && _shadowKey == key && _shadow.Length == lineBytes * h
+                     && (bpp != 1 || _pal.AsSpan().SequenceEqual(_shadowPal));
+        if (!valid)
+        {
+            if (_shadow.Length != lineBytes * h) _shadow = new byte[lineBytes * h];
+            _shadowFrame = fr; _shadowKey = key;
+        }
+        if (bpp == 1) _pal.CopyTo(_shadowPal, 0);
+        _shadowSerial = _v.RenderSerial;
+        int cTop = -1, cBot = -1;
+        if ((_v.Cr[0x45] & 1) != 0) { int cy = (_v.Cr[0x48] & 7) << 8 | _v.Cr[0x49]; cTop = cy - (_v.Cr[0x4f] & 63); cBot = cTop + 64; }
         for (int y = 0; y < h; y++)
         {
             int src = start + y * stride, o = y * w;
             if (src < 0 || src + w * bpp > VramBytes) { Array.Fill(fr, unchecked((int)0xff000000), o, w); continue; }
+            var line = ram.AsSpan(src, lineBytes); var sh = _shadow.AsSpan(y * lineBytes, lineBytes);
+            bool cursorLine = (y >= cTop && y < cBot) || (y >= _curTop && y < _curBot);
+            if (valid && !cursorLine && line.SequenceEqual(sh)) continue;
+            line.CopyTo(sh);
             switch (bpp)
             {
                 case 1: for (int x = 0; x < w; x++) fr[o + x] = _pal[ram[src + x]]; break;
@@ -213,6 +240,7 @@ public sealed class S3Trio64
                 default: for (int x = 0; x < w; x++) fr[o + x] = unchecked((int)0xff000000) | (BitConverter.ToInt32(ram, src + 4 * x) & 0xffffff); break;
             }
         }
+        _curTop = cTop; _curBot = cBot;
         DrawCursor(w, h, bpp);
     }
 
@@ -505,7 +533,7 @@ public sealed class S3Trio64
 
     public void Load(BinaryReader r)
     {
-        r.Read(SrExt, 0, SrExt.Length); r.Read(PciConfig, 0, PciConfig.Length); LfbBase = r.ReadUInt32(); Bank = r.ReadInt32(); VbeMode = r.ReadInt32();
+        r.Read(SrExt, 0, SrExt.Length); r.Read(PciConfig, 0, PciConfig.Length); LfbBase = r.ReadUInt32(); Bank = r.ReadInt32(); VbeMode = r.ReadInt32(); _shadowFrame = null;
         var a = new int[22]; for (int i = 0; i < a.Length; i++) a[i] = r.ReadInt32();
         (_curX, _curY, _destX, _destY, _errTerm, _majPcnt, _minPcnt, _cmd) = (a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
         (_scTop, _scLeft, _scBottom, _scRight, _pixCtl, _bkMix, _fgMix, _multiMisc) = (a[8], a[9], a[10], a[11], a[12], a[13], a[14], a[15]);
