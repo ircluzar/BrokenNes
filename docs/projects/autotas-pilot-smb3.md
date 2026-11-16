@@ -13,14 +13,23 @@ it holds commercial-ROM states).
 | 1-1 | 1797 | 0 | B (Small, no power-up) | 5 (t1-t4, t6, relayed through checkpoints) | Haiku: start to x~1839; the driver: the pipes, the stairs and the card |
 | 1-2 | 1967 | 0 | B- (Small) | 7 | Haiku: the stretches between hard spots; the driver: the T-pipe, the goomba hill, the piranha pipe and the card (with search) |
 | 1-3 | 1797 | 0 | B (Small; 3 cards gave a 1-up) | 1 | `advance` (the autopilot): 18 hops with no deaths (4 by the driver, 14 by Haiku); the driver: the card |
-| 1-4 | see below | | | 1 | in progress at the time of writing |
+| 1-4 (not accepted) | - | - | - | 1 | Haiku: start to x=253 (then the daemon was killed from outside); `advance`: 9 hops to x~436 in ~25 min, then stuck (an auto-scroller: the platforms come into view late, and the wait fallback found nothing). Stopped here. |
 
 `full.bnm` (boot to 1-3) replays from power-on and matches every keyframe and every chapter's end hash
-(`--autotas verify`: 69/69 keyframes, chapters 3/3 before 1-3 was added). Clean states pass the play-on
+(`--autotas verify`: 99/99 keyframes, 4/4 chapters). Clean states pass the play-on
 check: from 1-1's clean state, Mario enters 1-2 as Big (the recipe's $0746=1), alive, and the timer reads 297.
 The boot clean state is the raw state: there is nothing to clean right after power-on.
 
 The fortress, 1-5, 1-6 and the airship were not reached in this run (see "Cost" below).
+
+## Desktop check
+On the integration build, loading the SMB3 ROM over the HTTP API makes the AutoTAS activity available. The panel then lists
+the four chapters with thumbnails, lengths and scores, and the variables stripe shows 26 dossier variables.
+Jump (clean) to 1-2, Jump (raw) to 1-3, Watch from here (the movie plays) and Return all work. One bug was fixed on the way:
+the desktop manifest reader rejected the tools' field names (`clean_seg` as a flag, `segment`/`raw_state`/`clean_state`).
+Screenshots are in `T:\BrokenDev\Catalog\tas\nes\smb3\v1\work\ui_shots\` (not in git).
+The catalog record `nes/bb894d10...` has `autotas.status = pilot`, 4/4 chapters, quality_avg 2.25. Its core and build
+fields are still empty: the manifest has no `core` block yet.
 
 ## What Haiku low did well
 - It follows a fixed command recipe exactly. It used resume, save and back correctly and reported honestly
