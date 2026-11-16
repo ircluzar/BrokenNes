@@ -766,8 +766,12 @@ def cmd_regrade(a):
     no emulator runs. For records graded by an older comparison."""
     global RANK
     RANK = a.console != "nes"
-    n = 0
-    for rec in catalog.iter_records(a.console):
+    n = seen = 0
+    # (a list first: catalog.iter_records yields inside `with open(...)`, so the record file is still open and cannot be replaced)
+    for rec in list(catalog.iter_records(a.console)):
+        seen += 1
+        if seen % 50 == 0:
+            print(f"  {seen} records, {n} changed", flush=True)
         t1 = (rec.get("extra") or {}).get("t1") or {}
         if not t1.get("version", "").startswith("t1-") or not t1.get("checkpoints"):
             continue
