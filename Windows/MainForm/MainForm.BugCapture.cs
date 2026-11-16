@@ -38,6 +38,7 @@ namespace BrokenNes.Windows
         {
             bugRom = rom; bugRomName = romName;
             TfGameLoaded();   // Timeflow: frames count from this game's power-on
+            AtGameLoaded(rom, romName);   // AutoTAS: offer the activity when this ROM has a package (MainForm.AutoTas.cs)
             bugPowerOn = true;
         }
 

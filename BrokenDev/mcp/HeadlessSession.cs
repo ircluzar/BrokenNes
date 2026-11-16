@@ -1365,6 +1365,8 @@ internal sealed partial class HeadlessSession : Session
         Movie m;
         try { m = h.ToMovie(h.FrameIndex); }
         catch (InvalidOperationException e) { throw new ToolError(e.Message); }
+        // a keyframe after the movie's last frame too (the replay checks the end; AutoTAS chapters end on it)
+        if (m.KeyAt(m.Frames) == null && m.Frames == h.FrameIndex && !h.Replaying) m.Keys.Add(new MovieKey { Frame = m.Frames, Picture = MoviePicture(), Ram = MovieRam() });
         byte[] file = File.ReadAllBytes(romPath);
         static string Strip(string id, string prefix) => id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? id[prefix.Length..] : id;
         var cp = cores.Split('/');

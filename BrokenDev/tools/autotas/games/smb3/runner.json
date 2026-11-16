@@ -1,0 +1,42 @@
+{
+ "note": "lib/run.py config: RAM shown after every step, the level/map expressions, the progress table and the lives byte",
+ "ram": [
+  "mode=[$070A]",
+  "world=[$0727]",
+  "lives=[$0736]",
+  "pow=[$00ED]",
+  "x=[$0075]*256+[$0090]",
+  "y=[$00A2]",
+  "air=[$00D8]",
+  "xspd=[$00BD]",
+  "p=[$03DD]",
+  "time=[$05EE]*100+[$05EF]*10+[$05F0]",
+  "mapx=[$0079]",
+  "mapy=[$0075]",
+  "coins=[$7DA2]"
+ ],
+ "in_level": "[$070A] != 0",
+ "on_map": "[$070A] == 0 && [$0729] == $0D",
+ "progress_table": {
+  "addr": 32000,
+  "len": 64
+ },
+ "lives": "[$0736]",
+ "dead": "[$00F1] != 0",
+ "advance": {
+  "pattern": "Right+B:{a} Right+B+A:{j} Right+B:{k} Right+B+A:{m}",
+  "vals": "a=0..20:10,j=8..24:8,k=0..16:8,m=0..24:12",
+  "want": "x >= {X} && air == 0",
+  "start": "x",
+  "stride": 130,
+  "then": "Right+B",
+  "within": 90,
+  "finale": [
+   "$7D9C",
+   "$7D9D",
+   "$7D9E"
+  ],
+  "wait_pattern": "none:{w} Right+B:{a} Right+B+A:{j}",
+  "wait_vals": "w=10..90:20,a=0..16:8,j=8..24:8"
+ }
+}

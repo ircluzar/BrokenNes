@@ -379,6 +379,7 @@ namespace BrokenNes.Windows
                                 // is a no-op for normal play.
                                 BrokenNes.Windows.WebApi.ApiInputInjector.Apply(p1Inputs, p2Inputs);
                                 TfReplayPads(p1Inputs, p2Inputs);             // Timeflow (T2): a replay hands the recorded pads; returns at once otherwise
+                                AtPads(p1Inputs, p2Inputs);                   // AutoTAS: while the TAS plays, the segment's pads (MainForm.AutoTas.cs)
                                 TfBeforeNesFrame(nes, p1Inputs, p2Inputs);    // Timeflow (T1): the state BEFORE the frame's pads reach the NES; returns at once unless the user switched recording on
 
                                 nes.SetInputs(p1Inputs, p2Inputs);

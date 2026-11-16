@@ -1,0 +1,25 @@
+{
+  "game": "smb3",
+  "rom": "Super Mario Bros. 3 (U) (PRG1) [!].nes",
+  "core": "CPU_FIX/PPU_FIX/APU_FIX",
+  "note": "Each until is a play_step / run_until expression tested at end of frame (true = chapter ends). Map-ready = [$070A]==0 && [$0729]==$0D. Level chapters end on the map once that level's completion bit in $7D00..$7D3F is set; bits not yet verified are found at the first clear by diffing the table (the runner reports newly set bits).",
+  "ram": {
+    "level_tileset": "$070A (0 = world map)",
+    "map_ready": "$0729 ($0D on the world map, $10 in a level)",
+    "world": "$0727 (0-based)",
+    "lives": "$0736",
+    "map_powerup": "$0746",
+    "level_powerup": "$00ED",
+    "completions": "$7D00 len 64 (Mario), bit per tile"
+  },
+  "milestones": [
+    {"id": "map",      "kind": "area",  "until": "[$070A] == 0 && [$0729] == $0D", "verified": true},
+    {"id": "boot",     "kind": "area",  "until": "[$070A] == 0 && [$0729] == $0D", "verified": true},
+    {"id": "1-1",      "kind": "level", "until": "[$070A] == 0 && [$0729] == $0D && ([$7D04] & $80) != 0", "verified": true},
+    {"id": "airship",  "kind": "boss",  "until": "[$0727] == 1 && [$070A] == 0 && [$0729] == $0D", "verified": false}
+  ],
+  "fail": [
+    {"id": "died", "until": "[$0736] < 4", "note": "lives start at 4; a chapter played from a clean state starts at 4 too"}
+  ],
+  "generic_rule": "a level chapter ends on the first map-ready frame where a new bit appeared in $7D00..$7D3F versus the chapter's start state"
+}

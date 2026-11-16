@@ -27,6 +27,8 @@ internal static class Program
         if (Flag("demo")) return ClientTest.Run(args, ClientTest.Suite.Demo);
         if (Flag("live-test")) return ClientTest.Run(args, ClientTest.Suite.Live);
         if (Flag("agentloop-test")) return AgentLoopTest.Run(args);   // play_step / record / reference (compat catalog P0)
+        if (Flag("autotas-test")) return AutoTasCli.Test(args);        // AutoTAS packages, state files, milestones, stitch + verify
+        if (Flag("autotas")) return AutoTasCli.Run(args);
         if (Opt("write-test-roms") is { Length: > 0 } romDir)
         {
             // the live test's ROM (the debugger tests' NES ROM, its labels) for the desktop apps it starts

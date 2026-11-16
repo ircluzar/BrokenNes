@@ -13,6 +13,9 @@ several machines writing at once. See docs/projects/compat-catalog-db.md.
   catalog.py progress                   (reports/progress.json, the live-dashboard feed; index writes it too)
   catalog.py export-db --db Windows/Data/default-db.json [--write]   (dry run + diff unless --write)
   catalog.py titles  [--console nes ...] [--dry-run]   (see titles.py)
+  catalog.py autotas-set --console nes --sha1 <id> --manifest <pkg>/autotas.json [--status pilot]
+  catalog.py autotas-get --console nes --sha1 <id>     (exit 0 when an AutoTAS is available)
+  catalog.py autotas-list [--console nes] [--available]
 
 Python 3.9+, standard library only (7-Zip's 7z.exe for .7z archives in titles.py).
 """
@@ -40,7 +43,11 @@ DB_STATUS = {"Nothing": "Nothing", "Broken": "Broken", "Jank": "Jank", "OK": "Wo
 DB_SYSTEM = {"nes": "nes", "snes": "snes", "gb": "gb", "gbc": "gbc", "sms": "sms", "gg": "gg", "md": "md", "wms": "wms"}
 LOCK_STALE_S = 60
 FIELDS_EDITABLE = {"title", "region", "dump", "grade", "tier", "notes", "screenshots", "tas", "reference",
-                   "tags", "core", "brokennesVersion", "gameDbId", "file", "revisionOf", "extra"}
+                   "tags", "core", "brokennesVersion", "gameDbId", "file", "revisionOf", "extra", "autotas"}
+# AutoTAS (docs/projects/autotas-plan.md): a record's "autotas" object; the package itself lives under <root>/tas/<console>/<game_id>/v<N>/
+AUTOTAS_STATUSES = ["none", "building", "pilot", "complete"]
+AUTOTAS_KEYS = {"game_id": str, "version": int, "status": str, "chapters_done": int, "chapters_total": int, "core": str,
+                "core_build": str, "state_format": str, "path": str, "verified_at": (str, type(None)), "quality_avg": (int, float, type(None))}
 
 
 def root() -> str:
@@ -86,9 +93,59 @@ def validate(r: dict) -> None:
     for t in r.get("tags", []):
         if t not in TAGS:
             raise ValueError(f"bad tag {t!r}; one of {TAGS}")
+    if r.get("autotas"):
+        validate_autotas(r["autotas"])
     s = r.get("sha1", "")
     if len(s) != 40 or any(c not in "0123456789abcdef" for c in s):
         raise ValueError(f"bad sha1 {s!r}")
+
+
+def validate_autotas(t: dict) -> None:
+    for k, v in t.items():
+        if k not in AUTOTAS_KEYS:
+            raise ValueError(f"autotas: unknown field {k!r}; one of {sorted(AUTOTAS_KEYS)}")
+        if not isinstance(v, AUTOTAS_KEYS[k]) or isinstance(v, bool):
+            raise ValueError(f"autotas.{k}: bad value {v!r}")
+    if t.get("status", "none") not in AUTOTAS_STATUSES:
+        raise ValueError(f"autotas.status {t.get('status')!r}; one of {AUTOTAS_STATUSES}")
+    if "chapters_total" in t and t.get("chapters_done", 0) > t["chapters_total"]:
+        raise ValueError("autotas: chapters_done > chapters_total")
+
+
+def autotas_available(r: dict) -> bool:
+    """The app offers the AutoTAS activity: status pilot or complete and the stitched movie verified."""
+    t = r.get("autotas") or {}
+    return t.get("status") in ("pilot", "complete") and bool(t.get("verified_at"))
+
+
+def autotas_from_manifest(manifest_path: str, base: str | None = None, status: str | None = None) -> dict:
+    """The record's autotas fields from a package's autotas.json (path relative to the catalog root when under it)."""
+    with open(manifest_path, encoding="utf-8") as f:
+        m = json.load(f)
+    chs = m.get("chapters", [])
+    done = sum(1 for c in chs if c.get("key_ram") and not c.get("needs_help"))
+    q = [{"A": 3.0, "B": 2.0}.get((c.get("quality") or {}).get("score"), 1.0) for c in chs if (c.get("quality") or {}).get("score")]
+    d = os.path.dirname(os.path.abspath(manifest_path))
+    r = os.path.abspath(base or root())
+    try:
+        rel = os.path.relpath(d, r)
+        path = d if rel.startswith("..") else rel.replace(os.sep, "/")
+    except ValueError:  # another drive
+        path = d
+    core = m.get("core") or {}
+    t = {"game_id": m.get("game_id", ""), "version": int(m.get("version", 1)), "status": status or m.get("status", "building"),
+         "chapters_done": done, "chapters_total": int(m.get("chapters_total", len(chs))), "core": core.get("cores", ""),
+         "core_build": core.get("build", ""), "state_format": core.get("state_format", ""), "path": path,
+         "verified_at": m.get("verified_at") if m.get("verify") == "ok" else None,
+         "quality_avg": round(sum(q) / len(q), 2) if q else None}
+    validate_autotas(t)
+    return t
+
+
+def set_autotas(console: str, sha1: str, t: dict, base: str | None = None) -> dict:
+    """Writes the record's autotas object (replaces it) under the record lock."""
+    validate_autotas(t)
+    return update(console, sha1, {"autotas": t}, base)
 
 
 # ---------- low-level, share-safe IO ----------
@@ -273,7 +330,7 @@ def load_index(console: str | None = None, base: str | None = None):
 
 
 INDEX_KEYS = ["console", "sha1", "title", "region", "grade", "tier", "tags", "core", "updated", "worker", "rev",
-              "gameDbId", "revisionOf", "aliasOf", "screenshots", "tas", "reference", "brokennesVersion"]
+              "gameDbId", "revisionOf", "aliasOf", "screenshots", "tas", "reference", "brokennesVersion", "autotas"]
 NOTES_PREVIEW = 300  # index rows carry the start of the notes; the full record has all of them
 
 PROGRESS_SCHEMA = "brokennes-catalog-progress/v1"
@@ -501,6 +558,10 @@ def main(argv=None):
     sp.add_parser("progress", help="write reports/progress.json from the index (index also writes it)")
     p = sp.add_parser("export-db"); p.add_argument("--db", required=True); p.add_argument("--write", action="store_true")
     p.add_argument("--override-hand", action="store_true")
+    p = sp.add_parser("autotas-set"); rec_args(p); p.add_argument("--manifest", required=True)
+    p.add_argument("--status", choices=AUTOTAS_STATUSES)
+    p = sp.add_parser("autotas-get"); rec_args(p)
+    p = sp.add_parser("autotas-list"); p.add_argument("--console", choices=CONSOLES); p.add_argument("--available", action="store_true")
     a = ap.parse_args(argv)
     base = a.root
 
@@ -579,6 +640,20 @@ def main(argv=None):
         print(write_progress(base))
     elif a.cmd == "export-db":
         export_db(a.db, a.write, base, override_hand=a.override_hand)
+    elif a.cmd == "autotas-set":
+        r = set_autotas(a.console, a.sha1, autotas_from_manifest(a.manifest, base, a.status), base)
+        print(json.dumps({"rev": r["rev"], "autotas": r["autotas"], "available": autotas_available(r)}))
+    elif a.cmd == "autotas-get":
+        r = get(a.console, a.sha1, base)
+        if r is None:
+            sys.exit("not found")
+        print(json.dumps({"autotas": r.get("autotas") or {}, "available": autotas_available(r)}))
+        sys.exit(0 if autotas_available(r) else 1)
+    elif a.cmd == "autotas-list":
+        for r in iter_records(a.console, base):
+            if r.get("autotas") and (not a.available or autotas_available(r)):
+                print(json.dumps({"console": r["console"], "sha1": r["sha1"], "title": r["title"], "autotas": r["autotas"],
+                                  "available": autotas_available(r)}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
