@@ -76,10 +76,11 @@ public sealed partial class I386
     private const int TlbSize = 512;
     private readonly uint[] _tlbLpgno = new uint[TlbSize], _tlbXaddr = new uint[TlbSize];
     private readonly int[] _tlbLookup = new int[TlbSize];    // index into PteLookup: wp*4 + ((pte >> 1) & 3)
-    private readonly int[] _tlbPpte = new int[TlbSize];
-    // the block compiler's TLB hit test (I386.Jit.cs): bit 0 supervisor read, 1 supervisor write, 2 user read, 3 user write allowed;
-    // set by a translation that passed (so the accessed bits are set), cleared by a refill
-    private readonly byte[] _tlbFast = new byte[TlbSize];      // physical address of the PTE's low byte
+    private readonly int[] _tlbPpte = new int[TlbSize];      // physical address of the PTE's low byte
+    /// <summary>The compiled code's TLB hit test (I386.Jit.cs Xlat): [(user * 2 + write) * TlbSize + entry] = the entry's page number once a translation
+    /// at that privilege (and a write: its dirty bit set) passed, else FFFFFFFF; cleared with the entry.</summary>
+    private readonly uint[] _tlbTag = new uint[4 * TlbSize];
+    private void TagClear(int e) { _tlbTag[e] = _tlbTag[e + TlbSize] = _tlbTag[e + 2 * TlbSize] = _tlbTag[e + 3 * TlbSize] = 0xffffffff; }
 
     public const int SEG_ES = 0, SEG_CS = 1, SEG_SS = 2, SEG_DS = 3, SEG_FS = 4, SEG_GS = 5, SEG_LDT = 6, SEG_TR = 7;
     public const int EX_DE = 0, EX_DB = 1, EX_NMI = 2, EX_BP = 3, EX_OF = 4, EX_BR = 5, EX_UD = 6, EX_NM = 7, EX_DF = 8, EX_INT9 = 9,
@@ -255,6 +256,7 @@ public sealed partial class I386
     private void TlbClear()
     {
         for (int i = 0; i < TlbSize; i++) _tlbLpgno[i] = 0xffffffff;
+        Array.Fill(_tlbTag, 0xffffffff);
         _ifLaddr = ulong.MaxValue;
         _ifPaddr = 0;
     }
@@ -281,7 +283,7 @@ public sealed partial class I386
         uint pte = PRead32Safe(pteAddr);
         if ((pte & 1) == 0) return false;
         _refillPde = pdeAddr; _refillPte = pteAddr;   // the accessed bits are set once the access passes the protection check (a 386 sets no A bit on a faulting walk; test386 POST 11h)
-        _tlbLpgno[e] = lpgno; _tlbFast[e] = 0;
+        _tlbLpgno[e] = lpgno; TagClear(e);
         _tlbXaddr[e] = (pte & ~0xfffu) ^ (lpgno << 12);
         pte &= (pde & 7) | 0xfffffff8;
         _tlbLookup[e] = ((Cr0 & CR0_WP) != 0 ? 4 : 0) + (int)((pte >> 1) & 3);
@@ -308,18 +310,15 @@ public sealed partial class I386
             Cr2 = laddr; Excno = EX_PF; Excerr = 1;
             if ((rwm & 2) != 0) Excerr |= 2;
             if (cpl == 3) Excerr |= 4;
-            _tlbLpgno[e] = 0xffffffff;
+            _tlbLpgno[e] = 0xffffffff; TagClear(e);
             RefillDone(false);
             return false;
         }
         RefillDone(true);
         paddr = _tlbXaddr[e] ^ laddr;
-        if ((rwm & 2) != 0) Mem[_tlbPpte[e]] |= 1 << 6; // dirty
-        if (_tlbFast[e] == 0)
-        {
-            int lk = _tlbLookup[e] * 4;
-            _tlbFast[e] = (byte)((PteLookup[lk] == 0 ? 1 : 0) | (PteLookup[lk + 1] == 0 ? 2 : 0) | (PteLookup[lk + 2] == 0 ? 4 : 0) | (PteLookup[lk + 3] == 0 ? 8 : 0));
-        }
+        int tg = (cpl == 3 ? 2 * TlbSize : 0) + e;
+        _tlbTag[tg] = lpgno;
+        if ((rwm & 2) != 0) { Mem[_tlbPpte[e]] |= 1 << 6; _tlbTag[tg + TlbSize] = lpgno; } // dirty
         return true;
     }
 
@@ -410,7 +409,7 @@ public sealed partial class I386
             if (PteLookup[_tlbLookup[e] * 4 + (Cpl == 3 ? 2 : 0)] != 0)
             {
                 Cr2 = laddr; Excno = EX_PF; Excerr = Cpl == 3 ? 5u : 1u;
-                _tlbLpgno[e] = 0xffffffff;
+                _tlbLpgno[e] = 0xffffffff; TagClear(e);
                 RefillDone(false);
                 return false;
             }

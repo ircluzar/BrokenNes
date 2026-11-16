@@ -12,7 +12,7 @@
 // every exit. It leaves whenever it cannot be sure: at the end of the step budget, on a jump out of the region, after a store into the
 // region's bytes, on a fault (the state then is the interpreter's at that fault). Before each run the region's bytes are compared with
 // memory (any write to code, by anyone, is seen: the region is compiled again when hot again), and with paging on its data accesses go through the TLB
-// (I386.cs _tlbFast), and it runs only when every segment it uses has a usable selector (so no address translation inside it can fault). Off when the runtime cannot
+// (I386.cs _tlbTag), and it runs only when every segment it uses has a usable selector (so no address translation inside it can fault). Off when the runtime cannot
 // compile code (AOT), or with the environment variable X86_NOJIT set (X86_JITMAX / X86_JITHOT / X86_JITSTAT tune and count it).
 
 using System.Reflection;
@@ -37,7 +37,7 @@ public sealed partial class I386
         public int[] RunAt = Array.Empty<int>(), RunLen = Array.Empty<int>();   // the byte ranges Bytes holds
         public uint[] Addrs = Array.Empty<uint>();   // the instructions, by address (entry k = Addrs[k])
         public bool C16, Pg;   // compiled for this code size, and with paging on or off (the memory accesses differ)
-        public long Runs, Instrs;
+        public long Runs, Instrs, Ticks;
     }
 
     /// <summary>One instruction address: how often it was reached, and the compiled block (and instruction in it) that starts there.</summary>
@@ -67,7 +67,7 @@ public sealed partial class I386
     public long JitRuns, JitInvalid, JitDeclines;
     public readonly long[] JitDeclineSeg = new long[6];
     public IEnumerable<string> JitTop(int n) => _jitAll.OrderByDescending(b => b.Instrs).Take(n)
-        .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} | {Convert.ToHexString(b.Bytes)}");
+        .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} ns/instr {b.Ticks * 1e9 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, b.Instrs):F2} | {Convert.ToHexString(b.Bytes)}");
     private readonly long[] _interpOps = new long[65536];
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void JitCountInterp(uint pa) { if (pa + 2 < MemSize) { int k = Mem[pa] << 8 | Mem[pa + 1]; if (++_interpOps[k] == 100000 && JitWatch == k) Console.Error.WriteLine($"jw: op {k:X4} at {pa:X8}"); } }
@@ -124,8 +124,9 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JitRunCounted(JitCode code, int k)
     {
-        long c0 = Cycle;
+        long c0 = Cycle, t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         int rc = code.Fn(this, k);
+        code.Ticks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
         JitRuns++; code.Runs++; code.Instrs += Cycle - c0;
         if (rc == JIT_DECLINE)
         {
@@ -226,7 +227,7 @@ public sealed partial class I386
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSpm() => _spm;
 
-    // ---- paging on: the compiled code translates a linear address inline on a TLB hit (_tlbFast allows the access at this CPL), else here
+    // ---- paging on: the compiled code translates a linear address inline on a TLB hit (_tlbTag: allowed at this CPL), else here
     private uint _jpa;
     /// <summary>The interpreter's translation of a data access (the same faults, accessed / dirty bits): false = a page fault (raised).
     /// _jpa = the physical address, or FFFFFFFF for an access split over two pages (it then goes through JRdLin / JWrLin).</summary>
@@ -284,7 +285,7 @@ public sealed partial class I386
         ?? throw new MissingFieldException(nameof(I386), name);
     private static readonly FieldInfo FSrc1 = Fld("_ccSrc1"), FSrc2 = Fld("_ccSrc2"), FDst = Fld("_ccDst"), FDst2 = Fld("_ccDst2"), FOp = Fld("_ccOp"),
         FMask = Fld("_ccMask"), FFlags = Fld("Flags"), FR = Fld("R"), FMem = Fld("Mem"), FSpm = Fld("_spm"),
-        FTlbL = Fld("_tlbLpgno"), FTlbX = Fld("_tlbXaddr"), FTlbF = Fld("_tlbFast"), FTlbP = Fld("_tlbPpte"), FCpl = Fld("Cpl");
+        FTlbL = Fld("_tlbLpgno"), FTlbX = Fld("_tlbXaddr"), FTlbT = Fld("_tlbTag"), FCpl = Fld("Cpl");
 
     private static MethodInfo M(string name) => typeof(I386).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
         ?? throw new MissingMethodException(nameof(I386), name);
@@ -504,7 +505,10 @@ public sealed partial class I386
         var Y = il.DeclareLocal(typeof(int));
         var pax = il.DeclareLocal(typeof(uint));   // paging on: the physical address of `la` (FFFFFFFF: split over two pages)
         var lpn = il.DeclareLocal(typeof(uint));
-        var te = il.DeclareLocal(typeof(int));
+        var te = il.DeclareLocal(typeof(nuint));
+        var tlbL = il.DeclareLocal(typeof(uint).MakeByRefType()); var tlbX = il.DeclareLocal(typeof(uint).MakeByRefType());
+        var permR = il.DeclareLocal(typeof(nuint));   // the _tlbTag half for this CPL
+        void LdPerm() { Ld0(); il.Emit(OpCodes.Ldfld, FCpl); I4(3); Op(OpCodes.Ceq); I4(2 * TlbSize); Op(OpCodes.Mul); Op(OpCodes.Conv_U); Stl(permR); }
 
         void Call(string name) => il.Emit(OpCodes.Call, mm[name]);
         void Ld0() => il.Emit(OpCodes.Ldarg_0);
@@ -632,6 +636,12 @@ public sealed partial class I386
         LdF(FR); I4(0); il.Emit(OpCodes.Ldelema, typeof(uint)); Stl(rref);
         LdF(FMem); I4(0); il.Emit(OpCodes.Ldelema, typeof(byte)); Stl(mref);
         LdF(FSpm); Stl(spm);
+        if (pg)
+        {
+            LdF(FTlbT); I4(0); il.Emit(OpCodes.Ldelema, typeof(uint)); Stl(tlbL);
+            LdF(FTlbX); I4(0); il.Emit(OpCodes.Ldelema, typeof(uint)); Stl(tlbX);
+            LdPerm();
+        }
         {   // the shared segment-limit fault exit (LimitCheck): raise the fault and leave before that instruction, as the interpreter would
             var skip = il.DefineLabel();
             il.Emit(OpCodes.Br, skip);
@@ -703,19 +713,14 @@ public sealed partial class I386
         {
             if (!pg) return;
             var slow = il.DefineLabel(); var done = il.DefineLabel();
+            // (_tlbTag: one compare = a TLB hit allowed at this CPL, a write's dirty bit already set; the arrays through refs taken once in
+            // the prologue, no bounds checks: the index < 4 * TlbSize)
             Ld(la); I4(12); Op(OpCodes.Shr_Un); Stl(lpn);
-            Ld(lpn); I4(TlbSize - 1); Op(OpCodes.And); Stl(te);
-            LdF(FTlbL); Ld(te); Op(OpCodes.Ldelem_U4); Ld(lpn); il.Emit(OpCodes.Bne_Un, slow);
+            Ld(lpn); I4(TlbSize - 1); Op(OpCodes.And); Op(OpCodes.Conv_U); Stl(te);
+            Ld(tlbL); Ld(te); Ld(permR); Op(OpCodes.Add); if (write) { I4(TlbSize); Op(OpCodes.Add); } I4(4); Op(OpCodes.Mul); Op(OpCodes.Add); Op(OpCodes.Ldind_U4);
+            Ld(lpn); il.Emit(OpCodes.Bne_Un, slow);
             if (size > 1) { Ld(la); I4(0xfff); Op(OpCodes.And); I4(4096 - size); il.Emit(OpCodes.Bgt_Un, slow); }
-            LdF(FTlbF); Ld(te); Op(OpCodes.Ldelem_U1);
-            I4(write ? 2 : 1); LdF(FCpl); I4(3); Op(OpCodes.Ceq); I4(1); Op(OpCodes.Shl); Op(OpCodes.Shl);
-            Op(OpCodes.And); il.Emit(OpCodes.Brfalse, slow);
-            if (write)
-            {   // Mem[_tlbPpte[e]] |= 0x40
-                Ld(mref); LdF(FTlbP); Ld(te); Op(OpCodes.Ldelem_I4); Op(OpCodes.Conv_I); Op(OpCodes.Add); Op(OpCodes.Dup);
-                Op(OpCodes.Ldind_U1); I4(0x40); Op(OpCodes.Or); Op(OpCodes.Stind_I1);
-            }
-            LdF(FTlbX); Ld(te); Op(OpCodes.Ldelem_U4); Ld(la); Op(OpCodes.Xor); Stl(pax); il.Emit(OpCodes.Br, done);
+            Ld(tlbX); Ld(te); I4(4); Op(OpCodes.Mul); Op(OpCodes.Add); Op(OpCodes.Ldind_U4); Ld(la); Op(OpCodes.Xor); Stl(pax); il.Emit(OpCodes.Br, done);
             il.MarkLabel(slow);
             var ok = il.DefineLabel();
             Ld0(); Ld(la); I4(write ? 3 : 1); I4(size); Call("JXlat"); il.Emit(OpCodes.Brtrue, ok);
@@ -745,6 +750,7 @@ public sealed partial class I386
                 Ld0(); Bool(c16); Bool(pg); U4(pa); I4(segMask); Bool(e.Mod != 0); Call("JStill"); il.Emit(OpCodes.Brfalse, leaveG);
                 foreach (int s in usedSegs) { Ld0(); I4(s); Call("JSegBase"); Stl(sb[s]!); Ld0(); I4(s); Call("JSegLim"); Stl(sl[s]!); }
                 Ld0(); Call("JSpm"); Stl(spm);
+                if (pg) LdPerm();   // (an out-of-line instruction may have changed the CPL)
                 var notRep = il.DefineLabel();   // a REP string instruction that goes on: run it again
                 Ld0(); Call("JNextIp"); IpAt(pa); il.Emit(OpCodes.Bne_Un, notRep);
                 Ld(st); Op(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Ble, leaveG);
@@ -996,14 +1002,44 @@ public sealed partial class I386
                     break;
                 }
                 case DK_CALL:
-                case DK_RET:
-                    Prep();
-                    if (e.Kind == DK_CALL) { Ld0(); U4(e.Imm); Call("JCall"); } else { Ld0(); Call("JRet"); }
-                    FailIfFalse();
+                {
+                    // CallNear inline: Push(operand size, the next Ip) as DK_PUSH, then NextIp = next Ip + rel (16-bit code: wraps); leave
+                    // (no SMC check: the region is left right after it anyway)
+                    int pb = e.O16 ? 16 : 32;
+                    IpAt(pe); Stl(t);
+                    LdReg(32, 4); I4(pb / 8); Op(OpCodes.Sub); Stl(A);
+                    Ld(A); Ld(spm); Op(OpCodes.And); Stl(ea); LimitCheck(k, SEG_SS, ea, pb / 8);
+                    il.Emit(OpCodes.Ldloc, sb[SEG_SS]!); Ld(A); Ld(spm); Op(OpCodes.And); Op(OpCodes.Add); Stl(la);
+                    Xlat(k, pb / 8, true);
+                    StReg(32, 4, () => { Ld(A); Ld(spm); Op(OpCodes.And); LdReg(32, 4); Ld(spm); Op(OpCodes.Not); Op(OpCodes.And); Op(OpCodes.Or); });
+                    StMem(pb, la, t);
                     StDec();
-                    LeaveAfter(k, () => { Ld0(); Call("JNextIp"); });
+                    LeaveAfter(k, () => { Ld(t); U4(e.Imm); Op(OpCodes.Add); if (c16) { I4(0xffff); Op(OpCodes.And); } });
                     ends = true;
                     break;
+                }
+                case DK_RET:
+                {
+                    // Ret(0) inline: NextIp = [SS base + (sp & spm)], SetSp(sp + n); a 32-bit return past the CS limit through JRet (its #GP)
+                    int pb = e.O16 ? 16 : 32;
+                    LdReg(32, 4); Stl(A);
+                    Ld(A); Ld(spm); Op(OpCodes.And); Stl(ea); LimitCheck(k, SEG_SS, ea, pb / 8);
+                    il.Emit(OpCodes.Ldloc, sb[SEG_SS]!); Ld(A); Ld(spm); Op(OpCodes.And); Op(OpCodes.Add); Stl(la);
+                    Xlat(k, pb / 8, false);
+                    LdMem(pb, la);
+                    if (pb == 32)
+                    {
+                        var inLim = il.DefineLabel();
+                        Ld(V); Ld0(); I4(SEG_CS); Call("JSegLim"); il.Emit(OpCodes.Ble_Un, inLim);
+                        Prep(); Ld0(); Call("JRet"); FailIfFalse(); StDec(); LeaveAfter(k, () => { Ld0(); Call("JNextIp"); });
+                        il.MarkLabel(inLim);
+                    }
+                    StReg(32, 4, () => { Ld(A); I4(pb / 8); Op(OpCodes.Add); Ld(spm); Op(OpCodes.And); LdReg(32, 4); Ld(spm); Op(OpCodes.Not); Op(OpCodes.And); Op(OpCodes.Or); });
+                    StDec();
+                    LeaveAfter(k, () => Ld(V));
+                    ends = true;
+                    break;
+                }
                 case DK_MOVX:
                     // MOVZX / MOVSX: the source (Bits wide) zero / sign extended into the operand-size register
                     ReadE(); if (op == 1) SextTop(bits); Stl(t);
