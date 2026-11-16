@@ -1,5 +1,5 @@
 {
- "what": "gg2sms_test.py on roster-wide.json, first titles alphabetically (later ones graded with converter 0eafcfa7+, path = which reference graded it), 2026-11-14. Resume with gg2sms_test.py --resume. Names and numbers only. 2026-11-16: merged the w2 fleet run (all 387 titles, converter 052badfa, fleetHost = the PC that graded it).",
+ "what": "gg2sms_test.py on roster-wide.json, first titles alphabetically (later ones graded with converter 0eafcfa7+, path = which reference graded it), 2026-11-14. Resume with gg2sms_test.py --resume. Names and numbers only. 2026-11-16: merged the w2 fleet run (all 387 titles, converter 052badfa, fleetHost = the PC that graded it). 2026-11-16: merged the w3 fleet run (converter f460dc3c) for the 194 titles graded on AMBER/EMERALD/OPAL/QUARTZ/STONE; the other 5 PCs' w3 shards failed to start the Workshop (Application Control block), so those titles keep their w2 grades.",
  "results": [
   {
    "id": "5-in-1-funpak",
@@ -29,7 +29,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "CORAL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "aah-harimanada",
@@ -119,7 +119,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "OPAL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "aerial-assault",
@@ -149,7 +149,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "PEARL"
+   "fleetHost": "OPAL"
   },
   {
    "id": "aladdin",
@@ -209,7 +209,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "alien-syndrome",
@@ -269,7 +269,7 @@
    "unhandled": 0,
    "residual": 1,
    "smsStart": "buttons 1+2",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "STONE"
   },
   {
    "id": "arcade-classics",
@@ -329,7 +329,7 @@
    "unhandled": 0,
    "residual": 6,
    "smsStart": "buttons 1+2",
-   "fleetHost": "OPAL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "arena-maze-of-death",
@@ -419,7 +419,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "asterix-and-the-great-rescue",
@@ -449,7 +449,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "OPAL"
   },
   {
    "id": "ax-battler-a-legend-of-golden-axe",
@@ -509,7 +509,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "baku-baku-animal",
@@ -569,7 +569,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "PEARL"
+   "fleetHost": "STONE"
   },
   {
    "id": "batman-forever",
@@ -604,10 +604,14 @@
   {
    "id": "batman-returns",
    "name": "Batman Returns (U) [!]",
-   "grade": "Build fails",
-   "path": null,
-   "verdict": "Traceback (most recent call last):",
-   "fleetHost": "ZIRCON"
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "fleetHost": "AMBER",
+   "patches": 144,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2"
   },
   {
    "id": "batter-up",
@@ -787,7 +791,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "bishoujo-senshi-sailor-moon-s",
@@ -847,7 +851,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "STONE"
   },
   {
    "id": "bram-stoker-s-dracula",
@@ -907,7 +911,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "EMERALD"
+   "fleetHost": "AMBER"
   },
   {
    "id": "bust-a-move",
@@ -997,7 +1001,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "caesar-s-palace",
@@ -1027,7 +1031,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "OPAL"
   },
   {
    "id": "captain-america-and-the-avengers",
@@ -1087,7 +1091,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "casino-funpak",
@@ -1147,7 +1151,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "OPAL"
+   "fleetHost": "STONE"
   },
   {
    "id": "chaos-89",
@@ -1182,10 +1186,14 @@
   {
    "id": "chase-h-q",
    "name": "Chase H.Q. (J) [S][!]",
-   "grade": "Build fails",
-   "path": null,
-   "verdict": "Traceback (most recent call last):",
-   "fleetHost": "SAPPHIRE"
+   "grade": "Boots only",
+   "path": "gg",
+   "verdict": "converted",
+   "fleetHost": "AMBER",
+   "patches": 50,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2"
   },
   {
    "id": "chessmaster-the",
@@ -1275,7 +1283,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "chuck-rock",
@@ -1305,7 +1313,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "OPAL"
   },
   {
    "id": "chuck-rock-ii-son-of-chuck",
@@ -1365,7 +1373,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "PEARL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "clutch-hitter",
@@ -1425,7 +1433,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "STONE"
   },
   {
    "id": "cool-spot",
@@ -1485,7 +1493,7 @@
    "unhandled": 2,
    "residual": 4,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "AMBER"
   },
   {
    "id": "crayon-shin-chan-taiketsu-tankam-panic",
@@ -1575,7 +1583,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "PEARL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "daffy-duck-in-hollywood",
@@ -1605,7 +1613,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "OPAL"
   },
   {
    "id": "deep-duck-trouble-starring-donald-duck",
@@ -1665,7 +1673,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "desert-strike-return-to-the-gulf",
@@ -1725,7 +1733,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "STONE"
   },
   {
    "id": "doraemon-waku-waku-pocket-paradise",
@@ -1785,7 +1793,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "PEARL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "dr-robotnik-s-mean-bean-machine",
@@ -1856,7 +1864,7 @@
    "patches": 0,
    "unhandled": 2,
    "residual": 0,
-   "fleetHost": "CORAL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "dunk-kid-s",
@@ -1886,7 +1894,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "OPAL"
   },
   {
    "id": "dynamite-headdy",
@@ -1946,7 +1954,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "OPAL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "ecco-ii-the-tides-of-time",
@@ -1976,7 +1984,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "STONE"
   },
   {
    "id": "ecco-the-dolphin",
@@ -2047,7 +2055,7 @@
    "patches": 0,
    "unhandled": 0,
    "residual": 0,
-   "fleetHost": "CORAL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "eternal-legend",
@@ -2118,7 +2126,7 @@
    "patches": 0,
    "unhandled": 0,
    "residual": 0,
-   "fleetHost": "OPAL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "f-1",
@@ -2148,7 +2156,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "PEARL"
+   "fleetHost": "OPAL"
   },
   {
    "id": "f-15-strike-eagle",
@@ -2208,7 +2216,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "STONE"
   },
   {
    "id": "factory-panic",
@@ -2268,7 +2276,7 @@
    "unhandled": 34,
    "residual": 6,
    "smsStart": "Pause",
-   "fleetHost": "OPAL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "fatal-fury-special",
@@ -2328,7 +2336,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "fifa-soccer-96",
@@ -2418,7 +2426,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "frank-thomas-big-hurt-baseball",
@@ -2448,7 +2456,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "OPAL"
   },
   {
    "id": "fred-couples-golf",
@@ -2508,7 +2516,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "frogs-by-charles-doty",
@@ -2568,7 +2576,7 @@
    "unhandled": 64,
    "residual": 128,
    "smsStart": "Pause",
-   "fleetHost": "PEARL"
+   "fleetHost": "STONE"
   },
   {
    "id": "g-loc-air-battle",
@@ -2628,7 +2636,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "OPAL"
   },
   {
    "id": "gamble-panic",
@@ -2687,7 +2695,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "ganbare-gorby",
@@ -2747,7 +2755,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "OPAL"
+   "fleetHost": "STONE"
   },
   {
    "id": "gear-stadium",
@@ -2807,7 +2815,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "AMBER"
   },
   {
    "id": "gear-works",
@@ -2875,7 +2883,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "AMBER"
   },
   {
    "id": "gg-doraemon-nora-no-suke-no-yabou",
@@ -3055,7 +3063,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "gg-nibbles-by-martin-konrad-v3",
@@ -3115,7 +3123,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "CORAL"
+   "fleetHost": "STONE"
   },
   {
    "id": "gg-portrait-pai-chan",
@@ -3175,7 +3183,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "AMBER"
   },
   {
    "id": "gg-turrican-demo-v0-9-by-martin-konrad",
@@ -3240,10 +3248,14 @@
   {
    "id": "godzilla-kaiju-dai-shingeki",
    "name": "Godzilla - Kaiju Dai Shingeki (J) [!]",
-   "grade": "Build fails",
-   "path": null,
-   "verdict": "trace failed (4294967295): Master System godzilla-kaiju-dai-shingeki (Sms2, Sega, Ntsc) | CPU Z80 | PPU SMS | APU SMS (SN76489)",
-   "fleetHost": "DIAMOND"
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "fleetHost": "EMERALD",
+   "patches": 48,
+   "unhandled": 64,
+   "residual": 128,
+   "smsStart": "Pause"
   },
   {
    "id": "gp-rider",
@@ -3273,7 +3285,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "greendog",
@@ -3303,7 +3315,7 @@
    "unhandled": 0,
    "residual": 472,
    "smsStart": "buttons 1+2",
-   "fleetHost": "EMERALD"
+   "fleetHost": "OPAL"
   },
   {
    "id": "griffin",
@@ -3363,7 +3375,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "PEARL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "halley-wars",
@@ -3398,10 +3410,14 @@
   {
    "id": "head-buster",
    "name": "Head Buster (J)",
-   "grade": "Build fails",
-   "path": null,
-   "verdict": "trace failed (4294967295): Game Gear head-buster (GameGear, Sega, Ntsc) | CPU Z80 | PPU GG | APU GG (SN76489)",
-   "fleetHost": "ZIRCON"
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "fleetHost": "STONE",
+   "patches": 109,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause"
   },
   {
    "id": "home-alone",
@@ -3460,7 +3476,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "AMBER"
   },
   {
    "id": "hook",
@@ -3550,7 +3566,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "PEARL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "hyokkori-hyoutan-jima",
@@ -3580,7 +3596,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "OPAL"
   },
   {
    "id": "hyper-chou-pro-yakyuu-92",
@@ -3639,7 +3655,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "in-the-wake-of-vampire",
@@ -3677,7 +3693,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "STONE"
   },
   {
    "id": "incredible-hulk-the",
@@ -3737,7 +3753,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "PEARL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "iron-man-x-o-manowar-in-heavy-metal",
@@ -3805,15 +3821,19 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "james-bond-007-the-duel",
    "name": "James Bond 007 - The Duel (U) [!]",
-   "grade": "Build fails",
-   "path": null,
-   "verdict": "trace failed (3762504530): Game Gear james-bond-007-the-duel (GameGear, Sega, Ntsc) | CPU Z80 | PPU GG | APU GG (SN76489)",
-   "fleetHost": "DIAMOND"
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "fleetHost": "OPAL",
+   "patches": 172,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause"
   },
   {
    "id": "james-pond-3-operation-starfish",
@@ -3873,7 +3893,7 @@
    "unhandled": 0,
    "residual": 34,
    "smsStart": "buttons 1+2",
-   "fleetHost": "OPAL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "jang-pung-ii",
@@ -3933,7 +3953,7 @@
    "unhandled": 4,
    "residual": 2,
    "smsStart": "buttons 1+2",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "STONE"
   },
   {
    "id": "jeopardy-sports-edition",
@@ -3946,10 +3966,14 @@
   {
    "id": "joe-montana-s-football",
    "name": "Joe Montana's Football (JU) [!]",
-   "grade": "Build fails",
-   "path": null,
-   "verdict": "trace failed (3762504530): Game Gear joe-montana-s-football (GameGear, Sega, Ntsc) | CPU Z80 | PPU GG | APU GG (SN76489)",
-   "fleetHost": "CORAL"
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "fleetHost": "AMBER",
+   "patches": 152,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause"
   },
   {
    "id": "judge-dredd",
@@ -4017,15 +4041,19 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "OPAL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "jurassic-park",
    "name": "Jurassic Park (UE) [!]",
-   "grade": "Build fails",
-   "path": null,
-   "verdict": "Traceback (most recent call last):",
-   "fleetHost": "PEARL"
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "fleetHost": "OPAL",
+   "patches": 190,
+   "unhandled": 0,
+   "residual": 6,
+   "smsStart": "buttons 1+2"
   },
   {
    "id": "kaitou-saint-tail",
@@ -4060,10 +4088,14 @@
   {
    "id": "kawasaki-superbike-challenge",
    "name": "Kawasaki Superbike Challenge (U) [!]",
-   "grade": "Build fails",
-   "path": null,
-   "verdict": "trace failed (3762504530): Game Gear kawasaki-superbike-challenge (GameGear, Sega, Ntsc) | CPU Z80 | PPU GG | APU GG (SN76489)",
-   "fleetHost": "ZIRCON"
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "fleetHost": "QUARTZ",
+   "patches": 59,
+   "unhandled": 0,
+   "residual": 2,
+   "smsStart": "Pause"
   },
   {
    "id": "kenyuu-densetsu-yaiba",
@@ -4123,7 +4155,7 @@
    "unhandled": 64,
    "residual": 128,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "STONE"
   },
   {
    "id": "kinetic-connection",
@@ -4183,7 +4215,7 @@
    "unhandled": 63,
    "residual": 126,
    "smsStart": "Pause",
-   "fleetHost": "OPAL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "klax",
@@ -4248,18 +4280,26 @@
   {
    "id": "kuni-chan-no-game-tengoku-part-2",
    "name": "Kuni-chan no Game Tengoku Part 2 (J)",
-   "grade": "Build fails",
-   "path": null,
-   "verdict": "trace failed (3762504530): Game Gear kuni-chan-no-game-tengoku-part-2 (GameGear, Sega, Ntsc) | CPU Z80 | PPU GG | APU GG (SN76489)",
-   "fleetHost": "ZIRCON"
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "fleetHost": "EMERALD",
+   "patches": 107,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2"
   },
   {
    "id": "last-action-hero",
    "name": "Last Action Hero (U) [!]",
-   "grade": "Build fails",
-   "path": null,
-   "verdict": "trace failed (4294967295): Master System last-action-hero (Sms2, Sega, Ntsc) | CPU Z80 | PPU SMS | APU SMS (SN76489)",
-   "fleetHost": "CORAL"
+   "grade": "Glitchy",
+   "path": "sms",
+   "verdict": "converted",
+   "fleetHost": "OPAL",
+   "patches": 38,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause"
   },
   {
    "id": "legend-of-illusion-starring-mickey-mouse",
@@ -4319,7 +4359,7 @@
    "unhandled": 0,
    "residual": 4,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "lion-king-the",
@@ -4379,7 +4419,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "PEARL"
+   "fleetHost": "STONE"
   },
   {
    "id": "lucky-dime-caper-the-starring-donald-duck",
@@ -4439,7 +4479,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "AMBER"
   },
   {
    "id": "madden-nfl-95",
@@ -4477,7 +4517,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "madoh-monogatari-iii-kyuukyoku-joo-sama",
@@ -4537,7 +4577,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "OPAL"
+   "fleetHost": "STONE"
   },
   {
    "id": "madou-monogatari-i",
@@ -4575,7 +4615,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "AMBER"
   },
   {
    "id": "madou-monogatari-iii-kyukyoku-joo-sama",
@@ -4665,7 +4705,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "magical-puzzle-popils",
@@ -4695,7 +4735,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "OPAL"
   },
   {
    "id": "magical-taruruuto-kun",
@@ -4736,7 +4776,7 @@
    "patches": 0,
    "unhandled": 0,
    "residual": 0,
-   "fleetHost": "PEARL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "majors-pro-baseball-the",
@@ -4777,7 +4817,7 @@
    "patches": 0,
    "unhandled": 0,
    "residual": 0,
-   "fleetHost": "ZIRCON"
+   "fleetHost": "STONE"
   },
   {
    "id": "marble-madness",
@@ -4837,7 +4877,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "AMBER"
   },
   {
    "id": "megaman",
@@ -4927,7 +4967,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "PEARL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "mick-mack-as-the-global-gladiators",
@@ -4957,7 +4997,7 @@
    "unhandled": 2,
    "residual": 2,
    "smsStart": "buttons 1+2",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "OPAL"
   },
   {
    "id": "mickey-s-ultimate-challenge",
@@ -5017,7 +5057,7 @@
    "unhandled": 2,
    "residual": 11,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "mighty-morphin-power-rangers",
@@ -5055,7 +5095,7 @@
    "unhandled": 64,
    "residual": 128,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "STONE"
   },
   {
    "id": "mlbpa-baseball",
@@ -5101,24 +5141,26 @@
   {
    "id": "mod2psg-v1-1-secret-of-monkey-island",
    "name": "MOD2PSG V1.1 - Secret of Monkey Island (PD)",
-   "grade": "Build fails",
-   "path": null,
+   "grade": "Black screen",
+   "path": "gg",
    "verdict": "already an SMS game by trace (no GG-only port use, no colour RAM writes): copied unchanged",
    "patches": 0,
    "unhandled": 0,
    "residual": 0,
-   "fleetHost": "EMERALD"
+   "fleetHost": "EMERALD",
+   "smsStart": "Pause"
   },
   {
    "id": "mod2psg-v1-2-secret-of-monkey-island",
    "name": "MOD2PSG V1.2 - Secret of Monkey Island (PD)",
-   "grade": "Build fails",
-   "path": null,
+   "grade": "Black screen",
+   "path": "gg",
    "verdict": "already an SMS game by trace (no GG-only port use, no colour RAM writes): copied unchanged",
    "patches": 0,
    "unhandled": 0,
    "residual": 0,
-   "fleetHost": "OPAL"
+   "fleetHost": "OPAL",
+   "smsStart": "Pause"
   },
   {
    "id": "mod2psg-v1-3-secret-of-monkey-island",
@@ -5134,13 +5176,14 @@
   {
    "id": "mod2psg-v1-3-shadow-of-the-beast",
    "name": "MOD2PSG V1.3 - Shadow of the Beast (PD)",
-   "grade": "Build fails",
-   "path": null,
+   "grade": "Black screen",
+   "path": "gg",
    "verdict": "already an SMS game by trace (no GG-only port use, no colour RAM writes): copied unchanged",
    "patches": 0,
    "unhandled": 0,
    "residual": 0,
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "QUARTZ",
+   "smsStart": "Pause"
   },
   {
    "id": "mod2psg-v1-5-secret-of-monkey-island",
@@ -5156,13 +5199,14 @@
   {
    "id": "mod2psg-v1-5-shadow-of-the-beast",
    "name": "MOD2PSG V1.5 - Shadow of the Beast (PD)",
-   "grade": "Build fails",
-   "path": null,
+   "grade": "Black screen",
+   "path": "gg",
    "verdict": "already an SMS game by trace (no GG-only port use, no colour RAM writes): copied unchanged",
    "patches": 0,
    "unhandled": 0,
    "residual": 0,
-   "fleetHost": "CORAL"
+   "fleetHost": "STONE",
+   "smsStart": "Pause"
   },
   {
    "id": "mod2psg-v1-6-secret-of-monkey-island",
@@ -5222,7 +5266,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "EMERALD"
+   "fleetHost": "AMBER"
   },
   {
    "id": "mod2psg-v1-7-secret-of-monkey-island",
@@ -5312,7 +5356,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "mod2psg-v1-8-shadow-of-the-beast",
@@ -5342,7 +5386,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "OPAL"
   },
   {
    "id": "moldorian",
@@ -5402,7 +5446,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "PEARL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "monster-world-ii-dragon-no-wana",
@@ -5492,7 +5536,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "mortal-kombat-ii",
@@ -5522,7 +5566,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "OPAL"
   },
   {
    "id": "ms-pac-man",
@@ -5582,7 +5626,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "PEARL"
+   "fleetHost": "OPAL"
   },
   {
    "id": "nazo-puyo-2",
@@ -5642,7 +5686,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "nba-action",
@@ -5672,7 +5716,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "OPAL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "nba-jam",
@@ -5732,7 +5776,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "STONE"
   },
   {
    "id": "neko-daisuki",
@@ -5803,7 +5847,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "nfl-quarterback-club-96",
@@ -5871,7 +5915,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "OPAL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "ninja-gaiden",
@@ -5901,7 +5945,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "STONE"
   },
   {
    "id": "ninku",
@@ -5961,7 +6005,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "OPAL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "ninku-gaiden-hiroyuki-daikatsugeki",
@@ -6029,7 +6073,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "ottifants-the",
@@ -6059,7 +6103,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "OPAL"
   },
   {
    "id": "outrun",
@@ -6119,7 +6163,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "pac-attack",
@@ -6149,7 +6193,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "AMBER"
   },
   {
    "id": "pac-in-time",
@@ -6329,7 +6373,7 @@
    "unhandled": 64,
    "residual": 128,
    "smsStart": "Pause",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "pete-sampras-tennis",
@@ -6419,7 +6463,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "PEARL"
+   "fleetHost": "STONE"
   },
   {
    "id": "pga-tour-golf-ii",
@@ -6479,7 +6523,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "CORAL"
+   "fleetHost": "STONE"
   },
   {
    "id": "phantasy-star-gaiden",
@@ -6539,7 +6583,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "EMERALD"
+   "fleetHost": "AMBER"
   },
   {
    "id": "pinball-dreams",
@@ -6629,7 +6673,7 @@
    "unhandled": 1,
    "residual": 2,
    "smsStart": "Pause",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "poker-faced-paul-s-blackjack",
@@ -6659,7 +6703,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "OPAL"
   },
   {
    "id": "poker-faced-paul-s-gin",
@@ -6719,7 +6763,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "pop-breaker",
@@ -6779,7 +6823,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "OPAL"
+   "fleetHost": "STONE"
   },
   {
    "id": "power-strike-ii",
@@ -6839,7 +6883,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "AMBER"
   },
   {
    "id": "primal-rage",
@@ -6929,7 +6973,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "pro-yakyuu-gg-league-94",
@@ -6959,7 +7003,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "OPAL"
   },
   {
    "id": "psychic-world",
@@ -7019,7 +7063,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "PEARL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "puyo-puyo-2",
@@ -7079,7 +7123,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "STONE"
   },
   {
    "id": "puzzle-bobble",
@@ -7139,7 +7183,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "AMBER"
   },
   {
    "id": "r-b-i-baseball-94",
@@ -7229,7 +7273,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "PEARL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "ren-stimpy-quest-for-the-shaven-yak-the",
@@ -7259,7 +7303,7 @@
    "unhandled": 0,
    "residual": 1,
    "smsStart": "Pause",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "OPAL"
   },
   {
    "id": "revenge-of-drancon",
@@ -7319,7 +7363,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "rise-of-the-robots",
@@ -7379,7 +7423,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "STONE"
   },
   {
    "id": "robocop-3",
@@ -7439,7 +7483,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "PEARL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "ronald-in-the-magical-world",
@@ -7529,7 +7573,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "s-s-lucifer-man-overboard",
@@ -7559,7 +7603,7 @@
    "unhandled": 2,
    "residual": 4,
    "smsStart": "buttons 1+2",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "OPAL"
   },
   {
    "id": "samurai-shodown",
@@ -7589,7 +7633,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "OPAL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "samurai-spirits",
@@ -7649,7 +7693,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "STONE"
   },
   {
    "id": "sd-gundam-winner-s-history",
@@ -7739,7 +7783,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "CORAL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "sensible-soccer",
@@ -7829,7 +7873,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "OPAL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "shaq-fu",
@@ -7859,7 +7903,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "PEARL"
+   "fleetHost": "OPAL"
   },
   {
    "id": "shikinjou",
@@ -7897,7 +7941,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "shining-force-gaiden-final-conflict",
@@ -7957,7 +8001,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "STONE"
   },
   {
    "id": "side-pocket",
@@ -8017,7 +8061,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "OPAL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "simpsons-the-bart-vs-the-space-mutants",
@@ -8107,7 +8151,7 @@
    "unhandled": 64,
    "residual": 126,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "simpsons-the-krusty-s-fun-house",
@@ -8137,7 +8181,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "OPAL"
   },
   {
    "id": "skweek",
@@ -8197,7 +8241,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "smurfs-the",
@@ -8235,7 +8279,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "PEARL"
+   "fleetHost": "STONE"
   },
   {
    "id": "solitaire-poker",
@@ -8393,7 +8437,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "sonic-tails",
@@ -8423,7 +8467,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "AMBER"
   },
   {
    "id": "sonic-tails-2",
@@ -8513,7 +8557,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "CORAL"
+   "fleetHost": "STONE"
   },
   {
    "id": "space-harrier",
@@ -8603,7 +8647,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "AMBER"
   },
   {
    "id": "spider-man-vs-the-kingpin",
@@ -8663,7 +8707,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "sports-trivia",
@@ -8693,7 +8737,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "OPAL"
   },
   {
    "id": "sports-trivia-championship-edition",
@@ -8753,7 +8797,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "star-trek-tng-advanced-holodeck-tutorial",
@@ -8813,7 +8857,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "OPAL"
+   "fleetHost": "STONE"
   },
   {
    "id": "stargate",
@@ -8873,7 +8917,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "AMBER"
   },
   {
    "id": "streets-of-rage-ii",
@@ -8963,7 +9007,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "super-columns",
@@ -8993,7 +9037,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "OPAL"
   },
   {
    "id": "super-golf",
@@ -9053,7 +9097,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "PEARL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "super-monaco-gp",
@@ -9113,7 +9157,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "STONE"
   },
   {
    "id": "super-return-of-the-jedi",
@@ -9173,7 +9217,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "AMBER"
   },
   {
    "id": "super-space-invaders",
@@ -9263,7 +9307,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "PEARL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "sylvan-tale",
@@ -9293,7 +9337,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "OPAL"
   },
   {
    "id": "t2-the-arcade-game",
@@ -9353,7 +9397,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "CORAL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "taisen-gata-daisenryaku-g",
@@ -9443,7 +9487,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "EMERALD"
+   "fleetHost": "STONE"
   },
   {
    "id": "tale-spin",
@@ -9473,7 +9517,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "PEARL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "tama-friends-3choume-kouen-tamalympics",
@@ -9563,7 +9607,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "taz-mania-the-search-for-the-lost-seabirds",
@@ -9593,7 +9637,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "OPAL"
   },
   {
    "id": "tempo-jr",
@@ -9631,7 +9675,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "OPAL"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "terminator-the",
@@ -9691,7 +9735,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "STONE"
   },
   {
    "id": "tintin-au-tibet",
@@ -9751,7 +9795,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "torarete-tamaruka",
@@ -9841,7 +9885,7 @@
    "unhandled": 2,
    "residual": 2,
    "smsStart": "Pause",
-   "fleetHost": "OPAL"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "ultimate-soccer",
@@ -9871,7 +9915,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "PEARL"
+   "fleetHost": "OPAL"
   },
   {
    "id": "urban-strike",
@@ -9961,7 +10005,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "STONE"
   },
   {
    "id": "virtua-fighter-mini",
@@ -10021,7 +10065,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "wagyan-land",
@@ -10081,7 +10125,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "wimbledon",
@@ -10111,7 +10155,7 @@
    "unhandled": 0,
    "residual": 128,
    "smsStart": "Pause",
-   "fleetHost": "CORAL"
+   "fleetHost": "OPAL"
   },
   {
    "id": "windows-for-gg-by-victor-kemp",
@@ -10171,7 +10215,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "EMERALD"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "wizard-pinball",
@@ -10231,7 +10275,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "PEARL"
+   "fleetHost": "STONE"
   },
   {
    "id": "woody-pop",
@@ -10291,7 +10335,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "AMBER"
   },
   {
    "id": "world-cup-94",
@@ -10471,7 +10515,7 @@
    "unhandled": 0,
    "residual": 10,
    "smsStart": "Pause",
-   "fleetHost": "OPAL"
+   "fleetHost": "AMBER"
   },
   {
    "id": "wwf-steel-cage-challenge",
@@ -10531,7 +10575,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "QUARTZ"
   },
   {
    "id": "x-men-gamemaster-s-legacy",
@@ -10572,7 +10616,7 @@
    "patches": 0,
    "unhandled": 0,
    "residual": 0,
-   "fleetHost": "CORAL"
+   "fleetHost": "STONE"
   },
   {
    "id": "xaropinho",
@@ -10613,7 +10657,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "buttons 1+2",
-   "fleetHost": "EMERALD"
+   "fleetHost": "AMBER"
   },
   {
    "id": "yuu-yuu-hakusho",
@@ -10703,7 +10747,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "SAPPHIRE"
+   "fleetHost": "EMERALD"
   },
   {
    "id": "zool",
@@ -10733,7 +10777,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "ZIRCON"
+   "fleetHost": "OPAL"
   },
   {
    "id": "zoop",
@@ -10793,7 +10837,7 @@
    "unhandled": 0,
    "residual": 0,
    "smsStart": "Pause",
-   "fleetHost": "DIAMOND"
+   "fleetHost": "QUARTZ"
   }
  ]
 }
