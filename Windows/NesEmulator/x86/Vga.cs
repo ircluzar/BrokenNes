@@ -13,7 +13,7 @@ namespace NesEmulator.X86;
 public sealed class Vga
 {
     public const int RamSize = 256 * 1024;
-    public readonly byte[] Ram = new byte[RamSize];     // interleaved: byte 4*a+p = plane p at address a (tiny386 / QEMU layout)
+    public readonly byte[] Ram;     // interleaved: byte 4*a+p = plane p at address a (tiny386 / QEMU layout)
     public readonly byte[] Sr = new byte[8], Gr = new byte[16], Cr = new byte[256], Ar = new byte[21];
     public readonly byte[] Palette = new byte[768];
     public byte Msr, SrIndex, GrIndex, CrIndex, ArIndex, ArFlipFlop, DacMask = 0xff, DacState, DacReadIndex, DacWriteIndex, DacSub, Fcr, St00;
@@ -40,7 +40,16 @@ public sealed class Vga
     // 70 Hz timing: 449 lines of 800 dots at 25.175 MHz, counted in PIT ticks
     public const double FrameTicks = Pit8254.Freq * 449.0 * 800.0 / 25175000.0;
 
-    public Vga(Func<long> pitNow) { _pitNow = pitNow; InitMode3Defaults(); }
+    public Vga(Func<long> pitNow, bool s3 = false)
+    {
+        _pitNow = pitNow;
+        Ram = new byte[s3 ? S3Trio64.VramBytes : RamSize];
+        if (s3) S3 = new S3Trio64(this);
+        InitMode3Defaults();
+    }
+
+    /// <summary>The S3 Trio64's extensions when this VGA is the core of one (x86/S3Trio64.cs); null on the plain VGA (which then behaves exactly as before).</summary>
+    public readonly S3Trio64? S3;
 
     /// <summary>The picture chip drawing this card's memory (the VGA harvest: another emulator's renderer, x86/VgaPictures.cs), or null for the stock picture.
     /// It sees the card's port writes and memory accesses as they happen and replaces <see cref="Render"/>; the registers and memory stay this card's.</summary>
@@ -59,7 +68,7 @@ public sealed class Vga
             case 0x3c1: { int i = ArIndex & 0x1f; return i < 21 ? Ar[i] : (byte)0; }
             case 0x3c2: return St00;
             case 0x3c4: return SrIndex;
-            case 0x3c5: return Sr[SrIndex];
+            case 0x3c5: return SrIndex >= 8 ? S3!.SrRead(SrIndex) : Sr[SrIndex];
             case 0x3c6: return DacMask;
             case 0x3c7: return DacState;
             case 0x3c8: return DacWriteIndex;
@@ -118,8 +127,8 @@ public sealed class Vga
                 ArFlipFlop ^= 1;
                 break;
             case 0x3c2: Msr = (byte)(val & ~0x10); break;
-            case 0x3c4: SrIndex = (byte)(val & 7); break;
-            case 0x3c5: Sr[SrIndex] = (byte)(val & SrMask[SrIndex]); break;
+            case 0x3c4: SrIndex = (byte)(val & (S3 != null ? 0x1f : 7)); break;
+            case 0x3c5: if (SrIndex >= 8) S3!.SrWrite(SrIndex, (byte)val); else Sr[SrIndex] = (byte)(val & SrMask[SrIndex]); break;
             case 0x3c6: DacMask = (byte)val; break;
             case 0x3c7: DacReadIndex = (byte)val; DacSub = 0; DacState = 3; break;
             case 0x3c8: DacWriteIndex = (byte)val; DacSub = 0; DacState = 0; break;
@@ -140,6 +149,7 @@ public sealed class Vga
                     if (CrIndex == 7) Cr[7] = (byte)((Cr[7] & ~0x10) | (val & 0x10));
                     return;
                 }
+                if (S3 != null && CrIndex >= 0x2d && S3.CrWrite(CrIndex, v)) break;
                 Cr[CrIndex] = (byte)val;
                 break;
             case 0x3ba: case 0x3da: Fcr = (byte)(val & 0x10); break;
@@ -163,6 +173,7 @@ public sealed class Vga
 
     public void MemWrite(uint addr, byte val8)
     {
+        if (S3 != null && S3.MemWrite(addr, val8)) return;
         if ((Msr & 2) == 0) return;
         Picture?.NoteWrite(addr, val8);
         if (!MapAddr(ref addr)) return;
@@ -224,6 +235,7 @@ public sealed class Vga
 
     public byte MemRead(uint addr)
     {
+        if (S3 != null && S3.MemRead(addr, out byte sv)) return sv;
         if ((Msr & 2) == 0) return 0xff;
         Picture?.NoteRead(addr);
         if (!MapAddr(ref addr)) return 0xff;
@@ -360,6 +372,7 @@ public sealed class Vga
     public void Render()
     {
         FrameCount++;
+        if (S3 != null && S3.Enhanced && (Gr[6] & 1) != 0) { S3.Render(); return; }
         if (Picture != null) { Picture.Render(); return; }
         if ((Ar[0x10] & 1) == 0 || (Gr[6] & 1) == 0) RenderText(); else RenderGraphics();
     }
