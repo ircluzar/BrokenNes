@@ -267,6 +267,16 @@ public sealed partial class I386
     {
         uint ip0 = Ip;
         if (!DecodeModrm()) return FAIL;
+        return FpuBody(b1, ip0);
+    }
+    /// <summary>The compiled code's ESC (after JPrep: the ModR/M and the address are set): FpuExec past the decode. False = a fault.</summary>
+    private bool JFpu(int b1)
+    {
+        if ((Cr0 & 0xc) != 0) { K(Throw0(EX_NM)); return false; }
+        return FpuBody((uint)(0xd8 | b1), Ip) != FAIL;
+    }
+    private int FpuBody(uint b1, uint ip0)
+    {
         int reg = _reg;
         int esc = (int)(b1 & 7);
         bool nowait = (esc == 1 && _mod != 3 && (reg == 6 || reg == 7)) || (esc == 5 && _mod != 3 && (reg == 6 || reg == 7))

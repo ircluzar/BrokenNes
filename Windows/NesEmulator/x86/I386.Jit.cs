@@ -340,7 +340,7 @@ public sealed partial class I386
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JCodeSame", "JCall", "JRet",
+        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
                      "JXlat", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
@@ -698,7 +698,31 @@ public sealed partial class I386
                 if ((cc & 1) != 0) { Op(OpCodes.Ldc_I4_0); Op(OpCodes.Ceq); }
                 return;
             }
-            Ld0(); U4(c); Call("JCond");
+            {   // CF / OF conditions: after SUB / CMP (from the operands) or AND / OR / XOR / TEST (CF = OF = 0) inline, the rest through Cond
+                uint need = cc switch { 0 or 1 => OF, 2 or 3 => CF, 6 or 7 => CF | ZF, 0xc or 0xd => SF | OF, 0xa or 0xb => 0, _ => ZF | SF | OF };
+                if (need == 0) { Ld0(); U4(c); Call("JCond"); return; }
+                var slow = il.DefineLabel(); var notSub = il.DefineLabel(); var done = il.DefineLabel();
+                LdF(FMask); U4(need); Op(OpCodes.And); U4(need); il.Emit(OpCodes.Bne_Un, slow);
+                LdF(FOp); I4((int)Cc.SUB); il.Emit(OpCodes.Bne_Un, notSub);
+                uint bc = cc & 0xe;   // the taken-when-true form; odd cc negates
+                if (bc == 0) { LdF(FSrc1); LdF(FSrc2); Op(OpCodes.Xor); LdF(FDst); LdF(FSrc1); Op(OpCodes.Xor); Op(OpCodes.And); I4(31); Op(OpCodes.Shr_Un); }
+                else if (bc == 2) { LdF(FSrc1); LdF(FSrc2); Op(OpCodes.Clt_Un); }
+                else if (bc == 6) { LdF(FSrc1); LdF(FSrc2); Op(OpCodes.Cgt_Un); Op(OpCodes.Ldc_I4_0); Op(OpCodes.Ceq); }
+                else if (bc == 0xc) { LdF(FSrc1); LdF(FSrc2); Op(OpCodes.Clt); }
+                else { LdF(FSrc1); LdF(FSrc2); Op(OpCodes.Cgt); Op(OpCodes.Ldc_I4_0); Op(OpCodes.Ceq); }
+                il.Emit(OpCodes.Br, done);
+                il.MarkLabel(notSub);
+                LdF(FOp); I4((int)Cc.AND); Op(OpCodes.Sub); I4(2); il.Emit(OpCodes.Bgt_Un, slow);
+                if (bc == 0 || bc == 2) Op(OpCodes.Ldc_I4_0);
+                else if (bc == 6) { LdF(FDst); Op(OpCodes.Ldc_I4_0); Op(OpCodes.Ceq); }
+                else if (bc == 0xc) { LdF(FDst); I4(31); Op(OpCodes.Shr_Un); }
+                else { LdF(FDst); Op(OpCodes.Ldc_I4_1); Op(OpCodes.Clt); }   // (int)dst <= 0
+                il.Emit(OpCodes.Br, done);
+                il.MarkLabel(slow);
+                Ld0(); U4(c & 0xe); Call("JCond");
+                il.MarkLabel(done);
+                if ((cc & 1) != 0) { Op(OpCodes.Ldc_I4_0); Op(OpCodes.Ceq); }
+            }
         }
 
         // prologue: decline when a segment the region uses has a null selector (the translation would fault)
@@ -867,7 +891,7 @@ public sealed partial class I386
                 if (e.Index < 8) { LdReg(32, e.Index); if (e.Scale != 0) { I4(e.Scale); il.Emit(OpCodes.Shl); } il.Emit(OpCodes.Add); }
                 if (e.A16) { I4(0xffff); il.Emit(OpCodes.And); }
                 il.Emit(OpCodes.Stloc, ea);
-                if (e.Kind != DK_LEA)
+                if (e.Kind is not (DK_LEA or DK_FPU))   // (an ESC: the helper checks the limit after #NM, as the interpreter)
                 {
                     LimitCheck(k, e.Seg, ea, Math.Max(1, bits / 8));
                     il.Emit(OpCodes.Ldloc, sb[e.Seg]!); il.Emit(OpCodes.Ldloc, ea); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, la);
@@ -1257,6 +1281,21 @@ public sealed partial class I386
                     }
                     break;
                 }
+                case DK_FPU:
+                {
+                    Prep();
+                    Ld0(); I4(op); Call("JFpu"); FailIfFalse();
+                    bool load = op is 0 or 2 or 4 or 6 || (op == 1 && e.Reg is 0 or 4 or 5) || (op == 3 && e.Reg is 0 or 5) || (op == 5 && e.Reg is 0 or 4)
+                        || (op == 7 && e.Reg is 0 or 4 or 5);
+                    if (mem && !load)
+                    {   // a store: it may have written to this code, leave right after it
+                        var same = il.DefineLabel();
+                        Ld0(); Call("JCodeSame"); il.Emit(OpCodes.Brtrue, same);
+                        StDec(); LeaveAfter(k, () => IpAt(pe));
+                        il.MarkLabel(same);
+                    }
+                    break;
+                }
                 case DK_LEAVE:
                     Prep();
                     Ld0(); Call("JLeave"); FailIfFalse();
@@ -1274,5 +1313,5 @@ public sealed partial class I386
     }
 
     private static bool DcHasModrm(byte kind) => kind is DK_MOVEG or DK_MOVGE or DK_ALUEG or DK_ALUGE or DK_GRP1 or DK_GRP2 or DK_TESTEG
-        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV;
+        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU;
 }
