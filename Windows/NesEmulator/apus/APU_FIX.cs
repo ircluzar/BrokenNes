@@ -264,7 +264,10 @@ namespace NesEmulator
                     dmc_enabled = enableDMC;
                     // Writing $4015 acknowledges the DMC IRQ only; the frame IRQ flag is cleared by a $4015 READ
                     // or a $4017 write with the inhibit bit (720: power-on frame IRQ fires right after its CLI).
-                    dmc_irqFlag = false; UpdateIrqLine(); break;
+                    // The IRQ line is shared with the mapper (MMC3 raises it on the CPU directly), so only recompute it when this
+                    // write actually drops an APU source; a blanket RequestIRQ(false) here swallowed NWC's MMC3 IRQs.
+                    if (dmc_irqFlag) { dmc_irqFlag = false; UpdateIrqLine(); }
+                    break;
                 case 0x4017: // frame counter
                     frameMode5 = (value & 0x80)!=0; frameIRQInhibit = (value & 0x40)!=0; if(frameIRQInhibit) frameIRQFlag=false;
                     // Reset sequencer timing per hardware approximation: counter cleared immediately
