@@ -25,3 +25,15 @@ give-up rule 4.
 - About 60 fps; 20-frame steps.
 - Window / LCDC mid-frame status bars one line off = Jank `picture`.
 - GBC: a different but consistent palette is colour correction, not a bug. HDMA garbage during transitions that the reference lacks = Jank.
+
+## T2 bridge notes (smoke test 2026-11-16, CORAL, server C:/brokennes/mcp3)
+- play_step buttons: `A B Select Start Up Down Left Right`. Super Mario Land: title -> Start (10 frames) -> 1-1 at once; a second Start pauses.
+- Mesen's GB/GBC picture is 160x144 with no border (Gameboy model, not SGB): BrokenNes and the reference compare 1:1, no `diff.cropped`.
+- The compare equalises each picture's brightness (histogram) on GB/GBC, and Mesen's GBC colour correction and frame blending are off in the
+  reference: BrokenNes's green DMG shades vs Mesen's grey, and GBC colours, score 0 when the picture is the same (SML title and 1-1, Link's
+  Awakening DX name screen: score 0.000 every step). A steady small score is now a real difference: look at the compare pictures.
+- Mesen's lead is about 60 frames on SML, 13 on Link's Awakening DX: `align_frames 240` finds it (old "~80 frames, align_search 90" note above
+  is from the T1 harness).
+- The T2 list (`cc_t2_fleet/games_flat_gbgbc.json`) points at unpacked, sha1-checked copies of zipped ROMs (`roms_gbgbc/<sha1>.gb|.gbc`); the zip
+  is in `archive`.
+

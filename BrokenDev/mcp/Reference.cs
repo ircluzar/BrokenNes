@@ -50,6 +50,7 @@ internal sealed class RefEmu : IDisposable
     {
         emulator = emulator.ToLowerInvariant();
         if (emulator is "" or "auto") emulator = DefaultEmulator(consoleKey);
+        PicDiff.Stretch = consoleKey is "gb" or "gbc";
         if (consoleKey == "wms") throw new ToolError("WideMess has no reference emulator (it is BrokenNes's own console)");
         if (consoleKey == "x86") throw new ToolError("the x86 PC has no live reference");
         if (emulator == "mesen" && consoleKey == "md") throw new ToolError("Mesen 2.1.1 does not run the Genesis: emulator bizhawk (Genplus-gx)");
@@ -151,7 +152,9 @@ internal sealed class RefEmu : IDisposable
             ["Debug"] = new JsonObject { ["ScriptWindow"] = new JsonObject { ["AllowIoOsAccess"] = true, ["AllowNetworkAccess"] = true } },
         };
         if (consoleKey is "gb" or "gbc")
-            s["Gameboy"] = new JsonObject { ["Model"] = consoleKey == "gbc" ? "GameboyColor" : "Gameboy", ["Controller"] = new JsonObject { ["Type"] = "GameboyController" } };
+            // colour correction and frame blending off: the compare is brightness-only, and both darken / smear Mesen's picture against BrokenNes's
+            s["Gameboy"] = new JsonObject { ["Model"] = consoleKey == "gbc" ? "GameboyColor" : "Gameboy", ["Controller"] = new JsonObject { ["Type"] = "GameboyController" },
+                ["GbcAdjustColors"] = false, ["BlendFrames"] = false };
         return s.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
     }
 
@@ -288,6 +291,12 @@ internal static class PicDiff
             Pic big = aBig ? a : b, small = aBig ? b : a;
             JsonObject? best = null;
             var key = (a.W, a.H, b.W, b.H);
+            // a known fixed window is used as is (T2 2026-11-16: on dark or blank GG frames the search below picked x 0, y 0 over the LCD's x 48, y 48)
+            if (Fixed.TryGetValue((big.W, big.H, small.W, small.H), out var fx))
+            {
+                var c = aBig ? Grid(Crop(big, small, fx.dx, fx.dy), small) : Grid(small, Crop(big, small, fx.dx, fx.dy));
+                c["cropped"] = $"{(aBig ? "brokennes" : "reference")} at x {fx.dx}, y {fx.dy}"; c["sizes"] = $"brokennes {a.W}x{a.H}, reference {b.W}x{b.H}"; c["dx"] = fx.dx; c["dy"] = fx.dy; return c;
+            }
             // the placement found last time for these sizes is tried first: kept when it matches well (align compares thousands of pairs)
             if (Placements.TryGetValue(key, out var pl))
             {
@@ -313,6 +322,12 @@ internal static class PicDiff
     }
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<(int, int, int, int), (int dx, int dy)> Placements = new();
+
+    /// <summary>Fixed windows (big W, H, small W, H): the Game Gear LCD in a 256x240 frame; a Game Boy screen inside a Super Game Boy border (256x224).</summary>
+    private static readonly Dictionary<(int, int, int, int), (int dx, int dy)> Fixed = new()
+    {
+        [(256, 240, 160, 144)] = (48, 48), [(256, 224, 160, 144)] = (48, 40),
+    };
 
     public static Pic Crop(Pic big, Pic small, int dx, int dy)
     {
@@ -416,6 +431,11 @@ internal static class PicDiff
         return j;
     }
 
+    /// <summary>Game Boy / Color (set by the reference's Open): each picture's brightness is equalised (histogram) before comparing, so BrokenNes's green
+    /// DMG shades against Mesen's grey ones, and Mesen's darker colour-corrected GBC picture, compare as the same picture (T2 smoke 2026-11-16:
+    /// Super Mario Land's identical title scored pixel 0.72 without it).</summary>
+    public static volatile bool Stretch;
+
     /// <summary>Brightness 0-255 sampled on a w x h grid (nearest pixel: a picture of another size is scaled onto it).</summary>
     private static int[] Luma(Pic p, int w, int h)
     {
@@ -428,6 +448,13 @@ internal static class PicDiff
                 uint c = p.Px[sy * p.W + (int)((long)x * p.W / w)];
                 o[y * w + x] = (int)((((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114) / 1000);
             }
+        }
+        if (Stretch)
+        {
+            // histogram equalisation: a brightness becomes the share of the picture at or below it, which any monotone palette change keeps
+            var hist = new int[256]; foreach (int v in o) hist[Math.Clamp(v, 0, 255)]++;
+            var cdf = new int[256]; int run = 0; for (int v = 0; v < 256; v++) { run += hist[v]; cdf[v] = (int)((long)run * 255 / o.Length); }
+            for (int i = 0; i < o.Length; i++) o[i] = cdf[Math.Clamp(o[i], 0, 255)];
         }
         return o;
     }
