@@ -36,6 +36,8 @@ Buttons: Up Down Left Right A B Start Select. A held longer = higher jump. To ju
 {{PREV}}
 
 ## Rules
+- Use timeout 600000 ms on every runner call; keep `advance` to 3-4 hops per call and search grids under ~300 combos.
+- A level can end at a pipe (stand on it, hold Down ~40) or a card box, not just at the far right: look at the picture when advance is stuck at a wall.
 - Main loop: `advance 6` -> if stuck: look, `search` past the spot (or `back` to an earlier a<frame> checkpoint and search from there) -> `advance 6` again. At the level end: the card search, then `step none 600`.
 - Never run two runner commands at once, never in the background (the runner refuses it).
 - Look often (`--shot`, Read the picture) when anything is near: enemies, pits, the goal. Steps of 8-30 frames in danger, longer on clear ground.

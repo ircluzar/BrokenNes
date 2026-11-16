@@ -129,9 +129,18 @@ def main():
     try: lk = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
         import time
-        if time.time() - os.path.getmtime(lock) < 1200:
+        def alive(pid):   # a lock left by a killed command (tool timeout) must not block the chapter forever
+            try:
+                import subprocess
+                return str(pid) in subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True).stdout
+            except Exception: return True
+        try: owner = int(open(lock).read().strip() or 0)
+        except Exception: owner = 0
+        if owner and not alive(owner): print("(removed a stale lock: its command is gone)")
+        elif time.time() - os.path.getmtime(lock) < 1200:
             sys.exit("another runner command is still working on this chapter: wait for it (never run two at once, never in the background)")
         os.remove(lock); lk = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    os.write(lk, str(os.getpid()).encode())
     try: run_cmd(a, pkg, ch)
     finally: os.close(lk); os.remove(lock)
 
@@ -219,6 +228,9 @@ def search(b, r, cfg, pkg, ch, a):
         k, rng = part.split("="); lo, rest = rng.split(".."); hi, st = (rest.split(":") + ["1"])[:2]
         vals[k] = list(range(int(lo), int(hi) + 1, int(st)))
     keys = list(vals)
+    import math
+    n = math.prod(len(v) for v in vals.values()) if vals else 1
+    if n > 400: sys.exit(f"search: {n} combos is too many (~1.5 s each; a tool call times out at 10 min): use coarser steps, at most ~300")
     tmp = os.path.join(wdir(pkg, ch), "_search.state")
     b.call("save_state", session=r["session"], path=tmp)
     dead = [f'died={cfg["dead"]}'] if cfg.get("dead") else []

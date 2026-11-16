@@ -15,3 +15,10 @@ Clean-up recipe applied to the post-1-1 state and verified in 1-2 (see cleanup.j
 Research route used a P-wing via inventory writes; that is not a TAS route.
 Gotchas: the map needs ~2 directional presses after the intro walk; card box only collects when touched while not
 moving right fast enough to fly over it.
+
+## 1-4 (auto-scroll, done 2026-11-16 by a sonnet escalation, 4641 frames, 0 deaths)
+- The scroll ends at a wood wall; the exit is a PIPE: stand on its top centre, hold Down ~40 frames. The goal room
+  (Boomerang Bro behind) has the card box: Right+B and jump into it, then none 600.
+- Waiting is safe while Mario's x stays ahead of the left screen edge (~150-300 frames); wood lifts SINK once stood on: jump off at once.
+- `air` reads 0 at a jump apex: end a search pattern with a short none:20 token so --want is checked after landing.
+- After landing at speed, Mario slides off narrow platforms: add Left ~4 frames.
