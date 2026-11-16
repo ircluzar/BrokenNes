@@ -189,7 +189,30 @@
         "result": "ok",
         "crashInfo": ""
       }
+    },
+    {
+      "id": "nesfix-r4-commando-2007-render-bus",
+      "description": "Commando (UNROM, CHR-RAM) writes its title through $2007 with rendering on (lines 25-46 of boot frame 5). PPU_FIX wrote those at v; Mesen 2.1.1 (and the Visual 2C02) writes the address the fetch pipeline has on the PPU bus (its own low byte as data). Now tracked on Mesen's fetch schedule. Lockstep: palette 7 -> 0, CHR-RAM 'differs forever from frame 5' -> 4 frames, nametable 3 -> 2 of 1645 (2026-11-16). Frame 6 picture = Mesen's.",
+      "kind": "romtest",
+      "rom": "{lib}/Commando (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 6,
+      "input": "",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "AC4455A504D73D71",
+        "framesRun": 6,
+        "distinctColors": 10,
+        "result": "ok",
+        "crashInfo": ""
+      }
     }
   ],
-  "goldenGeneratedUtc": "2026-11-16T09:39:32Z"
+  "goldenGeneratedUtc": "2026-11-16T15:58:04Z"
 }

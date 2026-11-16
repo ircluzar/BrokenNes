@@ -21,9 +21,9 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "7DE47F17443053C1",
+        "frameBufferHash": "B0AF911C6DE5ADC9",
         "framesRun": 300,
-        "distinctColors": 10,
+        "distinctColors": 13,
         "result": "ok",
         "crashInfo": ""
       }
@@ -65,13 +65,13 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "1719DCA5CEF7A325",
+        "frameBufferHash": "81ED6F06F02DE3B5",
         "framesRun": 300,
-        "distinctColors": 1,
+        "distinctColors": 11,
         "result": "ok",
         "crashInfo": ""
       }
     }
   ],
-  "goldenGeneratedUtc": "2026-10-15T16:09:12Z"
+  "goldenGeneratedUtc": "2026-11-16T16:21:35Z"
 }
