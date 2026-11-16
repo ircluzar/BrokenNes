@@ -53,7 +53,7 @@ public sealed partial class I386
     }
 
     private static readonly bool JitOn = RuntimeFeature.IsDynamicCodeCompiled && Environment.GetEnvironmentVariable("X86_NOJIT") == null;
-    private const int JitBits = 16, JitMask = (1 << JitBits) - 1, JIT_DECLINE = 3, JIT_END = 4, JitKeep = 16384;
+    private const int JitBits = 20, JitMask = (1 << JitBits) - 1, JIT_DECLINE = 3, JIT_END = 4, JitKeep = 16384;
     private static readonly int JitMaxInstr = int.TryParse(Environment.GetEnvironmentVariable("X86_JITMAX"), out int jm) ? jm : 128;
     private static readonly int JitHot = int.TryParse(Environment.GetEnvironmentVariable("X86_JITHOT"), out int jh) ? jh : 32;
     private JitCode? _jitCur;   // the block running now
@@ -64,16 +64,21 @@ public sealed partial class I386
 
     // statistics (Workshop --x86boot --jitstat)
     public int JitCompiled { get; private set; }
-    public long JitRuns, JitInvalid;
+    public long JitRuns, JitInvalid, JitDeclines;
+    public readonly long[] JitDeclineSeg = new long[6];
     public IEnumerable<string> JitTop(int n) => _jitAll.OrderByDescending(b => b.Instrs).Take(n)
         .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} | {Convert.ToHexString(b.Bytes)}");
     private readonly long[] _interpOps = new long[65536];
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void JitCountInterp(uint pa) { if (pa + 2 < MemSize) { int k = Mem[pa] << 8 | Mem[pa + 1]; if (++_interpOps[k] == 100000 && JitWatch == k) Console.Error.WriteLine($"jw: op {k:X4} at {pa:X8}"); } }
+    private readonly long[] _oolOps = new long[65536];
+    /// <summary>The out-of-line instructions inside compiled blocks (JInterp), by first two bytes.</summary>
+    public IEnumerable<string> OutOfLineTop(int n) => Enumerable.Range(0, 65536).Where(i => _oolOps[i] > 0).OrderByDescending(i => _oolOps[i]).Take(n)
+        .Select(i => $"{i >> 8:X2} {i & 255:X2}: {_oolOps[i]}");
     public IEnumerable<string> InterpTop(int n) => Enumerable.Range(0, 65536).Where(i => _interpOps[i] > 0).OrderByDescending(i => _interpOps[i]).Take(n)
         .Select(i => $"{i >> 8:X2} {i & 255:X2}: {_interpOps[i]}");
     /// <summary>Zero the statistics (Workshop --x86speed: count the workload only, not the boot).</summary>
-    public void JitStatReset() { Array.Clear(_interpOps); foreach (var b in _jitAll) { b.Runs = 0; b.Instrs = 0; } JitRuns = 0; }
+    public void JitStatReset() { Array.Clear(_interpOps); Array.Clear(_oolOps); foreach (var b in _jitAll) { b.Runs = 0; b.Instrs = 0; } JitRuns = 0; }
     public long JitInstrsTotal => _jitAll.Sum(b => b.Instrs);
     public static bool JitStats = Environment.GetEnvironmentVariable("X86_JITSTAT") != null;
 
@@ -122,6 +127,11 @@ public sealed partial class I386
         long c0 = Cycle;
         int rc = code.Fn(this, k);
         JitRuns++; code.Runs++; code.Instrs += Cycle - c0;
+        if (rc == JIT_DECLINE)
+        {
+            JitDeclines++;
+            for (int s = 0; s < 6; s++) if (!JSegOk(s)) JitDeclineSeg[s]++;
+        }
         return rc;
     }
 
@@ -179,6 +189,7 @@ public sealed partial class I386
         return true;
     }
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JGrp3(int bits) => Grp3Body(bits);
+    [MethodImpl(MethodImplOptions.NoInlining)] private void JImul2(int bits, int reg, uint a, uint b) => Imul2(bits, reg, a, b);
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JCall(uint rel) => CallNear(rel, true);
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JRet() => OpRet() != FAIL;
 
@@ -187,6 +198,7 @@ public sealed partial class I386
     private int JInterp(uint ip, long cyc, int st)
     {
         Cycle = cyc; _steps = st; NextIp = ip;
+        if (JitStats) { uint pa = _ifXaddr ^ (SegBase[SEG_CS] + ip); if (pa + 2 < MemSize) _oolOps[Mem[pa] << 8 | Mem[pa + 1]]++; }
         return Step1(false);
     }
     /// <summary>After an out-of-line instruction: can the compiled code go on (the same code size, paging still off, the fetch still
@@ -221,7 +233,7 @@ public sealed partial class I386
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JCall", "JRet",
+        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JCall", "JRet",
                      "JExitOk", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm" })
             d[n] = M(n);
         return d;
@@ -371,11 +383,13 @@ public sealed partial class I386
     /// <summary>The background compiler, shared by every CPU in the process.</summary>
     private static class JitWorker
     {
-        private static readonly System.Collections.Concurrent.BlockingCollection<Action> Q = new();
+        // newest first: the block hot right now matters more than one queued while a burst of new code went by
+        private static readonly System.Collections.Concurrent.BlockingCollection<Action> Q = new(new System.Collections.Concurrent.ConcurrentStack<Action>());
+        public static readonly int Threads = int.TryParse(Environment.GetEnvironmentVariable("X86_JITTHREADS"), out int jt) ? Math.Max(1, jt) : Math.Clamp(Environment.ProcessorCount / 2, 1, 6);
         static JitWorker()
         {
-            // two threads (the CPU's own thread is the third): a game's start asks for ~1000 blocks at once
-            for (int i = 0; i < Math.Clamp(Environment.ProcessorCount - 1, 1, 2); i++)
+            // half the host threads (at most 6): a game's start asks for ~1000 blocks at once
+            for (int i = 0; i < Threads; i++)
                 new System.Threading.Thread(() => { foreach (var a in Q.GetConsumingEnumerable()) a(); })
                 { IsBackground = true, Name = "x86 block compiler" }.Start();
         }
@@ -652,7 +666,7 @@ public sealed partial class I386
                 Continue(k, () => IpAt(pe), pe, true);   // (falls into the next instruction's code, which follows)
                 continue;
             }
-            il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldc_I4, 1 + JitExtraCost(e.Kind, e.Reg, bits, mem)); il.Emit(OpCodes.Conv_I8); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, cyc);
+            il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldc_I4, 1 + JitExtraCost(pa, e.Kind, e.Reg, bits, mem)); il.Emit(OpCodes.Conv_I8); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, cyc);
 
             // effective address and linear address of a memory operand
             if (mem)
@@ -877,6 +891,32 @@ public sealed partial class I386
                     LeaveAfter(k, () => { Ld0(); Call("JNextIp"); });
                     ends = true;
                     break;
+                case DK_MOVX:
+                    // MOVZX / MOVSX: the source (Bits wide) zero / sign extended into the operand-size register
+                    ReadE(); if (op == 1) SextTop(bits); Stl(t);
+                    StReg(e.O16 ? 16 : 32, e.Reg, () => Ld(t));
+                    break;
+                case DK_CBW:
+                    if (op == 0)
+                    {
+                        if (e.O16) StReg(16, 0, () => { LdReg(8, 0); SextTop(8); });
+                        else StReg(32, 0, () => { LdReg(16, 0); SextTop(16); });
+                    }
+                    else
+                    {   // DX / EDX = 0 - (sign bit)
+                        if (e.O16) StReg(16, 2, () => { Op(OpCodes.Ldc_I4_0); LdReg(16, 0); SextTop(16); I4(31); Op(OpCodes.Shr_Un); Op(OpCodes.Sub); });
+                        else StReg(32, 2, () => { Op(OpCodes.Ldc_I4_0); LdReg(32, 0); I4(31); Op(OpCodes.Shr_Un); Op(OpCodes.Sub); });
+                    }
+                    break;
+                case DK_SETCC:
+                    CondTop((uint)op); Stl(t); WriteET();
+                    break;
+                case DK_IMUL:
+                    // Imul2(bits, reg, a, b): 0F AF a = reg, b = E; 69 / 6B a = E, b = imm
+                    if (op == 0) { LdReg(bits, e.Reg); Stl(A); ReadE(); Stl(B); }
+                    else { ReadE(); Stl(A); U4(e.Imm); Stl(B); }
+                    Ld0(); I4(bits); I4(e.Reg); Ld(A); Ld(B); Call("JImul2");
+                    break;
                 default:
                     throw new InvalidOperationException("kind " + e.Kind);
             }
@@ -890,5 +930,5 @@ public sealed partial class I386
     }
 
     private static bool DcHasModrm(byte kind) => kind is DK_MOVEG or DK_MOVGE or DK_ALUEG or DK_ALUGE or DK_GRP1 or DK_GRP2 or DK_TESTEG
-        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA;
+        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL;
 }

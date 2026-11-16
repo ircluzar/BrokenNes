@@ -26,7 +26,7 @@ public sealed partial class I386
     private const byte DK_SLOW = 0, DK_MOVEG = 1, DK_MOVGE = 2, DK_ALUEG = 3, DK_ALUGE = 4, DK_ALUAI = 5, DK_GRP1 = 6, DK_GRP2 = 7,
         DK_TESTEG = 8, DK_G3TEST = 9, DK_GRP3 = 10, DK_MOVEI = 11, DK_LEA = 12, DK_MOVRI = 13, DK_INC = 14, DK_DEC = 15, DK_PUSH = 16,
         DK_POP = 17, DK_JCC = 18, DK_JMP = 19, DK_CALL = 20, DK_RET = 21,
-        DK_INTERP = 22;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
+        DK_INTERP = 22, DK_MOVX = 23, DK_CBW = 24, DK_SETCC = 25, DK_IMUL = 26;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
 
     /// <summary>Decode the instruction at <paramref name="paddr"/> (in a fast-fetch code page) into <paramref name="e"/>; Kind 0 if it is not
     /// one of the cached forms.</summary>
@@ -262,9 +262,14 @@ public sealed partial class I386
             case 0xf7: kind = DK_GRP3; modrm = true; break;
             case 0x0f:
                 b = U8(paddr + (uint)p++);
-                if ((b & 0xf0) != 0x80) return;
-                kind = DK_JCC; op = (int)b; immBits = v;
-                break;
+                if ((b & 0xf0) == 0x80) { kind = DK_JCC; op = (int)b; immBits = v; break; }
+                if (b is 0xb6 or 0xb7 or 0xbe or 0xbf) { kind = DK_MOVX; bits = (b & 1) == 0 ? 8 : 16; op = b >= 0xbe ? 1 : 0; modrm = true; break; }   // MOVZX / MOVSX: Bits = the source's
+                if ((b & 0xf0) == 0x90) { kind = DK_SETCC; bits = 8; op = (int)b; modrm = true; break; }
+                if (b == 0xaf) { kind = DK_IMUL; modrm = true; op = 0; break; }   // IMUL r, rm
+                return;
+            case 0x69: kind = DK_IMUL; modrm = true; immBits = v; op = 1; break;   // IMUL r, rm, imm
+            case 0x6b: kind = DK_IMUL; modrm = true; immBits = 8; immSext8 = true; op = 1; break;
+            case 0x98: case 0x99: kind = DK_CBW; op = (int)(b & 1); break;           // CBW / CWDE, CWD / CDQ
             default: return;
         }
         if (modrm)

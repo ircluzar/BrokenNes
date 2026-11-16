@@ -91,6 +91,7 @@ internal static class X86SpeedCli
         }) { IsBackground = true } : null;
         sampler?.Start();
         var sw = Stopwatch.StartNew();
+        double cpu0 = ThreadCpuSeconds();
         int frames = 0;
         if (work == "idle") frames = X86BootCli.RunUntil(m, null, 700);
         else
@@ -100,6 +101,7 @@ internal static class X86SpeedCli
                 if (frames % 10 == 0 && m.Teletype.ToString().Contains("ALLDONE")) break;
             }
         double wall = sw.Elapsed.TotalSeconds;
+        double cpuT = ThreadCpuSeconds() - cpu0;   // the emulation thread's own CPU time: steadier than wall time on a shared PC
         sampling = false;
         double machine = (m.Clock - c0) / (double)ipsv;
         double busy = (m.Cpu.Cycle - cy0) / (double)Math.Max(1, m.Clock - c0);
@@ -109,18 +111,25 @@ internal static class X86SpeedCli
         try { var d = new FatImage(m.Hdd[0]!.Data).ReadFile(@"\OUT.TXT"); if (d != null) outTxt = System.Text.Encoding.ASCII.GetString(d); } catch { }
         string cpuName = model?.Id ?? "LEGACY";
         Console.WriteLine($"x86speed: cpu={cpuName} video={(video == PcVideo.S3Trio64 ? "S3" : "VGA")} machine={cfg.ToString().Replace(" ", "")} work={work} ips={ipsv} " +
-            $"ok={(ok ? 1 : 0)} frames={frames} machine_s={machine:F2} wall_s={wall:F2} pct={100 * machine / Math.Max(1e-9, wall):F0} " +
+            $"ok={(ok ? 1 : 0)} frames={frames} machine_s={machine:F2} wall_s={wall:F2} pct={100 * machine / Math.Max(1e-9, wall):F0} cpu_s={cpuT:F2} pct_cpu={100 * machine / Math.Max(1e-9, cpuT):F0} " +
             $"busy={100 * busy:F0} host_mips={(m.Cpu.Cycle - cy0) / Math.Max(1e-9, wall) / 1e6:F1} render_pct={100 * render / Math.Max(1e-9, wall):F0} boot_wall_s={bootWall:F1}{(m.Stopped != null ? " STOPPED=" + m.Stopped.Replace(' ', '_') : "")}");
         if (sampler != null) foreach (var kv in hot.OrderByDescending(x => x.Value).Take(20)) Console.WriteLine($"  hot {kv.Key} {kv.Value}");
         if (args.Contains("--jitstat"))
         {
             Console.WriteLine($"jit: compiled {m.Cpu.JitCompiled} reused {m.Cpu.JitReused} runs {m.Cpu.JitRuns} invalid {m.Cpu.JitInvalid} compiled-instrs {100.0 * m.Cpu.JitInstrsTotal / Math.Max(1, m.Cpu.Cycle - cy0):F1}% of the workload");
+            Console.WriteLine($"jit: declined at entry {m.Cpu.JitDeclines} (unusable segment: {string.Join(" ", m.Cpu.JitDeclineSeg)}); segs " +
+                string.Join(" ", Enumerable.Range(0, 6).Select(i => $"{i}:{m.Cpu.SegSel[i]:X4}/{m.Cpu.SegLimit[i]:X}/{m.Cpu.SegFlags[i]:X}")));
             foreach (var l in m.Cpu.JitTop(15)) Console.WriteLine("  blk " + l);
             foreach (var l in m.Cpu.InterpTop(30)) Console.WriteLine("  interp " + l);
+            foreach (var l in m.Cpu.OutOfLineTop(30)) Console.WriteLine("  ool " + l);
         }
         if (args.Contains("--out") && outTxt != null) Console.WriteLine(outTxt.TrimEnd());
         return ok && m.Stopped == null ? 0 : 1;
     }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] private static extern IntPtr GetCurrentThread();
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] private static extern bool GetThreadTimes(IntPtr h, out long create, out long exit, out long kernel, out long user);
+    private static double ThreadCpuSeconds() => OperatingSystem.IsWindows() && GetThreadTimes(GetCurrentThread(), out _, out _, out long k, out long u) ? (k + u) / 1e7 : 0;
 
     private static string? Arg(string[] a, string k) { int i = Array.FindIndex(a, x => x.Equals(k, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
 }

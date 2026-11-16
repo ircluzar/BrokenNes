@@ -169,8 +169,18 @@ public sealed partial class I386
     private static int SizeIdx(int bits) => bits == 8 ? 0 : bits == 16 ? 1 : 2;
 
     /// <summary>The extra clock the compiled code adds for a form it compiles (the interpreter charges the same in Grp3Body).</summary>
-    private int JitExtraCost(byte kind, int reg, int bits, bool mem) => (mem ? _memCost : 0) + JitOpCost(kind, reg, bits);
-    private int JitOpCost(byte kind, int reg, int bits) => kind == DK_GRP3 && reg >= 4 && _mulCost != null ? (reg < 6 ? _mulCost[SizeIdx(bits)] : _divCost![SizeIdx(bits)]) : 0;
+    /// <summary>The extra clock the compiled code adds for the instruction at <paramref name="pa"/>: what the interpreter charges for it (Step1's first
+    /// opcode byte, ExecTwo's 0F byte, Grp3Body's MUL / DIV, DecodeModrm's memory operand), from the same tables.</summary>
+    private int JitExtraCost(uint pa, byte kind, int reg, int bits, bool mem)
+    {
+        if (_opCost == null) return 0;
+        int p = 0; uint b;
+        do b = U8(pa + (uint)p++); while (IsPrefix[b] && p < 15);
+        int c = (mem ? _memCost : 0) + _opCost[b];
+        if (b == 0x0f) { uint b2 = U8(pa + (uint)p); if ((b2 & 0xf0) != 0x80) c += _opCost0F![b2]; }
+        if (kind == DK_GRP3 && reg >= 4) c += reg < 6 ? _mulCost![SizeIdx(bits)] : _divCost![SizeIdx(bits)];
+        return c;
+    }
 
     public uint Cr4;
     private long _tscOffset;                         // TSC = clock * ClockHz / Ips + _tscOffset (WRMSR 10h moves it)
