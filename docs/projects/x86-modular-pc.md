@@ -121,3 +121,18 @@ optional PCI config space, `Render(into frame)`, Save/Load. The current VGA impl
 M1 PcConfig + IoMap + save-state block (no behaviour change) · M2 CPU models (486 FPU/CPUID, Pentium + MMX) ·
 M3 IDE + ATAPI + RAM · M4 PCI + our BIOS Win98 features (E820, INT 13 ext, El Torito, PCI BIOS, APM, PnP) · M5 ET4000 + S3 Trio64 + VBE ·
 M6 speed climb to 200% · M7 Windows 98 with the user's media.
+
+## Status (2026-11-15, integration branch x86-integ)
+
+Landed together: x86-modular (this plan), x86-machine (PcConfig, IDE/ATAPI, El Torito, BIOS IDE extensions), x86-cpu
+(CpuModel presets 386DX..P55C, full x87, MMX, CPUID/MSR/TSC), x86-video (S3 Trio64 + our own VBE 2.0 BIOS), x86-speed
+(`--x86speed` harness, profiling hooks). Default machine unchanged (goldens identical, x86 PC 9/9).
+
+Done: M1, M2 (timing not calibrated), M3 (no DOS driver test of the ATA ports yet), M5 S3 only (no ET4000/Cirrus).
+Open: M4 PCI bus (CF8/CFC) + PCI BIOS/$PIR/BIOS32, APM, PnP, bus-master DMA; desktop-app machine/CPU/video menu;
+test386 stops at POST 0Bh on every model (pre-existing core bug); M6 speed climb not started; M7 needs the user's Win98 SE ISO.
+
+Speed baseline (i7-8700, shared, +-2x noise), % real time: P55C+S3 dhry 25-28, bench32 14-22, v13 37, vlfb 89;
+LEGACY dhry 63-69. Target 200% = ~302 M instr/s real code; 8-15x short. Biggest items: JIT is off under paging
+(Win98 would be interpreted, ~13% of a P166), slow background block-compile install, uncompiled REP string ops / 16-bit
+forms (~34%), blocks ending at CALL/RET and page edges.
