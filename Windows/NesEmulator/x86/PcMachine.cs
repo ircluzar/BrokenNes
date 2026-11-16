@@ -49,16 +49,23 @@ public sealed partial class PcMachine : IX86Bus
     /// <summary>The ATAPI CD-ROM's disc (secondary master; IDE machines only). Read-only media: not part of a save state.</summary>
     public CdImage? Cd;
 
-    public PcMachine(int memBytes = DefaultMemory) : this(PcConfig.Default, memBytes) { }
+    /// <param name="cpu">A CPU model (I386.Model.cs); null or the legacy model = the original console's 486-class tiny386 core.</param>
+    public PcMachine(int memBytes = DefaultMemory, CpuModel? cpu = null) : this(PcConfig.Default, memBytes, cpu) { }
 
-    public PcMachine(PcConfig config) : this(config, config.MemoryMB * 1024 * 1024) { }
+    public PcMachine(PcConfig config, CpuModel? cpu = null) : this(config, config.MemoryMB * 1024 * 1024, cpu) { }
 
-    private PcMachine(PcConfig config, int memBytes)
+    private PcMachine(PcConfig config, int memBytes, CpuModel? cpu)
     {
         config.Validate();
         Config = config with { MemoryMB = Math.Max(1, memBytes >> 20) };
         MemKb = memBytes / 1024;
-        Cpu = new I386(config.CpuGen, memBytes, this);
+        Cpu = cpu == null || cpu.Legacy ? new I386(config.CpuGen, memBytes, this) : new I386(cpu, memBytes, this);
+        if (cpu != null && !cpu.Legacy)
+        {
+            InstructionsPerSecond = cpu.Ips;
+            Cpu.InstructionClock = () => Clock;     // RDTSC counts HLT time too
+            Cpu.Ferr = () => Pic.Pulse(13);         // FERR# -> IRQ 13 (CR0.NE clear: DOS / Windows 9x style FPU errors)
+        }
         Pit = new Pit8254(() => PitNow, () => Pic.Pulse(0));
         Kbc = new Kbc8042(Pic);
         Cmos = new Cmos(() => PitNow, MemKb);
