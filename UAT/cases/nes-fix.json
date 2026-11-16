@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "suite": "nes-fix",
+  "description": "NES accuracy climb (Jank/Broken catalog games fixed on FIX/FIX/FIX vs Mesen). The ROMs are the user's library (X:): the cases skip without it.",
+  "roots": {
+    "lib": "X:/EMULATION/Nintendo Entertainment System"
+  },
+  "cases": [
+    {
+      "id": "nesfix-m001-billted-boot",
+      "description": "MMC1 ignores the second (consecutive-cycle) write of a read-modify-write; CPU_FIX's RMW dummy write used to crash the boot (bad opcode 02 at A366). T1 checkpoints match Mesen 2.1.1 (2026-11-16).",
+      "kind": "romtest",
+      "rom": "{lib}/Bill & Ted's Excellent Video Game Adventure (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "300:Start,310:,500:Start,510:",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "61FC2BEB6FD8188F",
+        "framesRun": 900,
+        "distinctColors": 8,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "nesfix-m001-surom-dw4-boot",
+      "description": "SUROM 512 KiB: CHR bank 0 bit 4 picks the PRG half. Used to crash at boot (bad opcode BB). T1 checkpoints match Mesen 2.1.1 (2026-11-16).",
+      "kind": "romtest",
+      "rom": "{lib}/Dragon Warrior IV (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "300:Start,310:,500:Start,510:",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "AD4E1676A4446FE5",
+        "framesRun": 900,
+        "distinctColors": 2,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "nesfix-m005-nobunaga2-map",
+      "description": "MMC5 $5204 in-frame bit drops at line 240 (BIT/BVS wait loop) + 64 KiB WRAM: the strategy map used to ignore every input; now it reaches the province screen. Checked by lockstep vs Mesen 2.1.1 (2026-11-16).",
+      "kind": "romtest",
+      "rom": "{lib}/Nobunaga's Ambition 2 (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 2400,
+      "input": "1141:Start,1151:,1211:A,1221:,1262:A,1272:,1332:A,1342:,1432:A,1442:,1533:Down,1543:B,1553:A,1563:,1683:Right,1693:A,1703:,1823:Left,1833:A,1843:,1963:Right,1983:A,2003:,2033:B,2053:Down,2073:Start,2093:Up,2108:Left,2123:Right,2138:A,2153:Select",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "DEBCD27B6747681B",
+        "framesRun": 2400,
+        "distinctColors": 13,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "nesfix-m079-trolls-map",
+      "description": "Trolls on Treasure Island (U): headered 79/vertical, really horizontal (CRC fixup -> 113, as Dudes With Attitude). The world map was built in the hidden nametable; lockstep vs Mesen 2.1.1 now matches CIRAM for 1570 frames (2026-11-16).",
+      "kind": "romtest",
+      "rom": "{lib}/Trolls on Treasure Island (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "421:Start,431:,521:Start,531:,621:Start,631:,691:Start,701:,851:Start,861:",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "2CDED7E15C6C958D",
+        "framesRun": 900,
+        "distinctColors": 11,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    }
+  ],
+  "goldenGeneratedUtc": "2026-11-16T00:00:00Z"
+}

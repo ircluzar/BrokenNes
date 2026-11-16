@@ -25,6 +25,7 @@ public sealed partial class PcMachine
         else if (mode == 0x13) { Vga.SetRegs(Vga.Mode13); cols = 40; rows = 25; pageSize = 0; }
         else if (mode is 0x12 or 0x11) { Vga.SetRegs(Vga.Mode12); cols = 80; rows = 30; pageSize = 0; mode = 0x12; }
         else return;                                             // not offered: the mode stays as it was
+        Vga.S3?.LeaveEnhanced();
         if (mode == 0x13) Vga.LoadDefaultDac256(); else { Array.Clear(Vga.Palette); Vga.LoadEgaDac(); }
         if (!noClear)
         {
@@ -279,6 +280,7 @@ public sealed partial class PcMachine
                 break;
             }
             case 0x1a: if (AL == 0) { AL = 0x1a; BX = 0x0008; } break;
+            case 0x4f when S3 != null: Vbe(); break;
         }
     }
 

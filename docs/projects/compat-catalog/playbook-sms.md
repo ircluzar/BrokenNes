@@ -19,3 +19,8 @@ No verified addresses yet: 5-call search on the lives digit, else picture only.
 - The blank left 8-pixel column (VDP register 0 bit 5) is the game's choice.
 - Sprite flicker past 8 per line: the reference flickers too.
 - Known fuzz finding: YM2413 index out of range (Sonic 2 SMS, FM): if the session dies on an FM game, grade Broken, tags `sound crash`.
+
+## T2 bridge notes (smoke test 2026-11-16, ZIRCON)
+- play_step button names: `A` (= button 1), `B` (= button 2), `Pause`, `Reset`, d-pad; the GG also has `Start`. `Start` on an SMS game is refused.
+- The bridge server cannot open `.7z`: the T2 list (`cc_t2_fleet/games_flat_smsgg.json`) points at unpacked, sha1-checked copies; the archive is in `archive`.
+- The reference picture is cropped from Mesen's 256x240 (`diff.cropped`); on the GG a step cropped at "x 0, y 0" compared the wrong window: ignore it.

@@ -257,7 +257,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			if (scanline < 240 || scanline == 261) RenderDot();
 
 			// MMC5 IRQ tick at early cycle 3 when rendering enabled
-			if (eventDot && scanline >= 0 && scanline < 240 && scanlineCycle == 3)
+			if (eventDot && scanline >= 0 && scanline <= 240 && scanlineCycle == 3)
 			{
 				bool renderingOn = (PPUMASK & 0x18) != 0;
 				if (bus.cartridge.mapper is Mapper5 mmc5)
@@ -985,7 +985,9 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 				break;
 			case 0x0004: // OAM Data
 				OAMDATA = value;
-				oam[OAMADDR] = bus.Butcher is { SpritesActive: true } sb ? sb.FilterOamWrite(OAMADDR, OAMDATA) : OAMDATA; OAMADDR++;
+				oam[OAMADDR] = bus.Butcher is { SpritesActive: true } sb ? sb.FilterOamWrite(OAMADDR, OAMDATA) : OAMDATA;
+				if ((OAMADDR & 3) == 2) oam[OAMADDR] &= 0xE3;   // attribute bits 2-4 do not exist in OAM: they read back 0 (Mesen too)
+				OAMADDR++;
 				break;
 			case 0x0005: // PPU Scroll
 				if (!w)
@@ -1169,6 +1171,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	public void WriteOAMDMA(byte page)
 	{
 		bus.FastOamDma(page, oam, ref OAMADDR);
+		for (int i = 2; i < 256; i += 4) oam[i] &= 0xE3;   // the unimplemented attribute bits, as for $2004 writes
 	}
 
 	// A $2007 access while the PPU is fetching (rendering on, on a visible or pre-render line).

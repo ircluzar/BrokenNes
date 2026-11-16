@@ -8,6 +8,13 @@ public class Mapper1 : IMapper { //MMC1 (Experimenal)
     private byte chrBank0, chrBank1, prgBank;
     private int shiftCount = 0;
 
+    // The CPU cycle of the bus access in progress (Bus.CurrentCpuAccessCycle; -1 = unknown). MMC1 ignores a serial
+    // write on the cycle right after another one: a read-modify-write instruction writes its target twice in a row
+    // (dummy write-back, then the result) and only the first reaches the shift register. Bill & Ted's reset routine
+    // relies on it (INC on $8000+ with bit 7 clear). Mesen, Nestopia and puNES all model it.
+    public System.Func<long>? CycleSource;
+    private long lastSerialWriteCycle = long.MinValue;
+
     private int prgBankOffset0, prgBankOffset1;
     private int chrBankOffset0, chrBankOffset1;
 
@@ -45,6 +52,13 @@ public class Mapper1 : IMapper { //MMC1 (Experimenal)
 
         if (addr < 0x8000) return;
 
+        long cyc = CycleSource?.Invoke() ?? -1;
+        if (cyc >= 0) {
+            bool consecutive = cyc == lastSerialWriteCycle + 1;
+            lastSerialWriteCycle = cyc;
+            if (consecutive) return;
+        }
+
         if ((val & 0x80) != 0) {
             shiftRegister = 0x10;
             control |= 0x0C;
@@ -65,7 +79,6 @@ public class Mapper1 : IMapper { //MMC1 (Experimenal)
                     break;
                 case 1:
                     chrBank0 = (byte)(shiftRegister & 0x1F);
-                    ApplyMirroring();
                     break;
                 case 2:
                     chrBank1 = (byte)(shiftRegister & 0x1F);
@@ -142,21 +155,25 @@ public class Mapper1 : IMapper { //MMC1 (Experimenal)
 
         int prgMode = (control >> 2) & 0x03;
         int prgBankCount = cartridge.prgROM.Length / 0x4000;
+        // SUROM/SXROM (512 KiB PRG): CHR bank 0 bit 4 selects the 256 KiB outer half for both slots, the fixed
+        // last bank included (Dragon Warrior III/IV, Dragon Quest IV). Banks are counted within the half.
+        int outer = 0;
+        if (prgBankCount > 16) { outer = (chrBank0 & 0x10) != 0 ? 16 : 0; prgBankCount = 16; }
 
         switch (prgMode) {
             case 0:
             case 1:
                 int bank = (prgBank & 0x0E) % Math.Max(1, prgBankCount);
-                prgBankOffset0 = bank * 0x4000;
+                prgBankOffset0 = (outer + bank) * 0x4000;
                 prgBankOffset1 = prgBankOffset0 + 0x4000;
                 break;
             case 2:
-                prgBankOffset0 = 0;
-                prgBankOffset1 = (prgBank % Math.Max(1, prgBankCount)) * 0x4000;
+                prgBankOffset0 = outer * 0x4000;
+                prgBankOffset1 = (outer + prgBank % Math.Max(1, prgBankCount)) * 0x4000;
                 break;
             case 3:
-                prgBankOffset0 = (prgBank % Math.Max(1, prgBankCount)) * 0x4000;
-                prgBankOffset1 = (prgBankCount - 1) * 0x4000;
+                prgBankOffset0 = (outer + prgBank % Math.Max(1, prgBankCount)) * 0x4000;
+                prgBankOffset1 = (outer + prgBankCount - 1) * 0x4000;
                 break;
         }
         

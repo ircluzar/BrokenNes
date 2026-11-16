@@ -12,15 +12,17 @@ public static class ConsoleSessions
 {
     /// <param name="loadFirmware">SNES coprocessor firmware lookup (null: none; DSP-1 games then use the homemade chip).</param>
     /// <param name="fileName">The ROM's file name, when the app has one (the Master System family takes its region tag from it).</param>
+    /// <param name="pcMachine">The x86 PC's machine preset key (NesEmulator.X86.PcMachinePreset; "classic" = the console as it always was).</param>
     /// <param name="sega">The machine settings of the Sega consoles (region, Genesis model, Master System board); null or Auto takes them from the game (the file name's region tag, the header) as before.</param>
     public static IConsoleSession Create(ConsoleKind console, byte[] rom, string cpu, string ppu, string apu,
-                                         Func<string[], (string name, byte[] data)?>? loadFirmware = null, string fileName = "", NesEmulator.Sega.SegaOptions? sega = null) => console switch
+                                         Func<string[], (string name, byte[] data)?>? loadFirmware = null, string fileName = "", NesEmulator.Sega.SegaOptions? sega = null,
+                                         string pcMachine = "classic") => console switch
     {
         ConsoleKind.Snes => new SnesSession(rom, cpu, ppu, apu, loadFirmware),
         ConsoleKind.WideMess => new SnesSession(rom, cpu, ppu, apu, loadFirmware, wideMess: true),
         ConsoleKind.GameBoy or ConsoleKind.GameBoyColor => new GbSession(rom, console, cpu, ppu, apu),
         ConsoleKind.MasterSystem or ConsoleKind.GameGear or ConsoleKind.Genesis => CreateSega(console, rom, cpu, ppu, apu, fileName, sega),
-        ConsoleKind.Pc => Consoles.IsAvailable(ConsoleKind.Pc) ? new NesEmulator.X86.PcSession(rom, fileName, apu, cpu, ppu) : throw new NotSupportedException("the x86 console is not offered here"),
+        ConsoleKind.Pc => Consoles.IsAvailable(ConsoleKind.Pc) ? new NesEmulator.X86.PcSession(rom, fileName, apu, cpu, ppu, machine: pcMachine) : throw new NotSupportedException("the x86 console is not offered here"),
         _ => throw new ArgumentException("The NES runs on the NES class, not a console session"),
     };
 

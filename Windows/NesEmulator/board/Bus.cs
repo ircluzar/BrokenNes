@@ -373,6 +373,7 @@ public class Bus : IBus
 	{
 		this.cartridge = cartridge;
 		clockedMapper = cartridge?.mapper as ICpuClockedMapper;
+		if (cartridge?.mapper is Mapper1 mmc1) mmc1.CycleSource = () => CurrentCpuAccessCycle;
 		_cpuCores = CoreRegistry.CreateInstances<ICPU>(this, "CPU_");
 		_apuTypes = new System.Collections.Generic.Dictionary<string, System.Type>(CoreRegistry.ApuTypes, System.StringComparer.OrdinalIgnoreCase);
 		_ppuTypes = new System.Collections.Generic.Dictionary<string, System.Type>(CoreRegistry.PpuTypes, System.StringComparer.OrdinalIgnoreCase);

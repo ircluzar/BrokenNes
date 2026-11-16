@@ -19,7 +19,8 @@ public sealed class PcSession : IConsoleSession
     public const long DefaultIps = 60_000_000;
     private const int Rate = 44100;
 
-    private readonly PcMachine _m = new();
+    private readonly PcMachine _m;
+    private readonly CpuModel? _model;   // a CPU model (I386.Model.cs); null = the original console's CPU and its IPS menu
     private readonly byte[] _original;
     private readonly bool _floppy;
     private bool _powered;
@@ -29,8 +30,13 @@ public sealed class PcSession : IConsoleSession
     private byte[]? _exported;
 
     /// <param name="image">A disk image, or a DOS program (<see cref="PcDisks.IsDosProgram"/>: it is put on a FreeDOS boot disk made for it, <see cref="PcDisks.ForProgram"/>).</param>
-    public PcSession(byte[] image, string fileName = "", string apu = "ADLIB", string cpu = "I386", string ppu = "VGA")
+    public PcSession(byte[] image, string fileName = "", string apu = "ADLIB", string cpu = "I386", string ppu = "VGA", CpuModel? model = null, string machine = PcMachinePreset.ClassicKey)
     {
+        var preset = PcMachinePreset.Find(machine);
+        MachineKey = preset.Key;
+        if (!preset.IsClassic) model = preset.Cpu;
+        _model = model != null && !model.Legacy ? model : null;
+        _m = preset.IsClassic ? new PcMachine(PcMachine.DefaultMemory, _model) : new PcMachine(preset.Config, _model, preset.Video);
         Title = fileName.Length > 0 ? Path.GetFileNameWithoutExtension(fileName) : "x86 disk";
         if (PcDisks.IsDosProgram(image, fileName))
         {
@@ -43,7 +49,7 @@ public sealed class PcSession : IConsoleSession
         if (image.Length < 512 || image.Length % 512 != 0) throw new InvalidDataException("an x86 disk image is a whole number of 512-byte sectors");
         _original = image;
         _floppy = image.Length <= 2949120 && !(image[510] == 0x55 && image[511] == 0xaa && image[0x1c2] != 0);   // a floppy-sized image without a partition table
-        _m.InstructionsPerSecond = IpsOf(cpu); _cpuId = cpu;
+        _m.InstructionsPerSecond = _model?.Ips ?? IpsOf(cpu); _cpuId = cpu;
         _m.Speaker.Enabled = true;
         _m.Opl.Enabled = true;
         InsertDisk((byte[])image.Clone());
@@ -69,11 +75,13 @@ public sealed class PcSession : IConsoleSession
     private DiskImage Disk => (_floppy ? _m.Floppy[0] : _m.Hdd[0])!;
 
     public PcMachine Machine => _m;
+    /// <summary>The machine preset (<see cref="PcMachinePreset"/>) the session was built as.</summary>
+    public string MachineKey { get; }
     /// <summary>The DOS program the disk was made for (its 8.3 name), or null for a disk image opened as it is.</summary>
     public string? Program { get; }
     public ConsoleKind Console => ConsoleKind.Pc;
     public string Title { get; }
-    public string Description => $"x86 PC | CPU I386 (486-class, {_m.InstructionsPerSecond / 1_000_000} M instr/s) | PPU {PpuId} ({VgaPictures.Describe(PpuId)}) | APU {ApuId} ({PcSound.Describe(ApuId)}) | {(Program != null ? $"{Program} on a FreeDOS 1.4 disk" : _floppy ? "floppy A:" : "hard disk C:")} {_original.Length / 1024:N0} KB{(_m.Stopped != null ? " | STOPPED: " + _m.Stopped : "")}";
+    public string Description => $"x86 PC{(MachineKey != PcMachinePreset.ClassicKey ? $" ({PcMachinePreset.Find(MachineKey).Label})" : "")} | CPU {(_model != null ? $"{_model.Name}" : "I386 (486-class")}{(_model != null ? $" ({_m.InstructionsPerSecond / 1_000_000} M instr/s)" : $", {_m.InstructionsPerSecond / 1_000_000} M instr/s)")} | PPU {PpuId} ({VgaPictures.Describe(PpuId)}) | APU {ApuId} ({PcSound.Describe(ApuId)}) | {(Program != null ? $"{Program} on a FreeDOS 1.4 disk" : _floppy ? "floppy A:" : "hard disk C:")} {_original.Length / 1024:N0} KB{(_m.Stopped != null ? " | STOPPED: " + _m.Stopped : "")}";
     public double FramesPerSecond => Pit8254.Freq / Vga.FrameTicks;
     public string GameId { get; }
 
@@ -200,7 +208,7 @@ public sealed class PcSession : IConsoleSession
     public bool TrySwapCore(CoreSlot slot, string id)
     {
         if (!ConsoleSessions.Offers(ConsoleKind.Pc, slot, id)) return false;
-        if (slot == CoreSlot.Cpu) { _m.InstructionsPerSecond = IpsOf(id); _cpuId = id; }
+        if (slot == CoreSlot.Cpu) { _m.InstructionsPerSecond = _model?.Ips ?? IpsOf(id); _cpuId = id; }
         if (slot == CoreSlot.Apu) { if (!PcSound.Apply(_m, id)) return false; ApuId = id.ToUpperInvariant(); }
         if (slot == CoreSlot.Ppu)
         {   // a live swap: the new chip starts cold on the card as it is (a CGA swapped in under a VGA mode shows B8000 until the next mode set)
@@ -278,7 +286,7 @@ public sealed class PcSession : IConsoleSession
         byte[] payload = ConsoleStateFile.Unwrap(state, Console, GameId, Title, StateUnits());
         var before = _m.SaveState();
         var (machine, sound) = SplitSoundOutput(payload);
-        try { _m.LoadState(machine); RestoreSoundOutput(sound); _m.InstructionsPerSecond = IpsOf(_cpuId); _powered = true; _exported = null; _pad = PadButtons.None; }
+        try { _m.LoadState(machine); RestoreSoundOutput(sound); _m.InstructionsPerSecond = _model?.Ips ?? IpsOf(_cpuId); _powered = true; _exported = null; _pad = PadButtons.None; }
         catch (Exception e) when (e is not InvalidDataException) { _m.LoadState(before); throw new InvalidDataException("the x86 state is damaged: " + e.Message); }
     }
 

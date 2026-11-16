@@ -609,6 +609,10 @@ public class Mapper5 : IMapper
     // --- PPU hook from core: called when scanlineCycle==3 for visible scanlines
     public void PpuScanlineHook(int scanline, bool renderingEnabled)
     {
+        // Line 240 (PPU_FIX calls it there): the PPU stops fetching, so the "in frame" flag ($5204 bit 6) drops for the
+        // vblank. Games poll it (Nobunaga's Ambition 2: BIT $5204 / BVS loop) and never left the loop while it stuck at 1.
+        // The pending IRQ is left alone, as on hardware (only the next frame's start or a $5204 read acknowledges it).
+        if (scanline == 240) { inFrame = false; return; }
         if (!renderingEnabled || scanline >= 241)
         {
             inFrame = false; irqCounter = 0; irqPending = false; return;

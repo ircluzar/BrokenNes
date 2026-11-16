@@ -223,7 +223,7 @@ namespace BrokenNes.Windows
                 return stored;
             }
             return ConsoleSessions.Create(console, romCopy, Own(CoreSlot.Cpu, m.Cpu), SelectedCore(console, CoreSlot.Ppu), Own(CoreSlot.Apu, m.Apu),
-                                          names => FindSnesFirmware(currentRomPath, names), fileName, SegaOptionsFromConfig());
+                                          names => FindSnesFirmware(currentRomPath, names), fileName, SegaOptionsFromConfig(), config.PcMachine);
         }
 
         // ------------------------------------------------------------------ what the HTTP API reports
