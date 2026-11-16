@@ -42,14 +42,17 @@ public sealed partial class PcMachine : IX86Bus
     public long Clock => Cpu.Cycle + _idle;
     public long PitNow => (long)((Int128)Clock * Pit8254.Freq / InstructionsPerSecond);
 
-    public PcMachine(int memBytes = DefaultMemory)
+    /// <param name="video">The video card: the plain VGA (the default, unchanged) or an S3 Trio64 (VBE 2.0, linear framebuffer, drawing engine).</param>
+    public PcMachine(int memBytes = DefaultMemory, PcVideo video = PcVideo.Vga)
     {
+        Video = video;
         MemKb = memBytes / 1024;
         Cpu = new I386(4, memBytes, this);
         Pit = new Pit8254(() => PitNow, () => Pic.Pulse(0));
         Kbc = new Kbc8042(Pic);
         Cmos = new Cmos(() => PitNow, MemKb);
-        Vga = new Vga(() => PitNow);
+        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64);
+        S3 = Vga.S3;
         Speaker = new PcSpeaker(this);
         Opl = new Opl2(() => PitNow);
         Dma = new Dma8237(this);
@@ -61,12 +64,25 @@ public sealed partial class PcMachine : IX86Bus
 
     public bool MapsIoMem => true;
 
-    public byte MemRead8(uint a) => a < 0xc0000 ? Vga.MemRead(a) : (byte)0xff;
-    public void MemWrite8(uint a, byte v) { if (a < 0xc0000) Vga.MemWrite(a, v); }
+    public byte MemRead8(uint a) => a < 0xc0000 ? Vga.MemRead(a) : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
+    public void MemWrite8(uint a, byte v) { if (a < 0xc0000) Vga.MemWrite(a, v); else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
     public ushort MemRead16(uint a) => (ushort)(MemRead8(a) | (MemRead8(a + 1) << 8));
-    public void MemWrite16(uint a, ushort v) { MemWrite8(a, (byte)v); MemWrite8(a + 1, (byte)(v >> 8)); }
-    public uint MemRead32(uint a) => (uint)(MemRead16(a) | (MemRead16(a + 2) << 16));
-    public void MemWrite32(uint a, uint v) { MemWrite16(a, (ushort)v); MemWrite16(a + 2, (ushort)(v >> 16)); }
+    public void MemWrite16(uint a, ushort v)
+    {
+        if (S3 != null && (S3.InLfb(a) && S3.InLfb(a + 1) ? WriteLfb16(a, v) : a < 0xc0000 && S3.MmioWrite(a, v, 16))) return;
+        MemWrite8(a, (byte)v); MemWrite8(a + 1, (byte)(v >> 8));
+    }
+    public uint MemRead32(uint a) => S3 != null && S3.InLfb(a) ? S3.LfbRead32(a) : (uint)(MemRead16(a) | (MemRead16(a + 2) << 16));
+    public void MemWrite32(uint a, uint v)
+    {
+        if (S3 != null)
+        {
+            if (S3.InLfb(a)) { S3.LfbWrite32(a, v); return; }
+            if (a < 0xc0000 && S3.MmioWrite(a, v, 32)) return;
+        }
+        MemWrite16(a, (ushort)v); MemWrite16(a + 2, (ushort)(v >> 16));
+    }
+    private bool WriteLfb16(uint a, ushort v) { S3!.LfbWrite8(a, (byte)v); S3.LfbWrite8(a + 1, (byte)(v >> 8)); return true; }
 
     /// <summary>How many times each vector was taken as a hardware interrupt (diagnostics).</summary>
     public readonly long[] IrqCount = new long[256];
@@ -75,6 +91,7 @@ public sealed partial class PcMachine : IX86Bus
     public byte In8(int port)
     {
         if (Card != null && Card.In(port, false, out int cv)) return (byte)cv;
+        if (S3 != null && S3Trio64.IsEnginePort(port)) return (byte)S3.EngineIn(port & 0xfffe, (port & 1) != 0);
         switch (port)
         {
             case 0x20: case 0x21: case 0xa0: case 0xa1: return Pic.In(port);
@@ -100,6 +117,7 @@ public sealed partial class PcMachine : IX86Bus
     public void Out8(int port, byte v)
     {
         if (Card != null && Card.Out(port, false, v)) return;
+        if (S3 != null && S3Trio64.IsEnginePort(port)) { S3.EngineOut8(port, v); return; }
         switch (port)
         {
             case 0x20: case 0x21: case 0xa0: case 0xa1: Pic.Out(port, v); return;
@@ -123,17 +141,23 @@ public sealed partial class PcMachine : IX86Bus
     public ushort In16(int port)
     {
         if (Card != null && Card.In(port, true, out int cv)) return (ushort)cv;
+        if (S3 != null && S3Trio64.IsEnginePort(port)) return (ushort)(S3.EngineIn(port, false) | S3.EngineIn(port, true) << 8);
         if (ExtraIn != null) { int v = ExtraIn(port, 16); if (v >= 0) return (ushort)v; }
         return (ushort)(In8(port) | (In8(port + 1) << 8));
     }
     public void Out16(int port, ushort v)
     {
         if (Card != null && Card.Out(port, true, v)) return;
+        if (S3 != null && S3Trio64.IsEnginePort(port)) { S3.EngineOut16(port, v); return; }
         if (ExtraOut != null && ExtraOut(port, 16, v)) return;
         Out8(port, (byte)v); Out8(port + 1, (byte)(v >> 8));
     }
     public uint In32(int port) => (uint)(In16(port) | (In16(port + 2) << 16));
-    public void Out32(int port, uint v) { Out16(port, (ushort)v); Out16(port + 2, (ushort)(v >> 16)); }
+    public void Out32(int port, uint v)
+    {
+        if (S3 != null && (port & 0xfffc) == 0xe2e8) { S3.PixelData(v, 32); return; }   // a 32-bit image transfer
+        Out16(port, (ushort)v); Out16(port + 2, (ushort)(v >> 16));
+    }
 
     /// <summary>Port 61h bit 1 (speaker data) and bit 0 (PIT channel 2 gate).</summary>
     public int Port61 => _port61;
@@ -176,10 +200,10 @@ public sealed partial class PcMachine : IX86Bus
 
     // ================= physical memory helpers (for the BIOS and the host) =================
 
-    public byte Phys8(uint a) => a is >= 0xa0000 and < 0xc0000 ? Vga.MemRead(a) : a < Cpu.MemSize ? Cpu.Mem[a] : (byte)0xff;
+    public byte Phys8(uint a) => a is >= 0xa0000 and < 0xc0000 ? Vga.MemRead(a) : a < Cpu.MemSize ? Cpu.Mem[a] : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
     public ushort Phys16(uint a) => (ushort)(Phys8(a) | (Phys8(a + 1) << 8));
     public uint Phys32(uint a) => (uint)(Phys16(a) | (Phys16(a + 2) << 16));
-    public void PhysW8(uint a, byte v) { if (a is >= 0xa0000 and < 0xc0000) Vga.MemWrite(a, v); else if (a < Cpu.MemSize) Cpu.Mem[a] = v; }
+    public void PhysW8(uint a, byte v) { if (a is >= 0xa0000 and < 0xc0000) Vga.MemWrite(a, v); else if (a < Cpu.MemSize) Cpu.Mem[a] = v; else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
     public void PhysW16(uint a, ushort v) { PhysW8(a, (byte)v); PhysW8(a + 1, (byte)(v >> 8)); }
     public void PhysW32(uint a, uint v) { PhysW16(a, (ushort)v); PhysW16(a + 2, (ushort)(v >> 16)); }
 
@@ -264,6 +288,7 @@ public sealed partial class PcMachine : IX86Bus
         Dma.Reset();
         Card?.Reset();
         Vga.Picture?.Reset();
+        S3?.Reset();
         _lastFrame = -1;
         Post();
     }
@@ -276,7 +301,7 @@ public sealed partial class PcMachine : IX86Bus
         using (var w = new BinaryWriter(ms))
         {
             w.Write(0x33384350); // "PC83"
-            w.Write(4);   // 2: the AdLib after the VGA; 3: the DMA controllers and the sound card after the AdLib; 4: the AdLib engine's own state (FA-ST-1)
+            w.Write(S3 != null ? 5 : 4);   // 5: an S3 Trio64 board (its 4 MB video memory, the SVGA block at the end); 2: the AdLib after the VGA; 3: the DMA controllers and the sound card after the AdLib; 4: the AdLib engine's own state (FA-ST-1)
             Cpu.SaveState(w);
             w.Write(_idle); w.Write(_port61); w.Write(_lastFrame); w.Write(InstructionsPerSecond);
             Pic.Save(w); Pit.Save(w); Kbc.Save(w); Cmos.Save(w); Vga.Save(w); Opl.Save(w); Opl.SaveEngine(w);
@@ -302,16 +327,36 @@ public sealed partial class PcMachine : IX86Bus
                 var blob = ps.ToArray();
                 w.Write(0x50434956); w.Write(Vga.Picture.Id); w.Write(blob.Length); w.Write(blob);   // "VICP"
             }
+            // the S3's own registers, after everything else (its video memory is the VGA's, saved above): a plain-VGA state is unchanged
+            if (S3 != null)
+            {
+                var ss = new MemoryStream();
+                using (var sw = new BinaryWriter(ss)) S3.Save(sw);
+                var blob = ss.ToArray();
+                w.Write(0x41475653); w.Write(S3Trio64.Id); w.Write(blob.Length); w.Write(blob);   // "SVGA"
+            }
         }
         return ms.ToArray();
     }
 
+    /// <summary>Loads a state; a state that does not fit this machine (another video card) throws and leaves the machine as it was.</summary>
     public void LoadState(byte[] s)
+    {
+        if (S3 == null) { LoadStateCore(s); return; }       // the plain VGA: exactly as before
+        var undo = SaveState();
+        try { LoadStateCore(s); }
+        catch { LoadStateCore(undo); throw; }
+    }
+
+    private void LoadStateCore(byte[] s)
     {
         using var r = new BinaryReader(new MemoryStream(s));
         if (r.ReadInt32() != 0x33384350) throw new InvalidDataException("not an x86 console state");
         int version = r.ReadInt32();
-        if (version is not (1 or 2 or 3 or 4)) throw new InvalidDataException($"x86 console state version {version} is not known");
+        if (version is not (1 or 2 or 3 or 4 or 5)) throw new InvalidDataException($"x86 console state version {version} is not known");
+        // the video card must be the one the state was saved on: a mismatch is an error before anything is loaded, never a guess
+        if ((version == 5) != (S3 != null))
+            throw new InvalidDataException($"this state was saved with the {(version == 5 ? "S3 Trio64" : "VGA")} video card, this machine has the {(S3 != null ? "S3 Trio64" : "VGA")}");
         Cpu.LoadState(r);
         _idle = r.ReadInt64(); _port61 = r.ReadByte(); _lastFrame = r.ReadInt64(); InstructionsPerSecond = r.ReadInt64();
         Pic.Load(r); Pit.Load(r); Kbc.Load(r); Cmos.Load(r); Vga.Load(r);
@@ -340,7 +385,18 @@ public sealed partial class PcMachine : IX86Bus
         Floppy[0] = disks[0]; Floppy[1] = disks[1]; Hdd[0] = disks[2]; Hdd[1] = disks[3];
         // the picture chip saved is restored when the same chip draws now; another one (or a state without one) starts it cold: a clean re-key, never a guess
         string? picId = null; byte[]? picBlob = null;
-        if (r.BaseStream.Position + 4 <= r.BaseStream.Length && r.ReadInt32() == 0x50434956) { picId = r.ReadString(); picBlob = r.ReadBytes(r.ReadInt32()); }
+        string? svgaId = null; byte[]? svgaBlob = null;
+        while (r.BaseStream.Position + 4 <= r.BaseStream.Length)
+        {
+            int tag = r.ReadInt32();
+            if (tag == 0x50434956) { picId = r.ReadString(); picBlob = r.ReadBytes(r.ReadInt32()); }
+            else if (tag == 0x41475653) { svgaId = r.ReadString(); svgaBlob = r.ReadBytes(r.ReadInt32()); }
+            else break;
+        }
+        // the video card must be the one the state was saved on: a mismatch is an error, never a guess
+        if ((svgaId ?? "VGA") != (S3 != null ? S3Trio64.Id : "VGA"))
+            throw new InvalidDataException($"this state was saved with the {svgaId ?? "VGA"} video card, this machine has the {(S3 != null ? S3Trio64.Id : "VGA")}");
+        if (S3 != null) { using var sr = new BinaryReader(new MemoryStream(svgaBlob!)); S3.Load(sr); }
         if (Vga.Picture != null)
         {
             if (picBlob != null && picId == Vga.Picture.Id) { using var pr = new BinaryReader(new MemoryStream(picBlob)); Vga.Picture.Load(pr); }

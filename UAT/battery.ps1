@@ -8,7 +8,7 @@
   3. runs the Butchering scenarios (preset undo, soak, core swaps, mangled JSON) - one process per console, in parallel,
   4. runs the fuzz campaign for -FuzzMinutes on every console, in parallel,
   4b. the x86 PC console ('pc' in -Consoles; Butchering mode and the fuzzer do not cover it): the CPU checks (--x86test), the device programs
-      (--x86dev), the sound engines and cards with their save states (--x86engines, --x86cards), and a FreeDOS session on each x86 CPU core
+      (--x86dev), the SVGA cards and our VBE BIOS (--x86video), the sound engines and cards with their save states (--x86engines, --x86cards), and a FreeDOS session on each x86 CPU core
       (I386, I386_D074: boot, menus, state round trip) when the toolkit's FreeDOS image is here,
   5. writes <Out>\report.md (and report.json): each group's verdict, every failure, every fuzz finding with its one-line repro.
   Exit code 1 when anything failed. Long: run it in the background (Start-Process / a second terminal).
@@ -135,7 +135,7 @@ if ($Skip -notcontains 'determinism' -and $Consoles.Count -gt 0) {
 if ($runPc -and $Skip -notcontains 'x86') {
     Note "x86 PC console checks" White
     $xd = Join-Path $Out 'x86'; New-Item -ItemType Directory -Force -Path $xd | Out-Null
-    $runs = [ordered]@{ 'x86test' = @('--x86test'); 'x86dev' = @('--x86dev'); 'x86engines' = @('--x86engines'); 'x86cards' = @('--x86cards') }
+    $runs = [ordered]@{ 'x86test' = @('--x86test'); 'x86dev' = @('--x86dev'); 'x86video' = @('--x86video'); 'x86engines' = @('--x86engines'); 'x86cards' = @('--x86cards') }
     $fd = if ($env:BROKENNES_FREEDOS) { $env:BROKENNES_FREEDOS } else { 'C:\BrokenNes-tools\dos\freedos\FD14LITE.img' }
     if (Test-Path $fd) { foreach ($cpu in 'I386', 'I386_D074') { $runs["x86session-$cpu"] = @('--x86session', $fd, '--frames', '600', '--cpu', $cpu) } }
     $procs = foreach ($k in $runs.Keys) { $p = Start-Process -FilePath $exe -ArgumentList $runs[$k] -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $xd "$k.txt") -RedirectStandardError (Join-Path $xd "$k.err.txt"); $null = $p.Handle; [pscustomobject]@{ k = $k; p = $p } }
