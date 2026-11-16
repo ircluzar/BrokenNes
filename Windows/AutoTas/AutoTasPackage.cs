@@ -45,9 +45,17 @@ namespace BrokenNes.Windows.AutoTas
         [JsonPropertyName("end_frame")] public long EndFrame { get; set; }
         [JsonPropertyName("seg")] public string? Seg { get; set; }
         /// <summary>The segment recorded from the clean state (when the clean-up changes the run); null means <see cref="Seg"/> plays after either jump.</summary>
-        [JsonPropertyName("clean_seg")] public string? CleanSeg { get; set; }
+        /// <remarks>The tools' manifest (AutoTasPackage.cs in the core, lib/package.py) writes clean_seg as a flag: then the clean
+        /// segment is seg/&lt;id&gt;.clean.bnm when true. Either form is read.</remarks>
+        [JsonPropertyName("clean_seg")] public JsonElement? CleanSegRaw { get; set; }
+        [JsonIgnore] public string? CleanSeg => CleanSegRaw is { ValueKind: JsonValueKind.String } e ? e.GetString()
+            : CleanSegRaw is { ValueKind: JsonValueKind.True } ? $"seg/{Id}.clean.bnm" : null;
         [JsonPropertyName("raw")] public string? Raw { get; set; }
         [JsonPropertyName("clean")] public string? Clean { get; set; }
+        // the tools' names for the same files (segment / raw_state / clean_state)
+        [JsonPropertyName("segment"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Segment { set { Seg ??= value; } get => null; }
+        [JsonPropertyName("raw_state"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? RawState { set { Raw ??= value; } get => null; }
+        [JsonPropertyName("clean_state"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? CleanState { set { Clean ??= value; } get => null; }
         [JsonPropertyName("thumb")] public string? Thumb { get; set; }
         [JsonPropertyName("keyframe_hash")] public string? KeyframeHash { get; set; }
         [JsonPropertyName("quality")] public AutoTasQuality? Quality { get; set; }
