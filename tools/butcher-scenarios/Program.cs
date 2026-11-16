@@ -22,10 +22,22 @@ int fails = 0;
 void Line(string status, string scen, string what) { if (status == "FAIL") fails++; report.WriteLine($"{status,-5} {scen,-13} {what}"); Console.WriteLine($"[{console}] {status} {scen} {what}"); }
 
 string repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-foreach (var up in new[] { AppContext.BaseDirectory, Environment.CurrentDirectory })
+foreach (var up in new[] { Environment.GetEnvironmentVariable("BN_REPO") ?? "", AppContext.BaseDirectory, Environment.CurrentDirectory }.Where(u => u != ""))
     for (var d = new DirectoryInfo(up); d != null; d = d.Parent) if (File.Exists(Path.Combine(d.FullName, "UAT", "run-suite.ps1"))) { repo = d.FullName; goto found; }
 found:
 string corpus = Path.Combine(repo, "SubProjects/65-o-borked/bin/Debug/net8.0/roms");
+// the NES corpus is untracked: a worktree has none, so fall back to the main checkout its .git file points at (battery "process died" 2026-11-16:
+// a worktree run resolved C:\SubProjects\..., skipped without a DONE line, and the battery read the missing DONE as a crash)
+if (!Directory.Exists(corpus))
+{
+    var gitFile = Path.Combine(repo, ".git");
+    if (File.Exists(gitFile) && File.ReadAllText(gitFile).Trim() is var g && g.StartsWith("gitdir:"))
+    {
+        var main = Path.GetFullPath(Path.Combine(g[7..].Trim(), "..", "..", ".."));
+        var alt = Path.Combine(main, "SubProjects/65-o-borked/bin/Debug/net8.0/roms");
+        if (Directory.Exists(alt)) corpus = alt;
+    }
+}
 var lib = new Dictionary<string, (ConsoleKind k, string dir, string[] ext, string presets, string[] known)>
 {
     ["nes"] = (ConsoleKind.Nes, corpus, new[] { ".nes" }, "nes", new[] { "Super Mario Bros. (JU) (PRG0) [!].nes", "Mega Man 2 (U).nes", "Super Mario Bros. 3 (U) (PRG1) [!].nes", "Battletoads (U).nes", "Legend of Zelda, The (U) (PRG1).nes" }),
@@ -39,7 +51,7 @@ var lib = new Dictionary<string, (ConsoleKind k, string dir, string[] ext, strin
 };
 var (kind, dir, exts, presetKey, known) = lib[console];
 if (kind == ConsoleKind.WideMess) Consoles.WideMessEnabled = true;
-if (!Directory.Exists(dir)) { Line("SKIP", "all", $"no ROM folder {dir}"); return 0; }
+if (!Directory.Exists(dir)) { Line("SKIP", "all", $"no ROM folder {dir}"); report.WriteLine("DONE 0 failure(s) (skipped)"); return 0; }
 var pool = Directory.EnumerateFiles(dir).Where(f => exts.Contains(Path.GetExtension(f).ToLowerInvariant()) && !f.Contains("32X")).OrderBy(f => f).ToArray();
 var rng = new Random(seed);
 var games = known.Select(g => Path.Combine(dir, g)).Where(File.Exists).Concat(pool.OrderBy(_ => rng.Next()).Take(Math.Max(0, gamesN - known.Length))).Distinct().Take(gamesN).ToList();

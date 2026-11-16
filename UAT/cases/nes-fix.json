@@ -189,7 +189,53 @@
         "result": "ok",
         "crashInfo": ""
       }
+    },
+    {
+      "id": "nesfix-r4-commando-2007-render-bus",
+      "description": "Commando (UNROM, CHR-RAM) writes its title through $2007 with rendering on (lines 25-46 of boot frame 5). PPU_FIX wrote those at v; Mesen 2.1.1 (and the Visual 2C02) writes the address the fetch pipeline has on the PPU bus (its own low byte as data). Now tracked on Mesen's fetch schedule. Lockstep: palette 7 -> 0, CHR-RAM 'differs forever from frame 5' -> 4 frames, nametable 3 -> 2 of 1645 (2026-11-16). Frame 6 picture = Mesen's.",
+      "kind": "romtest",
+      "rom": "{lib}/Commando (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 6,
+      "input": "",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "AC4455A504D73D71",
+        "framesRun": 6,
+        "distinctColors": 10,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "nesfix-r4-firehawk-bf9097-mirroring",
+      "description": "Fire Hawk (mapper 71 BF9097): one-screen select as Mesen 2.1.1's BF909x - a $9000 write enables it, then every $8000-$BFFF write sets it, bit 4 set = screen A. PPU_FIX had A/B swapped and only listened at $9000-$9FFF, so the playfield went to the wrong nametable from frame 297. Lockstep vs Mesen: nametables 2314 -> 3 different frames of 2611 (2026-11-16).",
+      "kind": "romtest",
+      "rom": "{lib}/Fire Hawk (Unl).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "input": "421:Start,431:",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "AEB562AF0298F59B",
+        "framesRun": 600,
+        "distinctColors": 5,
+        "result": "ok",
+        "crashInfo": ""
+      }
     }
   ],
-  "goldenGeneratedUtc": "2026-11-16T09:39:32Z"
+  "goldenGeneratedUtc": "2026-11-16T16:51:18Z"
 }

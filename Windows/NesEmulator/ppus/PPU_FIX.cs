@@ -493,6 +493,9 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	// Speed (Lite AOT, 2026-11-14): what RenderDot does at each dot, looked up once instead of a chain of range tests (same work, same order).
 	//   bits 0-2  background: 0 nothing, 1 shift only, 2 shift + load the shifters + nametable fetch, 3 shift + attribute, 4 shift + pattern low, 5 shift + pattern high
 	//   bit 3     a pixel out (dots 1-256)    bit 4  dot 257    bit 5  a sprite-pattern fetch dot (258-320, phase 5 or 7)    bit 6  dot 321
+	/// <summary>The address the render pipeline last drove onto the PPU bus (a mid-render $2007 write lands there).</summary>
+	private ushort fetchAddr;
+
 	private const int RdBgMask = 7, RdPixel = 8, RdDot257 = 16, RdSprFetch = 32, RdDot321 = 64;
 	private static readonly byte[] RdTab = BuildRdTab();
 	private static byte[] BuildRdTab()
@@ -512,6 +515,44 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		return t;
 	}
 
+	// The PPU bus address as the fetch pipeline drives it, on Mesen 2.1.1's schedule: each 2-dot fetch puts its
+	// address out on its first (odd) dot - nametable, attribute, pattern low, pattern high - and dots 257-320 do two
+	// garbage nametable fetches then the sprite pattern pair per slot (tile $FF for an empty slot). Only a $2007 write
+	// during rendering looks at it (Commando's title is written with rendering on).
+	private void TrackFetchAddr(int dot)
+	{
+		if (dot == 0) return;
+		if (dot <= 256 || (dot >= 321 && dot <= 336))
+		{
+			switch (dot & 7)
+			{
+				case 1: fetchAddr = (ushort)(0x2000 | (v & 0x0FFF)); break;
+				case 3: fetchAddr = AttrAddr(); break;
+				case 5: fetchAddr = BgPatternAddress(); break;
+				case 7: fetchAddr = (ushort)(BgPatternAddress() + 8); break;
+			}
+		}
+		else if (dot <= 320)
+		{
+			// Mesen: garbage nametable (phase 0) and attribute (phase 2) fetches, then LoadSprite reads the low and high
+			// pattern bytes in one go at phase 3, leaving the high byte's address on the bus.
+			int ph = (dot - 257) & 7, slot = (dot - 257) >> 3;
+			if (ph == 0) fetchAddr = (ushort)(0x2000 | (v & 0x0FFF));
+			else if (ph == 2) fetchAddr = AttrAddr();
+			else if (ph == 3)
+			{
+				bool tall = (PPUCTRL & 0x20) != 0;
+				int tile = slot < nSprCount ? nSprTile[slot] : 0xFF, row = slot < nSprCount ? nSprRow[slot] : 0;
+				if (slot < nSprCount && (nSprAttr[slot] & 0x80) != 0) row = (tall ? 15 : 7) - row;
+				int addr = tall ? ((tile & 1) << 12) + ((tile & 0xFE) + (row >> 3)) * 16 + (row & 7) : ((PPUCTRL & 0x08) << 9) + tile * 16 + row;
+				fetchAddr = (ushort)(addr + 8);
+			}
+		}
+		else if (dot == 337 || dot == 339) fetchAddr = (ushort)(0x2000 | (v & 0x0FFF)); // the two extra nametable fetches
+	}
+
+	private ushort AttrAddr() => (ushort)(0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07));
+
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	private void RenderDot()
 	{
@@ -519,6 +560,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		int act = (uint)dot < (uint)RdTab.Length ? RdTab[dot] : 0;
 		if (vPipelineOn)
 		{
+			if (dataPortCollision) TrackFetchAddr(dot);
 			int bg = act & RdBgMask;
 			if (bg != 0)
 			{
@@ -769,7 +811,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	// and the shifters/latches/sprite units are what the rest of that line (and the next) draw from.
 	private byte[] PackPipeline()
 	{
-		var b = new byte[8 + 4 + 2 + 32 + 2 + 48 + 3 + 2 + 1 + 32];
+		var b = new byte[8 + 4 + 2 + 32 + 2 + 48 + 3 + 2 + 1 + 32 + 2];
 		int o = 0;
 		void U16(ushort x) { b[o++] = (byte)x; b[o++] = (byte)(x >> 8); }
 		U16(bgShiftLo); U16(bgShiftHi); U16(atShiftLo); U16(atShiftHi);
@@ -783,6 +825,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		// the PPU open-bus latch and each bit's decay, as dots from now (the dot counter itself is not in a state): a load must not decay them on the old timeline
 		b[o++] = ppuOpenBus;
 		for (int i = 0; i < 8; i++) { int rem = (int)Math.Clamp(ppuOpenBusDecayAt[i] - ppuDotCounter, int.MinValue, int.MaxValue); b[o++] = (byte)rem; b[o++] = (byte)(rem >> 8); b[o++] = (byte)(rem >> 16); b[o++] = (byte)(rem >> 24); }
+		U16(fetchAddr); // the render pipeline's bus address (mid-render $2007 writes)
 		return b;
 	}
 
@@ -810,6 +853,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			ppuOpenBus = b[o++];
 			for (int i = 0; i < 8; i++) { int rem = b[o] | b[o + 1] << 8 | b[o + 2] << 16 | b[o + 3] << 24; o += 4; ppuOpenBusDecayAt[i] = ppuDotCounter + rem; }
 		}
+		fetchAddr = b.Length >= 136 ? U16() : (ushort)0;
 	}
 
 
@@ -1066,9 +1110,13 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 				PPUDATA = value;
 				if (dataPortCollision && vPipelineOn)
 				{
-					// Rendering owns the VRAM address bus. The byte that lands is the address's own
-					// low byte, not the CPU's data - see CollideDataAccessWithRender for the model.
-					Write(v, (byte)(v & 0xFF));
+					// Rendering owns the VRAM address bus: the write lands on the address the fetch pipeline last put
+					// on it (not v), and the byte is that address's own low byte, not the CPU's data - as Mesen 2.1.1
+					// (_ppuBusAddress). Commando's boot writes its title through $2007 with rendering on (lines 25-46):
+					// writing at v put them in other nametable / CHR-RAM / palette cells than Mesen.
+										// a write on dot 1 still sees dot 0's bus: Mesen's first-cycle pattern address of the tile fetched at 337/339 (measured against Mesen on Commando; on other dots the new fetch address is seen)
+					ushort ba = scanlineCycle == 1 && scanline < 240 ? BgPatternAddress() : fetchAddr;
+					Write(ba, (byte)(ba & 0xFF));
 					CollideDataAccessWithRender();
 				}
 				else
