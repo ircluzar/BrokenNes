@@ -961,6 +961,14 @@ public sealed partial class I386
         level %= 32;
         uint sp = R[4];
         var m = new OptAddr();
+        // a 386 write-checks the new top of stack (ESP after the frame and the locals) before it changes anything (test386 POST 1Ah:
+        // enter 1,0 with the locals' byte on a supervisor page from ring 3 = #PF)
+        if (allocsz != 0)
+        {
+            uint d0 = _opsz16 ? 2u : 4u;
+            var probe = new OptAddr();
+            if (!Translate(ref probe, 2, SEG_SS, (sp - d0 * (uint)(level + 1) - allocsz) & _spm, 1)) return false;
+        }
         if (level == 0)
         {
             if (_opsz16)
@@ -975,47 +983,34 @@ public sealed partial class I386
                 if (!Translate(ref m, 2, SEG_SS, (sp - 4) & _spm, 4)) return false;
                 SetSp(sp - 4 - allocsz, _spm);
                 Store32(ref m, R[5]);
-                R[5] = (sp - 4) & _spm;
+                R[5] = (sp & ~_spm) | ((sp - 4) & _spm);   // (a 16-bit stack keeps ESP's high word: test386 POST 1Ah)
             }
             return true;
         }
-        // tiny386 enter_helper
-        uint temp;
-        if (_opsz16)
+        // nested levels (386 manual ENTER): push BP; frame = SP; level-1 times: BP -= d, push [SS:BP]; push frame; BP = frame; SP -= size.
+        // (tiny386's enter_helper pushed BP itself instead of the saved frame pointers and never moved its SP copy: SingleStepTests C8)
+        uint d = _opsz16 ? 2u : 4u;
+        int sz = (int)d;
+        var mr = new OptAddr();
+        if (!Translate(ref m, 2, SEG_SS, (sp - d) & _spm, sz)) return false;
+        if (_opsz16) Store16(ref m, L16(5)); else Store32(ref m, R[5]);
+        sp -= d;
+        uint frame = (R[4] & ~_spm) | (sp & _spm);
+        uint bp = R[5];
+        for (int i = 1; i < level; i++)
         {
-            if (!Translate(ref m, 2, SEG_SS, (sp - 2) & _spm, 2)) return false;
-            SetSp(sp - 2, _spm); Store16(ref m, L16(5)); temp = L16(4);
+            bp = _spm == 0xffff ? (bp & 0xffff0000) | ((bp - d) & 0xffff) : bp - d;
+            if (!Translate(ref mr, 1, SEG_SS, bp & _spm, sz)) return false;
+            uint v = _opsz16 ? Load16(ref mr) : Load32(ref mr);
+            if (!Translate(ref m, 2, SEG_SS, (sp - d) & _spm, sz)) return false;
+            if (_opsz16) Store16(ref m, v); else Store32(ref m, v);
+            sp -= d;
         }
-        else
-        {
-            if (!Translate(ref m, 2, SEG_SS, (sp - 4) & _spm, 4)) return false;
-            SetSp(sp - 4, _spm); Store32(ref m, R[5]); temp = R[4];
-        }
-        for (int i = 0; i < level - 1; i++)
-        {
-            uint d = _opsz16 ? 2u : 4u;
-            if (_spm == 0xffff) S16(5, L16(5) - d); else R[5] -= d;
-            if (_opsz16)
-            {
-                if (!Translate(ref m, 2, SEG_SS, (sp - 2) & _spm, 2)) return false;
-                SetSp(sp - 2, _spm); Store16(ref m, L16(5));
-            }
-            else
-            {
-                if (!Translate(ref m, 2, SEG_SS, (sp - 4) & _spm, 4)) return false;
-                SetSp(sp - 4, _spm); Store32(ref m, R[5]);
-            }
-        }
-        if (_opsz16)
-        {
-            if (!Translate(ref m, 2, SEG_SS, (sp - 2) & _spm, 2)) return false;
-            SetSp(sp - 2 - allocsz, _spm); Store16(ref m, temp); S16(5, temp);
-        }
-        else
-        {
-            if (!Translate(ref m, 2, SEG_SS, (sp - 4) & _spm, 4)) return false;
-            SetSp(sp - 4 - allocsz, _spm); Store32(ref m, temp); R[5] = temp;
-        }
+        if (!Translate(ref m, 2, SEG_SS, (sp - d) & _spm, sz)) return false;
+        if (_opsz16) Store16(ref m, frame); else Store32(ref m, frame);
+        sp -= d;
+        SetSp(sp - allocsz, _spm);
+        if (_opsz16) S16(5, frame); else R[5] = frame;
         return true;
     }
 
