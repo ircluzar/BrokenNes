@@ -235,7 +235,30 @@
         "result": "ok",
         "crashInfo": ""
       }
+    },
+    {
+      "id": "nesfix-r5-720-poweron-frame-irq",
+      "description": "720 (MMC1): the power-on APU frame IRQ stays pending through its $4017=$80 write (no inhibit) and fires right after its CLI at C050. APU_FIX cleared the frame IRQ flag on every $4015 and $4017 write, so the game ran one frame behind Mesen from frame 466. Lockstep vs Mesen 2.1.1: nametables 116 -> 0, palette 2 -> 0, OAM 472 -> 0 of 1020 frames (2026-11-16).",
+      "kind": "romtest",
+      "rom": "{lib}/720 (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 700,
+      "input": "421:Start,426:,456:Start,462:,612:Start,620:,740:Right,770:Up+B,890:Left+B,930:Up",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "0C94D377DB5AA445",
+        "framesRun": 700,
+        "distinctColors": 11,
+        "result": "ok",
+        "crashInfo": ""
+      }
     }
   ],
-  "goldenGeneratedUtc": "2026-11-16T16:51:18Z"
+  "goldenGeneratedUtc": "2026-11-16T18:48:23Z"
 }
