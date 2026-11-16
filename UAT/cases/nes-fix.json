@@ -235,7 +235,53 @@
         "result": "ok",
         "crashInfo": ""
       }
+    },
+    {
+      "id": "nesfix-r5-720-poweron-frame-irq",
+      "description": "720 (MMC1): the power-on APU frame IRQ stays pending through its $4017=$80 write (no inhibit) and fires right after its CLI at C050. APU_FIX cleared the frame IRQ flag on every $4015 and $4017 write, so the game ran one frame behind Mesen from frame 466. Lockstep vs Mesen 2.1.1: nametables 116 -> 0, palette 2 -> 0, OAM 472 -> 0 of 1020 frames (2026-11-16).",
+      "kind": "romtest",
+      "rom": "{lib}/720 (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 700,
+      "input": "421:Start,426:,456:Start,462:,612:Start,620:,740:Right,770:Up+B,890:Left+B,930:Up",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "0C94D377DB5AA445",
+        "framesRun": 700,
+        "distinctColors": 11,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "nesfix-r5-tcsurf-oamaddr-render-off",
+      "description": "T&C Surf Design (CNROM): rendering switched off at line 24 mid sprite evaluation leaves OAMADDR at the evaluator's address plus one (Mesen 2.1.1), so the next vblank OAM DMA lands at 4n+1. PPU_FIX kept OAMADDR 0 and every sprite was a byte off from frame 755. Lockstep vs Mesen: nametables 315 -> 0, OAM 359 -> 0 of 1604 frames (2026-11-16).",
+      "kind": "romtest",
+      "rom": "{lib}/T&C Surf Design (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 1000,
+      "input": "424:Start,434:,494:Start,504:,624:A,634:,754:Start,764:,854:Start,864:,954:Right,994:Right+A,1024:Right,1124:Right+A,1154:Right,1214:Right+A,1244:Right,1304:Right+B,1364:Right+A,1394:Right,1454:Right+A,1484:Right",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "8FDA3E36A3EF45A9",
+        "framesRun": 1000,
+        "distinctColors": 11,
+        "result": "ok",
+        "crashInfo": ""
+      }
     }
   ],
-  "goldenGeneratedUtc": "2026-11-16T16:51:18Z"
+  "goldenGeneratedUtc": "2026-11-16T18:48:23Z"
 }

@@ -722,6 +722,37 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		if (!keep) nSprCount = 0;
 	}
 
+	// Replays Mesen 2.1.1's dot-by-dot sprite evaluator for this line from dot 65 through `dot`, and returns
+	// the OAMADDR it leaves ((addrL & 3) | addrH << 2, written on every even dot). Only used when rendering is disabled
+	// mid-evaluation; the per-line sprite result itself still comes from EvaluateNextLineSprites at dot 257.
+	private byte OamAddrMidEvaluation(int dot)
+	{
+		int h = ((PPUCTRL ^ bandTallXor) & 0x20) != 0 ? 16 : 8;
+		int addrH = (OAMADDR >> 2) & 0x3F, addrL = OAMADDR & 3, sec = 0; bool inRange = false, done = false; byte buf = 0; int addr = OAMADDR;
+		for (int c = 65; c <= dot; c++)
+		{
+			if ((c & 1) == 1) { buf = oam[addr & 0xFF]; continue; }
+			if (!done)
+			{
+				if (inRange)
+				{
+					addrL++; sec++;
+					if (addrL >= 4) { addrH = (addrH + 1) & 0x3F; addrL = 0; if (addrH == 0) done = true; }
+					if ((sec & 3) == 0) { inRange = false; if (addrL != 0) { done = true; } }
+				}
+				else if ((uint)(scanline - buf) < (uint)h && sec < 0x20 || (uint)(scanline - buf) < (uint)h && sec >= 0x20)
+				{
+					inRange = true; addrL++; sec++;
+				}
+				else if (sec < 0x20) { addrH = (addrH + 1) & 0x3F; addrL = 0; if (addrH == 0) done = true; }
+				else { addrH = (addrH + 1) & 0x3F; addrL = (addrL + 1) & 3; if (addrH == 0) done = true; }
+			}
+			else addrH = (addrH + 1) & 0x3F;
+			addr = (addrL & 3) | (addrH << 2);
+		}
+		return (byte)addr;
+	}
+
 	private void FetchSpritePattern(int slot, bool high)
 	{
 		bool tall = ((PPUCTRL ^ bandTallXor) & 0x20) != 0;
@@ -1050,6 +1081,12 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 				}
 				break;
 			case 0x0001: // PPU Mask
+				// Rendering switched off in the middle of a visible line's sprite evaluation (dots 65-256) leaves OAMADDR
+				// where the evaluator had it, and the 257-320 reset to 0 then never comes (Mesen 2.1.1). A vblank DMA lands
+				// on that address, plus one (the disable glitch bumps it): T&C Surf Design blanks at line 24 and its next OAM DMA
+				// starts at 4n+1 (every sprite off by a byte).
+				if ((PPUMASK & 0x18) != 0 && (value & 0x18) == 0 && scanline < 240 && scanlineCycle >= 66 && scanlineCycle <= 256)
+					OAMADDR = (byte)(OamAddrMidEvaluation(scanlineCycle) + 1);   // + the 2C02's increment on the disabling write (Mesen)
 				PPUMASK = value;
 				// Greyscale / emphasis take effect from the very next pixel drawn, so resolve the
 				// output-stage lookup here as well as per scanline - a mid-frame $2001 write is

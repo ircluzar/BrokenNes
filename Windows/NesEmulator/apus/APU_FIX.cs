@@ -262,7 +262,9 @@ namespace NesEmulator
                     if (enableDMC) { if (dmc_sampleLengthRemaining == 0) { RestartDMC(); dmcStartDelay = ((dmcCycle & 1) == 1 ? 2 : 3); } }
                     else dmc_sampleLengthRemaining = 0;
                     dmc_enabled = enableDMC;
-                    dmc_irqFlag = false; frameIRQFlag = false; break;
+                    // Writing $4015 acknowledges the DMC IRQ only; the frame IRQ flag is cleared by a $4015 READ
+                    // or a $4017 write with the inhibit bit (720: power-on frame IRQ fires right after its CLI).
+                    dmc_irqFlag = false; UpdateIrqLine(); break;
                 case 0x4017: // frame counter
                     frameMode5 = (value & 0x80)!=0; frameIRQInhibit = (value & 0x40)!=0; if(frameIRQInhibit) frameIRQFlag=false;
                     // Reset sequencer timing per hardware approximation: counter cleared immediately
@@ -271,8 +273,8 @@ namespace NesEmulator
                         // In 5-step mode, writing with bit7=1 immediately clocks a quarter and half frame (no IRQ ever)
                         QuarterFrameTick(); HalfFrameTick();
                     }
-                    // Writing 4017 clears frame IRQ flag
-                    frameIRQFlag = false;
+                    // Only the inhibit bit clears the frame IRQ flag; a $4017 write with bit 6 clear leaves a
+                    // pending power-on frame IRQ in place (Mesen/hardware; 720 takes it after its CLI).
                     UpdateIrqLine();
                     break;
             }
