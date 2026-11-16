@@ -467,6 +467,7 @@ public sealed class Vga
         uint lineBytes = shift <= 1 ? (uint)(4 * ((((w - 1) / xdiv + pan) >> 3) + 1)) : (uint)((w - 1) / xdiv + pan + 1);
         int y1 = 0;
         var vram = Ram;
+        uint prevAddr = uint.MaxValue; int prevPan = -1;
         for (int y = 0; y < h; y++)
         {
             uint addr = addr1;
@@ -474,7 +475,9 @@ public sealed class Vga
             if ((Cr[0x17] & 2) == 0) addr = (addr & ~0x8000u) | ((uint)(y1 & 2) << 14);
             addr &= 0x3ffff;
             int o = y * w;
-            if (addr >= RamSize || lineBytes > RamSize - addr) Array.Fill(Frame, unchecked((int)0xff000000), o, w);
+            // a line drawn from the same address with the same panning as the line above (double scan, multi-scan): the same pixels
+            if (y > 0 && addr == prevAddr && pan == prevPan) Array.Copy(Frame, o - w, Frame, o, w);
+            else if (addr >= RamSize || lineBytes > RamSize - addr) Array.Fill(Frame, unchecked((int)0xff000000), o, w);
             else if (shift == 0 && xdiv <= 2)
             {   // planar 16 colours, a byte of each plane (8 pixels) at a time: the same pixels as the general loop below
                 var pal = _pal; var fr = Frame;
@@ -494,14 +497,13 @@ public sealed class Vga
                 }
             }
             else if (shift >= 2 && xdiv == 2)
-            {   // 256 colours, each pixel twice
-                var pal = _pal; var fr = Frame;
-                for (int x = 0; x < w; x += 2)
-                {
-                    int c = pal[vram[addr + (uint)(x / 2 + pan)]];
-                    fr[o + x] = c;
-                    if (x + 1 < w) fr[o + x + 1] = c;
-                }
+            {   // 256 colours, each pixel twice (as two ints written as one long)
+                var pal = _pal;
+                int pairs = w / 2;
+                var src = new ReadOnlySpan<byte>(vram, (int)addr + pan, pairs + (w & 1));
+                var dst = System.Runtime.InteropServices.MemoryMarshal.Cast<int, long>(Frame.AsSpan(o, pairs * 2));
+                for (int i = 0; i < dst.Length; i++) { uint c = (uint)pal[src[i]]; dst[i] = (long)((ulong)c << 32 | c); }
+                if ((w & 1) != 0) Frame[o + w - 1] = pal[src[pairs]];
             }
             else
                 for (int x = 0; x < w; x++)
@@ -521,6 +523,7 @@ public sealed class Vga
                     else k = vram[addr + x1];
                     Frame[o + x] = _pal[k];
                 }
+            prevAddr = addr; prevPan = pan;
             if (multiRun == 0)
             {
                 int mask = (Cr[0x17] & 3) ^ 3;
