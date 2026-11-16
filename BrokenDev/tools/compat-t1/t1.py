@@ -35,10 +35,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "catalog"))
 import catalog  # noqa: E402
 
-T1_VERSION = "t1-2"
+T1_VERSION = "t1-3"   # t1-3: NES input latched at the same point on both sides (BrokenNes --input-latch line240, as Mesen's inputPolled) + NES picture window fixed
+LATCH = os.environ.get("BNT1_LATCH", "line240")   # "frame" = the t1-2 behaviour (a frame of input skew vs Mesen)
 HEAVY = os.environ.get("BNT1_HEAVY", r"C:\BrokenNes-work\heavy")
 SLOTS = int(os.environ.get("BNT1_SLOTS", "4"))
 WORKSHOP = os.environ.get("BNT1_WORKSHOP", r"C:\BrokenNes-work\cc_t1_bin\BrokenNes.Workshop.exe")
+# t1-3 needs a Workshop with --input-latch: the fleet kit ships it beside the old one (kit\workshop_t13) so jobs running the old
+# exe are never disturbed; a job pointed at kit\workshop picks the new one up when it is there
+_t13 = os.path.join(os.path.dirname(os.path.dirname(WORKSHOP)), "workshop_t13", "ws.cmd")   # hosts the framework-dependent DLL with kit\dotnet
+if os.path.basename(os.path.dirname(WORKSHOP)).lower() == "workshop" and os.path.exists(_t13):
+    WORKSHOP = _t13
 MESEN = os.environ.get("BNT1_MESEN", r"T:\BrokenDev\env\emulators\mesen-2.1.1\Mesen.exe")
 SCRATCH = os.environ.get("BNT1_SCRATCH", r"C:\BrokenNes-work\cc_t1_run\work")
 LANE = os.environ.get("BNT1_LANE", "cc-t1")
@@ -46,8 +52,10 @@ CORES = "CPU_FIX/PPU_FIX/APU_FIX"
 REF_NAME = "Mesen 2.1.1"   # (md: BizHawk 2.11.1 Genplus-gx)
 PROBE_FRAMES = 1200
 PROBE_STEP = 30
-WIN = 3
-REF_LAG = 3   # Mesen's script counts its first frames late: the same picture is ~3 frames lower on its counter (SMB: exactly 3)
+WIN = 2
+REF_LAG = -1  # t1-3 (NES): Mesen frames counted by its PPU frame counter (BNT1_HW=1); measured on Thundercade: BrokenNes's picture
+              # after f frames IS Mesen's m_<f+1>. t1-2 counted from the lua's load (late by a game-dependent 0-6 frames) with REF_LAG 3,
+              # so the search window often missed the right frame and typing text / menus one frame on graded as "Jank".
 
 
 # ------------------------------------------------------------------------------------------------ heavy-job slots
@@ -174,13 +182,15 @@ def generic_script(start, minutes):
 
 
 # ------------------------------------------------------------------------------------------------ the NES runner
-def nes_romtest(rom, frames, png_at, out_dir, script=None):
+def nes_romtest(rom, frames, png_at, out_dir, script=None, latch=None):
     os.makedirs(out_dir, exist_ok=True)
     rep = os.path.join(out_dir, "romtest.json")
     cmd = [WORKSHOP, "--romtest", "--rom", rom, "--cpu", "FIX", "--ppu", "FIX", "--apu", "FIX", "--frames", str(frames),
            "--power-on-ram", "zeros", "--png-at", ",".join(map(str, sorted(set(png_at)))), "--png-dir", out_dir, "--json", "--out", rep]
     if script:
         cmd += ["--input", script]
+    if latch:
+        cmd += ["--input-latch", latch]
     with Slot():
         code, out, err, secs, to = run(cmd, timeout=max(120, frames // 40))
     j = None
@@ -234,7 +244,7 @@ def mesen_run(rom, script, shots, out_dir, frames, console="nes"):
     for d in ("Saves", "SaveStates", "RecentGames"):   # every game boots clean (no battery save from an earlier run)
         shutil.rmtree(os.path.join(home, d), ignore_errors=True)
     os.makedirs(out_dir, exist_ok=True)
-    env = dict(os.environ, BNT1_MAP=MESEN_MAP.get(console, ""), BNT1_INPUT=script or "", BNT1_SHOTS=",".join(str(max(0, f - REF_LAG)) for f in shots), BNT1_WIN=str(WIN), BNT1_OUT=out_dir)
+    env = dict(os.environ, BNT1_MAP=MESEN_MAP.get(console, ""), BNT1_HW="1" if REF_LAG == -1 else "", BNT1_INPUT=script or "", BNT1_SHOTS=",".join(str(max(0, f - REF_LAG)) for f in shots), BNT1_WIN=str(WIN), BNT1_OUT=out_dir)
     secs_limit = frames // 20 + 60   # a loaded machine can drop Mesen's test runner to ~60 fps
     cmd = [exe, rom, "--luaScriptsToLoad", os.path.join(HERE, "mesen_t1.lua"), "--testRunner", f"--timeout={secs_limit}"]
     with Slot():
@@ -361,6 +371,12 @@ def check_nes(rec, minutes, keep_dir):
     res["tas"] = bnm if p2["ok"] else None
     if not p2["ok"]:
         res["bn"]["error"] = (p2["err"] + p2["out"]).strip()[-400:]
+    if LATCH == "line240" and p2["ok"]:
+        # the graded pictures: the same script with the pad latched where Mesen latches it (the .bnm keeps frame-start input)
+        pl = nes_romtest(rom, end + 1, cps, os.path.join(work, "bnl"), script, LATCH)
+        if pl["code"] in (0, 1) and pl["pngs"]:
+            p2["pngs"] = pl["pngs"]
+            res["bn"]["latch"] = LATCH
     m = mesen_run(rom, script, cps, os.path.join(work, "ref"), end)
     res["ref"] = dict(exit=m["code"], secs=m["secs"], timeout=m["timeout"], pictures=len(m["pics"]))
     # checkpoint screenshots (BrokenNes + reference, as PNG) and scores
