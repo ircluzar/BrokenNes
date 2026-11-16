@@ -22,3 +22,10 @@ moving right fast enough to fly over it.
 - Waiting is safe while Mario's x stays ahead of the left screen edge (~150-300 frames); wood lifts SINK once stood on: jump off at once.
 - `air` reads 0 at a jump apex: end a search pattern with a short none:20 token so --want is checked after landing.
 - After landing at speed, Mario slides off narrow platforms: add Left ~4 frames.
+
+## Fortress W1 (done 2026-11-16 by a sonnet escalation, 3053 frames, 0 deaths; clear bits $7D04|=$10, $7D06|=$08)
+- The "dead end" at x~1764 has a brown door at x~1744 (Left 20, none 20, Up 10). Spike room: the exit door at its right wall
+  (x~467) is invisible and only works ~330 frames after arriving (search "none:{w} Up:{u} none:80" finds it).
+- Level tiles live in $6000 (SRAM): 0x43 = door tile, 0x02 air, 0xE4 solid: read it to find doors.
+- Boom-Boom: stomps show as score jumps ($0715); after each stomp hold Left. The ball touches Mario by itself in the right corner.
+- `resume NAME` drops checkpoints saved later in the log.
