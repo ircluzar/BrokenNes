@@ -137,6 +137,8 @@ internal static class TraceCli
         "                  frame F (counted from power-on) - exactly where Mesen 2.1.1's script sets\n" +
         "                  the controller, so each press lands on the same poll in both emulators.\n" +
         "                  Use it for any cross-emulator comparison.\n" +
+        "                  line241: the same rule at the PPU's entry to line 241 (vblank); also\n" +
+        "                  matches Mesen for games that poll the pad on line 240 (Lunar Pool).\n" +
         "  --power-on-ram  fceux (default, the emulator's own fill) | zeros | ones. Only bend this\n" +
         "                  when the emulator on the other side of the diff cannot produce FCEUX's\n" +
         "                  pattern; whichever is used is recorded in the header.\n" +
@@ -296,7 +298,7 @@ internal static class TraceCli
         // --prg-state / --poke-at: see PrgSampler and the poke block below.
         string prgMode = "off";
         string? pokeSpec = null;
-        bool inputLatchLine240 = false;
+        bool inputLatchLine240 = false, inputLatchLine241 = false;
 
         try
         {
@@ -316,7 +318,8 @@ internal static class TraceCli
                     {
                         string mode = args[++i].ToLowerInvariant();
                         if (mode == "line240") inputLatchLine240 = true;
-                        else if (mode != "frame") { Console.Error.WriteLine("--input-latch must be frame or line240"); return 2; }
+                        else if (mode == "line241") { inputLatchLine240 = true; inputLatchLine241 = true; }
+                        else if (mode != "frame") { Console.Error.WriteLine("--input-latch must be frame, line240 or line241"); return 2; }
                         break;
                     }
                     case "--power-on-ram": powerOnRam = ParsePowerOnRam(args[++i]); break;
@@ -781,13 +784,14 @@ internal static class TraceCli
             if (inputLatchLine240)
             {
                 nes.SetInputs(held, null);
-                nes.PpuEnteredPostRender += () =>
+                Action latch = () =>
                 {
                     int frameEnding = ppuFramesSeen++; // the crossing in frame F is the (F+1)th
                     bool changed = false;
                     while (nextStep < script.Count && script[nextStep].Frame <= frameEnding) { held = (bool[])script[nextStep].Held.Clone(); nextStep++; changed = true; }
                     if (changed) nes.SetInputs(held, null);
                 };
+                if (inputLatchLine241) nes.PpuEnteredVblank += latch; else nes.PpuEnteredPostRender += latch;
             }
 
             for (int f = 0; f < frames; f++)

@@ -42,7 +42,7 @@ internal static class RomTestCli
         EnsureConsole(); // do this first so usage/IO errors are visible too, not just the report
 
         string? romPath = null, cpu = null, ppu = null, apu = null, outPath = null, inputScript = null;
-        bool latch240 = false;
+        bool latch240 = false, latch241 = false;
         int frames = 600;
         HashSet<int> pngAt = new(); string pngDir = "."; int stateAt = -1;   // picture proofs (--png-at f1,f2 --png-dir d) and the save/load check (--state-at f)
         bool json = false;
@@ -61,7 +61,7 @@ internal static class RomTestCli
                     case "--apu": apu = args[++i]; break;
                     case "--frames": frames = int.Parse(args[++i]); break;
                     case "--input": inputScript = args[++i]; break;
-                    case "--input-latch": { var lm = args[++i].ToLowerInvariant(); if (lm == "line240") latch240 = true; else if (lm != "frame") throw new FormatException($"--input-latch expects frame|line240, got '{lm}'"); break; }
+                    case "--input-latch": { var lm = args[++i].ToLowerInvariant(); if (lm == "line240") latch240 = true; else if (lm == "line241") { latch240 = true; latch241 = true; } else if (lm != "frame") throw new FormatException($"--input-latch expects frame|line240|line241, got '{lm}'"); break; }
                     case "--out": outPath = args[++i]; break;
                     case "--json": json = true; break;
                     case "--png-at": pngAt = args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToHashSet(); break;
@@ -155,13 +155,14 @@ internal static class RomTestCli
             {
                 int ppuFramesSeen = 0;
                 nes.SetInputs(held, null);
-                nes.PpuEnteredPostRender += () =>
+                Action latch = () =>
                 {
                     int frameEnding = ppuFramesSeen++;
                     bool changed = false;
                     while (nextStep < script.Count && script[nextStep].Frame <= frameEnding) { held = (bool[])script[nextStep].Held.Clone(); nextStep++; changed = true; }
                     if (changed) nes.SetInputs(held, null);
                 };
+                if (latch241) nes.PpuEnteredVblank += latch; else nes.PpuEnteredPostRender += latch;
             }
             for (int f = 0; f < frames; f++)
             {
