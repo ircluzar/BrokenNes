@@ -7,7 +7,9 @@ from fleet import boxes  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PY = sys.executable
-T1 = ["gg", "sms", "gbc", "gb", "snes", "md"]
+os.environ.setdefault("BNT1_VERSION", subprocess.run(["git", "-C", r"C:\BrokenNes-work\fleet_kit_wt", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip())
+# python drive.py t1:<tag>:<console>[:force] ... nested:<tag> g2s:<tag>
+SPEC = [x.split(":") for x in (sys.argv[1:] or ["t1:gg:gg", "t1:sms:sms", "t1:gbc:gbc", "t1:gb:gb", "t1:snes:snes", "t1:md:md", "nested:fullnes", "g2s:w2"])]
 done = set()
 bs = boxes()
 
@@ -32,7 +34,8 @@ def finished(js):
 
 
 while True:
-    todo = [("t1", t) for t in T1] + [("nested", "fullnes"), ("g2s", "w2")]
+    todo = [(x[0], x[1]) for x in SPEC]
+    meta = {(x[0], x[1]): x for x in SPEC}
     for kind, tag in todo:
         if (kind, tag) in done:
             continue
@@ -44,9 +47,12 @@ while True:
             continue
         print(f"{kind} {tag}: all {len(js)} jobs ended, collecting", flush=True)
         if kind == "t1":
-            r = subprocess.run([PY, os.path.join(HERE, "t1fleet.py"), "pull", "--tag", tag, "--console", tag, "--ingest"], capture_output=True, text=True, cwd=r"E:\fleet")
-            k = subprocess.run([PY, os.path.join(HERE, "kit", "tools", "compat-t1", "t1.py"), "report", "--console", tag], capture_output=True, text=True)
-            print(f"t1 {tag} ingested: " + " ".join(k.stdout.splitlines()[:2]), flush=True)
+            con = meta[(kind, tag)][2]; force = ["--force"] if len(meta[(kind, tag)]) > 3 else []
+            r = subprocess.run([PY, os.path.join(HERE, "t1fleet.py"), "pull", "--tag", tag, "--console", con, "--ingest", *force], capture_output=True, text=True, cwd=r"E:\fleet")
+            if con != "nes":
+                subprocess.run([PY, os.path.join(HERE, "kit", "tools", "compat-t1", "t1.py"), "regrade", "--console", con], capture_output=True, text=True)
+            k = subprocess.run([PY, os.path.join(HERE, "kit", "tools", "compat-t1", "t1.py"), "report", "--console", con], capture_output=True, text=True)
+            print(f"t1 {tag} ({con}) ingested: " + " ".join(k.stdout.splitlines()[:2]), flush=True)
         elif kind == "nested":
             r = subprocess.run([PY, os.path.join(HERE, "nestedfleet.py"), "collect", "--tag", tag], capture_output=True, text=True, cwd=r"E:\fleet")
             print(f"nested {tag} collected: " + (r.stdout.strip().splitlines() or ["?"])[-2][:300], flush=True)
@@ -54,7 +60,7 @@ while True:
             r = subprocess.run([PY, os.path.join(HERE, "gg2smsfleet.py"), "collect", "--tag", tag], capture_output=True, text=True, cwd=r"E:\fleet")
             print(f"g2s {tag} collected: " + (r.stdout.strip().splitlines() or ["?"])[-1][:300], flush=True)
         done.add((kind, tag))
-    if len(done) == len(T1) + 2:
+    if len(done) == len(SPEC):
         print("all collected", flush=True)
         break
     time.sleep(300)

@@ -59,7 +59,8 @@ python C:\BrokenNes-work\fleet\t1fleet.py poll --tag <tag>
 python C:\BrokenNes-work\fleet\t1fleet.py pull --tag <tag> --ingest     # results -> catalog (t1.py ingest)
 ```
 `t1.py export/work/ingest` (branch fleet-kit): `ingest` writes the same record form as `t1.py run`. It skips a record that already
-has `t1-2`, so overlap with a local sweep is safe. Only NES is wired in t1.py so far.
+has `t1-2`, so overlap with a local sweep is safe. Wired consoles: nes, snes, gb, gbc, sms, gg (Mesen 2.1.1) and md (BizHawk 2.11.1
+Genplus-gx, `C:\brokennes\kit\bizhawk`). `t1restart.py <console> <tag>` restarts a tag's jobs from scratch.
 
 ## GG -> SMS wide roster (gg2sms_test.py) on the fleet
 ```
@@ -68,11 +69,13 @@ python C:\BrokenNes-work\fleet\gg2smsfleet.py run --tag <tag> [--roster ..] [--d
 python C:\BrokenNes-work\fleet\gg2smsfleet.py poll --tag <tag>
 python C:\BrokenNes-work\fleet\gg2smsfleet.py collect --tag <tag> [--out merged.json] [--pictures]
 ```
-- **Ship Workshop builds SELF-CONTAINED** (`dotnet publish -r win-x64 --self-contained true -o <dir>`, in your own worktree, under a
-  local heavy slot). On 4 of the 7 PCs, Windows Application Control blocks a plain `dotnet build` apphost exe
-  ("WinError 4551 ... An Application Control policy has blocked this file"). Our self-contained exes run everywhere. Do not touch
-  Defender or Application Control. The default `--ws` is `C:\BrokenNes-work\fleet\stage_g2s_ws`: the self-contained publish of
-  bn_gg2sms HEAD 88fead62. (`C:\brokennes\kit\dotnet` is a copy of the .NET 10 runtime. It works only where the exe is not blocked.)
+- **Application Control** ("WinError 4551 ... An Application Control policy has blocked this file") blocks some new unsigned exes
+  and dlls, and which ones depends on the file and the PC. Even a self-contained exe was blocked on PEARL and SAPPHIRE, while the
+  kit's Workshop runs everywhere. The reliable way to run your own Workshop build is to host its DLL with the Microsoft-signed
+  `dotnet.exe` in the kit. Put the framework-dependent `dotnet build` bin on the PCs and call it through a one-line .cmd:
+  `@"C:\brokennes\kit\dotnet\dotnet.exe" "C:\brokennes\<lane>\ws_fd\BrokenNes.Workshop.dll" %*` (example: `C:\brokennes\gg2sms\ws.cmd`).
+  OPAL blocks BrokenNes.Workshop.dll even then, so on OPAL use a self-contained exe instead (`C:\brokennes\gg2sms\ws\...`).
+  Test one command on EVERY PC before a sweep. Do not touch Defender or Application Control.
 - The tools are laid out as `C:\brokennes\gg2sms\BrokenDev\tools\nested-everything` + `...\BrokenDev\projects\nested-gg2sms`,
   because gg2sms.py finds pipeline.json by a relative path.
 

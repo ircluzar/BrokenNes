@@ -31,7 +31,7 @@ def log(msg):
     open(LOG, "a", encoding="utf-8").write(line + "\n")
 
 
-def backlog_t1(consoles, batch):
+def backlog_t1(consoles, batch, noref=False, deep=0):
     sys.path.insert(0, os.path.join(KIT, "catalog"))
     import catalog
     items = []
@@ -39,11 +39,19 @@ def backlog_t1(consoles, batch):
         todo = []
         for r in list(catalog.iter_records(c)):
             t = (r.get("extra") or {}).get("t1") or {}
-            if r.get("revisionOf") or not t.get("version", "").startswith("t1-") or t.get("grade") == "OK" or (t.get("minutes") or 1) >= 3:
+            if r.get("revisionOf") or not t.get("version", "").startswith("t1-"):
+                continue
+            if deep:    # deep T1: every OK title again with a longer script (late crashes / desyncs)
+                if t.get("grade") != "OK" or (t.get("minutes") or 1) >= deep or (r.get("path") or "").lower().endswith(".bs"):
+                    continue
+            elif noref:   # titles whose reference run gave no pictures (BizHawk's platform dialog, a hung reference): run again
+                if "no reference" not in (t.get("why") or "") or (r.get("path") or "").lower().endswith(".bs"):
+                    continue
+            elif t.get("grade") == "OK" or (t.get("minutes") or 1) >= 3:
                 continue
             todo.append(r["sha1"])
         for i in range(0, len(todo), batch):
-            items.append(dict(kind="t1", console=c, id=f"q{c}{i // batch:03d}", shas=todo[i:i + batch]))
+            items.append(dict(kind="t1", console=c, id=f"{'d' if deep else 'n' if noref else 'q'}{c}{i // batch:03d}", shas=todo[i:i + batch]))
         log(f"backlog: {c} {len(todo)} titles -> {(len(todo) + batch - 1) // batch} batches")
     return items
 
@@ -94,7 +102,7 @@ def finish_t1(name, box, it):
 
 
 def pc_worker(name, box, ready, state, minutes, lock):
-    cap = 5 if (box.get("ramGB") or 16) >= 15 else 4
+    cap = 6 if (box.get("ramGB") or 16) >= 15 else 5
     active = {}
     while True:
         for sid, it in list(active.items()):
@@ -135,9 +143,17 @@ def main():
     ap.add_argument("--t1", default="snes,md,gb,gbc,gg")
     ap.add_argument("--batch", type=int, default=6)
     ap.add_argument("--minutes", type=float, default=3)
+    ap.add_argument("--deep", type=float, default=0, help="re-run every OK title with this many minutes")
+    ap.add_argument("--noref", action="store_true", help="re-run titles whose reference gave no pictures")
     a = ap.parse_args()
+    global STATE
+    if a.noref:
+        STATE = os.path.join(HERE, "queue_state_noref.json")
+    if a.deep:
+        STATE = os.path.join(HERE, "queue_state_deep.json")
+        a.minutes = a.deep
     state = json.load(open(STATE)) if os.path.exists(STATE) else {"done": []}
-    items = [it for it in backlog_t1([c for c in a.t1.split(",") if c], a.batch) if it["id"] not in state["done"]]
+    items = [it for it in backlog_t1([c for c in a.t1.split(",") if c], a.batch, a.noref, a.deep) if it["id"] not in state["done"]]
     log(f"queue: {len(items)} batches")
     ready, lock = Q.Queue(), threading.Lock()
 
