@@ -112,6 +112,7 @@ public sealed partial class PcMachine
         if (size == 0) { Stopped = "El Torito hard disk emulation (media type 4) is not supported"; return false; }
         if ((long)lba * 2048 + size > cd.Data.Length) return false;
         _cdEmu = new DiskImage(cd.Data.AsSpan((int)(lba * 2048), size).ToArray(), true);
+        if ((Phys16(0x410) & 1) == 0) PhysW16(0x410, (ushort)(Phys16(0x410) | 1));   // the emulated A: is a floppy drive (equipment word)
         return TryBootDisk(0x00);
     }
 

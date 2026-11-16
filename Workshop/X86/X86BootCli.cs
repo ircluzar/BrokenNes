@@ -98,6 +98,22 @@ internal static class X86BootCli
                 found &= f2;
             }
         }
+        // --step "UNTIL=>KEYS" (repeatable, after the rest): run until the screen shows UNTIL (at most --stepframes, default 20000), type KEYS
+        int stepMax = int.Parse(Arg(args, "--stepframes") ?? "20000"), si = 0;
+        foreach (var st in Args(args, "--step"))
+        {
+            int i = st.IndexOf("=>"); string u = st[..i], keys = st[(i + 2)..].Replace("\\n", "\n").Replace("\\e", "\x1b");
+            int ns = RunUntil(m, u, stepMax, true); n += ns;   // (the screen only: the teletype log keeps earlier screens' text)
+            bool ok = Screen(m).Contains(u);
+            Console.WriteLine($"x86boot: step {si} \"{u}\" {(ok ? "found" : "NOT found")} after {ns} frames (total {n}, {sw.Elapsed.TotalSeconds:F0} s){(m.Stopped != null ? ", STOPPED: " + m.Stopped : "")}");
+            if (shot != null) X86Shots.SavePng(m.Vga, Path.ChangeExtension(shot, null) + $"_step{si}.png");
+            si++;
+            if (!ok) break;
+            n += RunUntil(m, null, int.Parse(Arg(args, "--stepdelay") ?? "0"));   // let a menu settle before typing
+            TypeText(m, keys);
+            n += RunUntil(m, null, 35);   // let the keys land before looking for the next screen
+        }
+        if (Arg(args, "--after") is string aft) { n += RunUntil(m, null, int.Parse(aft)); }
         if (Arg(args, "--sample") is string smp)
             for (int k = 0; k < int.Parse(smp); k++)
             {
@@ -125,13 +141,13 @@ internal static class X86BootCli
         return found && m.Stopped == null ? 0 : 1;
     }
 
-    public static int RunUntil(PcMachine m, string? until, int frames)
+    public static int RunUntil(PcMachine m, string? until, int frames, bool screenOnly = false)
     {
         int n = 0;
         for (; n < frames; n++)
         {
             if (!m.RunFrame()) break;
-            if (until != null && n % 10 == 0 && (Screen(m).Contains(until) || m.Teletype.ToString().Contains(until))) break;
+            if (until != null && n % 10 == 0 && (Screen(m).Contains(until) || (!screenOnly && m.Teletype.ToString().Contains(until)))) break;
         }
         return n;
     }
