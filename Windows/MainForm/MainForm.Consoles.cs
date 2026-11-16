@@ -247,6 +247,7 @@ namespace BrokenNes.Windows
             consoleMenu.DropDownItems.Add(new ToolStripSeparator());
             consoleMenu.DropDownItems.Add(BuildGbLookMenu());
             consoleMenu.DropDownItems.Add(BuildSegaMenu());
+            if (Consoles.IsAvailable(ConsoleKind.Pc)) consoleMenu.DropDownItems.Add(BuildPcMachineMenu());
             consoleMenu.DropDownItems.Add(BuildWideMessMenu());   // WideMess milestone 6: the SNES games' enhancements (MainForm.WideMess.cs)
             consoleMenu.DropDownItems.Add(BuildWideMessTestCartItem());   // the WideMess test cartridge, embedded (MainForm.WideMessTestCart.cs)
             consoleMenu.DropDownOpening += (s, e) => RefreshConsoleMenu();
@@ -413,6 +414,41 @@ namespace BrokenNes.Windows
             return true;
         }
 
+        // ------------------------------------------------------------------ the x86 machine
+        private ToolStripMenuItem? pcMachineMenu;
+
+        /// <summary>Console > x86 machine: the PC's preset (board, CPU model, video card). A change restarts a running x86 game on the new machine (a state only loads into the machine it was saved on).</summary>
+        private ToolStripMenuItem BuildPcMachineMenu()
+        {
+            pcMachineMenu = new ToolStripMenuItem("x86 machine");
+            foreach (var p in NesEmulator.X86.PcMachinePreset.All)
+            {
+                string k = p.Key;
+                pcMachineMenu.DropDownItems.Add(new ToolStripMenuItem(p.Label, null, (s, e) => SetPcMachine(k)) { Tag = k });
+            }
+            pcMachineMenu.DropDownOpening += (s, e) =>
+            {
+                string cur = NesEmulator.X86.PcMachinePreset.Find(config.PcMachine).Key;
+                foreach (var it in pcMachineMenu.DropDownItems.OfType<ToolStripMenuItem>()) it.Checked = (string?)it.Tag == cur;
+            };
+            return pcMachineMenu;
+        }
+
+        /// <summary>Choose the x86 machine preset (an unknown key is refused: false). A running x86 game restarts on it.</summary>
+        private bool SetPcMachine(string key)
+        {
+            if (!NesEmulator.X86.PcMachinePreset.Known(key)) return false;
+            string before = NesEmulator.X86.PcMachinePreset.Find(config.PcMachine).Key, after = NesEmulator.X86.PcMachinePreset.Find(key).Key;
+            Helpers.ConfigHelper.Update(config, c => c.PcMachine = after);
+            if (before != after && session != null && sessionRom != null && session.Console == ConsoleKind.Pc)
+            {
+                StartSession(session.Console, sessionRom, sessionRomName, currentRomPath);
+                consoleNote = "restarted on the new x86 machine";
+                UpdateConsoleTitle();
+            }
+            return true;
+        }
+
         /// <summary>The machine a Sega session runs as (region, board), read from the board itself, for the status line and the HTTP API; null for any other session.</summary>
         private static (string region, string model)? SegaMachineOf(IConsoleSession? s)
         {
@@ -504,7 +540,7 @@ namespace BrokenNes.Windows
             try
             {
                 s = ConsoleSessions.Create(console, rom, SelectedCore(console, CoreSlot.Cpu), SelectedCore(console, CoreSlot.Ppu),
-                                           SelectedCore(console, CoreSlot.Apu), names => FindSnesFirmware(romPath, names), romName, SegaOptionsFromConfig());
+                                           SelectedCore(console, CoreSlot.Apu), names => FindSnesFirmware(romPath, names), romName, SegaOptionsFromConfig(), config.PcMachine);
             }
             catch (Exception ex)
             {

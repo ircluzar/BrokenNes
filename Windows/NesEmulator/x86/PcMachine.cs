@@ -79,6 +79,7 @@ public sealed partial class PcMachine : IX86Bus
         Opl = new Opl2(() => PitNow);
         Dma = new Dma8237(this);
         if (config.Storage == PcStorage.Ide) Ata = new AtaController(Pic);
+        if (config.Bus != PcBus.Isa) Pci = new PciBus(this);
         Pic.Raise = () => Cpu.RaiseIrq();
         RegisterTraps();
     }
@@ -113,6 +114,7 @@ public sealed partial class PcMachine : IX86Bus
 
     public byte In8(int port)
     {
+        if (Pci != null && Pci.In(port, 1, out uint pv)) return (byte)pv;
         if (Ata != null && Ata.In(port, false, out int av)) return (byte)av;
         if (Card != null && Card.In(port, false, out int cv)) return (byte)cv;
         if (S3 != null && S3Trio64.IsEnginePort(port)) return (byte)S3.EngineIn(port & 0xfffe, (port & 1) != 0);
@@ -140,6 +142,7 @@ public sealed partial class PcMachine : IX86Bus
 
     public void Out8(int port, byte v)
     {
+        if (Pci != null && (Pci.Out(port, 1, v) || PmTrap(port))) return;
         if (Ata != null && Ata.Out(port, false, v)) return;
         if (Card != null && Card.Out(port, false, v)) return;
         if (S3 != null && S3Trio64.IsEnginePort(port)) { S3.EngineOut8(port, v); return; }
@@ -165,6 +168,7 @@ public sealed partial class PcMachine : IX86Bus
 
     public ushort In16(int port)
     {
+        if (Pci != null && Pci.In(port, 2, out uint pv)) return (ushort)pv;
         if (Ata != null && Ata.In(port, true, out int av)) return (ushort)av;
         if (Card != null && Card.In(port, true, out int cv)) return (ushort)cv;
         if (S3 != null && S3Trio64.IsEnginePort(port)) return (ushort)(S3.EngineIn(port, false) | S3.EngineIn(port, true) << 8);
@@ -173,6 +177,7 @@ public sealed partial class PcMachine : IX86Bus
     }
     public void Out16(int port, ushort v)
     {
+        if (Pci != null && Pci.Out(port, 2, v)) return;
         if (Ata != null && Ata.Out(port, true, v)) return;
         if (Card != null && Card.Out(port, true, v)) return;
         if (S3 != null && S3Trio64.IsEnginePort(port)) { S3.EngineOut16(port, v); return; }
@@ -181,9 +186,10 @@ public sealed partial class PcMachine : IX86Bus
     }
     // a 32-bit access to an IDE data port is two 16-bit cycles on that same port
     private bool IsAtaData(int port) => Ata != null && (port == 0x1f0 || port == 0x170);
-    public uint In32(int port) => IsAtaData(port) ? (uint)(In16(port) | (In16(port) << 16)) : (uint)(In16(port) | (In16(port + 2) << 16));
+    public uint In32(int port) => Pci != null && Pci.In(port, 4, out uint pv) ? pv : IsAtaData(port) ? (uint)(In16(port) | (In16(port) << 16)) : (uint)(In16(port) | (In16(port + 2) << 16));
     public void Out32(int port, uint v)
     {
+        if (Pci != null && Pci.Out(port, 4, v)) return;
         if (S3 != null && (port & 0xfffc) == 0xe2e8) { S3.PixelData(v, 32); return; }   // a 32-bit image transfer
         Out16(port, (ushort)v); Out16(IsAtaData(port) ? port : port + 2, (ushort)(v >> 16));
     }
@@ -323,6 +329,7 @@ public sealed partial class PcMachine : IX86Bus
         _cdEmu = null; _cdBoot = false;
         WireAta();
         Ata?.Reset();
+        Pci?.Reset();
         Post();
     }
 
@@ -335,7 +342,7 @@ public sealed partial class PcMachine : IX86Bus
     }
 
     /// <summary>A save state carries the config block when the machine is not the classic one (memory is already in the CPU's state).</summary>
-    private bool ConfigInState => Config.CpuGen != 4 || Config.Storage != PcStorage.BiosOnly || Config.BootOrder != PcConfig.Default.BootOrder;
+    private bool ConfigInState => Config.CpuGen != 4 || Config.Storage != PcStorage.BiosOnly || Config.BootOrder != PcConfig.Default.BootOrder || Config.Bus != PcBus.Isa;
 
     // ================= save state =================
 
@@ -387,6 +394,7 @@ public sealed partial class PcMachine : IX86Bus
                 w.Write(Ata != null);
                 Ata?.Save(w);
                 SaveBiosExtras(w);
+                if (Config.Bus != PcBus.Isa) SavePci(w);
             }
         }
         return ms.ToArray();
@@ -452,6 +460,7 @@ public sealed partial class PcMachine : IX86Bus
                 WireAta();
                 if (r.ReadBoolean()) Ata!.Load(r);
                 LoadBiosExtras(r);
+                if (Config.Bus != PcBus.Isa) LoadPci(r);
             }
             else throw new InvalidDataException($"unknown block {magic:X8} in an x86 state");
         }

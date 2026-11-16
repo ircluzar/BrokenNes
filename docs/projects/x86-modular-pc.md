@@ -136,3 +136,13 @@ Speed baseline (i7-8700, shared, +-2x noise), % real time: P55C+S3 dhry 25-28, b
 LEGACY dhry 63-69. Target 200% = ~302 M instr/s real code; 8-15x short. Biggest items: JIT is off under paging
 (Win98 would be interpreted, ~13% of a P166), slow background block-compile install, uncompiled REP string ops / 16-bit
 forms (~34%), blocks ending at CALL/RET and page edges.
+
+## Status r2 (2026-11-15, branch x86-r2)
+
+M4 BIOS (our C# BIOS, `PcMachine.Pci.cs`, only on a `Bus = Pci430TX` config: the Win98-P166 preset): PCI bus 0 via CF8h/CFCh
+(i430TX 8086:7100 at 00.0, PIIX4 ISA 8086:7110 at 07.0 with PIRQ router 60h-63h + ELCR 4D0h/4D1h + CF9h reset, PIIX4 IDE 8086:7111
+at 07.1 legacy mode, S3 Trio64 at 09.0 with INTA# -> PIRQA -> IRQ 11), PCI BIOS 2.10 (INT 1Ah B101-B10F incl. routing options 0Eh),
+BIOS32 directory + "$PCI" 32-bit entry, $PIR table, APM 1.2 (INT 15h 53xx, 16/32-bit PM connect, idle = HLT, set-power-state off stops
+the machine), PnP BIOS 1.0 ($PnP, functions 00/01/02/40, nine system device nodes). PM entry points trap through ports E1h-E4h + RETF.
+E820 and INT 13h 41h-48h were already in. Tests: `Workshop --x86pci` (in the battery). Desktop: Console > x86 machine (Classic,
+DOS 386DX-33, DOS 486DX2-66, Win98 Pentium MMX 166 + S3 + PCI); config key `PcMachine`, a change restarts a running x86 game.

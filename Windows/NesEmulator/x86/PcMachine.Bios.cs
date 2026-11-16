@@ -162,6 +162,7 @@ public sealed partial class PcMachine
         PhysW32(0x46c, (uint)(t.TotalSeconds * 1193182.0 / 65536.0));
 
         if (Ata != null) PostIde();
+        if (Pci != null) PostPci();
 
         // chips
         Out8(0x20, 0x11); Out8(0x21, 0x08); Out8(0x21, 0x04); Out8(0x21, 0x01);
@@ -362,6 +363,7 @@ public sealed partial class PcMachine
 
     private void Int1A()
     {
+        if (AH == 0xb1 && Pci != null) { PciBiosCall(frame: true); return; }
         var now = Cmos.Now;
         switch (AH)
         {
@@ -379,6 +381,7 @@ public sealed partial class PcMachine
     private void Int15()
     {
         uint ah = AH;
+        if (ah == 0x53 && Pci != null) { ApmCall(frame: true); return; }
         switch (ah)
         {
             case 0x24:

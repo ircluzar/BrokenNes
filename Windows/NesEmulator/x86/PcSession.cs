@@ -30,10 +30,13 @@ public sealed class PcSession : IConsoleSession
     private byte[]? _exported;
 
     /// <param name="image">A disk image, or a DOS program (<see cref="PcDisks.IsDosProgram"/>: it is put on a FreeDOS boot disk made for it, <see cref="PcDisks.ForProgram"/>).</param>
-    public PcSession(byte[] image, string fileName = "", string apu = "ADLIB", string cpu = "I386", string ppu = "VGA", CpuModel? model = null)
+    public PcSession(byte[] image, string fileName = "", string apu = "ADLIB", string cpu = "I386", string ppu = "VGA", CpuModel? model = null, string machine = PcMachinePreset.ClassicKey)
     {
+        var preset = PcMachinePreset.Find(machine);
+        MachineKey = preset.Key;
+        if (!preset.IsClassic) model = preset.Cpu;
         _model = model != null && !model.Legacy ? model : null;
-        _m = new PcMachine(PcMachine.DefaultMemory, _model);
+        _m = preset.IsClassic ? new PcMachine(PcMachine.DefaultMemory, _model) : new PcMachine(preset.Config, _model, preset.Video);
         Title = fileName.Length > 0 ? Path.GetFileNameWithoutExtension(fileName) : "x86 disk";
         if (PcDisks.IsDosProgram(image, fileName))
         {
@@ -72,11 +75,13 @@ public sealed class PcSession : IConsoleSession
     private DiskImage Disk => (_floppy ? _m.Floppy[0] : _m.Hdd[0])!;
 
     public PcMachine Machine => _m;
+    /// <summary>The machine preset (<see cref="PcMachinePreset"/>) the session was built as.</summary>
+    public string MachineKey { get; }
     /// <summary>The DOS program the disk was made for (its 8.3 name), or null for a disk image opened as it is.</summary>
     public string? Program { get; }
     public ConsoleKind Console => ConsoleKind.Pc;
     public string Title { get; }
-    public string Description => $"x86 PC | CPU {(_model != null ? $"{_model.Name}" : "I386 (486-class")}{(_model != null ? $" ({_m.InstructionsPerSecond / 1_000_000} M instr/s)" : $", {_m.InstructionsPerSecond / 1_000_000} M instr/s)")} | PPU {PpuId} ({VgaPictures.Describe(PpuId)}) | APU {ApuId} ({PcSound.Describe(ApuId)}) | {(Program != null ? $"{Program} on a FreeDOS 1.4 disk" : _floppy ? "floppy A:" : "hard disk C:")} {_original.Length / 1024:N0} KB{(_m.Stopped != null ? " | STOPPED: " + _m.Stopped : "")}";
+    public string Description => $"x86 PC{(MachineKey != PcMachinePreset.ClassicKey ? $" ({PcMachinePreset.Find(MachineKey).Label})" : "")} | CPU {(_model != null ? $"{_model.Name}" : "I386 (486-class")}{(_model != null ? $" ({_m.InstructionsPerSecond / 1_000_000} M instr/s)" : $", {_m.InstructionsPerSecond / 1_000_000} M instr/s)")} | PPU {PpuId} ({VgaPictures.Describe(PpuId)}) | APU {ApuId} ({PcSound.Describe(ApuId)}) | {(Program != null ? $"{Program} on a FreeDOS 1.4 disk" : _floppy ? "floppy A:" : "hard disk C:")} {_original.Length / 1024:N0} KB{(_m.Stopped != null ? " | STOPPED: " + _m.Stopped : "")}";
     public double FramesPerSecond => Pit8254.Freq / Vga.FrameTicks;
     public string GameId { get; }
 

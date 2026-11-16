@@ -10,6 +10,10 @@ namespace NesEmulator.X86;
 
 public enum PcStorage { BiosOnly = 0, Ide = 1 }
 
+/// <summary>Isa: the classic AT board. Pci430TX: an i430TX host bridge + PIIX4 (ISA bridge, IDE) on PCI bus 0, config mechanism #1 (CF8h/CFCh), and the BIOS's
+/// Windows 98 feature set (PCI BIOS INT 1Ah B1xxh + BIOS32 + $PIR, APM 1.2, PnP BIOS).</summary>
+public enum PcBus { Isa = 0, Pci430TX = 1 }
+
 public sealed record PcConfig
 {
     /// <summary>CPU generation the core is built as: 3 = 386, 4 = 486 (5 = Pentium: flags mask only until the CPU-model lane lands).</summary>
@@ -19,11 +23,12 @@ public sealed record PcConfig
     public PcStorage Storage { get; init; } = PcStorage.BiosOnly;
     /// <summary>Boot order (IDE machines): 'C' CD-ROM, 'H' hard disk, 'F' floppy.</summary>
     public string BootOrder { get; init; } = "FH";
+    public PcBus Bus { get; init; } = PcBus.Isa;
 
     public static readonly PcConfig Default = new();
     public static readonly PcConfig Dos386 = new() { CpuGen = 3 };
     public static readonly PcConfig Dos486 = new() { CpuGen = 4, MemoryMB = 16, Storage = PcStorage.Ide };
-    public static readonly PcConfig Win98 = new() { CpuGen = 5, MemoryMB = 64, Storage = PcStorage.Ide, BootOrder = "CHF" };
+    public static readonly PcConfig Win98 = new() { CpuGen = 5, MemoryMB = 64, Storage = PcStorage.Ide, BootOrder = "CHF", Bus = PcBus.Pci430TX };
 
     public bool IsDefault => this == Default;
 
@@ -40,13 +45,39 @@ public sealed record PcConfig
         foreach (char c in BootOrder) if (c is not ('C' or 'H' or 'F')) throw new ArgumentException("BootOrder uses C, H, F");
     }
 
-    public void Write(BinaryWriter w) { w.Write(1); w.Write(CpuGen); w.Write(MemoryMB); w.Write((int)Storage); w.Write(BootOrder); }
+    // version 1 (no bus field) is still written for an ISA board, so those states stay byte for byte what they were
+    public void Write(BinaryWriter w)
+    {
+        w.Write(Bus == PcBus.Isa ? 1 : 2); w.Write(CpuGen); w.Write(MemoryMB); w.Write((int)Storage); w.Write(BootOrder);
+        if (Bus != PcBus.Isa) w.Write((int)Bus);
+    }
     public static PcConfig Read(BinaryReader r)
     {
         int v = r.ReadInt32();
-        if (v != 1) throw new InvalidDataException($"x86 machine config block version {v} is not known");
-        return new PcConfig { CpuGen = r.ReadInt32(), MemoryMB = r.ReadInt32(), Storage = (PcStorage)r.ReadInt32(), BootOrder = r.ReadString() };
+        if (v is not (1 or 2)) throw new InvalidDataException($"x86 machine config block version {v} is not known");
+        var c = new PcConfig { CpuGen = r.ReadInt32(), MemoryMB = r.ReadInt32(), Storage = (PcStorage)r.ReadInt32(), BootOrder = r.ReadString() };
+        return v == 2 ? c with { Bus = (PcBus)r.ReadInt32() } : c;
     }
 
-    public override string ToString() => $"{(CpuGen == 3 ? "386" : CpuGen == 4 ? "486" : "586")}, {MemoryMB} MB, {(Storage == PcStorage.Ide ? "IDE" : "BIOS disks")}, boot {BootOrder}";
+    public override string ToString() => $"{(CpuGen == 3 ? "386" : CpuGen == 4 ? "486" : "586")}, {MemoryMB} MB, {(Storage == PcStorage.Ide ? "IDE" : "BIOS disks")}, boot {BootOrder}{(Bus == PcBus.Pci430TX ? ", PCI 430TX" : "")}";
+}
+
+/// <summary>A whole machine the app offers (the desktop's "x86 machine" menu): the board config, the CPU model and the video card.</summary>
+public sealed record PcMachinePreset(string Key, string Label, PcConfig Config, CpuModel? Cpu, PcVideo Video)
+{
+    public const string ClassicKey = "classic";
+    public bool IsClassic => Key == ClassicKey;
+
+    /// <summary>Classic = the x86 console as it always was (its CPU core menu and IPS); the others are fixed CPU models.</summary>
+    public static readonly PcMachinePreset[] All =
+    {
+        new(ClassicKey, "Classic (486-class, VGA)", PcConfig.Default, null, PcVideo.Vga),
+        new("dos-386", "DOS 386DX-33, VGA", PcConfig.Dos386, CpuModel.I386DX, PcVideo.Vga),
+        new("dos-486", "DOS 486DX2-66, VGA, IDE", PcConfig.Dos486, CpuModel.I486DX2, PcVideo.Vga),
+        new("win98-p166", "Win98 Pentium MMX 166, S3 Trio64, PCI", PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.S3Trio64),
+    };
+
+    /// <summary>The preset for a key (case-insensitive); an unknown or empty key is the classic machine.</summary>
+    public static PcMachinePreset Find(string? key) => System.Array.Find(All, p => p.Key.Equals(key ?? "", System.StringComparison.OrdinalIgnoreCase)) ?? All[0];
+    public static bool Known(string key) => System.Array.Exists(All, p => p.Key.Equals(key, System.StringComparison.OrdinalIgnoreCase));
 }
