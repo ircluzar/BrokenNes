@@ -42,10 +42,23 @@ public sealed partial class PcMachine : IX86Bus
     public long Clock => Cpu.Cycle + _idle;
     public long PitNow => (long)((Int128)Clock * Pit8254.Freq / InstructionsPerSecond);
 
-    public PcMachine(int memBytes = DefaultMemory)
+    /// <summary>What the board is built with (docs/projects/x86-modular-pc.md). Fixed for the machine's life: a change is a new machine.</summary>
+    public readonly PcConfig Config;
+    /// <summary>The IDE controller (null on a BIOS-only machine: the default).</summary>
+    public readonly AtaController? Ata;
+    /// <summary>The ATAPI CD-ROM's disc (secondary master; IDE machines only). Read-only media: not part of a save state.</summary>
+    public CdImage? Cd;
+
+    public PcMachine(int memBytes = DefaultMemory) : this(PcConfig.Default, memBytes) { }
+
+    public PcMachine(PcConfig config) : this(config, config.MemoryMB * 1024 * 1024) { }
+
+    private PcMachine(PcConfig config, int memBytes)
     {
+        config.Validate();
+        Config = config with { MemoryMB = Math.Max(1, memBytes >> 20) };
         MemKb = memBytes / 1024;
-        Cpu = new I386(4, memBytes, this);
+        Cpu = new I386(config.CpuGen, memBytes, this);
         Pit = new Pit8254(() => PitNow, () => Pic.Pulse(0));
         Kbc = new Kbc8042(Pic);
         Cmos = new Cmos(() => PitNow, MemKb);
@@ -53,6 +66,7 @@ public sealed partial class PcMachine : IX86Bus
         Speaker = new PcSpeaker(this);
         Opl = new Opl2(() => PitNow);
         Dma = new Dma8237(this);
+        if (config.Storage == PcStorage.Ide) Ata = new AtaController(Pic);
         Pic.Raise = () => Cpu.RaiseIrq();
         RegisterTraps();
     }
@@ -74,6 +88,7 @@ public sealed partial class PcMachine : IX86Bus
 
     public byte In8(int port)
     {
+        if (Ata != null && Ata.In(port, false, out int av)) return (byte)av;
         if (Card != null && Card.In(port, false, out int cv)) return (byte)cv;
         switch (port)
         {
@@ -99,6 +114,7 @@ public sealed partial class PcMachine : IX86Bus
 
     public void Out8(int port, byte v)
     {
+        if (Ata != null && Ata.Out(port, false, v)) return;
         if (Card != null && Card.Out(port, false, v)) return;
         switch (port)
         {
@@ -122,18 +138,22 @@ public sealed partial class PcMachine : IX86Bus
 
     public ushort In16(int port)
     {
+        if (Ata != null && Ata.In(port, true, out int av)) return (ushort)av;
         if (Card != null && Card.In(port, true, out int cv)) return (ushort)cv;
         if (ExtraIn != null) { int v = ExtraIn(port, 16); if (v >= 0) return (ushort)v; }
         return (ushort)(In8(port) | (In8(port + 1) << 8));
     }
     public void Out16(int port, ushort v)
     {
+        if (Ata != null && Ata.Out(port, true, v)) return;
         if (Card != null && Card.Out(port, true, v)) return;
         if (ExtraOut != null && ExtraOut(port, 16, v)) return;
         Out8(port, (byte)v); Out8(port + 1, (byte)(v >> 8));
     }
-    public uint In32(int port) => (uint)(In16(port) | (In16(port + 2) << 16));
-    public void Out32(int port, uint v) { Out16(port, (ushort)v); Out16(port + 2, (ushort)(v >> 16)); }
+    // a 32-bit access to an IDE data port is two 16-bit cycles on that same port
+    private bool IsAtaData(int port) => Ata != null && (port == 0x1f0 || port == 0x170);
+    public uint In32(int port) => IsAtaData(port) ? (uint)(In16(port) | (In16(port) << 16)) : (uint)(In16(port) | (In16(port + 2) << 16));
+    public void Out32(int port, uint v) { Out16(port, (ushort)v); Out16(IsAtaData(port) ? port : port + 2, (ushort)(v >> 16)); }
 
     /// <summary>Port 61h bit 1 (speaker data) and bit 0 (PIT channel 2 gate).</summary>
     public int Port61 => _port61;
@@ -265,8 +285,22 @@ public sealed partial class PcMachine : IX86Bus
         Card?.Reset();
         Vga.Picture?.Reset();
         _lastFrame = -1;
+        _cdEmu = null; _cdBoot = false;
+        WireAta();
+        Ata?.Reset();
         Post();
     }
+
+    /// <summary>Puts the board's disks on the IDE cables: primary master / slave = C: / D:, secondary master = the CD-ROM.</summary>
+    private void WireAta()
+    {
+        if (Ata == null) return;
+        Ata.Primary.Disk[0] = Hdd[0]; Ata.Primary.Disk[1] = Hdd[1];
+        Ata.Secondary.CdPresent[0] = true; Ata.Secondary.Cd[0] = Cd;
+    }
+
+    /// <summary>A save state carries the config block when the machine is not the classic one (memory is already in the CPU's state).</summary>
+    private bool ConfigInState => Config.CpuGen != 4 || Config.Storage != PcStorage.BiosOnly || Config.BootOrder != PcConfig.Default.BootOrder;
 
     // ================= save state =================
 
@@ -301,6 +335,15 @@ public sealed partial class PcMachine : IX86Bus
                 using (var pw = new BinaryWriter(ps)) Vga.Picture.Save(pw);
                 var blob = ps.ToArray();
                 w.Write(0x50434956); w.Write(Vga.Picture.Id); w.Write(blob.Length); w.Write(blob);   // "VICP"
+            }
+            // the machine config and its new devices, last: a classic machine's state is byte for byte what it was
+            if (ConfigInState)
+            {
+                w.Write(0x47464350);   // "PCFG"
+                Config.Write(w);
+                w.Write(Ata != null);
+                Ata?.Save(w);
+                SaveBiosExtras(w);
             }
         }
         return ms.ToArray();
@@ -340,7 +383,23 @@ public sealed partial class PcMachine : IX86Bus
         Floppy[0] = disks[0]; Floppy[1] = disks[1]; Hdd[0] = disks[2]; Hdd[1] = disks[3];
         // the picture chip saved is restored when the same chip draws now; another one (or a state without one) starts it cold: a clean re-key, never a guess
         string? picId = null; byte[]? picBlob = null;
-        if (r.BaseStream.Position + 4 <= r.BaseStream.Length && r.ReadInt32() == 0x50434956) { picId = r.ReadString(); picBlob = r.ReadBytes(r.ReadInt32()); }
+        PcConfig? saved = null;
+        while (r.BaseStream.Position + 4 <= r.BaseStream.Length)
+        {
+            int magic = r.ReadInt32();
+            if (magic == 0x50434956) { picId = r.ReadString(); picBlob = r.ReadBytes(r.ReadInt32()); }
+            else if (magic == 0x47464350)
+            {
+                saved = PcConfig.Read(r);
+                if (saved with { MemoryMB = Config.MemoryMB } != Config) throw new InvalidDataException($"this x86 state is for a {saved} machine, this machine is {Config}");
+                WireAta();
+                if (r.ReadBoolean()) Ata!.Load(r);
+                LoadBiosExtras(r);
+            }
+            else throw new InvalidDataException($"unknown block {magic:X8} in an x86 state");
+        }
+        if (saved == null && ConfigInState) throw new InvalidDataException($"this x86 state is for the classic machine (486, BIOS disks), this machine is {Config}");
+        WireAta();
         if (Vga.Picture != null)
         {
             if (picBlob != null && picId == Vga.Picture.Id) { using var pr = new BinaryReader(new MemoryStream(picBlob)); Vga.Picture.Load(pr); }

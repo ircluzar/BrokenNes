@@ -160,10 +160,12 @@ public sealed partial class PcMachine
         var t = Cmos.Now.TimeOfDay;
         PhysW32(0x46c, (uint)(t.TotalSeconds * 1193182.0 / 65536.0));
 
+        if (Ata != null) PostIde();
+
         // chips
         Out8(0x20, 0x11); Out8(0x21, 0x08); Out8(0x21, 0x04); Out8(0x21, 0x01);
         Out8(0xa0, 0x11); Out8(0xa1, 0x70); Out8(0xa1, 0x02); Out8(0xa1, 0x01);
-        Out8(0x21, 0xb8); Out8(0xa1, 0x8f);                     // IRQ 0, 1, 2, 6 (and 8 / 12-14 on the slave) open
+        Out8(0x21, 0xb8); Out8(0xa1, Ata != null ? (byte)0x0f : (byte)0x8f);   // IRQ 0, 1, 2, 6 (and 8 / 12-14 on the slave; 15 too with IDE) open
         Out8(0x43, 0x36); Out8(0x40, 0); Out8(0x40, 0);
         SetMode(3);
 
@@ -173,6 +175,7 @@ public sealed partial class PcMachine
 
     private void BootNow()
     {
+        if (Ata != null) { BootIde(); return; }
         foreach (int drive in new[] { 0x00, 0x80 })
         {
             var d = Disk(drive);
@@ -427,7 +430,7 @@ public sealed partial class PcMachine
 
     // ================= INT 13h: disks =================
 
-    private DiskImage? Disk(int dl) => dl switch { 0 => Floppy[0], 1 => Floppy[1], 0x80 => Hdd[0], 0x81 => Hdd[1], _ => null };
+    private DiskImage? Disk(int dl) => dl switch { 0 => _cdEmu ?? Floppy[0], 1 => Floppy[1], 0x80 => Hdd[0], 0x81 => Hdd[1], _ => null };
 
     private void DiskStatus(int dl, uint st) { PhysW8(dl >= 0x80 ? 0x474u : 0x441u, (byte)st); AH = st; SetCF(st != 0); }
 
@@ -435,6 +438,7 @@ public sealed partial class PcMachine
     {
         int dl = (int)DL;
         uint fn = AH;
+        if (Ata != null && Int13Ide(dl, fn)) return;
         var d = Disk(dl);
         if (fn == 0x01) { AH = Phys8(dl >= 0x80 ? 0x474u : 0x441u); SetCF(AH != 0); return; }
         if (fn == 0x08 && dl < 0x80 && d == null) { Fail(0x01); return; }
