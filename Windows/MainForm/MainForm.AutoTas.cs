@@ -75,6 +75,8 @@ namespace BrokenNes.Windows
                     if (atBadge != null) atBadge.Visible = atPackage != null;
                     if (atPackage == null && debugWindows.TryGetValue("autotas", out var w) && !w.IsDisposed) w.Close();
                     else if (debugWindows.TryGetValue("autotas", out var w2) && w2 is DebugWindows.AutoTasPanel panel) panel.Reload();
+                    if (atPackage == null && debugWindows.TryGetValue("autotasvars", out var v) && !v.IsDisposed) v.Close();
+                    else if (debugWindows.TryGetValue("autotasvars", out var v2) && v2 is DebugWindows.AutoTasVariablesPanel vars) vars.Reload();
                 }));
             }
             catch (InvalidOperationException) { }
@@ -276,10 +278,44 @@ namespace BrokenNes.Windows
             if (atPackage == null) return;
             if (debugWindows.TryGetValue("autotas", out var open) && !open.IsDisposed) { open.Activate(); return; }
             var f = new DebugWindows.AutoTasPanel(this);
-            f.FormClosed += (_, _) => debugWindows.Remove("autotas");
+            f.FormClosed += (_, _) => { debugWindows.Remove("autotas"); if (debugWindows.TryGetValue("autotasvars", out var vw) && !vw.IsDisposed) vw.Close(); };
             debugWindows["autotas"] = f;
             f.Show(this);
+            OpenAutoTasVariables();
             Console.WriteLine("[AutoTAS] panel opened");
+        }
+
+        /// <summary>The left-hand variables stripe (the game dossier's RAM variables, live); opens with the chapter panel.</summary>
+        internal void OpenAutoTasVariables()
+        {
+            if (atPackage == null) return;
+            if (debugWindows.TryGetValue("autotasvars", out var open) && !open.IsDisposed) { open.Activate(); return; }
+            var v = new DebugWindows.AutoTasVariablesPanel(this);
+            v.FormClosed += (_, _) => debugWindows.Remove("autotasvars");
+            debugWindows["autotasvars"] = v;
+            v.Show(this);
+        }
+
+        /// <summary>
+        /// A side-effect-free byte reader for the variables stripe: NES system RAM ($0000-$1FFF, mirrored) and cartridge RAM ($6000-$7FFF);
+        /// anything else reads -1. Null when the game is not a NES game (the other consoles come later).
+        /// </summary>
+        internal Func<int, int>? AutoTasPeeker()
+        {
+            var n = nes;
+            if (n == null) return null;
+            return a => a is >= 0 and < 0x2000 ? n.PeekSystemRam(a & 0x7FF) : a is >= 0x6000 and < 0x8000 ? n.PeekPrgRam(a - 0x6000) : -1;
+        }
+
+        /// <summary>The variables stripe as a PNG (null when closed).</summary>
+        internal byte[]? AutoTasVariablesPng()
+        {
+            if (!debugWindows.TryGetValue("autotasvars", out var w) || w.IsDisposed) return null;
+            using var bmp = new Bitmap(w.Width, w.Height);
+            w.DrawToBitmap(bmp, new Rectangle(0, 0, w.Width, w.Height));
+            using var ms = new MemoryStream();
+            bmp.Save(ms, ImageFormat.Png);
+            return ms.ToArray();
         }
 
         internal object AutoTasStatus()
@@ -294,6 +330,8 @@ namespace BrokenNes.Windows
                 current = atCurrent, currentClean = atCurrentClean, playing = atPlaying, paused = isPaused, segFrame = atSeg != null ? atSegFrame : (long?)null,
                 canReturn = atReturnState != null, speed = atSpeed, last = atLast,
                 panelOpen = debugWindows.TryGetValue("autotas", out var w) && !w.IsDisposed,
+                variables = debugWindows.TryGetValue("autotasvars", out var vw) && vw is DebugWindows.AutoTasVariablesPanel vp && !vp.IsDisposed ? vp.Snapshot() : null,
+                variablesCollapsed = debugWindows.TryGetValue("autotasvars", out var vw2) && vw2 is DebugWindows.AutoTasVariablesPanel vp2 && !vp2.IsDisposed ? vp2.Collapsed : (bool?)null,
                 chapters = p?.Manifest.Chapters.Select((c, i) => (object)new { index = i, id = c.Id, title = c.Title, kind = c.Kind, frames = c.Frames, score = c.Quality?.Score, deaths = c.Quality?.Deaths, hasClean = p.StateOf(c, true) != null, hasRaw = p.StateOf(c, false) != null, hasSeg = p.SegOf(c, false) != null, thumb = p.ThumbOf(c) != null }).ToArray(),
             };
         }
@@ -331,6 +369,14 @@ namespace BrokenNes.Windows
             server.GetAutoTasStatus = () => AtUi(AutoTasStatus);
             server.AutoTasOpenPanel = () => AtUi(() => { OpenAutoTasPanel(); return AutoTasStatus(); });
             server.AutoTasPanelPng = () => AtUi(AutoTasPanelPng);
+            server.AutoTasVariablesPng = () => AtUi(AutoTasVariablesPng);
+            server.AutoTasVariablesCollapse = (c, all) => AtUi(() =>
+            {
+                OpenAutoTasVariables();
+                if (c is bool b && debugWindows.TryGetValue("autotasvars", out var w) && w is DebugWindows.AutoTasVariablesPanel vp) vp.SetCollapsed(b);
+                if (all is bool a && debugWindows.TryGetValue("autotasvars", out var w3) && w3 is DebugWindows.AutoTasVariablesPanel vp3) vp3.SetShowAll(a);
+                return AutoTasStatus();
+            });
             server.AutoTasCaptureState = rel => AutoTasCaptureStateAsync(rel);
             server.AutoTasCommand = async (cmd, chapter, clean, speed) =>
             {

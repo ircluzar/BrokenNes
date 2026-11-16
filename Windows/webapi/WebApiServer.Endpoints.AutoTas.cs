@@ -17,6 +17,11 @@ namespace BrokenNes.Windows.WebApi
         public Func<object>? AutoTasOpenPanel { get; set; }
         /// <summary>A PNG of the open panel, or null.</summary>
         public Func<byte[]?>? AutoTasPanelPng { get; set; }
+        /// <summary>A PNG of the open variables stripe, or null.</summary>
+        public Func<byte[]?>? AutoTasVariablesPng { get; set; }
+        /// <summary>Opens the variables stripe (collapsed or not; null = leave it) -> the status.</summary>
+        public Func<bool?, bool?, object>? AutoTasVariablesCollapse { get; set; }
+        public sealed class AutoTasVariablesBody { public bool? Collapsed { get; set; } public bool? All { get; set; } }
         /// <summary>The panel's buttons: (command, chapter, clean, speed) -> the message the panel shows.</summary>
         public Func<string, int?, bool?, float?, Task<string>>? AutoTasCommand { get; set; }
 
@@ -37,6 +42,20 @@ namespace BrokenNes.Windows.WebApi
                 if (AutoTasPanelPng == null) return NotWired();
                 var png = AutoTasPanelPng();
                 return png == null ? Results.NotFound(new { success = false, error = "the AutoTAS panel is not open" }) : Results.File(png, "image/png");
+            });
+            // the left-hand variables stripe: GET variables.png; POST variables {collapsed: bool, all: bool (priority 3 too)}
+            app.MapGet("/api/autotas/variables.png", () =>
+            {
+                if (AutoTasVariablesPng == null) return NotWired();
+                var png = AutoTasVariablesPng();
+                return png == null ? Results.NotFound(new { success = false, error = "the AutoTAS variables stripe is not open" }) : Results.File(png, "image/png");
+            });
+            app.MapPost("/api/autotas/variables", async (HttpContext ctx) =>
+            {
+                if (AutoTasVariablesCollapse == null) return NotWired();
+                AutoTasVariablesBody? b = null;
+                if (ctx.Request.ContentLength is > 0) b = await ctx.Request.ReadFromJsonAsync<AutoTasVariablesBody>();
+                return Results.Ok(AutoTasVariablesCollapse(b?.Collapsed, b?.All));
             });
             app.MapPost("/api/autotas/capture-state", async (HttpContext ctx) =>
             {
