@@ -40,6 +40,7 @@ public sealed partial class I386
         if (size != MemSize) throw new InvalidDataException($"state has {size} bytes of memory, this machine {MemSize}");
         if (r.Read(Mem, 0, (int)size) != size) throw new EndOfStreamException();
         if (!_legacy) LoadModelState(r);
+        _memEpoch++;
         TlbClear();
         _ifLaddr = ulong.MaxValue; _ifPaddr = 0;
     }

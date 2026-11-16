@@ -76,10 +76,11 @@ public sealed partial class I386
     private const int TlbSize = 512;
     private readonly uint[] _tlbLpgno = new uint[TlbSize], _tlbXaddr = new uint[TlbSize];
     private readonly int[] _tlbLookup = new int[TlbSize];    // index into PteLookup: wp*4 + ((pte >> 1) & 3)
-    private readonly int[] _tlbPpte = new int[TlbSize];
-    // the block compiler's TLB hit test (I386.Jit.cs): bit 0 supervisor read, 1 supervisor write, 2 user read, 3 user write allowed;
-    // set by a translation that passed (so the accessed bits are set), cleared by a refill
-    private readonly byte[] _tlbFast = new byte[TlbSize];      // physical address of the PTE's low byte
+    private readonly int[] _tlbPpte = new int[TlbSize];      // physical address of the PTE's low byte
+    /// <summary>The compiled code's TLB hit test (I386.Jit.cs Xlat): [(user * 2 + write) * TlbSize + entry] = the entry's page number once a translation
+    /// at that privilege (and a write: its dirty bit set) passed, else FFFFFFFF; cleared with the entry.</summary>
+    private readonly uint[] _tlbTag = new uint[4 * TlbSize];
+    private void TagClear(int e) { _tlbTag[e] = _tlbTag[e + TlbSize] = _tlbTag[e + 2 * TlbSize] = _tlbTag[e + 3 * TlbSize] = 0xffffffff; }
 
     public const int SEG_ES = 0, SEG_CS = 1, SEG_SS = 2, SEG_DS = 3, SEG_FS = 4, SEG_GS = 5, SEG_LDT = 6, SEG_TR = 7;
     public const int EX_DE = 0, EX_DB = 1, EX_NMI = 2, EX_BP = 3, EX_OF = 4, EX_BR = 5, EX_UD = 6, EX_NM = 7, EX_DF = 8, EX_INT9 = 9,
@@ -114,6 +115,8 @@ public sealed partial class I386
         BuildOpCosts(model, out _opCost, out _opCost0F, out _mulCost, out _divCost);
         Mem = new byte[memSize + 16];
         MemSize = (uint)memSize;
+        _codeMark = new byte[(memSize >> 6) + 2];
+        _pgGen = new uint[(memSize >> 12) + 2];
         _bus = bus;
         _ioMem = bus.MapsIoMem;
         Reset();
@@ -145,9 +148,42 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private byte P8(uint a) => Mem[a];
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint P16(uint a) => Unsafe.ReadUnaligned<ushort>(ref Mem[a]);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint P32(uint a) => Unsafe.ReadUnaligned<uint>(ref Mem[a]);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS8(uint a, uint v) => Mem[a] = (byte)v;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS16(uint a, uint v) => Unsafe.WriteUnaligned(ref Mem[a], (ushort)v);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS32(uint a, uint v) => Unsafe.WriteUnaligned(ref Mem[a], v);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS8(uint a, uint v) { Mem[a] = (byte)v; CodeWr1(a); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS16(uint a, uint v) { Unsafe.WriteUnaligned(ref Mem[a], (ushort)v); CodeWr(a, 2); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS32(uint a, uint v) { Unsafe.WriteUnaligned(ref Mem[a], v); CodeWr(a, 4); }
+
+    // ---- the compiled blocks' code-change test (I386.Jit.cs JitSame): a store to a 64-byte line some compiled block was made from bumps the
+    // generation of its 4 KB page; a block runs without comparing its bytes while its pages' generations (and _memEpoch) are the ones it saw.
+    // Writes to memory from outside the CPU (the BIOS, DMA, disk loads, save states, tools) bump _memEpoch: every block compares once.
+    private readonly byte[] _codeMark;   // per 64-byte line of RAM: 1 = a compiled block's bytes are there
+    private readonly uint[] _pgGen;      // per 4 KB page: the code write generation
+    private uint _memEpoch;
+    /// <summary>Memory was written by something other than the CPU's own stores (the BIOS, DMA, a disk load, a tool): compiled blocks check their bytes.</summary>
+    public void MemTouched() => _memEpoch++;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void CodeWr1(uint a) { if (Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_codeMark), (nint)(a >> 6)) != 0) CodeWrite(a, 1); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void CodeWr(uint a, uint n)
+    {
+        ref byte m = ref MemoryMarshal.GetArrayDataReference(_codeMark);
+        if ((Unsafe.Add(ref m, (nint)(a >> 6)) | Unsafe.Add(ref m, (nint)((a + n - 1) >> 6))) != 0) CodeWrite(a, n);
+    }
+    /// <summary>A store of <paramref name="n"/> bytes at RAM address <paramref name="a"/> touched a code line: its page(s) move to a new generation.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void CodeWrite(uint a, uint n)
+    {
+        if (a >= MemSize) return;
+        _pgGen[a >> 12]++;
+        uint e = a + n - 1;
+        if ((e >> 12) != (a >> 12) && e < MemSize) _pgGen[e >> 12]++;
+    }
+    /// <summary>A store of a whole range (REP fast paths): its code lines, if any, move their pages on.</summary>
+    private void CodeWrRange(uint a, uint bytes)
+    {
+        if (bytes == 0) return;
+        for (uint l = a >> 6, le = (a + bytes - 1) >> 6; l <= le; l++)
+            if (_codeMark[l] != 0) { CodeWrite(l << 6, 64); }
+    }
 
     private bool Throw(int ex, uint err) { Excno = ex; Excerr = err; return false; }
     private bool Throw0(int ex) { Excno = ex; return false; }
@@ -255,6 +291,7 @@ public sealed partial class I386
     private void TlbClear()
     {
         for (int i = 0; i < TlbSize; i++) _tlbLpgno[i] = 0xffffffff;
+        Array.Fill(_tlbTag, 0xffffffff);
         _ifLaddr = ulong.MaxValue;
         _ifPaddr = 0;
     }
@@ -265,7 +302,7 @@ public sealed partial class I386
     private void RefillDone(bool ok)
     {
         if (_refillPde == 0xffffffff) return;
-        if (ok) { Mem[_refillPde] |= 1 << 5; Mem[_refillPte] |= 1 << 5; }
+        if (ok) { Mem[_refillPde] |= 1 << 5; Mem[_refillPte] |= 1 << 5; CodeWr1(_refillPde); CodeWr1(_refillPte); }
         _refillPde = 0xffffffff;
     }
 
@@ -281,7 +318,7 @@ public sealed partial class I386
         uint pte = PRead32Safe(pteAddr);
         if ((pte & 1) == 0) return false;
         _refillPde = pdeAddr; _refillPte = pteAddr;   // the accessed bits are set once the access passes the protection check (a 386 sets no A bit on a faulting walk; test386 POST 11h)
-        _tlbLpgno[e] = lpgno; _tlbFast[e] = 0;
+        _tlbLpgno[e] = lpgno; TagClear(e);
         _tlbXaddr[e] = (pte & ~0xfffu) ^ (lpgno << 12);
         pte &= (pde & 7) | 0xfffffff8;
         _tlbLookup[e] = ((Cr0 & CR0_WP) != 0 ? 4 : 0) + (int)((pte >> 1) & 3);
@@ -308,18 +345,15 @@ public sealed partial class I386
             Cr2 = laddr; Excno = EX_PF; Excerr = 1;
             if ((rwm & 2) != 0) Excerr |= 2;
             if (cpl == 3) Excerr |= 4;
-            _tlbLpgno[e] = 0xffffffff;
+            _tlbLpgno[e] = 0xffffffff; TagClear(e);
             RefillDone(false);
             return false;
         }
         RefillDone(true);
         paddr = _tlbXaddr[e] ^ laddr;
-        if ((rwm & 2) != 0) Mem[_tlbPpte[e]] |= 1 << 6; // dirty
-        if (_tlbFast[e] == 0)
-        {
-            int lk = _tlbLookup[e] * 4;
-            _tlbFast[e] = (byte)((PteLookup[lk] == 0 ? 1 : 0) | (PteLookup[lk + 1] == 0 ? 2 : 0) | (PteLookup[lk + 2] == 0 ? 4 : 0) | (PteLookup[lk + 3] == 0 ? 8 : 0));
-        }
+        int tg = (cpl == 3 ? 2 * TlbSize : 0) + e;
+        _tlbTag[tg] = lpgno;
+        if ((rwm & 2) != 0) { Mem[_tlbPpte[e]] |= 1 << 6; CodeWr1((uint)_tlbPpte[e]); _tlbTag[tg + TlbSize] = lpgno; } // dirty
         return true;
     }
 
@@ -410,7 +444,7 @@ public sealed partial class I386
             if (PteLookup[_tlbLookup[e] * 4 + (Cpl == 3 ? 2 : 0)] != 0)
             {
                 Cr2 = laddr; Excno = EX_PF; Excerr = Cpl == 3 ? 5u : 1u;
-                _tlbLpgno[e] = 0xffffffff;
+                _tlbLpgno[e] = 0xffffffff; TagClear(e);
                 RefillDone(false);
                 return false;
             }
@@ -428,9 +462,9 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint U8(uint a) => Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint U16(uint a) => Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a));
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint U32(uint a) => Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a));
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US8(uint a, uint v) => Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a) = (byte)v;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US16(uint a, uint v) => Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a), (ushort)v);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US32(uint a, uint v) => Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a), v);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US8(uint a, uint v) { Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a) = (byte)v; CodeWr1(a); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US16(uint a, uint v) { Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a), (ushort)v); CodeWr(a, 2); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US32(uint a, uint v) { Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a), v); CodeWr(a, 4); }
 
     /// <summary>Plain RAM (below MemSize and, with memory-mapped I/O on, outside A0000-BFFFF; the E0000000+ window is above MemSize).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -804,6 +838,7 @@ public sealed partial class I386
 
     public void Reset()
     {
+        _memEpoch++;
         Array.Clear(R);
         Flags = 0x2; Cpl = 0; Code16 = true; SpMask = 0xffff; Halt = false;
         for (int i = 0; i < 8; i++) { SegSel[i] = 0; SegBase[i] = 0; SegLimit[i] = i < 6 ? 0xffffu : 0; SegFlags[i] = 0; }

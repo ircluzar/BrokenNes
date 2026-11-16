@@ -1208,7 +1208,7 @@ public sealed partial class I386
                 if (n == 1) US8(d0 + i, U8(s0 + i)); else if (n == 2) US16(d0 + i, U16(s0 + i)); else US32(d0 + i, U32(s0 + i));
             }
         }
-        else Mem.AsSpan((int)s0, (int)bytes).CopyTo(Mem.AsSpan((int)d0, (int)bytes));
+        else { Mem.AsSpan((int)s0, (int)bytes).CopyTo(Mem.AsSpan((int)d0, (int)bytes)); CodeWrRange(d0, bytes); }
         SReg(A, 6, si + bytes); SReg(A, 7, di + bytes); SReg(A, 1, cx - k);
         it += k;
         return true;
@@ -1224,7 +1224,7 @@ public sealed partial class I386
         uint k = Math.Min(cx, RepSpan(SEG_ES, di, md.A1, n));
         if (k < 2) return false;
         uint bytes = k * (uint)n, d0 = md.A1;
-        if (n == 1) Mem.AsSpan((int)d0, (int)bytes).Fill((byte)ax);
+        if (n == 1) { Mem.AsSpan((int)d0, (int)bytes).Fill((byte)ax); CodeWrRange(d0, bytes); }
         else if (n == 2) for (uint i = 0; i < bytes; i += 2) US16(d0 + i, ax);
         else for (uint i = 0; i < bytes; i += 4) US32(d0 + i, ax);
         SReg(A, 7, di + bytes); SReg(A, 1, cx - k);
