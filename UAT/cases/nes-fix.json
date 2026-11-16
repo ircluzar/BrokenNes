@@ -120,6 +120,52 @@
         "result": "ok",
         "crashInfo": ""
       }
+    },
+    {
+      "id": "nesfix-r3-machrider-mirroring",
+      "description": "Mach Rider (JU): NROM-256 headered horizontal, the cart is vertical (MirroringFixups); as horizontal CIRAM $400-$7FF was never filled. Lockstep vs Mesen 2.1.1: nametables 1881 -> 2 different frames of 1885 (2026-11-16).",
+      "kind": "romtest",
+      "rom": "{lib}/Mach Rider (JU).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "421:Start,427:,487:A,493:",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "C2F3251981EB4593",
+        "framesRun": 900,
+        "distinctColors": 11,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "nesfix-r3-hogan-mirroring",
+      "description": "Hogan's Alley (JU): NROM headered horizontal, the cart is vertical (MirroringFixups). Lockstep vs Mesen 2.1.1: nametables 1023 -> 0 different frames of 1024 (2026-11-16).",
+      "kind": "romtest",
+      "rom": "{lib}/Hogan's Alley (JU) [!].nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "422:Start,430:,700:A,708:Start,716:",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "7B59B2712AF61D59",
+        "framesRun": 900,
+        "distinctColors": 7,
+        "result": "ok",
+        "crashInfo": ""
+      }
     }
   ],
   "goldenGeneratedUtc": "2026-11-16T09:39:32Z"

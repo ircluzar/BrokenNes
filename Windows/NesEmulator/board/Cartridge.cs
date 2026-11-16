@@ -235,6 +235,8 @@ public class Cartridge
 	private static readonly System.Collections.Generic.Dictionary<uint, Mirroring> MirroringFixups = new()
 	{
 		{ 0x4E1C1E3Cu, Mirroring.Vertical },   // Karnov (U): MMC3 header with horizontal mirroring; the game only ever writes $8000/$8001, never $A000 (nes-fix-r1 2026-11-16)
+		{ 0x59977A46u, Mirroring.Vertical },   // Mach Rider (U): NROM-256 headered horizontal; the cart is vertical (lockstep: CIRAM $400-$7FF never filled) (nes-fix-r3)
+		{ 0xFF24D794u, Mirroring.Vertical },   // Hogan's Alley (U): NROM headered horizontal; the cart is vertical, Mesen's game database agrees (nes-fix-r3)
 	};
 	private static uint Crc32(byte[] data, int start, int length)
 	{
