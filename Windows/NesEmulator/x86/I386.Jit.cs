@@ -203,6 +203,9 @@ public sealed partial class I386
         return Push(bits, v);
     }
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JLeave() => Leave();
+    /// <summary>MOV Sw, Ew (after JPrep): the interpreter's checked segment load. False = a fault (raised).</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool JMovSeg(int seg, uint v) => LoadSegChecked(seg, v);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegSel(int seg) => SegSel[seg];
     [MethodImpl(MethodImplOptions.NoInlining)] private void JImul2(int bits, int reg, uint a, uint b) => Imul2(bits, reg, a, b);
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JCall(uint rel) => CallNear(rel, true);
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JRet() => OpRet() != FAIL;
@@ -328,7 +331,7 @@ public sealed partial class I386
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JCall", "JRet",
+        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
                      "JXlat", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
@@ -694,7 +697,8 @@ public sealed partial class I386
         foreach (var e in ins)
         {
             if (e.Kind is DK_PUSH or DK_POP or DK_CALL or DK_RET) usedSegs.Add(SEG_SS);
-            if (e.Kind == DK_STOS) usedSegs.Add(SEG_ES);
+            if (e.Kind == DK_STOS || (e.Kind == DK_STR && e.Op != 2)) usedSegs.Add(SEG_ES);
+            if (e.Kind == DK_STR && e.Op != 3) usedSegs.Add(e.Seg);
             if (DcHasModrm(e.Kind) && e.Mod != 3 && e.Kind != DK_LEA) usedSegs.Add(e.Seg);
         }
         foreach (int s in usedSegs)
@@ -860,7 +864,7 @@ public sealed partial class I386
                     il.Emit(OpCodes.Ldloc, sb[e.Seg]!); il.Emit(OpCodes.Ldloc, ea); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, la);
                     // (the forms that run through a helper translate there themselves)
                     bool helper = e.Kind is DK_GRP3 or DK_GRP5 || (e.Kind == DK_GRP2 && e.Reg is not (4 or 5 or 6 or 7));
-                    bool write = e.Kind is DK_MOVEG or DK_MOVEI or DK_SETCC or DK_GRP2 ||
+                    bool write = e.Kind is DK_MOVEG or DK_MOVSR or DK_MOVEI or DK_SETCC or DK_GRP2 ||
                                  (e.Kind == DK_ALUEG && e.Op != 7) || (e.Kind == DK_GRP1 && e.Reg != 7);
                     if (!helper) Xlat(k, Math.Max(1, bits / 8), write);
                 }
@@ -1181,6 +1185,54 @@ public sealed partial class I386
                     SmcCheck(pg ? pax : la, n1);
                     break;
                 }
+                case DK_MOVSR:
+                    // MOV Ew, Sw: the selector (a register: zero-extended to the operand size; memory: 16 bits)
+                    Ld0(); I4(e.Reg); Call("JSegSel"); I4(0xffff); Op(OpCodes.And); Stl(t); WriteET();
+                    break;
+                case DK_SRMOV:
+                {
+                    // MOV Sw, Ew (DS / ES / FS / GS): the interpreter's load (a fault: leave with it); a segment the region uses is taken again
+                    // (no longer usable: leave right after it)
+                    ReadE(); Stl(A);
+                    Prep(); Ld0(); I4(e.Reg); Ld(A); Call("JMovSeg"); FailIfFalse();
+                    if (sb[e.Reg] != null)
+                    {
+                        var usable = il.DefineLabel();
+                        Ld0(); I4(e.Reg); Call("JSegOk"); il.Emit(OpCodes.Brtrue, usable);
+                        StDec(); LeaveAfter(k, () => IpAt(pe));
+                        il.MarkLabel(usable);
+                        Ld0(); I4(e.Reg); Call("JSegBase"); Stl(sb[e.Reg]!); Ld0(); I4(e.Reg); Call("JSegLim"); Stl(sl[e.Reg]!);
+                    }
+                    break;
+                }
+                case DK_STR:
+                {
+                    // MOVS / CMPS / LODS / SCAS without REP, as Movs / Cmps / Lods / Scas with _rep 0: the source [seg:eSI] (MOVS / CMPS / LODS),
+                    // the destination [ES:eDI] (MOVS / CMPS / SCAS); eSI / eDI += (DF ? -n : n); CMPS / SCAS: the flags of a SUB
+                    int n1 = bits / 8, asz = e.A16 ? 16 : 32;
+                    var up = il.DefineLabel(); var adv = il.DefineLabel();
+                    void At(int seg, int reg, bool write)
+                    {
+                        LdReg(asz, reg); Stl(ea);
+                        LimitCheck(k, seg, ea, n1);
+                        il.Emit(OpCodes.Ldloc, sb[seg]!); Ld(ea); Op(OpCodes.Add); Stl(la);
+                        Xlat(k, n1, write);
+                    }
+                    if (op != 3) { At(e.Seg, 6, false); LdMem(bits, la); Ld(V); Stl(A); }   // A = the source
+                    if (op == 0) { At(SEG_ES, 7, true); Ld(A); Stl(t); StMem(bits, la, t); }
+                    else if (op != 2) { At(SEG_ES, 7, false); LdMem(bits, la); Ld(V); Stl(B); }
+                    LdF(FFlags); U4(DF); Op(OpCodes.And); il.Emit(OpCodes.Brfalse, up);
+                    I4(-n1); il.Emit(OpCodes.Br, adv);
+                    il.MarkLabel(up); I4(n1);
+                    il.MarkLabel(adv); Stl(Y);
+                    if (op != 3) StReg(asz, 6, () => { LdReg(asz, 6); Ld(Y); Op(OpCodes.Add); });
+                    if (op != 2) StReg(asz, 7, () => { LdReg(asz, 7); Ld(Y); Op(OpCodes.Add); });
+                    if (op == 2) StReg(bits, 0, () => Ld(A));
+                    else if (op == 1) AluAB(7, bits);
+                    else if (op == 3) { LdReg(bits, 0); Stl(A); AluAB(7, bits); }
+                    if (op == 0) SmcCheck(pg ? pax : la, n1);
+                    break;
+                }
                 case DK_LEAVE:
                     Prep();
                     Ld0(); Call("JLeave"); FailIfFalse();
@@ -1198,5 +1250,5 @@ public sealed partial class I386
     }
 
     private static bool DcHasModrm(byte kind) => kind is DK_MOVEG or DK_MOVGE or DK_ALUEG or DK_ALUGE or DK_GRP1 or DK_GRP2 or DK_TESTEG
-        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5;
+        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV;
 }
