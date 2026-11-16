@@ -1042,7 +1042,9 @@ public sealed partial class I386
         else
         {
             if (!Translate(ref _meml, 1, SEG_SS, sp & _spm, 4)) return false;
-            SetSp(sp + 4 + imm, _spm); NextIp = Load32(ref _meml);
+            uint nip = Load32(ref _meml);
+            if (nip > SegLimit[SEG_CS]) return Throw(EX_GP, 0);   // past the CS limit: #GP before anything changes (SingleStepTests 66 C3)
+            SetSp(sp + 4 + imm, _spm); NextIp = nip;
         }
         return true;
     }
@@ -1095,6 +1097,7 @@ public sealed partial class I386
         uint newip = Load(n * 8, ref m1);
         if (!Translate(ref m2, 1, SEG_SS, (sp + (uint)n) & _spm, n)) return false;
         uint newcs = Load(n * 8, ref m2);
+        if (newip > SegLimit[SEG_CS]) return Throw(EX_GP, 0);   // (real mode: the new CS keeps the cached limit)
         if (!SetSeg(SEG_CS, newcs)) return false;
         SetSp(sp + (uint)(2 * n) + imm, _spm);
         NextIp = newip;
@@ -1117,6 +1120,7 @@ public sealed partial class I386
             if (!Translate(ref m2, 1, SEG_SS, (sp + (uint)n) & _spm, n)) return FAIL;
             uint newcs = Load(n * 8, ref m2) & 0xffff;
             if (!Translate(ref m3, 1, SEG_SS, (sp + (uint)(2 * n)) & _spm, n)) return FAIL;
+            if (newip > SegLimit[SEG_CS]) { Throw(EX_GP, 0); return FAIL; }   // (SingleStepTests 66 CF)
             uint oldflags = Flags;
             uint nf = Load(n * 8, ref m3);
             if (n == 2)
