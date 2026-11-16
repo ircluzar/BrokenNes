@@ -26,7 +26,7 @@ public sealed partial class I386
     private const byte DK_SLOW = 0, DK_MOVEG = 1, DK_MOVGE = 2, DK_ALUEG = 3, DK_ALUGE = 4, DK_ALUAI = 5, DK_GRP1 = 6, DK_GRP2 = 7,
         DK_TESTEG = 8, DK_G3TEST = 9, DK_GRP3 = 10, DK_MOVEI = 11, DK_LEA = 12, DK_MOVRI = 13, DK_INC = 14, DK_DEC = 15, DK_PUSH = 16,
         DK_POP = 17, DK_JCC = 18, DK_JMP = 19, DK_CALL = 20, DK_RET = 21,
-        DK_INTERP = 22, DK_MOVX = 23, DK_CBW = 24, DK_SETCC = 25, DK_IMUL = 26, DK_GRP5 = 27, DK_LEAVE = 28, DK_STOS = 29, DK_MOVSR = 30, DK_SRMOV = 31, DK_STR = 32;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
+        DK_INTERP = 22, DK_MOVX = 23, DK_CBW = 24, DK_SETCC = 25, DK_IMUL = 26, DK_GRP5 = 27, DK_LEAVE = 28, DK_STOS = 29, DK_MOVSR = 30, DK_SRMOV = 31, DK_STR = 32, DK_REPSTR = 33;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
 
     /// <summary>Decode the instruction at <paramref name="paddr"/> (in a fast-fetch code page) into <paramref name="e"/>; Kind 0 if it is not
     /// one of the cached forms.</summary>
@@ -190,7 +190,7 @@ public sealed partial class I386
     {
         e.Kind = DK_SLOW;
         bool c16 = _c16, o16 = c16, a16 = c16;
-        int seg = -1, p = 0;
+        int seg = -1, p = 0, rep = 0;
         uint b;
         for (;;)
         {
@@ -198,6 +198,8 @@ public sealed partial class I386
             if (!IsPrefix[b]) break;
             switch (b)
             {
+                case 0xf3: rep = 1; break;
+                case 0xf2: rep = 2; break;
                 case 0x26: seg = SEG_ES; break;
                 case 0x2e: seg = SEG_CS; break;
                 case 0x36: seg = SEG_SS; break;
@@ -206,9 +208,17 @@ public sealed partial class I386
                 case 0x65: seg = SEG_GS; break;
                 case 0x66: o16 = !c16; break;
                 case 0x67: a16 = !c16; break;
-                default: return;   // LOCK / REP: the ordinary path
+                default: return;   // LOCK: the ordinary path
             }
             if (p > 4) return;
+        }
+        if (rep != 0)
+        {   // REP / REPNE MOVS / CMPS / STOS / LODS / SCAS: the interpreter's string loop through a helper (anything else: the ordinary path)
+            if (b is not (>= 0xa4 and <= 0xa7 or >= 0xaa and <= 0xaf)) return;
+            if (p > 15) return;
+            e.Kind = DK_REPSTR; e.Op = (byte)b; e.Reg = (byte)rep; e.Bits = (byte)((b & 1) == 0 ? 8 : o16 ? 16 : 32);
+            e.O16 = o16; e.A16 = a16; e.SegRaw = (sbyte)seg; e.Seg = (sbyte)seg; e.Mod = 3; e.Rm = 0; e.Imm = 0; e.Len = (byte)p;
+            return;
         }
         int v = o16 ? 16 : 32;
         byte kind = DK_SLOW;

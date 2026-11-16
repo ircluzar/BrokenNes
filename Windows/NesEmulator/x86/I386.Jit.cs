@@ -206,6 +206,15 @@ public sealed partial class I386
     /// <summary>MOV Sw, Ew (after JPrep): the interpreter's checked segment load. False = a fault (raised).</summary>
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JMovSeg(int seg, uint v) => LoadSegChecked(seg, v);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegSel(int seg) => SegSel[seg];
+    /// <summary>A REP / REPNE string instruction (after JPrep), the interpreter's own loop (it charges the iterations to Cycle). False = a fault.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool JRepStr(int opc, int bits, int rep, long cyc)
+    {
+        Cycle = cyc; _rep = rep;
+        return opc switch { 0xa4 or 0xa5 => Movs(bits), 0xa6 or 0xa7 => Cmps(bits), 0xaa or 0xab => Stos(bits), 0xac or 0xad => Lods(bits), _ => Scas(bits) };
+    }
+    /// <summary>After a store the compiled code cannot see (REP MOVS / STOS): is the running block's code unchanged?</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool JCodeSame() => JitSame(_jitCur!);
     [MethodImpl(MethodImplOptions.NoInlining)] private void JImul2(int bits, int reg, uint a, uint b) => Imul2(bits, reg, a, b);
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JCall(uint rel) => CallNear(rel, true);
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JRet() => OpRet() != FAIL;
@@ -331,7 +340,7 @@ public sealed partial class I386
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JCall", "JRet",
+        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
                      "JXlat", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
@@ -1231,6 +1240,21 @@ public sealed partial class I386
                     else if (op == 1) AluAB(7, bits);
                     else if (op == 3) { LdReg(bits, 0); Stl(A); AluAB(7, bits); }
                     if (op == 0) SmcCheck(pg ? pax : la, n1);
+                    break;
+                }
+                case DK_REPSTR:
+                {
+                    Prep();
+                    Ld0(); I4(op); I4(bits); I4(e.Reg); Ld(cyc); Call("JRepStr"); Stl(Y);
+                    Ld0(); Call("JCycle"); Stl(cyc);   // (with the iterations past the first)
+                    Ld(Y); FailIfFalse();
+                    if (op is 0xa4 or 0xa5 or 0xaa or 0xab)
+                    {   // it may have written to this code: leave right after it
+                        var same = il.DefineLabel();
+                        Ld0(); Call("JCodeSame"); il.Emit(OpCodes.Brtrue, same);
+                        StDec(); LeaveAfter(k, () => IpAt(pe));
+                        il.MarkLabel(same);
+                    }
                     break;
                 }
                 case DK_LEAVE:
