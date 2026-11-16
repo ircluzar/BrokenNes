@@ -118,6 +118,7 @@ public class Cartridge
 			int bodyLen = Math.Min(prgSize + chrSize, rom.Length - offset);
 			uint crc = Crc32(rom, offset, bodyLen);
 			if (HeaderFixups.TryGetValue(crc, out int fixedMapper)) mapperID = fixedMapper;
+			if (MirroringFixups.TryGetValue(crc, out var fixedMirroring)) mirroringMode = fixedMirroring;
 		}
 		prgROM = new byte[prgSize];
 		Array.Copy(rom, offset, prgROM, 0, prgSize);
@@ -228,6 +229,12 @@ public class Cartridge
 		{ 0x5CAA3E61u, 144 },  // Death Race (U): headered as 11, really AGCI 50282 (144); as 11 it crashes on frame 14
 		{ 0xBD29178Au, 113 },  // Dudes With Attitude (U): headered as 79 with vertical mirroring; it is horizontal (113 bit 7 clear): as 79 the island map it builds in $2400 never shows on $2000 (compat catalog pilot 2026-11-15)
 		{ 0xC47EFC0Eu, 113 },  // Trolls on Treasure Island (U): same AVE board and the same header error as Dudes With Attitude; as 79 the world map is built in the hidden nametable (lockstep vs Mesen: CIRAM halves swapped)
+	};
+	// CRC32 (PRG+CHR) -> the cart's soldered mirroring, where the common dump's header has it wrong and the game never sets it
+	// itself. Each one measured by lockstep against Mesen 2.1.1 (its game database fixes the header): the CIRAM halves came out swapped.
+	private static readonly System.Collections.Generic.Dictionary<uint, Mirroring> MirroringFixups = new()
+	{
+		{ 0x4E1C1E3Cu, Mirroring.Vertical },   // Karnov (U): MMC3 header with horizontal mirroring; the game only ever writes $8000/$8001, never $A000 (nes-fix-r1 2026-11-16)
 	};
 	private static uint Crc32(byte[] data, int start, int length)
 	{
