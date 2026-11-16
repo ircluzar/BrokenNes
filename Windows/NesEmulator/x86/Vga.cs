@@ -420,6 +420,13 @@ public sealed class Vga
         int mapA = ((Sr[3] >> 2) & 3) | ((Sr[3] >> 3) & 4);
         int fontBase = (mapA switch { 0 => 0, 1 => 0x4000, 2 => 0x8000, 3 => 0xc000, 4 => 0x2000, 5 => 0x6000, 6 => 0xa000, _ => 0xe000 }) * 4;
         bool lineGraphics = (Ar[0x10] & 4) != 0;
+        // the same inputs as the last text frame drawn by this path (memory, registers, colours, cursor / blink phase): the same picture
+        long key = (cursorOn ? 1 : 0) | (blinkPhase ? 2 : 0) | (long)w << 2 | (long)h << 16;
+        if (_txtSerial == RenderSerial - 1 && key == _txtKey && Frame.Length == w * h && Ram.AsSpan(0, RamSize).SequenceEqual(_txtRam)
+            && Cr.AsSpan().SequenceEqual(_txtCr) && Ar.AsSpan().SequenceEqual(_txtAr) && Sr.AsSpan().SequenceEqual(_txtSr) && _pal.AsSpan(0, 16).SequenceEqual(_txtPal))
+        { _txtSerial = RenderSerial; return; }
+        _txtSerial = RenderSerial; _txtKey = key;
+        Ram.AsSpan(0, RamSize).CopyTo(_txtRam); _txtCr = (byte[])Cr.Clone(); _txtAr = (byte[])Ar.Clone(); _txtSr = (byte[])Sr.Clone(); _pal.AsSpan(0, 16).CopyTo(_txtPal);
         for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
             {
@@ -442,6 +449,11 @@ public sealed class Vga
                 }
             }
     }
+
+    private long _txtSerial = -10, _txtKey;
+    private readonly byte[] _txtRam = new byte[RamSize];
+    private byte[] _txtCr = Array.Empty<byte>(), _txtAr = Array.Empty<byte>(), _txtSr = Array.Empty<byte>();
+    private readonly int[] _txtPal = new int[16];
 
     private void RenderGraphics()
     {
