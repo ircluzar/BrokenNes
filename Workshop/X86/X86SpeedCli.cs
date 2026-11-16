@@ -8,7 +8,7 @@ using NesEmulator.X86;
 namespace BrokenNes.Workshop.X86;
 
 /// <summary>
-/// <c>--x86speed --work W [--cpu MODEL] [--video vga|s3] [--machine PRESET] [--runs N] [--scale N] [--frames N] [--jitstat] [--hot]</c>:
+/// <c>--x86speed --work W [--cpu MODEL] [--video vga|s3] [--machine PRESET] [--runs N] [--scale N] [--frames N] [--jitstat] [--hot] [--emm]</c>:
 /// the x86 PC's speed in percent of real time, per machine config, on a whole board (CPU + devices + picture), headless and unthrottled.
 /// A FreeDOS disk runs the workload after "READY"; the clock starts there and stops at "ALLDONE". Real time is the machine's own clock
 /// (instructions / InstructionsPerSecond of the CPU model), so 200% means a P166 runs twice as fast as a real P166 would.
@@ -67,7 +67,9 @@ internal static class X86SpeedCli
             default: Console.WriteLine($"x86speed: no workload {work}"); return 1;
         }
         string auto = "@ECHO OFF\r\nSET DOSDIR=\\FREEDOS\r\nSET PATH=%DOSDIR%\\BIN\r\nECHO READY\r\n" + cmd + "\r\nECHO ALLDONE\r\n";
-        m.Hdd[0] = new DiskImage(X86BootCli.BuildDisk(X86BootCli.FreeDosLite, X86BootCli.DefaultConfig, auto, puts), false);
+        // --emm: JEMMEX (XMS + EMS) loads first, so DOS runs in V86 mode under paging and a DOS extender goes through VCPI: the paged path
+        string config = args.Contains("--emm") ? @"DEVICE=\FREEDOS\BIN\JEMMEX.EXE" + "\r\n" + X86BootCli.DefaultConfig : X86BootCli.DefaultConfig;
+        m.Hdd[0] = new DiskImage(X86BootCli.BuildDisk(X86BootCli.FreeDosLite, config, auto, puts), false);
 
         m.Profiling = true;
         if (Arg(args, "--batch") is string bt) m.Batch = int.Parse(bt);

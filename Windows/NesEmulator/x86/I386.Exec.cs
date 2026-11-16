@@ -58,7 +58,7 @@ public sealed partial class I386
             if (((ulong)laddr ^ _ifLaddr) < 4096 - 16)
             {
                 uint paddr = _ifXaddr ^ laddr;
-                if (jit && JitOn && (Cr0 & CR0_PG) == 0)
+                if (jit && JitOn)
                 {
                     // a compiled block from here (I386.Jit.cs), else interpret this instruction
                     int rc = JitTry(paddr);
