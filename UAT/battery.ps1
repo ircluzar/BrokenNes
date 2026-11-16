@@ -31,6 +31,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $Repo = Split-Path -Parent $PSScriptRoot
+$env:BN_REPO = $Repo   # bscen runs from the scratch build folder: tell it where the repo (and the NES ROM corpus) is
 if ($Seed -eq 0) { $Seed = [int](Get-Date -UFormat %j) * 1000 + (Get-Date).Hour * 10 }
 if (-not $Out) { $Out = Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) ("battery\" + (Get-Date -Format 'yyyyMMdd-HHmmss')) }
 $Build = Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'battery-build'

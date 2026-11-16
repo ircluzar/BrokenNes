@@ -43,7 +43,7 @@ function Set-BdMesenSettings {
         Audio = [ordered]@{ EnableAudio = [bool]$Play }
         # Port 1 holds a standard pad (what Mesen's first-run setup gives a player; without it a settings file has no controller at all and
         # emu.setInput does nothing: measured, getInput(0) came back empty)
-        Nes = [ordered]@{ Port1 = [ordered]@{ Type = 'NesController' } }
+        Nes = [ordered]@{ Port1 = [ordered]@{ Type = 'NesController' }; AutoConfigureInput = $false }   # no game-DB Four Score / Zapper (nes-fix r3)
         Snes = [ordered]@{ DisableFrameSkipping = $true; Port1 = [ordered]@{ Type = 'SnesController' }; Port2 = [ordered]@{ Type = 'SnesController' } }
         Preferences = [ordered]@{
             SingleInstance = $false; AutomaticallyCheckForUpdates = $false; PauseWhenInBackground = $false; PauseWhenInMenusAndConfig = $false

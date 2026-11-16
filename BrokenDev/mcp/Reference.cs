@@ -140,7 +140,9 @@ internal sealed class RefEmu : IDisposable
         {
             ["Version"] = "2.1.1", ["ConfigUpgrade"] = 5,
             ["Audio"] = new JsonObject { ["EnableAudio"] = false },
-            ["Nes"] = new JsonObject { ["Port1"] = new JsonObject { ["Type"] = "NesController" }, ["Port2"] = new JsonObject { ["Type"] = "NesController" } },
+            ["Nes"] = new JsonObject { ["Port1"] = new JsonObject { ["Type"] = "NesController" }, ["Port2"] = new JsonObject { ["Type"] = "NesController" },
+                // AutoConfigureInput off: Mesen's game DB otherwise plugs a Four Score / Zapper in (NWC, Spot, Hogan's Alley) and the reference reads other $4016/$4017 bits (false Jank, nes-fix r3)
+                ["AutoConfigureInput"] = false },
             ["Snes"] = new JsonObject { ["DisableFrameSkipping"] = true, ["Port1"] = new JsonObject { ["Type"] = "SnesController" }, ["Port2"] = new JsonObject { ["Type"] = "SnesController" } },
             ["Sms"] = new JsonObject { ["Port1"] = new JsonObject { ["Type"] = "SmsController" }, ["Port2"] = new JsonObject { ["Type"] = "SmsController" } },
             ["Preferences"] = new JsonObject
