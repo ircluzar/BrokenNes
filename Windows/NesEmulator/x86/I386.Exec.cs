@@ -79,6 +79,7 @@ public sealed partial class I386
             }
             Cycle++;
             _opsz16 = _c16; _adsz16 = _c16; _rep = 0; _curSeg = -1;
+            bool lockPfx = false;
             while (IsPrefix[b1])   // a table test, not a switch: an indirect jump on every opcode costs as much as the dispatch itself
             {
                 switch (b1)
@@ -93,10 +94,11 @@ public sealed partial class I386
                     case 0x67: _adsz16 = !_c16; break;
                     case 0xf3: _rep = 1; break;
                     case 0xf2: _rep = 2; break;
-                    default: break;   // 0xf0 LOCK
+                    default: lockPfx = true; break;   // 0xf0 LOCK
                 }
                 if (!Fetch8(out b1)) return FAIL;
             }
+            if (lockPfx && !LockAllowed(b1)) { Throw0(EX_UD); return FAIL; }
             // the everyday opcodes are dispatched here, to small handlers: going through ExecOne's big switch costs about as much as
             // the instruction itself (measured with Workshop --x86bench); everything else still goes to ExecOne
             int r;
@@ -579,7 +581,7 @@ public sealed partial class I386
                 int y = (int)(b & 0x1f);
                 if (y != 0)
                 {
-                    _ccSrc1 = Sext(bits, x);
+                    _ccSrc1 = Sext(bits, (x >> y) << 1);   // OF = the result's bit (width-2), for every count (= the old MSB at count 1; 386EX hardware, SingleStepTests D2.5)
                     _ccDst = Sext(bits, x >> y);
                     _ccDst2 = (x >> (y - 1)) & 1;
                     _ccOp = (int)Cc.SHR; _ccMask = LOGIC;
@@ -794,6 +796,7 @@ public sealed partial class I386
         uint b = LReg(bits, _reg);
         // the register form addresses outside the operand; the bit offset is signed (tiny386 took it unsigned)
         if (_mod != 3) _addr += (uint)(((int)Sext(bits, b) >> (bits == 16 ? 4 : 5)) * (bits / 8));
+        if (_mod != 3 && _adsz16) _addr &= 0xffff;   // with 16-bit addressing the sum wraps at 64 KB (386EX hardware, SingleStepTests 66 0F AB)
         if (!TranslateE(bits, op == 0 ? 1 : 3)) return false;
         BitOp(op, bits, b);
         return true;
@@ -821,12 +824,33 @@ public sealed partial class I386
         return true;
     }
 
+    /// <summary>LOCK is only legal on the read-modify-write forms with a memory destination (386 manual, LOCK); anything else is #UD
+    /// (SingleStepTests 80386: "lock add dh,bh" etc.). Peeks the opcode's following bytes and puts the fetch position back.</summary>
+    private bool LockAllowed(uint op)
+    {
+        uint ni = NextIp, ifp = _ifPaddr;
+        bool ok = false;
+        uint op2 = 0, modrm;
+        if (op == 0x0f) { if (!Fetch8(out op2)) goto done; }
+        if (!Fetch8(out modrm)) goto done;
+        bool mem = modrm < 0xc0;
+        int ext = (int)((modrm >> 3) & 7);
+        if (op == 0x0f)
+            ok = mem && (op2 is 0xab or 0xb3 or 0xbb or 0xb0 or 0xb1 or 0xc0 or 0xc1 || (op2 == 0xba && ext >= 5) || (op2 == 0xc7 && ext == 1 && Gen >= 5));
+        else
+            ok = mem && ((op < 0x38 && (op & 7) <= 1 && (op & 0x38) != 0x38) || (op is >= 0x80 and <= 0x83 && ext != 7) || op is 0x86 or 0x87
+                || (op is 0xf6 or 0xf7 && ext is 2 or 3) || (op is 0xfe or 0xff && ext <= 1));
+        done:
+        NextIp = ni; _ifPaddr = ifp;
+        return ok;
+    }
+
     private bool PopSeg(int seg)
     {
         uint sp = R[4], n = _opsz16 ? 2u : 4u;
         var m = new OptAddr();
         if (!Translate(ref m, 1, SEG_SS, sp & _spm, 2)) return false;
-        if (!SetSeg(seg, Load16(ref m))) return false;
+        if (!LoadSegChecked(seg, Load16(ref m))) return false;
         SetSp(sp + n, _spm);
         return true;
     }
@@ -880,6 +904,8 @@ public sealed partial class I386
         for (int i = 0; i < 8; i++) { if (i == 3) continue; if (!Translate(ref m[i], 1, SEG_SS, (sp + n * (uint)i) & _spm, bits / 8)) return false; }
         for (int i = 0; i < 8; i++) { if (i == 3) continue; SReg(bits, 7 - i, Load(bits, ref m[i])); }
         SetSp(sp + n * 8, _spm);
+        // POPAD on a 16-bit stack: a 386 puts the high word of the ESP image it skips into ESP's high word (SingleStepTests 80386 66 61)
+        if (bits == 32 && _spm == 0xffff && Translate(ref m[3], 1, SEG_SS, (sp + 12) & _spm, 4)) R[4] = (Load(32, ref m[3]) & 0xffff0000) | (R[4] & 0xffff);
         return true;
     }
 
@@ -936,6 +962,14 @@ public sealed partial class I386
         level %= 32;
         uint sp = R[4];
         var m = new OptAddr();
+        // a 386 write-checks the new top of stack (ESP after the frame and the locals) before it changes anything (test386 POST 1Ah:
+        // enter 1,0 with the locals' byte on a supervisor page from ring 3 = #PF)
+        if (allocsz != 0)
+        {
+            uint d0 = _opsz16 ? 2u : 4u;
+            var probe = new OptAddr();
+            if (!Translate(ref probe, 2, SEG_SS, (sp - d0 * (uint)(level + 1) - allocsz) & _spm, 1)) return false;
+        }
         if (level == 0)
         {
             if (_opsz16)
@@ -950,47 +984,34 @@ public sealed partial class I386
                 if (!Translate(ref m, 2, SEG_SS, (sp - 4) & _spm, 4)) return false;
                 SetSp(sp - 4 - allocsz, _spm);
                 Store32(ref m, R[5]);
-                R[5] = (sp - 4) & _spm;
+                R[5] = (sp & ~_spm) | ((sp - 4) & _spm);   // (a 16-bit stack keeps ESP's high word: test386 POST 1Ah)
             }
             return true;
         }
-        // tiny386 enter_helper
-        uint temp;
-        if (_opsz16)
+        // nested levels (386 manual ENTER): push BP; frame = SP; level-1 times: BP -= d, push [SS:BP]; push frame; BP = frame; SP -= size.
+        // (tiny386's enter_helper pushed BP itself instead of the saved frame pointers and never moved its SP copy: SingleStepTests C8)
+        uint d = _opsz16 ? 2u : 4u;
+        int sz = (int)d;
+        var mr = new OptAddr();
+        if (!Translate(ref m, 2, SEG_SS, (sp - d) & _spm, sz)) return false;
+        if (_opsz16) Store16(ref m, L16(5)); else Store32(ref m, R[5]);
+        sp -= d;
+        uint frame = (R[4] & ~_spm) | (sp & _spm);
+        uint bp = R[5];
+        for (int i = 1; i < level; i++)
         {
-            if (!Translate(ref m, 2, SEG_SS, (sp - 2) & _spm, 2)) return false;
-            SetSp(sp - 2, _spm); Store16(ref m, L16(5)); temp = L16(4);
+            bp = _spm == 0xffff ? (bp & 0xffff0000) | ((bp - d) & 0xffff) : bp - d;
+            if (!Translate(ref mr, 1, SEG_SS, bp & _spm, sz)) return false;
+            uint v = _opsz16 ? Load16(ref mr) : Load32(ref mr);
+            if (!Translate(ref m, 2, SEG_SS, (sp - d) & _spm, sz)) return false;
+            if (_opsz16) Store16(ref m, v); else Store32(ref m, v);
+            sp -= d;
         }
-        else
-        {
-            if (!Translate(ref m, 2, SEG_SS, (sp - 4) & _spm, 4)) return false;
-            SetSp(sp - 4, _spm); Store32(ref m, R[5]); temp = R[4];
-        }
-        for (int i = 0; i < level - 1; i++)
-        {
-            uint d = _opsz16 ? 2u : 4u;
-            if (_spm == 0xffff) S16(5, L16(5) - d); else R[5] -= d;
-            if (_opsz16)
-            {
-                if (!Translate(ref m, 2, SEG_SS, (sp - 2) & _spm, 2)) return false;
-                SetSp(sp - 2, _spm); Store16(ref m, L16(5));
-            }
-            else
-            {
-                if (!Translate(ref m, 2, SEG_SS, (sp - 4) & _spm, 4)) return false;
-                SetSp(sp - 4, _spm); Store32(ref m, R[5]);
-            }
-        }
-        if (_opsz16)
-        {
-            if (!Translate(ref m, 2, SEG_SS, (sp - 2) & _spm, 2)) return false;
-            SetSp(sp - 2 - allocsz, _spm); Store16(ref m, temp); S16(5, temp);
-        }
-        else
-        {
-            if (!Translate(ref m, 2, SEG_SS, (sp - 4) & _spm, 4)) return false;
-            SetSp(sp - 4 - allocsz, _spm); Store32(ref m, temp); R[5] = temp;
-        }
+        if (!Translate(ref m, 2, SEG_SS, (sp - d) & _spm, sz)) return false;
+        if (_opsz16) Store16(ref m, frame); else Store32(ref m, frame);
+        sp -= d;
+        SetSp(sp - allocsz, _spm);
+        if (_opsz16) S16(5, frame); else R[5] = frame;
         return true;
     }
 
@@ -1021,7 +1042,9 @@ public sealed partial class I386
         else
         {
             if (!Translate(ref _meml, 1, SEG_SS, sp & _spm, 4)) return false;
-            SetSp(sp + 4 + imm, _spm); NextIp = Load32(ref _meml);
+            uint nip = Load32(ref _meml);
+            if (nip > SegLimit[SEG_CS]) return Throw(EX_GP, 0);   // past the CS limit: #GP before anything changes (SingleStepTests 66 C3)
+            SetSp(sp + 4 + imm, _spm); NextIp = nip;
         }
         return true;
     }
@@ -1074,6 +1097,7 @@ public sealed partial class I386
         uint newip = Load(n * 8, ref m1);
         if (!Translate(ref m2, 1, SEG_SS, (sp + (uint)n) & _spm, n)) return false;
         uint newcs = Load(n * 8, ref m2);
+        if (newip > SegLimit[SEG_CS]) return Throw(EX_GP, 0);   // (real mode: the new CS keeps the cached limit)
         if (!SetSeg(SEG_CS, newcs)) return false;
         SetSp(sp + (uint)(2 * n) + imm, _spm);
         NextIp = newip;
@@ -1096,6 +1120,7 @@ public sealed partial class I386
             if (!Translate(ref m2, 1, SEG_SS, (sp + (uint)n) & _spm, n)) return FAIL;
             uint newcs = Load(n * 8, ref m2) & 0xffff;
             if (!Translate(ref m3, 1, SEG_SS, (sp + (uint)(2 * n)) & _spm, n)) return FAIL;
+            if (newip > SegLimit[SEG_CS]) { Throw(EX_GP, 0); return FAIL; }   // (SingleStepTests 66 CF)
             uint oldflags = Flags;
             uint nf = Load(n * 8, ref m3);
             if (n == 2)
@@ -1136,7 +1161,7 @@ public sealed partial class I386
         if (!Translate(ref m1, 1, _curSeg, addr, n)) return false;
         if (!Translate(ref m2, 1, _curSeg, addr + (uint)n, 2)) return false;
         uint r = Load(bits, ref m1), s = Load16(ref m2);
-        if (!SetSeg(seg, s)) return false;
+        if (!LoadSegChecked(seg, s)) return false;
         SReg(bits, reg, r);
         return true;
     }
@@ -1241,7 +1266,7 @@ public sealed partial class I386
     private bool Ins(int bits)
     {
         if (!CheckIoperm((int)L16(2), bits)) return false;
-        if (_rep != 0 && _rep != 1) return Throw0(EX_UD);
+        // (F2 is a REP here too, as for MOVS/STOS/LODS: a 386 runs REPNE INS/OUTS; SingleStepTests F2 6C)
         int dir = Dir(bits), n = bits / 8;
         var md = new OptAddr();
         while (_rep == 0 || CxNonZero())
@@ -1259,7 +1284,7 @@ public sealed partial class I386
     {
         if (_curSeg == -1) _curSeg = SEG_DS;
         if (!CheckIoperm((int)L16(2), bits)) return false;
-        if (_rep != 0 && _rep != 1) return Throw0(EX_UD);
+        // (F2 is a REP here too, as for MOVS/STOS/LODS: a 386 runs REPNE INS/OUTS; SingleStepTests F2 6C)
         int dir = Dir(bits), n = bits / 8;
         var ms = new OptAddr();
         while (_rep == 0 || CxNonZero())
@@ -1456,7 +1481,7 @@ public sealed partial class I386
                 if (!DecodeE(16, 1)) return FAIL;
                 if (_reg == SEG_CS || _reg > 5) return K(Throw0(EX_UD));
                 if (_reg == SEG_SS) _steps++;
-                return K(SetSeg(_reg, ReadE(16)));
+                return K(LoadSegChecked(_reg, ReadE(16)));
             }
             case 0x8f: return K(PopE());
             case 0x90: return OK;

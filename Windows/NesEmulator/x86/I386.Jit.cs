@@ -146,7 +146,8 @@ public sealed partial class I386
         if (bits == 8) Store8Slow(ref r, v); else if (bits == 16) Store16Slow(ref r, v); else Store32Slow(ref r, v);
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool JSegOk(int seg) => (Cr0 & 1) == 0 || SegLimit[seg] != 0 || (SegSel[seg] & ~3u) != 0;
+    private bool JSegOk(int seg) => ((Cr0 & 1) == 0 || SegLimit[seg] != 0 || (SegSel[seg] & ~3u) != 0) && (SegFlags[seg] & 0xc) != 0x4 && SegLimit[seg] >= 3 && ((SegFlags[seg] & 0x10) == 0 || (SegFlags[seg] & 0x1a) == 0x12);   // (expand-down: the interpreter's limit check)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegLim(int seg) => SegLimit[seg];
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegBase(int seg) => SegBase[seg];
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JCond(uint c) => Cond(c);
     [MethodImpl(MethodImplOptions.NoInlining)] private uint JAlu(int op, int bits, uint a, uint b) => Alu(op, bits, a, b);
@@ -191,6 +192,7 @@ public sealed partial class I386
 
     [MethodImpl(MethodImplOptions.NoInlining)] private int JExitOk(uint ip, uint nextIp, long cyc, int st) { Ip = ip; NextIp = nextIp; Cycle = cyc; _steps = st + 1; return OK; }
     [MethodImpl(MethodImplOptions.NoInlining)] private int JExitFail(uint ip, long cyc, int st) { Ip = ip; Cycle = cyc; _steps = st; return FAIL; }
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool JLimitFault(int seg) => LimitFault(seg);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private long JCycle() => Cycle;
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private int JSteps() => _steps;
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JIp() => Ip;
@@ -207,8 +209,8 @@ public sealed partial class I386
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JCall", "JRet",
-                     "JExitOk", "JExitFail", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm" })
+        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JCall", "JRet",
+                     "JExitOk", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm" })
             d[n] = M(n);
         return d;
     });
@@ -398,6 +400,8 @@ public sealed partial class I386
         var t = il.DeclareLocal(typeof(uint));
         var ea = il.DeclareLocal(typeof(uint));
         var sb = new LocalBuilder?[6];
+        var sl = new LocalBuilder?[6];
+        var lfOff = il.DeclareLocal(typeof(uint)); var lfSeg = il.DeclareLocal(typeof(int)); var limFail = il.DefineLabel();
         int n = ins.Length;
         var index = new Dictionary<uint, int>();
         for (int k = 0; k < n; k++) index[pas[k]] = k;
@@ -525,6 +529,8 @@ public sealed partial class I386
             il.MarkLabel(ok);
             sb[s] = il.DeclareLocal(typeof(uint));
             Ld0(); I4(s); Call("JSegBase"); il.Emit(OpCodes.Stloc, sb[s]!);
+            sl[s] = il.DeclareLocal(typeof(uint));
+            Ld0(); I4(s); Call("JSegLim"); il.Emit(OpCodes.Stloc, sl[s]!);
         }
         int segMask = 0;
         foreach (int s in usedSegs) segMask |= 1 << s;
@@ -533,6 +539,14 @@ public sealed partial class I386
         LdF(FR); I4(0); il.Emit(OpCodes.Ldelema, typeof(uint)); Stl(rref);
         LdF(FMem); I4(0); il.Emit(OpCodes.Ldelema, typeof(byte)); Stl(mref);
         LdF(FSpm); Stl(spm);
+        {   // the shared segment-limit fault exit (LimitCheck): raise the fault and leave before that instruction, as the interpreter would
+            var skip = il.DefineLabel();
+            il.Emit(OpCodes.Br, skip);
+            il.MarkLabel(limFail);
+            Ld0(); Ld(lfSeg); Call("JLimitFault"); Op(OpCodes.Pop);
+            Ld0(); Ld(ip0); Ld(lfOff); Op(OpCodes.Add); il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldloc, st); Call("JExitFail"); il.Emit(OpCodes.Ret);
+            il.MarkLabel(skip);
+        }
 
         var body = new Label[n];
         var pre = new Label[n];
@@ -576,6 +590,16 @@ public sealed partial class I386
         {
             Ld0(); IpAt(pas[k]); next(); il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldloc, st); Call("JExitOk"); il.Emit(OpCodes.Ret);
         }
+        // the interpreter's segment limit check (LimitOk, expand-up only: a region with an expand-down segment is declined):
+        // past the limit = leave before this instruction with the fault, as the interpreter would
+        void LimitCheck(int k, int seg, LocalBuilder off, int size)
+        {
+            // one compare inline; the fault exit is shared by the whole region (a per-site exit made the bench region ~2.5x slower)
+            var okL = il.DefineLabel();
+            Ld(off); Ld(sl[seg]!); U4((uint)(size - 1)); Op(OpCodes.Sub); il.Emit(OpCodes.Ble_Un, okL);
+            U4(pas[k] - start); Stl(lfOff); I4(seg); Stl(lfSeg); il.Emit(OpCodes.Br, limFail);
+            il.MarkLabel(okL);
+        }
         void ExitFail(int k)
         {
             Ld0(); IpAt(pas[k]); il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldloc, st); Call("JExitFail"); il.Emit(OpCodes.Ret);
@@ -599,7 +623,7 @@ public sealed partial class I386
                 Ld0(); Call("JCycle"); Stl(cyc);
                 Ld0(); Call("JSteps"); Op(OpCodes.Ldc_I4_1); Op(OpCodes.Sub); Stl(st);
                 Ld0(); Bool(c16); U4(pa); I4(segMask); Bool(e.Mod != 0); Call("JStill"); il.Emit(OpCodes.Brfalse, leaveG);
-                foreach (int s in usedSegs) { Ld0(); I4(s); Call("JSegBase"); Stl(sb[s]!); }
+                foreach (int s in usedSegs) { Ld0(); I4(s); Call("JSegBase"); Stl(sb[s]!); Ld0(); I4(s); Call("JSegLim"); Stl(sl[s]!); }
                 Ld0(); Call("JSpm"); Stl(spm);
                 var notRep = il.DefineLabel();   // a REP string instruction that goes on: run it again
                 Ld0(); Call("JNextIp"); IpAt(pa); il.Emit(OpCodes.Bne_Un, notRep);
@@ -624,7 +648,11 @@ public sealed partial class I386
                 if (e.Index < 8) { LdReg(32, e.Index); if (e.Scale != 0) { I4(e.Scale); il.Emit(OpCodes.Shl); } il.Emit(OpCodes.Add); }
                 if (e.A16) { I4(0xffff); il.Emit(OpCodes.And); }
                 il.Emit(OpCodes.Stloc, ea);
-                if (e.Kind != DK_LEA) { il.Emit(OpCodes.Ldloc, sb[e.Seg]!); il.Emit(OpCodes.Ldloc, ea); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, la); }
+                if (e.Kind != DK_LEA)
+                {
+                    LimitCheck(k, e.Seg, ea, Math.Max(1, bits / 8));
+                    il.Emit(OpCodes.Ldloc, sb[e.Seg]!); il.Emit(OpCodes.Ldloc, ea); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, la);
+                }
             }
 
             void ReadE() { if (mem) { LdMem(bits, la); Ld(V); } else LdReg(bits, e.Rm); }
@@ -767,7 +795,7 @@ public sealed partial class I386
                     }
                     else if (e.Reg == 5)
                     {   // _ccSrc1 = Sext(x); _ccDst = Sext(x >> y); _ccDst2 = (x >> (y - 1)) & 1
-                        StF(FSrc1, () => { Ld(A); SextTop(bits); });
+                        StF(FSrc1, () => { Ld(A); Ld(Y); I4(31); Op(OpCodes.And); Op(OpCodes.Shr_Un); Op(OpCodes.Ldc_I4_1); Op(OpCodes.Shl); SextTop(bits); });
                         Ld(A); Ld(Y); I4(31); Op(OpCodes.And); Op(OpCodes.Shr_Un); SextTop(bits); Stl(D);
                         StF(FDst, () => Ld(D));
                         StF(FDst2, () => { Ld(A); Ld(Y); Op(OpCodes.Ldc_I4_1); Op(OpCodes.Sub); I4(31); Op(OpCodes.And); Op(OpCodes.Shr_Un); Op(OpCodes.Ldc_I4_1); Op(OpCodes.And); });
@@ -807,6 +835,7 @@ public sealed partial class I386
                     int pb = e.O16 ? 16 : 32;
                     LdReg(pb, op); Stl(t);
                     LdReg(32, 4); I4(pb / 8); Op(OpCodes.Sub); Stl(A);
+                    Ld(A); Ld(spm); Op(OpCodes.And); Stl(ea); LimitCheck(k, SEG_SS, ea, pb / 8);
                     il.Emit(OpCodes.Ldloc, sb[SEG_SS]!); Ld(A); Ld(spm); Op(OpCodes.And); Op(OpCodes.Add); Stl(la);
                     StReg(32, 4, () => { Ld(A); Ld(spm); Op(OpCodes.And); LdReg(32, 4); Ld(spm); Op(OpCodes.Not); Op(OpCodes.And); Op(OpCodes.Or); });
                     StMem(pb, la, t);
@@ -818,6 +847,7 @@ public sealed partial class I386
                     // PopReg(bits, reg): v = [SS base + (sp & spm)]; SetSp(sp + n); SReg(reg, v)
                     int pb = e.O16 ? 16 : 32;
                     LdReg(32, 4); Stl(A);
+                    Ld(A); Ld(spm); Op(OpCodes.And); Stl(ea); LimitCheck(k, SEG_SS, ea, pb / 8);
                     il.Emit(OpCodes.Ldloc, sb[SEG_SS]!); Ld(A); Ld(spm); Op(OpCodes.And); Op(OpCodes.Add); Stl(la);
                     LdMem(pb, la);
                     StReg(32, 4, () => { Ld(A); I4(pb / 8); Op(OpCodes.Add); Ld(spm); Op(OpCodes.And); LdReg(32, 4); Ld(spm); Op(OpCodes.Not); Op(OpCodes.And); Op(OpCodes.Or); });
