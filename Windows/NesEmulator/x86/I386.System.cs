@@ -560,7 +560,7 @@ public sealed partial class I386
         int dpl = (int)((w2 >> 13) & 3);
         if (((w2 >> 10) & 3) != 3 && (Cpl > dpl || (int)(sel & 3) > dpl)) return true;
         if (((w2 >> 11) & 1) == 0) { if (wr && ((w2 >> 9) & 1) == 0) return true; }   // data
-        else if (!wr && ((w2 >> 9) & 1) == 0) return true;                              // code
+        else if (wr || ((w2 >> 9) & 1) == 0) return true;                                // code: never writable (VERW = ZF 0; test386 POST 1Ch), readable only with R
         zf = true;
         return true;
     }
