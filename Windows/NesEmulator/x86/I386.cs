@@ -115,6 +115,8 @@ public sealed partial class I386
         BuildOpCosts(model, out _opCost, out _opCost0F, out _mulCost, out _divCost);
         Mem = new byte[memSize + 16];
         MemSize = (uint)memSize;
+        _codeMark = new byte[(memSize >> 6) + 2];
+        _pgGen = new uint[(memSize >> 12) + 2];
         _bus = bus;
         _ioMem = bus.MapsIoMem;
         Reset();
@@ -146,9 +148,42 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private byte P8(uint a) => Mem[a];
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint P16(uint a) => Unsafe.ReadUnaligned<ushort>(ref Mem[a]);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint P32(uint a) => Unsafe.ReadUnaligned<uint>(ref Mem[a]);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS8(uint a, uint v) => Mem[a] = (byte)v;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS16(uint a, uint v) => Unsafe.WriteUnaligned(ref Mem[a], (ushort)v);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS32(uint a, uint v) => Unsafe.WriteUnaligned(ref Mem[a], v);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS8(uint a, uint v) { Mem[a] = (byte)v; CodeWr1(a); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS16(uint a, uint v) { Unsafe.WriteUnaligned(ref Mem[a], (ushort)v); CodeWr(a, 2); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS32(uint a, uint v) { Unsafe.WriteUnaligned(ref Mem[a], v); CodeWr(a, 4); }
+
+    // ---- the compiled blocks' code-change test (I386.Jit.cs JitSame): a store to a 64-byte line some compiled block was made from bumps the
+    // generation of its 4 KB page; a block runs without comparing its bytes while its pages' generations (and _memEpoch) are the ones it saw.
+    // Writes to memory from outside the CPU (the BIOS, DMA, disk loads, save states, tools) bump _memEpoch: every block compares once.
+    private readonly byte[] _codeMark;   // per 64-byte line of RAM: 1 = a compiled block's bytes are there
+    private readonly uint[] _pgGen;      // per 4 KB page: the code write generation
+    private uint _memEpoch;
+    /// <summary>Memory was written by something other than the CPU's own stores (the BIOS, DMA, a disk load, a tool): compiled blocks check their bytes.</summary>
+    public void MemTouched() => _memEpoch++;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void CodeWr1(uint a) { if (Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_codeMark), (nint)(a >> 6)) != 0) CodeWrite(a, 1); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void CodeWr(uint a, uint n)
+    {
+        ref byte m = ref MemoryMarshal.GetArrayDataReference(_codeMark);
+        if ((Unsafe.Add(ref m, (nint)(a >> 6)) | Unsafe.Add(ref m, (nint)((a + n - 1) >> 6))) != 0) CodeWrite(a, n);
+    }
+    /// <summary>A store of <paramref name="n"/> bytes at RAM address <paramref name="a"/> touched a code line: its page(s) move to a new generation.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void CodeWrite(uint a, uint n)
+    {
+        if (a >= MemSize) return;
+        _pgGen[a >> 12]++;
+        uint e = a + n - 1;
+        if ((e >> 12) != (a >> 12) && e < MemSize) _pgGen[e >> 12]++;
+    }
+    /// <summary>A store of a whole range (REP fast paths): its code lines, if any, move their pages on.</summary>
+    private void CodeWrRange(uint a, uint bytes)
+    {
+        if (bytes == 0) return;
+        for (uint l = a >> 6, le = (a + bytes - 1) >> 6; l <= le; l++)
+            if (_codeMark[l] != 0) { CodeWrite(l << 6, 64); }
+    }
 
     private bool Throw(int ex, uint err) { Excno = ex; Excerr = err; return false; }
     private bool Throw0(int ex) { Excno = ex; return false; }
@@ -267,7 +302,7 @@ public sealed partial class I386
     private void RefillDone(bool ok)
     {
         if (_refillPde == 0xffffffff) return;
-        if (ok) { Mem[_refillPde] |= 1 << 5; Mem[_refillPte] |= 1 << 5; }
+        if (ok) { Mem[_refillPde] |= 1 << 5; Mem[_refillPte] |= 1 << 5; CodeWr1(_refillPde); CodeWr1(_refillPte); }
         _refillPde = 0xffffffff;
     }
 
@@ -318,7 +353,7 @@ public sealed partial class I386
         paddr = _tlbXaddr[e] ^ laddr;
         int tg = (cpl == 3 ? 2 * TlbSize : 0) + e;
         _tlbTag[tg] = lpgno;
-        if ((rwm & 2) != 0) { Mem[_tlbPpte[e]] |= 1 << 6; _tlbTag[tg + TlbSize] = lpgno; } // dirty
+        if ((rwm & 2) != 0) { Mem[_tlbPpte[e]] |= 1 << 6; CodeWr1((uint)_tlbPpte[e]); _tlbTag[tg + TlbSize] = lpgno; } // dirty
         return true;
     }
 
@@ -427,9 +462,9 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint U8(uint a) => Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint U16(uint a) => Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a));
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint U32(uint a) => Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a));
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US8(uint a, uint v) => Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a) = (byte)v;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US16(uint a, uint v) => Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a), (ushort)v);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US32(uint a, uint v) => Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a), v);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US8(uint a, uint v) { Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a) = (byte)v; CodeWr1(a); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US16(uint a, uint v) { Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a), (ushort)v); CodeWr(a, 2); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US32(uint a, uint v) { Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a), v); CodeWr(a, 4); }
 
     /// <summary>Plain RAM (below MemSize and, with memory-mapped I/O on, outside A0000-BFFFF; the E0000000+ window is above MemSize).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -803,6 +838,7 @@ public sealed partial class I386
 
     public void Reset()
     {
+        _memEpoch++;
         Array.Clear(R);
         Flags = 0x2; Cpl = 0; Code16 = true; SpMask = 0xffff; Halt = false;
         for (int i = 0; i < 8; i++) { SegSel[i] = 0; SegBase[i] = 0; SegLimit[i] = i < 6 ? 0xffffu : 0; SegFlags[i] = 0; }

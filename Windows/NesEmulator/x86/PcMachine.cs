@@ -171,7 +171,7 @@ public sealed partial class PcMachine : IX86Bus
             case 0xe9: DebugPort.Append((char)v); return;
             case 0x388: AdlibWait(); if (AdlibPresent) Opl.WriteAddress(v); return;   // AdLib (YM3812) address
             case 0x389: AdlibWait(); if (AdlibPresent) Opl.WriteData(v); return;      // AdLib data
-            case BiosTrapPort: BiosTrap(); return;
+            case BiosTrapPort: BiosTrap(); Cpu.MemTouched(); return;   // (our BIOS writes memory directly: compiled blocks check their bytes)
             case >= 0x3b0 and <= 0x3df: Vga.Out(port, v); return;
         }
         if (Dma.Out(port, v)) return;
@@ -250,7 +250,7 @@ public sealed partial class PcMachine : IX86Bus
     public byte Phys8(uint a) => a is >= 0xa0000 and < 0xc0000 ? Vga.MemRead(a) : a < Cpu.MemSize ? Cpu.Mem[a] : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
     public ushort Phys16(uint a) => (ushort)(Phys8(a) | (Phys8(a + 1) << 8));
     public uint Phys32(uint a) => (uint)(Phys16(a) | (Phys16(a + 2) << 16));
-    public void PhysW8(uint a, byte v) { if (a is >= 0xa0000 and < 0xc0000) Vga.MemWrite(a, v); else if (a < Cpu.MemSize) Cpu.Mem[a] = v; else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
+    public void PhysW8(uint a, byte v) { if (a is >= 0xa0000 and < 0xc0000) Vga.MemWrite(a, v); else if (a < Cpu.MemSize) { Cpu.Mem[a] = v; Cpu.MemTouched(); } else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
     public void PhysW16(uint a, ushort v) { PhysW8(a, (byte)v); PhysW8(a + 1, (byte)(v >> 8)); }
     public void PhysW32(uint a, uint v) { PhysW16(a, (ushort)v); PhysW16(a + 2, (ushort)(v >> 16)); }
 
@@ -264,6 +264,7 @@ public sealed partial class PcMachine : IX86Bus
     public bool RunFrame()
     {
         if (Stopped != null) return false;
+        Cpu.MemTouched();   // (a tool may have written memory between frames)
         long frame = Vga.FrameIndex(PitNow);
         if (_lastFrame < 0) _lastFrame = frame;
         long target = _lastFrame + 1;
@@ -329,7 +330,7 @@ public sealed partial class PcMachine : IX86Bus
     {
         Stopped = null;
         Array.Clear(Cpu.Mem);
-        Cpu.Reset();
+        Cpu.Reset();   // (also tells the compiled blocks memory changed)
         Pic.Reset();
         Pit.Reset();
         Opl.Reset();

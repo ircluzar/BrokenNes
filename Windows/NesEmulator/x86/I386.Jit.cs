@@ -38,6 +38,8 @@ public sealed partial class I386
         public uint[] Addrs = Array.Empty<uint>();   // the instructions, by address (entry k = Addrs[k])
         public bool C16, Pg;   // compiled for this code size, and with paging on or off (the memory accesses differ)
         public long Runs, Instrs, Ticks;
+        public uint[] Pages = Array.Empty<uint>(), Gens = Array.Empty<uint>();   // the 4 KB pages Bytes come from, and their code write generations when last checked
+        public uint Epoch = 0xffffffff;   // _memEpoch when last checked (FFFFFFFF: never: compare the bytes)
     }
 
     /// <summary>One instruction address: how often it was reached, and the compiled block (and instruction in it) that starts there.</summary>
@@ -285,7 +287,7 @@ public sealed partial class I386
         ?? throw new MissingFieldException(nameof(I386), name);
     private static readonly FieldInfo FSrc1 = Fld("_ccSrc1"), FSrc2 = Fld("_ccSrc2"), FDst = Fld("_ccDst"), FDst2 = Fld("_ccDst2"), FOp = Fld("_ccOp"),
         FMask = Fld("_ccMask"), FFlags = Fld("Flags"), FR = Fld("R"), FMem = Fld("Mem"), FSpm = Fld("_spm"),
-        FTlbL = Fld("_tlbLpgno"), FTlbX = Fld("_tlbXaddr"), FTlbT = Fld("_tlbTag"), FCpl = Fld("Cpl");
+        FTlbL = Fld("_tlbLpgno"), FTlbX = Fld("_tlbXaddr"), FTlbT = Fld("_tlbTag"), FCpl = Fld("Cpl"), FCodeMark = Fld("_codeMark");
 
     private static MethodInfo M(string name) => typeof(I386).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
         ?? throw new MissingMethodException(nameof(I386), name);
@@ -294,14 +296,31 @@ public sealed partial class I386
         var d = new Dictionary<string, MethodInfo>();
         foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JCall", "JRet",
                      "JExitOk", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
-                     "JXlat", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam" })
+                     "JXlat", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
         return d;
     });
 
-    /// <summary>Is the compiled code's code still what is in memory (every byte range it was compiled from)?</summary>
+    /// <summary>Is the compiled code's code still what is in memory (every byte range it was compiled from)? No store has touched its code
+    /// lines since it was last checked (the same page generations, no outside write): yes at once; else its bytes are compared (and the
+    /// generations taken again when they are still the same).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool JitSame(JitCode code)
+    {
+        if (code.Epoch == _memEpoch)
+        {
+            uint[] p = code.Pages, g = code.Gens;
+            if (p.Length == 1 ? _pgGen[p[0]] == g[0] : JitGensSame(p, g)) return true;
+        }
+        return JitSameSlow(code);
+    }
+    private bool JitGensSame(uint[] p, uint[] g)
+    {
+        for (int i = 0; i < p.Length; i++) if (_pgGen[p[i]] != g[i]) return false;
+        return true;
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool JitSameSlow(JitCode code)
     {
         byte[] b = code.Bytes;
         int[] ro = code.RunAt, rl = code.RunLen;
@@ -311,7 +330,25 @@ public sealed partial class I386
             if (!Mem.AsSpan(ro[i], rl[i]).SequenceEqual(b.AsSpan(at, rl[i]))) return false;
             at += rl[i];
         }
+        JitStamp(code);
         return true;
+    }
+    /// <summary>The code lines are marked (a store there moves the page on) and the block takes the generations of now.</summary>
+    private void JitStamp(JitCode code)
+    {
+        if (code.Pages.Length == 0)
+        {
+            var pages = new SortedSet<uint>();
+            for (int i = 0; i < code.RunAt.Length; i++)
+            {
+                uint a = (uint)code.RunAt[i], e = a + (uint)code.RunLen[i] - 1;
+                for (uint l = a >> 6; l <= e >> 6; l++) _codeMark[l] = 1;
+                for (uint pg = a >> 12; pg <= e >> 12; pg++) pages.Add(pg);
+            }
+            code.Pages = pages.ToArray(); code.Gens = new uint[code.Pages.Length];
+        }
+        for (int i = 0; i < code.Pages.Length; i++) code.Gens[i] = _pgGen[code.Pages[i]];
+        code.Epoch = _memEpoch;
     }
 
     /// <summary>Compile the region of cached-form instructions reachable from <paramref name="en"/>'s address: the fall-throughs and the
@@ -368,6 +405,7 @@ public sealed partial class I386
             RunAt = ranges.Select(r => (int)r.a).ToArray(), RunLen = ranges.Select(r => (int)(r.b - r.a)).ToArray(),
             Addrs = pas,
         };
+        JitStamp(code);   // (a store to these bytes from now on moves their pages on: the install compares them then)
         uint lo = ranges[0].a, hi = ranges[^1].b;
         bool c16 = _c16, ioMem = _ioMem;
         uint memSize = MemSize;
@@ -497,6 +535,7 @@ public sealed partial class I386
 
         var rref = il.DeclareLocal(typeof(uint).MakeByRefType());   // ref R[0]
         var mref = il.DeclareLocal(typeof(byte).MakeByRefType());   // ref Mem[0]
+        var cmref = il.DeclareLocal(typeof(byte).MakeByRefType());   // ref _codeMark[0]
         var spm = il.DeclareLocal(typeof(uint));
         var A = il.DeclareLocal(typeof(uint));
         var B = il.DeclareLocal(typeof(uint));
@@ -566,6 +605,11 @@ public sealed partial class I386
             Ld(mref); Ld(phys); Op(OpCodes.Conv_U); Op(OpCodes.Add); Ld(val);
             if (bits != 8) il.Emit(OpCodes.Unaligned, (byte)1);
             Op(bits == 8 ? OpCodes.Stind_I1 : bits == 16 ? OpCodes.Stind_I2 : OpCodes.Stind_I4);
+            // a code line (I386.cs CodeWr): the page moves on
+            Ld(cmref); Ld(phys); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1);
+            if (bits != 8) { Ld(cmref); Ld(phys); I4(bits / 8 - 1); Op(OpCodes.Add); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1); Op(OpCodes.Or); }
+            il.Emit(OpCodes.Brfalse, done);
+            Ld0(); Ld(phys); I4(bits / 8); Call("CodeWrite");
             il.Emit(OpCodes.Br, done);
             il.MarkLabel(slow);
             Ld0(); I4(bits); Ld(addr); Ld(val); Call(pg ? "JWrLin" : "JWrSlow");
@@ -635,6 +679,7 @@ public sealed partial class I386
         Ld0(); Call("JSteps"); il.Emit(OpCodes.Stloc, st);
         LdF(FR); I4(0); il.Emit(OpCodes.Ldelema, typeof(uint)); Stl(rref);
         LdF(FMem); I4(0); il.Emit(OpCodes.Ldelema, typeof(byte)); Stl(mref);
+        LdF(FCodeMark); I4(0); il.Emit(OpCodes.Ldelema, typeof(byte)); Stl(cmref);
         LdF(FSpm); Stl(spm);
         if (pg)
         {
