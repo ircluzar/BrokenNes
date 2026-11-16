@@ -1389,11 +1389,14 @@ namespace NesEmulator
 				if (!awaitingFrameStart) PresentCompletedFrame(ppu);
 				PpuEnteredPostRender?.Invoke();
 			}
+			if (sl >= 241 && lastClockScanline >= 0 && lastClockScanline < 241) PpuEnteredVblank?.Invoke();
 			lastClockScanline = sl;
 		}
 		/// <summary>Raised when the PPU crosses from the visible lines into line 240 - where Mesen 2.1.1 ends a
 		/// frame. Test harnesses latch scripted input here to switch it at the same point Mesen does.</summary>
 		public event Action? PpuEnteredPostRender;
+		/// <summary>Raised when the PPU crosses into line 241 (vblank). The --input-latch line241 harness mode.</summary>
+		public event Action? PpuEnteredVblank;
 		private bool awaitingFrameStart;
 
 		private void PresentCompletedFrame(IPPU ppu)
