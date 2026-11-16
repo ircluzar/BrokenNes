@@ -30,6 +30,13 @@
   "start": "x",
   "stride": 130,
   "then": "Right+B",
-  "within": 90
+  "within": 90,
+  "finale": [
+   "$7D9C",
+   "$7D9D",
+   "$7D9E"
+  ],
+  "wait_pattern": "none:{w} Right+B:{a} Right+B+A:{j}",
+  "wait_vals": "w=10..90:20,a=0..16:8,j=8..24:8"
  }
 }

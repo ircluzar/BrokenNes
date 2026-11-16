@@ -272,13 +272,28 @@ def advance(b, r, cfg, pkg, ch, a):
     ad = cfg.get("advance")
     if not ad: sys.exit("this game's runner.json has no advance recipe")
     n = int(a.args[0]) if a.args else 6
+    stride = int(ad["stride"])
     for i in range(n):
         cur = b.call("play_step", session=r["session"], frames=0, scale=0, ram=cfg["ram"])["ram"]
-        target = int(cur[ad["start"]]) + int(ad["stride"])
+        target = int(cur[ad["start"]]) + stride
         a2 = argparse.Namespace(**vars(a)); a2.args = [ad["pattern"]]; a2.vals = ad["vals"]; a2.want = ad["want"].replace("{X}", str(target))
+        fin = None
+        if ad.get("finale"):   # level-end bytes (SMB3: the card slots): a hop that changes one has reached the goal
+            fin = " || ".join(f"[{x}] != {table(b, r['session'], {'addr': int(x.strip('$'), 16), 'len': 1})[0]}" for x in ad["finale"])
+            a2.want = f"({names(a2.want, cfg)}) || {fin}"
         a2.then = ad.get("then", "none"); a2.within = int(ad.get("within", 90)); a2.apply = True
         before = r["frames"]
         search(b, r, cfg, pkg, ch, a2)
+        if fin and r["frames"] != before:
+            hit = b.call("play_step", session=r["session"], frames=0, scale=0, ram=["f=" + fin])["ram"]["f"]
+            if hit:
+                print("advance: reached the level end (finale) - now step none until >>> GOAL"); store(pkg, ch, r); return
+        if r["frames"] == before and ad.get("wait_pattern"):   # nothing reachable now: maybe the screen/platform must come first
+            a3 = argparse.Namespace(**vars(a2)); a3.args = [ad["wait_pattern"]]; a3.vals = ad["wait_vals"]
+            print("  (trying with a wait first)"); search(b, r, cfg, pkg, ch, a3)
+        if r["frames"] == before and stride > int(ad.get("min_stride", 32)):
+            stride //= 2; print(f"  (no hop of that size: trying stride {stride})"); continue
+        if r["frames"] != before: stride = int(ad["stride"])
         if r["frames"] == before or r.get("goal_frame"):
             print(f"advance: stopped after {i} hops (stuck before {ad['start']}={target}: look at the picture and solve this spot with search)")
             return
