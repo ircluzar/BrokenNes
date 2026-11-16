@@ -26,7 +26,7 @@ public sealed partial class I386
     private const byte DK_SLOW = 0, DK_MOVEG = 1, DK_MOVGE = 2, DK_ALUEG = 3, DK_ALUGE = 4, DK_ALUAI = 5, DK_GRP1 = 6, DK_GRP2 = 7,
         DK_TESTEG = 8, DK_G3TEST = 9, DK_GRP3 = 10, DK_MOVEI = 11, DK_LEA = 12, DK_MOVRI = 13, DK_INC = 14, DK_DEC = 15, DK_PUSH = 16,
         DK_POP = 17, DK_JCC = 18, DK_JMP = 19, DK_CALL = 20, DK_RET = 21,
-        DK_INTERP = 22, DK_MOVX = 23, DK_CBW = 24, DK_SETCC = 25, DK_IMUL = 26;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
+        DK_INTERP = 22, DK_MOVX = 23, DK_CBW = 24, DK_SETCC = 25, DK_IMUL = 26, DK_GRP5 = 27, DK_LEAVE = 28;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
 
     /// <summary>Decode the instruction at <paramref name="paddr"/> (in a fast-fetch code page) into <paramref name="e"/>; Kind 0 if it is not
     /// one of the cached forms.</summary>
@@ -213,7 +213,7 @@ public sealed partial class I386
         int v = o16 ? 16 : 32;
         byte kind = DK_SLOW;
         int bits = v, op = 0, immBits = 0;
-        bool modrm = false, immSext8 = false, noReg = false;
+        bool modrm = false, immSext8 = false, noReg = false, moffs = false;
         uint rel = 0;
         switch (b)
         {
@@ -270,6 +270,11 @@ public sealed partial class I386
             case 0x69: kind = DK_IMUL; modrm = true; immBits = v; op = 1; break;   // IMUL r, rm, imm
             case 0x6b: kind = DK_IMUL; modrm = true; immBits = 8; immSext8 = true; op = 1; break;
             case 0x98: case 0x99: kind = DK_CBW; op = (int)(b & 1); break;           // CBW / CWDE, CWD / CDQ
+            case 0xfe: kind = DK_GRP5; bits = 8; modrm = true; break;                // INC / DEC Eb (others: #UD, the ordinary path)
+            case 0xff: kind = DK_GRP5; modrm = true; break;                         // INC / DEC / CALL / JMP / PUSH Ev
+            case 0xc9: kind = DK_LEAVE; break;
+            case 0xa0: case 0xa1: kind = DK_MOVGE; bits = (b & 1) == 0 ? 8 : v; moffs = true; break;   // MOV AL/eAX, moffs
+            case 0xa2: case 0xa3: kind = DK_MOVEG; bits = (b & 1) == 0 ? 8 : v; moffs = true; break;   // MOV moffs, AL/eAX
             default: return;
         }
         if (modrm)
@@ -338,6 +343,13 @@ public sealed partial class I386
                 if (reg < 2) { kind = DK_G3TEST; immBits = bits; }
             }
         }
+        if (moffs)
+        {   // a direct memory operand: as a ModR/M mod 0 operand with only a displacement (A0-A3 have no ModR/M byte)
+            e.Mod = 0; e.Reg = 0; e.Rm = 0; e.Base = 8; e.Index = 8; e.Scale = 0;
+            if (a16) { e.Disp = U16(paddr + (uint)p); p += 2; } else { e.Disp = U32(paddr + (uint)p); p += 4; }
+            e.Seg = (sbyte)(seg == -1 ? SEG_DS : seg);
+        }
+        if (kind == DK_GRP5 && (e.Reg is 3 or 5 or 7 || (bits == 8 && e.Reg > 1))) return;   // far CALL / JMP, #UD: the ordinary path
         uint imm = 0;
         if (immBits == 8) { imm = U8(paddr + (uint)p); p++; }
         else if (immBits == 16) { imm = U16(paddr + (uint)p); p += 2; }

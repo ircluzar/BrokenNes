@@ -189,6 +189,17 @@ public sealed partial class I386
         return true;
     }
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JGrp3(int bits) => Grp3Body(bits);
+    /// <summary>FE / FF: INC / DEC Eb / Ev, CALL / JMP / PUSH Ev (after JPrep; the far forms are never compiled). False = a fault.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool JGrp5(int bits)
+    {
+        if (_reg < 2) { if (!TranslateE(bits, 3)) return false; IncDec(bits, _reg == 1); return true; }
+        if (!TranslateE(bits, 1)) return false;
+        uint v = ReadE(bits);
+        if (_reg == 2) return CallNear(v, false);
+        if (_reg == 4) { NextIp = v; return true; }
+        return Push(bits, v);
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool JLeave() => Leave();
     [MethodImpl(MethodImplOptions.NoInlining)] private void JImul2(int bits, int reg, uint a, uint b) => Imul2(bits, reg, a, b);
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JCall(uint rel) => CallNear(rel, true);
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JRet() => OpRet() != FAIL;
@@ -233,7 +244,7 @@ public sealed partial class I386
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JCall", "JRet",
+        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JCall", "JRet",
                      "JExitOk", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm" })
             d[n] = M(n);
         return d;
@@ -917,6 +928,26 @@ public sealed partial class I386
                     else { ReadE(); Stl(A); U4(e.Imm); Stl(B); }
                     Ld0(); I4(bits); I4(e.Reg); Ld(A); Ld(B); Call("JImul2");
                     break;
+                case DK_GRP5:
+                    Prep();
+                    Ld0(); I4(bits); Call("JGrp5"); FailIfFalse();
+                    if (e.Reg is 2 or 4)
+                    {   // CALL / JMP Ev: leave at the new Ip
+                        StDec();
+                        LeaveAfter(k, () => { Ld0(); Call("JNextIp"); });
+                        ends = true;
+                    }
+                    else if (e.Reg == 6)
+                    {   // PUSH: the store went to SS base + the new ESP
+                        Ld0(); I4(SEG_SS); Call("JSegBase"); LdReg(32, 4); Ld(spm); Op(OpCodes.And); Op(OpCodes.Add); Stl(la);
+                        SmcCheck(la, bits / 8);
+                    }
+                    else if (mem) SmcCheck(la, bits / 8);
+                    break;
+                case DK_LEAVE:
+                    Prep();
+                    Ld0(); Call("JLeave"); FailIfFalse();
+                    break;
                 default:
                     throw new InvalidOperationException("kind " + e.Kind);
             }
@@ -930,5 +961,5 @@ public sealed partial class I386
     }
 
     private static bool DcHasModrm(byte kind) => kind is DK_MOVEG or DK_MOVGE or DK_ALUEG or DK_ALUGE or DK_GRP1 or DK_GRP2 or DK_TESTEG
-        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL;
+        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5;
 }
