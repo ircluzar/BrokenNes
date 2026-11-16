@@ -39,7 +39,7 @@ internal static class X86SessionCli
             var o = CoreCatalog.Options(ConsoleKind.Pc, slot);
             Check(slot == CoreSlot.Apu ? o.Count >= 1 && o[0].Id == CoreCatalog.Default(ConsoleKind.Pc, slot) : o.Count == (slot == CoreSlot.Cpu ? 2 : 1 + VgaPictures.Chips.Length), $"{slot} menu: {string.Join(" | ", o.Select(x => $"{x.Id} = {x.Label} [{x.Section}]"))}");
         }
-        using var s = ConsoleSessions.Create(ConsoleKind.Pc, data, Array.IndexOf(args, "--cpu") is int ci && ci > 0 && ci + 1 < args.Length ? args[ci + 1] : CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Cpu), Arg(args, "--ppu") ?? CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Ppu), CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Apu), null, name);
+        using var s = ConsoleSessions.Create(ConsoleKind.Pc, data, Array.IndexOf(args, "--cpu") is int ci && ci > 0 && ci + 1 < args.Length ? args[ci + 1] : CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Cpu), Arg(args, "--ppu") ?? CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Ppu), CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Apu), null, name, pcMachine: Arg(args, "--machine") ?? "classic");
         Console.WriteLine($"  session: {s.Description}, {s.FramesPerSecond:F2} fps");
         var save0 = s.ExportSave();
         var sw = System.Diagnostics.Stopwatch.StartNew();

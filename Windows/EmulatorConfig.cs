@@ -164,6 +164,8 @@ namespace BrokenNes.Windows
 
         [JsonPropertyName("masterSystemModel")]
         public string MasterSystemModel { get; set; } = "auto";
+        /// <summary>The x86 PC's machine preset (NesEmulator.X86.PcMachinePreset key): "classic" is the console as it always was.</summary>
+        public string PcMachine { get; set; } = "classic";
 
         /// <summary>
         /// The Game Boy look: green (original DMG), grey, pocket, or color (Game Boy pictures run as a GBC)

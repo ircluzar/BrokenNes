@@ -95,6 +95,93 @@ public sealed partial class I386
     /// <summary>FERR#: an unmasked x87 exception with CR0.NE clear (the PC routes it to IRQ 13).</summary>
     public Action? Ferr;
 
+    // REP string timing: core clocks per iteration (after the first, which the instruction itself counts) of MOVS STOS LODS SCAS CMPS INS OUTS,
+    // per generation (Intel's tables plus memory bandwidth past the cache: TopBench's memory test on real 486 / P5 machines), in instruction-clock units
+    // (16.16: clocks / CPI). Legacy = null: a REP was one instruction, and the classic machine keeps that.
+    private static readonly int[][] RepClocks = { new[] { 4, 5, 5, 8, 9, 8, 8 }, new[] { 4, 5, 4, 5, 7, 8, 8 }, new[] { 2, 2, 3, 4, 4, 8, 8 } };
+    private readonly long[]? _repCost16;
+    public const int RepMovs = 0, RepStos = 1, RepLods = 2, RepScas = 3, RepCmps = 4, RepIns = 5, RepOuts = 6;
+
+    private static long[]? RepCosts(CpuModel m)
+    {
+        if (m.Legacy) return null;
+        var c = RepClocks[Math.Clamp(m.Gen, 3, 5) - 3];
+        var r = new long[c.Length];
+        for (int i = 0; i < c.Length; i++) r[i] = (long)Math.Round(c[i] / m.Cpi * 65536);
+        return r;
+    }
+
+    /// <summary>Charges the iterations of a REP string instruction past its first (no state: the fraction is dropped per instruction).</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private void RepCharge(int kind, uint iterations)
+    {
+        if (_repCost16 != null && iterations > 1) Cycle += ((iterations - 1) * _repCost16[kind]) >> 16;
+    }
+
+    // Instruction classes slower than the average (the CPI covers the average instruction): extra clocks per generation (386 / 486 / P5,
+    // Intel's tables, real-mode / typical forms), turned into extra instruction-clock units (clocks / CPI - 1, rounded). Charged once per
+    // instruction at its start (Step1 by the first opcode byte, ExecTwo by the 0F byte, Grp3Body for MUL / DIV); the compiled code adds
+    // the same constant for the forms it compiles (only F6 / F7 MUL / DIV among them), so JIT and interpreter count the same clock.
+    private readonly byte[]? _opCost, _opCost0F;
+    private readonly byte[]? _mulCost, _divCost;          // by operand size: 8, 16, 32
+
+    private void BuildOpCosts(CpuModel m, out byte[]? op, out byte[]? op0f, out byte[]? mul, out byte[]? div)
+    {
+        op = op0f = mul = div = null;
+        if (m.Legacy) return;
+        int g = Math.Clamp(m.Gen, 3, 5) - 3;
+        double cpi = m.Cpi;
+        byte U(int c386, int c486, int c586) { int c = g == 0 ? c386 : g == 1 ? c486 : c586; return (byte)Math.Clamp((int)Math.Round(c / cpi) - 1, 0, 255); }
+        var t = new byte[256]; var t2 = new byte[256];
+        void S(byte v, params int[] ops) { foreach (int o in ops) t[o] = v; }
+        S(U(22, 26, 10), 0x69, 0x6b);                         // IMUL r, rm, imm
+        S(U(4, 3, 3), 0x8e);                                  // MOV Sreg (real mode)
+        S(U(7, 6, 4), 0xc4, 0xc5);                            // LES / LDS
+        S(U(17, 18, 4), 0x9a); S(U(12, 17, 3), 0xea);         // CALL / JMP far
+        S(U(18, 13, 4), 0xca, 0xcb); S(U(22, 15, 8), 0xcf);   // RETF, IRET
+        S(U(37, 30, 16), 0xcc, 0xcd, 0xce);                   // INT
+        S(U(18, 11, 5), 0x60); S(U(24, 9, 5), 0x61);          // PUSHA / POPA
+        S(U(10, 14, 11), 0xc8); S(U(4, 5, 3), 0xc9);          // ENTER / LEAVE
+        S(U(11, 7, 5), 0xe2); S(U(11, 9, 7), 0xe0, 0xe1); S(U(9, 8, 6), 0xe3);   // LOOP / LOOPcc / JCXZ
+        S(U(12, 14, 7), 0xe4, 0xe5, 0xec, 0xed); S(U(10, 16, 12), 0xe6, 0xe7, 0xee, 0xef);   // IN / OUT
+        S(U(4, 4, 4), 0x9c); S(U(5, 9, 6), 0x9d);             // PUSHF / POPF
+        S(U(17, 15, 18), 0xd4); S(U(19, 14, 10), 0xd5); S(U(5, 4, 4), 0xd7);   // AAM / AAD / XLAT
+        S(U(4, 2, 3), 0x27, 0x2f); S(U(4, 3, 3), 0x37, 0x3f);
+        S(U(7, 7, 4), 0xa4, 0xa5); S(U(4, 5, 3), 0xaa, 0xab); S(U(5, 5, 2), 0xac, 0xad);   // string ops (one iteration)
+        S(U(7, 6, 4), 0xae, 0xaf); S(U(10, 8, 5), 0xa6, 0xa7); S(U(15, 17, 10), 0x6c, 0x6d, 0x6e, 0x6f);
+        if (m.Fpu) S(U(30, 12, 3), 0xd8, 0xd9, 0xda, 0xdb, 0xdc, 0xdd, 0xde, 0xdf);   // x87: an average FP op
+        void S2(byte v, params int[] ops) { foreach (int o in ops) t2[o] = v; }
+        S2(U(22, 26, 10), 0xaf);                              // IMUL r, rm
+        S2(U(3, 3, 3), 0xb6, 0xb7, 0xbe, 0xbf);               // MOVZX / MOVSX
+        S2(U(20, 20, 20), 0xbc, 0xbd);                        // BSF / BSR
+        S2(U(6, 6, 7), 0xa3, 0xab, 0xb3, 0xbb, 0xba);         // BT family
+        S2(U(3, 3, 4), 0xa4, 0xa5, 0xac, 0xad);               // SHLD / SHRD
+        S2(U(15, 15, 15), 0xa0, 0xa1, 0xa8, 0xa9, 0xb2, 0xb4, 0xb5);   // PUSH / POP FS GS, LSS / LFS / LGS
+        op = t; op0f = t2;
+        mul = new[] { U(12, 13, 11), U(22, 26, 11), U(38, 42, 10) };
+        div = new[] { U(14, 16, 17), U(22, 24, 25), U(38, 40, 41) };
+    }
+
+    /// <summary>A memory operand (ModRM with mod != 3, LEA too): address generation and the cache / bus, extra clock units (0 = legacy).</summary>
+    private readonly int _memCost;
+    private static int MemCost(CpuModel m) => m.Legacy ? 0 : Math.Max(0, (int)Math.Round((m.Gen <= 3 ? 4 : m.Gen == 4 ? 6 : 3) / m.Cpi));
+
+    private static int SizeIdx(int bits) => bits == 8 ? 0 : bits == 16 ? 1 : 2;
+
+    /// <summary>The extra clock the compiled code adds for a form it compiles (the interpreter charges the same in Grp3Body).</summary>
+    /// <summary>The extra clock the compiled code adds for the instruction at <paramref name="pa"/>: what the interpreter charges for it (Step1's first
+    /// opcode byte, ExecTwo's 0F byte, Grp3Body's MUL / DIV, DecodeModrm's memory operand), from the same tables.</summary>
+    private int JitExtraCost(uint pa, byte kind, int reg, int bits, bool mem)
+    {
+        if (_opCost == null) return 0;
+        int p = 0; uint b;
+        do b = U8(pa + (uint)p++); while (IsPrefix[b] && p < 15);
+        int c = (mem ? _memCost : 0) + _opCost[b];
+        if (b == 0x0f) { uint b2 = U8(pa + (uint)p); if ((b2 & 0xf0) != 0x80) c += _opCost0F![b2]; }
+        if (kind == DK_GRP3 && reg >= 4) c += reg < 6 ? _mulCost![SizeIdx(bits)] : _divCost![SizeIdx(bits)];
+        return c;
+    }
+
     public uint Cr4;
     private long _tscOffset;                         // TSC = clock * ClockHz / Ips + _tscOffset (WRMSR 10h moves it)
     private uint _msrCesr, _msrCtr0Lo, _msrCtr1Lo;   // P5 performance counter MSRs 11h-13h: kept, not counted

@@ -98,6 +98,7 @@ public sealed partial class I386
                 }
                 if (!Fetch8(out b1)) return FAIL;
             }
+            if (_opCost != null) Cycle += _opCost[b1];
             if (lockPfx && !LockAllowed(b1)) { Throw0(EX_UD); return FAIL; }
             // the everyday opcodes are dispatched here, to small handlers: going through ExecOne's big switch costs about as much as
             // the instruction itself (measured with Workshop --x86bench); everything else still goes to ExecOne
@@ -302,7 +303,7 @@ public sealed partial class I386
     {
         if (!Fetch8(out uint modrm)) return false;
         _mod = (int)(modrm >> 6); _reg = (int)((modrm >> 3) & 7); _rm = (int)(modrm & 7);
-        if (_mod != 3) return Modsib(_adsz16, _mod, _rm, out _addr, ref _curSeg);
+        if (_mod != 3) { Cycle += _memCost; return Modsib(_adsz16, _mod, _rm, out _addr, ref _curSeg); }
         return true;
     }
 
@@ -688,6 +689,7 @@ public sealed partial class I386
                 WriteE(bits, _ccDst);
                 return true;
         }
+        if (_mulCost != null) Cycle += _reg < 6 ? _mulCost[SizeIdx(bits)] : _divCost![SizeIdx(bits)];
         if (!TranslateE(bits, 1)) return false;
         uint v = ReadE(bits);
         switch (_reg)
@@ -872,6 +874,7 @@ public sealed partial class I386
         var m1 = new OptAddr();
         if (!Fetch8(out uint modrm)) return false;
         _mod = (int)(modrm >> 6); _rm = (int)(modrm & 7);
+        if (_mod != 3) Cycle += _memCost;
         uint sp = R[4];
         if (!Translate(ref m1, 1, SEG_SS, sp & _spm, bits / 8)) return false;
         uint src = Load(bits, ref m1);
@@ -1173,21 +1176,116 @@ public sealed partial class I386
     private bool CxNonZero() => LReg(A, 1) != 0;
     private void CxDec() => SReg(A, 1, LReg(A, 1) - 1);
 
+    // ---- REP fast paths (forward, plain RAM): a run of elements that stays in one 4 KB page of both operands, inside the segment
+    // limit and without a 16-bit offset wrap, done at once on Mem; exactly the state the element loop leaves (registers, flags of the
+    // last compare, the iteration count for the timing). Anything else (a fault, I/O memory, a page edge, DF = 1) takes the element loop.
+
+    /// <summary>Elements of <paramref name="n"/> bytes from offset <paramref name="off"/> (physical <paramref name="pa"/>) before a page edge, the
+    /// 16-bit offset wrap or the segment limit (expand-down segments: 0, the element loop).</summary>
+    private uint RepSpan(int seg, uint off, uint pa, int n)
+    {
+        uint e = (4096 - (pa & 4095)) / (uint)n;
+        if (_adsz16) e = Math.Min(e, (0x10000 - (off & 0xffff)) / (uint)n);
+        if ((SegFlags[seg] & 0xc) == 0x4) return 0;
+        ulong room = ((ulong)SegLimit[seg] + 1 - off) / (uint)n;
+        return (uint)Math.Min(e, room);
+    }
+
+    private bool MovsChunk(int n, ref uint it)
+    {
+        uint cx = LReg(A, 1), si = LReg(A, 6), di = LReg(A, 7);
+        if (cx < 2) return false;
+        var ms = new OptAddr(); var md = new OptAddr();
+        if (!Translate(ref ms, 1, _curSeg, si, n) || !Translate(ref md, 2, SEG_ES, di, n)) return false;   // (the element loop raises the fault)
+        if (ms.Two || md.Two || !IsRam(ms.A1) || !IsRam(md.A1)) return false;
+        uint k = Math.Min(cx, Math.Min(RepSpan(_curSeg, si, ms.A1, n), RepSpan(SEG_ES, di, md.A1, n)));
+        if (k < 2) return false;
+        uint bytes = k * (uint)n, s0 = ms.A1, d0 = md.A1;
+        if (d0 > s0 && d0 < s0 + bytes)
+        {   // the destination runs ahead inside the source: element by element, as the CPU does
+            for (uint i = 0; i < bytes; i += (uint)n)
+            {
+                if (n == 1) US8(d0 + i, U8(s0 + i)); else if (n == 2) US16(d0 + i, U16(s0 + i)); else US32(d0 + i, U32(s0 + i));
+            }
+        }
+        else Mem.AsSpan((int)s0, (int)bytes).CopyTo(Mem.AsSpan((int)d0, (int)bytes));
+        SReg(A, 6, si + bytes); SReg(A, 7, di + bytes); SReg(A, 1, cx - k);
+        it += k;
+        return true;
+    }
+
+    private bool StosChunk(int n, uint ax, ref uint it)
+    {
+        uint cx = LReg(A, 1), di = LReg(A, 7);
+        if (cx < 2) return false;
+        var md = new OptAddr();
+        if (!Translate(ref md, 2, SEG_ES, di, n)) return false;
+        if (md.Two || !IsRam(md.A1)) return false;
+        uint k = Math.Min(cx, RepSpan(SEG_ES, di, md.A1, n));
+        if (k < 2) return false;
+        uint bytes = k * (uint)n, d0 = md.A1;
+        if (n == 1) Mem.AsSpan((int)d0, (int)bytes).Fill((byte)ax);
+        else if (n == 2) for (uint i = 0; i < bytes; i += 2) US16(d0 + i, ax);
+        else for (uint i = 0; i < bytes; i += 4) US32(d0 + i, ax);
+        SReg(A, 7, di + bytes); SReg(A, 1, cx - k);
+        it += k;
+        return true;
+    }
+
+    /// <summary>REPE / REPNE CMPS (scas false) or SCAS (scas true, against <paramref name="ax0"/>): 0 = not done here, 1 = a run done (go on),
+    /// 2 = the run ended on the stop condition (the loop ends).</summary>
+    private int CmpChunk(int bits, bool scas, uint ax0, ref uint it)
+    {
+        int n = bits / 8;
+        uint cx = LReg(A, 1), si = LReg(A, 6), di = LReg(A, 7);
+        if (cx < 2) return 0;
+        int seg = _curSeg == -1 ? SEG_DS : _curSeg;
+        var ms = new OptAddr(); var md = new OptAddr();
+        if (!scas && !Translate(ref ms, 1, seg, si, n)) return 0;
+        if (!Translate(ref md, 1, SEG_ES, di, n)) return 0;
+        if ((!scas && (ms.Two || !IsRam(ms.A1))) || md.Two || !IsRam(md.A1)) return 0;
+        uint k = Math.Min(cx, RepSpan(SEG_ES, di, md.A1, n));
+        if (!scas) k = Math.Min(k, RepSpan(seg, si, ms.A1, n));
+        if (k < 2) return 0;
+        uint mask = bits == 8 ? 0xffu : bits == 16 ? 0xffffu : 0xffffffffu;
+        bool stopOnEqual = _rep == 2;   // REPNE stops at a match, REPE at a difference
+        uint a = 0, b = 0, done = 0;
+        bool stop = false;
+        for (uint i = 0; i < k; i++)
+        {
+            uint off = i * (uint)n;
+            a = scas ? ax0 & mask : n == 1 ? U8(ms.A1 + off) : n == 2 ? U16(ms.A1 + off) : U32(ms.A1 + off);
+            b = n == 1 ? U8(md.A1 + off) : n == 2 ? U16(md.A1 + off) : U32(md.A1 + off);
+            done = i + 1;
+            if ((a == b) == stopOnEqual) { stop = true; break; }
+        }
+        uint bytes = done * (uint)n;
+        if (!scas) SReg(A, 6, si + bytes);
+        SReg(A, 7, di + bytes); SReg(A, 1, cx - done);
+        SetSub(bits, a, b);
+        it += done;
+        return stop ? 2 : 1;
+    }
+
     private bool Movs(int bits)
     {
         if (_curSeg == -1) _curSeg = SEG_DS;
         int dir = Dir(bits), n = bits / 8;
         var ms = new OptAddr(); var md = new OptAddr();
+        uint it = 0;
         while (_rep == 0 || CxNonZero())
         {
-            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) return false;
+            if (_rep != 0 && (Flags & DF) == 0 && MovsChunk(n, ref it)) continue;
+            it++;
+            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) { RepCharge(RepMovs, it); return false; }
             uint v = Load(bits, ref ms);
-            if (!Translate(ref md, 2, SEG_ES, LReg(A, 7), n)) return false;
+            if (!Translate(ref md, 2, SEG_ES, LReg(A, 7), n)) { RepCharge(RepMovs, it); return false; }
             Store(bits, ref md, v);
             Adv(6, dir); Adv(7, dir);
             if (_rep == 0) break;
             CxDec();
         }
+        RepCharge(RepMovs, it);
         return true;
     }
 
@@ -1196,14 +1294,18 @@ public sealed partial class I386
         int dir = Dir(bits), n = bits / 8;
         uint ax = R[0];
         var md = new OptAddr();
+        uint it = 0;
         while (_rep == 0 || CxNonZero())
         {
-            if (!Translate(ref md, 2, SEG_ES, LReg(A, 7), n)) return false;
+            if (_rep != 0 && (Flags & DF) == 0 && StosChunk(n, ax, ref it)) continue;
+            it++;
+            if (!Translate(ref md, 2, SEG_ES, LReg(A, 7), n)) { RepCharge(RepStos, it); return false; }
             Store(bits, ref md, ax);
             Adv(7, dir);
             if (_rep == 0) break;
             CxDec();
         }
+        RepCharge(RepStos, it);
         return true;
     }
 
@@ -1212,14 +1314,17 @@ public sealed partial class I386
         if (_curSeg == -1) _curSeg = SEG_DS;
         int dir = Dir(bits), n = bits / 8;
         var ms = new OptAddr();
+        uint it = 0;
         while (_rep == 0 || CxNonZero())
         {
-            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) return false;
+            it++;
+            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) { RepCharge(RepLods, it); return false; }
             SReg(bits, 0, Load(bits, ref ms));
             Adv(6, dir);
             if (_rep == 0) break;
             CxDec();
         }
+        RepCharge(RepLods, it);
         return true;
     }
 
@@ -1228,9 +1333,12 @@ public sealed partial class I386
         int dir = Dir(bits), n = bits / 8;
         uint ax0 = LReg(bits, 0);
         var md = new OptAddr();
+        uint it = 0;
         while (_rep == 0 || CxNonZero())
         {
-            if (!Translate(ref md, 1, SEG_ES, LReg(A, 7), n)) return false;
+            if (_rep != 0 && (Flags & DF) == 0) { int c = CmpChunk(bits, true, ax0, ref it); if (c == 2) break; if (c == 1) continue; }
+            it++;
+            if (!Translate(ref md, 1, SEG_ES, LReg(A, 7), n)) { RepCharge(RepScas, it); return false; }
             uint ax = Load(bits, ref md);
             Adv(7, dir);
             if (_rep != 0) CxDec();
@@ -1239,6 +1347,7 @@ public sealed partial class I386
             bool zf = GetZF() != 0;
             if ((zf && _rep == 2) || (!zf && _rep == 1)) break;
         }
+        RepCharge(RepScas, it);
         return true;
     }
 
@@ -1247,11 +1356,14 @@ public sealed partial class I386
         if (_curSeg == -1) _curSeg = SEG_DS;
         int dir = Dir(bits), n = bits / 8;
         var ms = new OptAddr();
+        uint it = 0;
         while (_rep == 0 || CxNonZero())
         {
-            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) return false;
+            if (_rep != 0 && (Flags & DF) == 0) { int c = CmpChunk(bits, false, 0, ref it); if (c == 2) break; if (c == 1) continue; }
+            it++;
+            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) { RepCharge(RepCmps, it); return false; }
             uint ax0 = Load(bits, ref ms);
-            if (!Translate(ref ms, 1, SEG_ES, LReg(A, 7), n)) return false;
+            if (!Translate(ref ms, 1, SEG_ES, LReg(A, 7), n)) { RepCharge(RepCmps, it); return false; }
             uint ax = Load(bits, ref ms);
             Adv(6, dir); Adv(7, dir);
             if (_rep != 0) CxDec();
@@ -1260,6 +1372,7 @@ public sealed partial class I386
             bool zf = GetZF() != 0;
             if ((zf && _rep == 2) || (!zf && _rep == 1)) break;
         }
+        RepCharge(RepCmps, it);
         return true;
     }
 
@@ -1269,14 +1382,17 @@ public sealed partial class I386
         // (F2 is a REP here too, as for MOVS/STOS/LODS: a 386 runs REPNE INS/OUTS; SingleStepTests F2 6C)
         int dir = Dir(bits), n = bits / 8;
         var md = new OptAddr();
+        uint it = 0;
         while (_rep == 0 || CxNonZero())
         {
-            if (!Translate(ref md, 2, SEG_ES, LReg(A, 7), n)) return false;
+            it++;
+            if (!Translate(ref md, 2, SEG_ES, LReg(A, 7), n)) { RepCharge(RepIns, it); return false; }
             Store(bits, ref md, PortIn(bits, (int)L16(2)));
             Adv(7, dir);
             if (_rep == 0) break;
             CxDec();
         }
+        RepCharge(RepIns, it);
         return true;
     }
 
@@ -1287,14 +1403,17 @@ public sealed partial class I386
         // (F2 is a REP here too, as for MOVS/STOS/LODS: a 386 runs REPNE INS/OUTS; SingleStepTests F2 6C)
         int dir = Dir(bits), n = bits / 8;
         var ms = new OptAddr();
+        uint it = 0;
         while (_rep == 0 || CxNonZero())
         {
-            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) return false;
+            it++;
+            if (!Translate(ref ms, 1, _curSeg, LReg(A, 6), n)) { RepCharge(RepOuts, it); return false; }
             PortOut(bits, (int)L16(2), Load(bits, ref ms));
             Adv(6, dir);
             if (_rep == 0) break;
             CxDec();
         }
+        RepCharge(RepOuts, it);
         return true;
     }
 
@@ -1509,6 +1628,7 @@ public sealed partial class I386
             case 0xa0: case 0xa1: case 0xa2: case 0xa3:
             {
                 if (_adsz16) { if (!Fetch16(out _addr)) return FAIL; } else if (!Fetch32(out _addr)) return FAIL;
+                Cycle += _memCost;   // a memory operand (as DecodeModrm counts it)
                 if (_curSeg == -1) _curSeg = SEG_DS;
                 int bits = (b1 & 1) == 0 ? 8 : V;
                 if (!Translate(ref _meml, b1 < 0xa2 ? 1 : 2, _curSeg, _addr, bits / 8)) return FAIL;
@@ -1685,6 +1805,7 @@ public sealed partial class I386
     {
         if (!Fetch8(out uint b1)) return FAIL;
         uint imm;
+        if (_opCost0F != null) Cycle += _opCost0F[b1];
         if (!_legacy)
         {
             if (!ModelAllows0F(b1)) return K(Throw0(EX_UD));

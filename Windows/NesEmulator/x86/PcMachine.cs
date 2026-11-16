@@ -75,10 +75,12 @@ public sealed partial class PcMachine : IX86Bus
         Cmos = new Cmos(() => PitNow, MemKb);
         Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64);
         S3 = Vga.S3;
+        _vramNs = Cpu.Model.Legacy ? 0 : S3 != null ? 150 : Cpu.Model.Gen <= 3 ? 650 : 450;
         Speaker = new PcSpeaker(this);
         Opl = new Opl2(() => PitNow);
         Dma = new Dma8237(this);
         if (config.Storage == PcStorage.Ide) Ata = new AtaController(Pic);
+        if (config.Bus != PcBus.Isa) Pci = new PciBus(this);
         Pic.Raise = () => Cpu.RaiseIrq();
         RegisterTraps();
     }
@@ -87,23 +89,34 @@ public sealed partial class PcMachine : IX86Bus
 
     public bool MapsIoMem => true;
 
-    public byte MemRead8(uint a) => a < 0xc0000 ? Vga.MemRead(a) : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
-    public void MemWrite8(uint a, byte v) { if (a < 0xc0000) Vga.MemWrite(a, v); else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
-    public ushort MemRead16(uint a) => (ushort)(MemRead8(a) | (MemRead8(a + 1) << 8));
-    public void MemWrite16(uint a, ushort v)
+    // the CPU's accesses to the video card's memory (and the S3's registers) wait for the bus: ISA VGA ~650 ns on a 386 board, ~450 ns on a 486, the PCI S3 ~150 ns per
+    // access, charged as machine time on a CPU model (the classic machine: no wait, as before)
+    public byte MemRead8(uint a) { VramWait(); return RawRead8(a); }
+    public void MemWrite8(uint a, byte v) { VramWait(); RawWrite8(a, v); }
+    public ushort MemRead16(uint a) { VramWait(); return RawRead16(a); }
+    public void MemWrite16(uint a, ushort v) { VramWait(); RawWrite16(a, v); }
+    public uint MemRead32(uint a) { VramWait(); return RawRead32(a); }
+    public void MemWrite32(uint a, uint v) { VramWait(); RawWrite32(a, v); }
+    private readonly int _vramNs;
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private void VramWait() { if (_vramNs != 0) _idle += Math.Max(1, _vramNs * InstructionsPerSecond / 1_000_000_000); }
+    private byte RawRead8(uint a) => a < 0xc0000 ? Vga.MemRead(a) : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
+    private void RawWrite8(uint a, byte v) { if (a < 0xc0000) Vga.MemWrite(a, v); else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
+    private ushort RawRead16(uint a) => (ushort)(RawRead8(a) | (RawRead8(a + 1) << 8));
+    private void RawWrite16(uint a, ushort v)
     {
         if (S3 != null && (S3.InLfb(a) && S3.InLfb(a + 1) ? WriteLfb16(a, v) : a < 0xc0000 && S3.MmioWrite(a, v, 16))) return;
-        MemWrite8(a, (byte)v); MemWrite8(a + 1, (byte)(v >> 8));
+        RawWrite8(a, (byte)v); RawWrite8(a + 1, (byte)(v >> 8));
     }
-    public uint MemRead32(uint a) => S3 != null && S3.InLfb(a) ? S3.LfbRead32(a) : (uint)(MemRead16(a) | (MemRead16(a + 2) << 16));
-    public void MemWrite32(uint a, uint v)
+    private uint RawRead32(uint a) => S3 != null && S3.InLfb(a) ? S3.LfbRead32(a) : (uint)(RawRead16(a) | (RawRead16(a + 2) << 16));
+    private void RawWrite32(uint a, uint v)
     {
         if (S3 != null)
         {
             if (S3.InLfb(a)) { S3.LfbWrite32(a, v); return; }
             if (a < 0xc0000 && S3.MmioWrite(a, v, 32)) return;
         }
-        MemWrite16(a, (ushort)v); MemWrite16(a + 2, (ushort)(v >> 16));
+        RawWrite16(a, (ushort)v); RawWrite16(a + 2, (ushort)(v >> 16));
     }
     private bool WriteLfb16(uint a, ushort v) { S3!.LfbWrite8(a, (byte)v); S3.LfbWrite8(a + 1, (byte)(v >> 8)); return true; }
 
@@ -113,6 +126,7 @@ public sealed partial class PcMachine : IX86Bus
 
     public byte In8(int port)
     {
+        if (Pci != null && Pci.In(port, 1, out uint pv)) return (byte)pv;
         if (Ata != null && Ata.In(port, false, out int av)) return (byte)av;
         if (Card != null && Card.In(port, false, out int cv)) return (byte)cv;
         if (S3 != null && S3Trio64.IsEnginePort(port)) return (byte)S3.EngineIn(port & 0xfffe, (port & 1) != 0);
@@ -140,6 +154,7 @@ public sealed partial class PcMachine : IX86Bus
 
     public void Out8(int port, byte v)
     {
+        if (Pci != null && (Pci.Out(port, 1, v) || PmTrap(port))) return;
         if (Ata != null && Ata.Out(port, false, v)) return;
         if (Card != null && Card.Out(port, false, v)) return;
         if (S3 != null && S3Trio64.IsEnginePort(port)) { S3.EngineOut8(port, v); return; }
@@ -165,6 +180,7 @@ public sealed partial class PcMachine : IX86Bus
 
     public ushort In16(int port)
     {
+        if (Pci != null && Pci.In(port, 2, out uint pv)) return (ushort)pv;
         if (Ata != null && Ata.In(port, true, out int av)) return (ushort)av;
         if (Card != null && Card.In(port, true, out int cv)) return (ushort)cv;
         if (S3 != null && S3Trio64.IsEnginePort(port)) return (ushort)(S3.EngineIn(port, false) | S3.EngineIn(port, true) << 8);
@@ -173,6 +189,7 @@ public sealed partial class PcMachine : IX86Bus
     }
     public void Out16(int port, ushort v)
     {
+        if (Pci != null && Pci.Out(port, 2, v)) return;
         if (Ata != null && Ata.Out(port, true, v)) return;
         if (Card != null && Card.Out(port, true, v)) return;
         if (S3 != null && S3Trio64.IsEnginePort(port)) { S3.EngineOut16(port, v); return; }
@@ -181,9 +198,10 @@ public sealed partial class PcMachine : IX86Bus
     }
     // a 32-bit access to an IDE data port is two 16-bit cycles on that same port
     private bool IsAtaData(int port) => Ata != null && (port == 0x1f0 || port == 0x170);
-    public uint In32(int port) => IsAtaData(port) ? (uint)(In16(port) | (In16(port) << 16)) : (uint)(In16(port) | (In16(port + 2) << 16));
+    public uint In32(int port) => Pci != null && Pci.In(port, 4, out uint pv) ? pv : IsAtaData(port) ? (uint)(In16(port) | (In16(port) << 16)) : (uint)(In16(port) | (In16(port + 2) << 16));
     public void Out32(int port, uint v)
     {
+        if (Pci != null && Pci.Out(port, 4, v)) return;
         if (S3 != null && (port & 0xfffc) == 0xe2e8) { S3.PixelData(v, 32); return; }   // a 32-bit image transfer
         Out16(port, (ushort)v); Out16(IsAtaData(port) ? port : port + 2, (ushort)(v >> 16));
     }
@@ -323,6 +341,7 @@ public sealed partial class PcMachine : IX86Bus
         _cdEmu = null; _cdBoot = false;
         WireAta();
         Ata?.Reset();
+        Pci?.Reset();
         Post();
     }
 
@@ -335,7 +354,7 @@ public sealed partial class PcMachine : IX86Bus
     }
 
     /// <summary>A save state carries the config block when the machine is not the classic one (memory is already in the CPU's state).</summary>
-    private bool ConfigInState => Config.CpuGen != 4 || Config.Storage != PcStorage.BiosOnly || Config.BootOrder != PcConfig.Default.BootOrder;
+    private bool ConfigInState => Config.CpuGen != 4 || Config.Storage != PcStorage.BiosOnly || Config.BootOrder != PcConfig.Default.BootOrder || Config.Bus != PcBus.Isa;
 
     // ================= save state =================
 
@@ -387,6 +406,7 @@ public sealed partial class PcMachine : IX86Bus
                 w.Write(Ata != null);
                 Ata?.Save(w);
                 SaveBiosExtras(w);
+                if (Config.Bus != PcBus.Isa) SavePci(w);
             }
         }
         return ms.ToArray();
@@ -452,6 +472,7 @@ public sealed partial class PcMachine : IX86Bus
                 WireAta();
                 if (r.ReadBoolean()) Ata!.Load(r);
                 LoadBiosExtras(r);
+                if (Config.Bus != PcBus.Isa) LoadPci(r);
             }
             else throw new InvalidDataException($"unknown block {magic:X8} in an x86 state");
         }
