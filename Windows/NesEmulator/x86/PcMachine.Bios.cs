@@ -467,7 +467,7 @@ public sealed partial class PcMachine
                 {
                     BL = d.Sectors switch { 9 => d.Cylinders == 40 ? 1u : 3u, 15 => 2u, 36 => 5u, _ => 4u };
                     CH = (uint)(d.Cylinders - 1); CL = (uint)d.Sectors; DH = (uint)(d.Heads - 1);
-                    DL = (uint)((Floppy[0] != null ? 1 : 0) + (Floppy[1] != null ? 1 : 0));
+                    DL = (uint)((Floppy[0] != null || _cdEmu != null ? 1 : 0) + (Floppy[1] != null ? 1 : 0));
                     SetEs(RomSeg); DI = DisketteTable; AX = 0;
                 }
                 else

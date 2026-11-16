@@ -98,6 +98,20 @@ internal static class X86BootCli
                 found &= f2;
             }
         }
+        // --step "UNTIL=>KEYS" (repeatable, after the rest): run until the screen shows UNTIL (at most --stepframes, default 20000), type KEYS
+        int stepMax = int.Parse(Arg(args, "--stepframes") ?? "20000"), si = 0;
+        foreach (var st in Args(args, "--step"))
+        {
+            int i = st.IndexOf("=>"); string u = st[..i], keys = st[(i + 2)..].Replace("\\n", "\n");
+            int ns = RunUntil(m, u, stepMax); n += ns;
+            bool ok = Screen(m).Contains(u) || m.Teletype.ToString().Contains(u);
+            Console.WriteLine($"x86boot: step {si} \"{u}\" {(ok ? "found" : "NOT found")} after {ns} frames (total {n}, {sw.Elapsed.TotalSeconds:F0} s){(m.Stopped != null ? ", STOPPED: " + m.Stopped : "")}");
+            if (shot != null) X86Shots.SavePng(m.Vga, Path.ChangeExtension(shot, null) + $"_step{si}.png");
+            si++;
+            if (!ok) break;
+            TypeText(m, keys);
+        }
+        if (Arg(args, "--after") is string aft) { n += RunUntil(m, null, int.Parse(aft)); }
         if (Arg(args, "--sample") is string smp)
             for (int k = 0; k < int.Parse(smp); k++)
             {
