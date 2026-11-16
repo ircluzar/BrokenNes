@@ -94,10 +94,18 @@ public sealed partial class I386
     }
 
     /// <param name="gen">3 = 386, 4 = 486 (5/6 accepted for the flags mask only).</param>
-    public I386(int gen, int memSize, IX86Bus bus)
+    public I386(int gen, int memSize, IX86Bus bus) : this(CpuModel.LegacyModel(gen), memSize, bus) { }
+
+    /// <summary>A core of the given CPU model (see I386.Model.cs).</summary>
+    public I386(CpuModel model, int memSize, IX86Bus bus)
     {
-        FlagsMask = gen switch { 3 => EFLAGS_MASK_386, 4 => EFLAGS_MASK_486, 5 or 6 => EFLAGS_MASK_586, _ => throw new ArgumentException("gen") };
+        int gen = model.Gen;
+        FlagsMask = model.Legacy ? gen switch { 3 => EFLAGS_MASK_386, 4 => EFLAGS_MASK_486, 5 or 6 => EFLAGS_MASK_586, _ => throw new ArgumentException("gen") } : model.FlagsMask;
         Gen = gen;
+        Model = model;
+        _legacy = model.Legacy;
+        _hasFpu = !_legacy && model.Fpu; _has486 = !_legacy && model.Ops486; _hasCpuid = !_legacy && model.Cpuid;
+        _has586 = !_legacy && model.Ops586; _hasMmx = !_legacy && model.Mmx;
         Mem = new byte[memSize + 16];
         MemSize = (uint)memSize;
         _bus = bus;
@@ -793,6 +801,7 @@ public sealed partial class I386
         SegSel[SEG_CS] = 0xf000; SegBase[SEG_CS] = 0xf0000;
         IdtBase = 0; IdtLimit = 0x3ff; GdtBase = 0; GdtLimit = 0;
         Cr0 = 0; Cr2 = 0; Cr3 = 0;
+        if (!_legacy) { Cr4 = 0; if (_hasFpu) Cr0 = 0x10; FpuInit(); }   // ET: a 387-class FPU is there
         Array.Clear(Dr);
         _ccMask = 0;
         TlbClear();

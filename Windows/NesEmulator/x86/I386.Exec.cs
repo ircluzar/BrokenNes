@@ -1496,7 +1496,7 @@ public sealed partial class I386
             case 0x9a:
                 if (!Fetch(V, out imm) || !Fetch16(out imm2)) return FAIL;
                 return K(CallFar(imm, imm2));
-            case 0x9b: if ((Cr0 & 0xa) == 0xa) return K(Throw0(EX_NM)); return OK;
+            case 0x9b: if ((Cr0 & 0xa) == 0xa) return K(Throw0(EX_NM)); return _hasFpu ? FpuWait() : OK;
             case 0x9c: return K(PushF());
             case 0x9d: return PopF();
             case 0x9e: // SAHF
@@ -1596,8 +1596,9 @@ public sealed partial class I386
                 S8(0, Load8(ref _meml));
                 return OK;
             }
-            case 0xd8: case 0xd9: case 0xda: case 0xdb: case 0xdc: case 0xdd: case 0xde: case 0xdf: // ESC: no FPU
+            case 0xd8: case 0xd9: case 0xda: case 0xdb: case 0xdc: case 0xdd: case 0xde: case 0xdf: // ESC: no FPU (or the model's x87)
                 if ((Cr0 & 0xc) != 0) return K(Throw0(EX_NM));
+                if (_hasFpu) return FpuExec((uint)b1);
                 return K(DecodeModrm());
 
             case 0xe0: case 0xe1: case 0xe2:
@@ -1684,6 +1685,17 @@ public sealed partial class I386
     {
         if (!Fetch8(out uint b1)) return FAIL;
         uint imm;
+        if (!_legacy)
+        {
+            if (!ModelAllows0F(b1)) return K(Throw0(EX_UD));
+            if (_hasMmx && b1 is (>= 0x60 and <= 0x7f) or (>= 0xd0)) return MmxExec(b1);
+            switch (b1)
+            {
+                case 0x08: return OK;                                            // INVD
+                case 0x30: return Msr(true);                                     // WRMSR
+                case 0x32: return Msr(false);                                    // RDMSR
+            }
+        }
         switch (b1)
         {
             case 0x00: return Grp6();
@@ -1709,7 +1721,7 @@ public sealed partial class I386
                     case 0: R[rm] = Cr0; break;
                     case 2: R[rm] = Cr2; break;
                     case 3: R[rm] = Cr3; break;
-                    case 4: R[rm] = 0; break;
+                    case 4: if (!_legacy && !_has586) return K(Throw0(EX_UD)); R[rm] = _legacy ? 0 : Cr4; break;
                     default: return K(Throw0(EX_UD));
                 }
                 return OK;
@@ -1723,12 +1735,13 @@ public sealed partial class I386
                 {
                     case 0:
                         uint nc = R[rm];
+                        if (_hasFpu) nc |= 0x10;   // ET is hardwired on a chip with its FPU
                         if (((nc ^ Cr0) & (CR0_PG | CR0_WP | 1)) != 0) TlbClear();
                         Cr0 = nc;
                         break;
                     case 2: Cr2 = R[rm]; break;
                     case 3: Cr3 = R[rm]; TlbClear(); break;
-                    case 4: break;
+                    case 4: if (!_legacy) { if (!_has586) return K(Throw0(EX_UD)); if (!WriteCr4(R[rm])) return FAIL; } break;
                     default: return K(Throw0(EX_UD));
                 }
                 return OK;
@@ -1736,7 +1749,7 @@ public sealed partial class I386
             case 0x21: { if (!Fetch8(out uint modrm)) return FAIL; R[modrm & 7] = Dr[(modrm >> 3) & 7]; return OK; }
             case 0x23: { if (!Fetch8(out uint modrm)) return FAIL; Dr[(modrm >> 3) & 7] = R[modrm & 7]; return OK; }
             case 0x24: case 0x26: return K(Fetch8(out _));
-            case 0x31: R[0] = (uint)Cycle; R[2] = (uint)((ulong)Cycle >> 32); return OK; // RDTSC: the instruction count (deterministic; tiny386 reads the host clock)
+            case 0x31: return Rdtsc(); // RDTSC: legacy = the instruction count (deterministic; tiny386 reads the host clock), a model = its clock
             case 0x40: case 0x41: case 0x42: case 0x43: case 0x44: case 0x45: case 0x46: case 0x47: case 0x48: case 0x49: case 0x4a: case 0x4b: case 0x4c: case 0x4d: case 0x4e: case 0x4f: // CMOVcc (P6)
             {
                 if (Gen <= 5) return K(Throw0(EX_UD));
@@ -1755,7 +1768,7 @@ public sealed partial class I386
                 return OK;
             case 0xa0: return K(PushSeg(SEG_FS));
             case 0xa1: return K(PopSeg(SEG_FS));
-            case 0xa2: Cpuid(); return OK;
+            case 0xa2: if (_legacy) Cpuid(); else CpuidModel(); return OK;
             case 0xa3: return K(BitOpEG(0, V));
             case 0xab: return K(BitOpEG(1, V));
             case 0xb3: return K(BitOpEG(2, V));
@@ -1920,7 +1933,7 @@ public sealed partial class I386
                 return OK;
             }
             case 7: // INVLPG
-                if (_mod == 3) return K(Throw0(EX_UD));
+                if (_mod == 3 || (!_legacy && !_has486)) return K(Throw0(EX_UD));
                 TlbClear();
                 return OK;
         }

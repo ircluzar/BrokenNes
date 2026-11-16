@@ -135,7 +135,7 @@ if ($Skip -notcontains 'determinism' -and $Consoles.Count -gt 0) {
 if ($runPc -and $Skip -notcontains 'x86') {
     Note "x86 PC console checks" White
     $xd = Join-Path $Out 'x86'; New-Item -ItemType Directory -Force -Path $xd | Out-Null
-    $runs = [ordered]@{ 'x86test' = @('--x86test'); 'x86dev' = @('--x86dev'); 'x86engines' = @('--x86engines'); 'x86cards' = @('--x86cards') }
+    $runs = [ordered]@{ 'x86test' = @('--x86test'); 'x86dev' = @('--x86dev'); 'x86video' = @('--x86video'); 'x86ide' = @('--x86ide'); 'x86engines' = @('--x86engines'); 'x86cards' = @('--x86cards'); 'x86cpu' = @('--x86cpu', '--vec', (Join-Path $Repo 'tools\x86-cpu\cpuvec.bin')) }
     $fd = if ($env:BROKENNES_FREEDOS) { $env:BROKENNES_FREEDOS } else { 'C:\BrokenNes-tools\dos\freedos\FD14LITE.img' }
     if (Test-Path $fd) { foreach ($cpu in 'I386', 'I386_D074') { $runs["x86session-$cpu"] = @('--x86session', $fd, '--frames', '600', '--cpu', $cpu) } }
     $procs = foreach ($k in $runs.Keys) { $p = Start-Process -FilePath $exe -ArgumentList $runs[$k] -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $xd "$k.txt") -RedirectStandardError (Join-Path $xd "$k.err.txt"); $null = $p.Handle; [pscustomobject]@{ k = $k; p = $p } }
@@ -145,7 +145,7 @@ if ($runPc -and $Skip -notcontains 'x86') {
         $txt = Get-Content (Join-Path $xd "$($x.k).txt") -ErrorAction SilentlyContinue
         $last = ($txt | Where-Object { $_ -match '\S' } | Select-Object -Last 1)
         # the CLIs end with a summary: "... 0 flagged", "checks N/N pass", "x86session: ok" / "N FAILED"
-        $bad = ($x.p.ExitCode -ne 0) -or (@($txt -cmatch 'FAILED|CRASH|NOT EXACT').Count -gt 0) -or ($last -match '[1-9]\d* flagged')
+        $bad = ($x.p.ExitCode -ne 0) -or (@(@($txt) -cmatch 'FAILED|CRASH|NOT EXACT').Count -gt 0) -or ($last -match '[1-9]\d* flagged')
         if ($bad) { $det += "$($x.k): exit $($x.p.ExitCode); $last"; $det += @($txt | Where-Object { $_ -cmatch '^\s*FAIL|NOT EXACT|CRASH' } | Select-Object -First 8 | ForEach-Object { "  $_" }) } else { $okN++ }
     }
     if (-not (Test-Path $fd)) { $det += "x86session: not run (no FreeDOS image at $fd)" }
