@@ -212,7 +212,30 @@
         "result": "ok",
         "crashInfo": ""
       }
+    },
+    {
+      "id": "nesfix-r4-firehawk-bf9097-mirroring",
+      "description": "Fire Hawk (mapper 71 BF9097): one-screen select as Mesen 2.1.1's BF909x - a $9000 write enables it, then every $8000-$BFFF write sets it, bit 4 set = screen A. PPU_FIX had A/B swapped and only listened at $9000-$9FFF, so the playfield went to the wrong nametable from frame 297. Lockstep vs Mesen: nametables 2314 -> 3 different frames of 2611 (2026-11-16).",
+      "kind": "romtest",
+      "rom": "{lib}/Fire Hawk (Unl).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "input": "421:Start,431:",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "AEB562AF0298F59B",
+        "framesRun": 600,
+        "distinctColors": 5,
+        "result": "ok",
+        "crashInfo": ""
+      }
     }
   ],
-  "goldenGeneratedUtc": "2026-11-16T15:58:04Z"
+  "goldenGeneratedUtc": "2026-11-16T16:51:18Z"
 }
