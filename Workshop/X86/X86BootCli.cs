@@ -194,6 +194,14 @@ internal static class X86BootCli
                 Console.WriteLine($"  {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} SS {m.Cpu.SegSel[2]:X4} ESP {m.Cpu.R[4]:X8} EAX {m.Cpu.R[0]:X8} CR0 {m.Cpu.Cr0:X} FL {m.Cpu.Flags:X} | {bytes} | stk {stk}");
                 m.Cpu.Step(1);
             }
+        if (args.Contains("--vgadump"))   // why a picture is blank: the registers, the palette and how much video memory is non-zero
+        {
+            var v = m.Vga;
+            string H(byte[] b) => string.Join(" ", b.Select(x => x.ToString("X2")));
+            Console.WriteLine($"vga SR {H(v.Sr)}\nvga GR {H(v.Gr[..9])}\nvga AR {H(v.Ar)}\nvga CR {H(v.Cr[..0x19])}\nvga DAC0-15 {H(v.Palette[..48])}");
+            Console.WriteLine($"vga ram non-zero bytes {v.Ram.Count(b => b != 0)} of {v.Ram.Length}; S3 {(m.S3 != null ? "yes" : "no")}; CR30-6F {H(v.Cr[0x30..0x70])}");
+            Console.WriteLine($"system RAM A0000-BFFFF non-zero bytes {m.Cpu.Mem.AsSpan(0xa0000, 0x20000).ToArray().Count(b => b != 0)} (should stay 0: the VGA owns it)");
+        }
         if (Arg(args, "--sample") is string smp)
             for (int k = 0; k < int.Parse(smp); k++)
             {

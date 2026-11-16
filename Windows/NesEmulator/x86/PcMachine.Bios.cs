@@ -225,9 +225,8 @@ public sealed partial class PcMachine
     private const string KeyNormal = "\0\x1b" + "1234567890-=\b\t" + "qwertyuiop[]\r\0" + "asdfghjkl;'`\0\\" + "zxcvbnm,./\0*\0 \0";
     private const string KeyShift = "\0\x1b" + "!@#$%^&*()_+\b\0" + "QWERTYUIOP{}\r\0" + "ASDFGHJKL:\"~\0|" + "ZXCVBNM<>?\0*\0 \0";
 
-    private void KeyboardIrq()
+    private void KeyboardIrq(byte sc)
     {
-        byte sc = Kbc.In(0x60);
         byte f1 = Phys8(0x417), f2 = Phys8(0x418), f3 = Phys8(0x496);
         bool e0 = (f3 & 2) != 0;
         f3 &= unchecked((byte)~2);
