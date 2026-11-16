@@ -226,7 +226,8 @@ def nes_record(rom, frames, script, out, png_at, png_dir):
 
 MESEN_SETTINGS = {
     "Version": "2.1.1", "ConfigUpgrade": 5, "Audio": {"EnableAudio": False},
-    "Nes": {"Port1": {"Type": "NesController"}, "Port2": {"Type": "NesController"}, "RamPowerOnState": "AllZeros"},
+    "Nes": {"Port1": {"Type": "NesController"}, "Port2": {"Type": "NesController"}, "RamPowerOnState": "AllZeros",
+            "AutoConfigureInput": False},   # Mesen's game DB would plug in a Four Score / Zapper (NWC, Spot): false Jank (nes-fix r3)
     "Preferences": {"SingleInstance": False, "AutomaticallyCheckForUpdates": False, "PauseWhenInBackground": False,
                     "PauseWhenInMenusAndConfig": False, "EnableAutoSaveState": False},
     "Debug": {"ScriptWindow": {"AllowIoOsAccess": True, "AllowNetworkAccess": False}},
