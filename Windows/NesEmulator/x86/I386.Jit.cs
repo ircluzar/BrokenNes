@@ -1028,7 +1028,15 @@ public sealed partial class I386
                 case DK_JMP:
                 {
                     var notTaken = il.DefineLabel();
-                    if (e.Kind == DK_JCC) { CondTop((uint)op); il.Emit(OpCodes.Brfalse, notTaken); }
+                    if (e.Kind == DK_JCC && op >= 0xe0)
+                    {   // LOOPcc / JCXZ (as Step1): the count is CX or ECX by the address size
+                        int cb = e.A16 ? 16 : 32;
+                        if (op != 0xe3) StReg(cb, 1, () => { LdReg(cb, 1); Op(OpCodes.Ldc_I4_1); Op(OpCodes.Sub); });
+                        LdReg(cb, 1);
+                        il.Emit(op == 0xe3 ? OpCodes.Brtrue : OpCodes.Brfalse, notTaken);
+                        if (op is 0xe0 or 0xe1) { CondTop(op == 0xe1 ? 0x74u : 0x75u); il.Emit(OpCodes.Brfalse, notTaken); }
+                    }
+                    else if (e.Kind == DK_JCC) { CondTop((uint)op); il.Emit(OpCodes.Brfalse, notTaken); }
                     IpAt(pe); U4(e.Imm); il.Emit(OpCodes.Add);
                     if (c16) { I4(0xffff); il.Emit(OpCodes.And); }
                     il.Emit(OpCodes.Stloc, t);
