@@ -1,0 +1,42 @@
+{
+ "note": "lib/run.py config (SMB1): RAM shown after every step, the level/map expressions, progress and the lives byte. SMB1 has no map.",
+ "ram": [
+  "mode=[$0770]",
+  "world=[$075F]",
+  "level=[$075C]",
+  "lives=[$075A]",
+  "pow=[$0756]",
+  "x=[$006D]*256+[$0086]",
+  "y=[$00CE]",
+  "air=[$001D]",
+  "xspd=[$0057]",
+  "time=[$07F8]*100+[$07F9]*10+[$07FA]",
+  "coins=[$075E]",
+  "area=[$0760]",
+  "state=[$000E]",
+  "vscr=[$00B5]"
+ ],
+ "in_level": "[$0770] == 1",
+ "on_map": "false",
+ "map_note": "SMB1 has no world map; on_map is always false. in_level means normal play (mode 01), which is true for the whole run except the title and game-over screens.",
+ "lives": "[$075A]",
+ "dead": "[$0770] == 1 && ([$000E] == 6 || [$000E] == 11 || [$00B5] >= 2)",
+ "advance": {
+  "pattern": "Right+B:{a} Right+B+A:{j} Right+B:{k} Right+B+A:{m}",
+  "vals": "a=0..20:10,j=8..24:8,k=0..16:8,m=0..24:12",
+  "want": "x >= {X} && air == 0",
+  "start": "x",
+  "stride": 130,
+  "then": "Right+B",
+  "within": 90,
+  "wait_pattern": "none:{w} Right+A:{j} Right+B:{k}",
+  "wait_vals": "w=10..70:15,j=12..24:6,k=0..30:15",
+  "note": "no finale bytes: chapters use --goal until (the stage byte $075C changes), which do_step reports as GOAL",
+  "end_expr": "[$000E] == 4 || [$000E] == 5 || [$0770] == 2",
+  "end_frames": 1800,
+  "goal_note": "chapter goal: --goal until --until '[$075C] == N && [$0772] == 3' (N = next stage, 0-based; world byte $075F for x-4)",
+  "stall_expr": "[$000E] == 7",
+  "stall_input": "Right:30",
+  "up_want": "x >= {X} && air == 0 && y <= {Y}"
+ }
+}

@@ -37,6 +37,7 @@
    "$7D9E"
   ],
   "wait_pattern": "none:{w} Right+B:{a} Right+B+A:{j}",
-  "wait_vals": "w=10..90:20,a=0..16:8,j=8..24:8"
+  "wait_vals": "w=10..90:20,a=0..16:8,j=8..24:8",
+  "up_want": "x >= {X} && air == 0 && y <= {Y}"
  }
 }

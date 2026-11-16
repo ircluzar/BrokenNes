@@ -1,0 +1,56 @@
+{
+ "game": "smb1",
+ "rom": "Super Mario Bros. (U) [!].nes (to confirm)",
+ "core": "CPU_FIX/PPU_FIX/APU_FIX",
+ "note": "Each until is a play_step / run_until expression tested at end of frame (true = chapter ends). All unverified; world/level base to confirm. Stage byte is $075C (LevelNumber, 0-based); $0760 is the area number (changes inside a level, e.g. 1-2's intro).",
+ "milestones": [
+  {
+   "id": "boot",
+   "kind": "area",
+   "until": "[$0770] == 1",
+   "verified": false,
+   "note": "title -> first frame of 1-1 gameplay (normal play mode). Confirm the first gameplay frame has the 1-1 level set."
+  },
+  {
+   "id": "1-1",
+   "kind": "level",
+   "until": "[$075F] == 0 && [$075C] == 1",
+   "verified": false,
+   "note": "ends on entering 1-2 (0-based guess)"
+  },
+  {
+   "id": "1-2",
+   "kind": "level",
+   "until": "[$075F] == 0 && [$075C] == 2",
+   "verified": false,
+   "note": "ends on entering 1-3"
+  },
+  {
+   "id": "1-3",
+   "kind": "level",
+   "until": "[$075F] == 0 && [$075C] == 3",
+   "verified": false,
+   "note": "ends on entering 1-4"
+  },
+  {
+   "id": "1-4",
+   "kind": "level",
+   "until": "[$075F] == 1 && [$075C] == 0",
+   "verified": false,
+   "note": "ends on entering 2-1 (castle end of 1-4)"
+  }
+ ],
+ "fail": [
+  {
+   "id": "died",
+   "until": "[$000E] == 6 || [$000E] == 11",
+   "note": "player dying; lives [$075A] drop afterwards"
+  },
+  {
+   "id": "game_over",
+   "until": "[$0770] == 3",
+   "note": "game over"
+  }
+ ],
+ "generic_rule": "a level chapter ends on the first frame its world/level bytes change; death is a fail condition"
+}

@@ -15,7 +15,7 @@ nothing game-specific lives here.
 """
 import os, json, subprocess
 
-MCP_EXE = os.environ.get("BN_MCP_EXE", r"C:\BrokenNes-work\cc_pilot\mcp\bin\BrokenNes.Mcp\release\BrokenNes.Mcp.exe")
+MCP_EXE = os.environ.get("BN_MCP_EXE", os.environ.get("AUTOTAS_MCP_EXE", r"C:\BrokenNes-work\autotas_mcp\BrokenNes.Mcp.exe"))
 
 
 def seg_path(pkg, ch): return os.path.join(pkg, "seg", ch + ".bnm")

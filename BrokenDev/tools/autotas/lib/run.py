@@ -75,7 +75,7 @@ def do_step(b, r, cfg, buttons, frames, until=None):
     elif mid == "goal": ev = "GOAL"
     elif mid == "entered": r["armed"] = True; ev = "entered level"
     elif mid == "exit":
-        nb = newbits(r["table0"], table(b, r["session"], cfg["progress_table"]))
+        nb = newbits(r["table0"], table(b, r["session"], cfg.get("progress_table") or {"addr": 0, "len": 0}))
         if nb: ev = "GOAL"; r["newbits"] = [[cfg["progress_table"]["addr"] + i, m] for i, m in nb]
         else: r["armed"] = False; ev = "back on map with NO new clear (left the level or died)"
     return res, ev
@@ -102,6 +102,7 @@ def main():
     ap.add_argument("--vals"); ap.add_argument("--want"); ap.add_argument("--then", default="none")
     ap.add_argument("--within", type=int, default=120); ap.add_argument("--apply", action="store_true")
     ap.add_argument("--survive", type=int, default=30, help="search: the try must also live this many more frames holding --then")
+    ap.add_argument("--patience", type=int, default=0, help="advance: when stuck, wait 30 frames and retry up to N times (auto-scrollers)")
     ap.add_argument("--stop-when", dest="stopwhen", help="step: also stop early when this expression is true")
     a = ap.parse_intermixed_args(); pkg, ch = a.pkg, a.ch
     if not pkg: sys.exit("--pkg needed")
@@ -118,7 +119,7 @@ def main():
         r = {"game": a.game, "rom": a.rom, "from": a.frm, "goal": a.goal, "until": a.until, "port": b.port, "session": sess,
              "frames": 0, "log": [], "subs": {}, "armed": False}
         r["lives0"] = b.call("play_step", session=sess, frames=0, scale=0, ram=["l=" + cfg["lives"]])["ram"]["l"]
-        r["table0"] = table(b, sess, cfg["progress_table"])
+        r["table0"] = table(b, sess, cfg.get("progress_table") or {"addr": 0, "len": 0})
         store(pkg, ch, r)
         res = b.call("play_step", session=sess, frames=0, scale=0, ram=cfg["ram"])
         show(res, "ready (session open, nothing recorded yet)", r, f"\n  look: {shot(b, r, pkg, ch)}")
@@ -281,6 +282,7 @@ def advance(b, r, cfg, pkg, ch, a):
         if ad.get("finale"):   # level-end bytes (SMB3: the card slots): a hop that changes one has reached the goal
             fin = " || ".join(f"[{x}] != {table(b, r['session'], {'addr': int(x.strip('$'), 16), 'len': 1})[0]}" for x in ad["finale"])
             a2.want = f"({names(a2.want, cfg)}) || {fin}"
+        if ad.get("end_expr"): a2.want = f"({names(a2.want, cfg)}) || ({names(ad['end_expr'], cfg)})"   # reaching the level end counts as a hop
         a2.then = ad.get("then", "none"); a2.within = int(ad.get("within", 90)); a2.apply = True
         before = r["frames"]
         search(b, r, cfg, pkg, ch, a2)
@@ -288,11 +290,46 @@ def advance(b, r, cfg, pkg, ch, a):
             hit = b.call("play_step", session=r["session"], frames=0, scale=0, ram=["f=" + fin])["ram"]["f"]
             if hit:
                 print("advance: reached the level end (finale) - now step none until >>> GOAL"); store(pkg, ch, r); return
+        if ad.get("end_expr") and r["frames"] != before:   # the level-end sequence started (SMB1: flagpole): no input matters, play it out
+            if b.call("play_step", session=r["session"], frames=0, scale=0, ram=["e=" + names(ad["end_expr"], cfg)])["ram"]["e"]:
+                print("advance: level end sequence - playing it out")
+                res, ev = do_step(b, r, cfg, [], int(ad.get("end_frames", 1500)))
+                ran = int(res.get("framesRun", 0) or 0)
+                if ran: r["log"].append([[], ran]); r["frames"] += ran
+                if ev == "GOAL": r["goal_frame"] = r["frames"]
+                store(pkg, ch, r); show(res, ev, r); return
+        if r["frames"] == before and ad.get("stall_expr"):   # a cutscene-ish state where only a push helps (SMB1: pipe entry state 7)
+            if b.call("play_step", session=r["session"], frames=0, scale=0, ram=["s=" + names(ad["stall_expr"], cfg)])["ram"]["s"]:
+                bt, n = ad.get("stall_input", "Right:30").rsplit(":", 1)
+                res, ev = do_step(b, r, cfg, btns(bt), int(n))
+                ran = int(res.get("framesRun", 0) or 0)
+                if ran: r["log"].append([btns(bt), ran]); r["frames"] += ran
+                print(f"  (stall state: pushed {bt} {n})")
+                if ev == "GOAL": r["goal_frame"] = r["frames"]
+                if ev: store(pkg, ch, r); show(res, ev, r); return
+                before = -1
         if r["frames"] == before and ad.get("wait_pattern"):   # nothing reachable now: maybe the screen/platform must come first
             a3 = argparse.Namespace(**vars(a2)); a3.args = [ad["wait_pattern"]]; a3.vals = ad["wait_vals"]
             print("  (trying with a wait first)"); search(b, r, cfg, pkg, ch, a3)
+        if r["frames"] == before and ad.get("up_want"):   # a step-up: any landing on a higher platform ahead (treetops, stairs)
+            a4 = argparse.Namespace(**vars(a2)); a4.vals = ad.get("up_vals", ad["vals"])
+            a4.want = ad["up_want"].replace("{X}", str(int(cur[ad["start"]]) + 16)).replace("{Y}", str(int(cur["y"]) - 24))
+            print("  (trying a step up to a higher platform)"); search(b, r, cfg, pkg, ch, a4)
         if r["frames"] == before and stride > int(ad.get("min_stride", 32)):
             stride //= 2; print(f"  (no hop of that size: trying stride {stride})"); continue
+        pat = int(getattr(a, "patience", 0) or ad.get("patience", 0))
+        if r["frames"] == before and pat > 0:   # auto-scrollers: the next platform is not on screen yet, so stand still a bit and retry
+            hopped = False
+            for k in range(pat):
+                res, ev = do_step(b, r, cfg, [], 30)
+                ran = int(res.get("framesRun", 0) or 0)
+                if ran: r["log"].append([[], ran]); r["frames"] += ran
+                if ev == "DIED": print(">>> DIED while waiting"); store(pkg, ch, r); return
+                mark = r["frames"]; search(b, r, cfg, pkg, ch, a2)
+                if r["frames"] != mark: hopped = True; print(f"  (waited {k + 1}x30 frames, then hopped)"); break
+            if not hopped:
+                print(f"advance: still stuck after waiting {pat}x30 frames (the waits stay in the log: back to a checkpoint)"); store(pkg, ch, r); return
+        if before == -1: before = r["frames"] - 1
         if r["frames"] != before: stride = int(ad["stride"])
         if r["frames"] == before or r.get("goal_frame"):
             print(f"advance: stopped after {i} hops (stuck before {ad['start']}={target}: look at the picture and solve this spot with search)")
@@ -322,7 +359,7 @@ def finish(b, r, cfg, pkg, ch, note):
         ok = b.call("play_step", session=s, frames=0, scale=0, ram=["g=" + r["until"]])["ram"]["g"] != 0
     else:
         on = b.call("play_step", session=s, frames=0, scale=0, ram=["m=" + cfg["on_map"]])["ram"]["m"] != 0
-        ok = on and bool(newbits(r["table0"], table(b, s, cfg["progress_table"])))
+        ok = on and bool(newbits(r["table0"], table(b, s, cfg.get("progress_table") or {"addr": 0, "len": 0})))
     if not ok:
         print("REPLAY MISMATCH: the replayed log does not end at the goal (nothing written)"); r["session"] = s; store(pkg, ch, r); return
     raw = os.path.join(pkg, "state", ch + ".raw.state")
