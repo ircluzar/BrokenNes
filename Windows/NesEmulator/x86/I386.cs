@@ -323,7 +323,38 @@ public sealed partial class I386
         return true;
     }
 
+    /// <summary>The segment limit check (every mode, real mode too: offset FFFFh + a word = #GP, the 386's "segment wrap" fault):
+    /// expand-up = every byte at or below the limit; expand-down data = above the limit, up to FFFFh or (B bit) FFFFFFFFh.
+    /// #SS(0) for SS, #GP(0) otherwise. tiny386 had no limit checks (SingleStepTests 80386: ~100k tests faulted there).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool LimitOk(int seg, uint addr, int size)
+    {
+        uint lim = SegLimit[seg], last = addr + (uint)(size - 1);
+        if ((SegFlags[seg] & 0xc) != 0x4)
+        {
+            if (addr <= lim && last <= lim && last >= addr) return true;
+        }
+        else
+        {
+            uint top = (SegFlags[seg] & SEG_B_BIT) != 0 ? 0xffffffff : 0xffff;
+            if (addr > lim && last <= top && last >= addr) return true;
+        }
+        return LimitFault(seg);
+    }
+    /// <summary>A protected-mode descriptor's type: writes need a writable data segment, reads a data or readable code segment;
+    /// #GP(0) (#SS(0) for SS) otherwise (test386 POST 12h, mov [0],eax with DS read-only). Real-mode loads leave SegFlags 0 and skip this.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool TypeOk(int seg, int rwm)
+    {
+        uint f = SegFlags[seg];
+        bool code = (f & 8) != 0, rw = (f & 2) != 0;
+        if ((rwm & 2) != 0 ? (code || !rw) : (code && !rw)) return LimitFault(seg);
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool LimitFault(int seg) => Throw(seg == SEG_SS ? EX_SS : EX_GP, 0);
+
     private bool SegCheck(int seg)
     {
         if ((Cr0 & 1) != 0 && SegLimit[seg] == 0 && (SegSel[seg] & ~3u) == 0) return Throw(EX_GP, 0); // null selector
@@ -335,6 +366,8 @@ public sealed partial class I386
     {
         uint laddr = SegBase[seg] + addr;
         if (!SegCheck(seg)) return false;
+        if (!LimitOk(seg, addr, size)) return false;
+        if ((SegFlags[seg] & 0x10) != 0 && !TypeOk(seg, rwm)) return false;
         return TranslateLaddr(ref res, rwm, laddr, size, cpl);
     }
 
@@ -345,6 +378,7 @@ public sealed partial class I386
     {
         uint laddr = SegBase[seg] + addr;
         if (!SegCheck(seg)) return false;
+        if (!LimitOk(seg, addr, 1)) return false;
         if ((Cr0 & CR0_PG) != 0)
         {
             uint lpgno = laddr >> 12;
@@ -709,7 +743,7 @@ public sealed partial class I386
         sel &= 0xffff;
         if ((Cr0 & 1) == 0 || (Flags & VM) != 0)
         {
-            SegSel[seg] = sel; SegBase[seg] = sel << 4; SegLimit[seg] = 0xffff; SegFlags[seg] = 0;
+            SegSel[seg] = sel; SegBase[seg] = sel << 4; SegFlags[seg] = 0; if ((Flags & VM) != 0) SegLimit[seg] = 0xffff;   // a real-mode load keeps the cached limit, as a 386 does ("unreal mode"); V86 = 64 KB
             if (seg == SEG_CS) { Cpl = (Flags & VM) != 0 ? 3 : 0; Code16 = true; }
             if (seg == SEG_SS) SpMask = 0xffff;
             return true;
@@ -753,7 +787,7 @@ public sealed partial class I386
     {
         Array.Clear(R);
         Flags = 0x2; Cpl = 0; Code16 = true; SpMask = 0xffff; Halt = false;
-        for (int i = 0; i < 8; i++) { SegSel[i] = 0; SegBase[i] = 0; SegLimit[i] = 0; SegFlags[i] = 0; }
+        for (int i = 0; i < 8; i++) { SegSel[i] = 0; SegBase[i] = 0; SegLimit[i] = i < 6 ? 0xffffu : 0; SegFlags[i] = 0; }
         SegFlags[2] = 1 << 22; SegFlags[1] = 1 << 22;
         Ip = 0xfff0; NextIp = Ip;
         SegSel[SEG_CS] = 0xf000; SegBase[SEG_CS] = 0xf0000;

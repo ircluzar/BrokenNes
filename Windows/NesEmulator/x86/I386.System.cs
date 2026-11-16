@@ -234,9 +234,9 @@ public sealed partial class I386
             uint newcs = w1 >> 16, newip = w1 & 0xffff;
             var m1 = new OptAddr(); var m2 = new OptAddr(); var m3 = new OptAddr();
             uint sp = R[4];
-            Try1(Translate(ref m1, 2, SEG_SS, (sp - 2) & spMask, 2, 0), "rm isr");
-            Try1(Translate(ref m2, 2, SEG_SS, (sp - 4) & spMask, 2, 0), "rm isr");
-            Try1(Translate(ref m3, 2, SEG_SS, (sp - 6) & spMask, 2, 0), "rm isr");
+            Try1(TranslateLaddr(ref m1, 2, SegBase[SEG_SS] + ((sp - 2) & spMask), 2, 0), "rm isr");   // (no limit check: a real-mode frame push wraps, as before)
+            Try1(TranslateLaddr(ref m2, 2, SegBase[SEG_SS] + ((sp - 4) & spMask), 2, 0), "rm isr");   // (no limit check: a real-mode frame push wraps, as before)
+            Try1(TranslateLaddr(ref m3, 2, SegBase[SEG_SS] + ((sp - 6) & spMask), 2, 0), "rm isr");   // (no limit check: a real-mode frame push wraps, as before)
             RefreshFlags(); _ccMask = 0;
             Store16(ref m1, Flags); Store16(ref m2, SegSel[SEG_CS]); Store16(ref m3, Ip);
             SetSp(sp - 6, spMask);
