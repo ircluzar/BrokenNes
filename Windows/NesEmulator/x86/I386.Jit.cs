@@ -69,9 +69,11 @@ public sealed partial class I386
         .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} | {Convert.ToHexString(b.Bytes)}");
     private readonly long[] _interpOps = new long[65536];
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void JitCountInterp(uint pa) { if (pa + 2 < MemSize) _interpOps[Mem[pa] << 8 | Mem[pa + 1]]++; }
+    private void JitCountInterp(uint pa) { if (pa + 2 < MemSize) { int k = Mem[pa] << 8 | Mem[pa + 1]; if (++_interpOps[k] == 100000 && JitWatch == k) Console.Error.WriteLine($"jw: op {k:X4} at {pa:X8}"); } }
     public IEnumerable<string> InterpTop(int n) => Enumerable.Range(0, 65536).Where(i => _interpOps[i] > 0).OrderByDescending(i => _interpOps[i]).Take(n)
         .Select(i => $"{i >> 8:X2} {i & 255:X2}: {_interpOps[i]}");
+    /// <summary>Zero the statistics (Workshop --x86speed: count the workload only, not the boot).</summary>
+    public void JitStatReset() { Array.Clear(_interpOps); foreach (var b in _jitAll) { b.Runs = 0; b.Instrs = 0; } JitRuns = 0; }
     public long JitInstrsTotal => _jitAll.Sum(b => b.Instrs);
     public static bool JitStats = Environment.GetEnvironmentVariable("X86_JITSTAT") != null;
 
@@ -104,6 +106,16 @@ public sealed partial class I386
         return JitVisit(paddr);
     }
 
+    private static readonly uint JitWatch = Convert.ToUInt32(Environment.GetEnvironmentVariable("X86_JITWATCH") ?? "0", 16);
+    private int _jwN;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void JitWatchLog(uint paddr)
+    {
+        if (++_jwN % 100000 != 1) return;
+        var en = _je[JitIndex(paddr)];
+        Console.Error.WriteLine(en == null ? "jw: no entry" : $"jw: start {en.Start:X8} c16 {en.C16}/{_c16} visits {en.Visits} failed {en.Failed} pending {en.Pending} code {(en.Code == null ? "-" : en.Code.Start.ToString("X8") + " same " + JitSame(en.Code))} k {en.K} cr0 {Cr0:X} segs " +
+            string.Join(",", Enumerable.Range(0, 6).Select(s => JSegOk(s) ? "1" : "0")));
+    }
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JitRunCounted(JitCode code, int k)
     {
@@ -302,11 +314,12 @@ public sealed partial class I386
             e.Start = pa; e.C16 = c16; e.Code = null; e.Failed = false; e.Pending = true;
         }
         en.Pending = true;
+        if (JitWatch != 0 && pas.Contains(JitWatch)) Console.Error.WriteLine($"jw: post region {start:X8} n {pas.Length}");
         _jitPending++;
         JitWorker.Post(() =>
         {
             try { code.Fn = Emit(start, pas, ins, lo, hi, c16, memSize, ioMem); code.Fn(this, -1); }
-            catch (Exception) { code.Fn = null!; }
+            catch (Exception ex) { code.Fn = null!; if (JitStats) Console.Error.WriteLine($"jit: {start:X8} failed: {ex.GetType().Name} {ex.Message}"); }
             _jitDone.Enqueue((en, code, key));
         });
     }
@@ -330,6 +343,7 @@ public sealed partial class I386
             _jitPending--;
             var (en, code, key) = d;
             bool ok = code.Fn != null && JitSame(code);
+            if (JitWatch != 0 && code.Addrs.Contains(JitWatch)) Console.Error.WriteLine($"jw: drain region {code.Start:X8} ok {ok} fn {code.Fn != null}");
             foreach (uint pa in code.Addrs)
             {   // the addresses that waited for it: interpreted again, counted again from 0 (a failed start: never again)
                 var e = _je[JitIndex(pa)];

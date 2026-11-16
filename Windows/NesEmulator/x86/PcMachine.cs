@@ -39,6 +39,8 @@ public sealed partial class PcMachine : IX86Bus
     public Func<int, int, int>? ExtraIn;     // (port, size) -> value or -1
     public Func<int, int, int, bool>? ExtraOut; // (port, size, value) -> handled
 
+    /// <summary>Speed harness only (Workshop --x86speed): time spent drawing the picture, in Stopwatch ticks. Never part of a state.</summary>
+    public bool Profiling; public long RenderTicks;
     public long Clock => Cpu.Cycle + _idle;
     public long PitNow => (long)((Int128)Clock * Pit8254.Freq / InstructionsPerSecond);
 
@@ -256,7 +258,8 @@ public sealed partial class PcMachine : IX86Bus
             if (++guard > 100_000_000) { Stopped = "frame never ended"; return false; }
         }
         _lastFrame = target;
-        Vga.Render();
+        if (Profiling) { long t0 = System.Diagnostics.Stopwatch.GetTimestamp(); Vga.Render(); RenderTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0; }
+        else Vga.Render();
         return Stopped == null;
     }
 

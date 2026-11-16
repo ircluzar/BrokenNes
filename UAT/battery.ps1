@@ -145,7 +145,7 @@ if ($runPc -and $Skip -notcontains 'x86') {
         $txt = Get-Content (Join-Path $xd "$($x.k).txt") -ErrorAction SilentlyContinue
         $last = ($txt | Where-Object { $_ -match '\S' } | Select-Object -Last 1)
         # the CLIs end with a summary: "... 0 flagged", "checks N/N pass", "x86session: ok" / "N FAILED"
-        $bad = ($x.p.ExitCode -ne 0) -or (@($txt -cmatch 'FAILED|CRASH|NOT EXACT').Count -gt 0) -or ($last -match '[1-9]\d* flagged')
+        $bad = ($x.p.ExitCode -ne 0) -or (@(@($txt) -cmatch 'FAILED|CRASH|NOT EXACT').Count -gt 0) -or ($last -match '[1-9]\d* flagged')
         if ($bad) { $det += "$($x.k): exit $($x.p.ExitCode); $last"; $det += @($txt | Where-Object { $_ -cmatch '^\s*FAIL|NOT EXACT|CRASH' } | Select-Object -First 8 | ForEach-Object { "  $_" }) } else { $okN++ }
     }
     if (-not (Test-Path $fd)) { $det += "x86session: not run (no FreeDOS image at $fd)" }
