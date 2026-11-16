@@ -274,6 +274,40 @@ public sealed partial class I386
         return IsRam(r.A1) && (!r.Two || IsRam(r.A2));
     }
 
+    /// <summary>Block linking (X86_LINK turns it on): leave as JExitOk, but when the next instruction starts a valid compiled block
+    /// that Exec1's next iteration would run (the same fetch-page test, entry lookup and code check as Step1), run it from here.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int JExitLink(uint ip, uint nextIp, long cyc, int st)
+    {
+        Ip = ip; NextIp = nextIp; Cycle = cyc; _steps = st + 1;
+        if (st <= 0 || !JitLink || _linkDepth >= 64) return OK;   // (each link nests a call: at most 64 deep)
+        _steps = st;   // (Exec1's loop step for the block that just ran)
+        _c16 = Code16; _spm = SpMask;
+        uint laddr = SegBase[SEG_CS] + nextIp;
+        if (((ulong)laddr ^ _ifLaddr) < 4096 - 16)
+        {
+            uint paddr = _ifXaddr ^ laddr;
+            var en = _je[JitIndex(paddr)];
+            if (en != null && en.Start == paddr && en.C16 == _c16 && en.Pg == ((Cr0 & CR0_PG) != 0) && en.Code is JitCode code && JitSame(code))
+            {
+                Ip = nextIp;
+                _jitCur = code;
+                _linkDepth++;
+                int rc = code.Fn(this, en.K);
+                _linkDepth--;
+                if (rc != JIT_DECLINE) return rc;
+                // (declined in its prologue, nothing changed: back to Exec1, which would interpret the caller's start address again
+                // if this returned JIT_DECLINE)
+                Ip = ip; Cycle = cyc;
+            }
+        }
+        _steps = st + 1;
+        return OK;
+    }
+    private int _linkDepth;
+    /// <summary>X86_LINK turns block linking on. Off by default: measured no faster on dhry (the dispatch is not where the time goes; the nested
+    /// calls cost what the Exec1 round trip saved).</summary>
+    private static readonly bool JitLink = Environment.GetEnvironmentVariable("X86_LINK") != null;
     [MethodImpl(MethodImplOptions.NoInlining)] private int JExitOk(uint ip, uint nextIp, long cyc, int st) { Ip = ip; NextIp = nextIp; Cycle = cyc; _steps = st + 1; return OK; }
     [MethodImpl(MethodImplOptions.NoInlining)] private int JExitFail(uint ip, long cyc, int st) { Ip = ip; Cycle = cyc; _steps = st; return FAIL; }
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JLimitFault(int seg) => LimitFault(seg);
@@ -295,7 +329,7 @@ public sealed partial class I386
     {
         var d = new Dictionary<string, MethodInfo>();
         foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JCall", "JRet",
-                     "JExitOk", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
+                     "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
                      "JXlat", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
         return d;
@@ -726,17 +760,17 @@ public sealed partial class I386
                     var go = il.DefineLabel();
                     il.Emit(OpCodes.Br, go);
                     il.MarkLabel(leave);
-                    Ld0(); IpAt(pas[k]); next(); il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldloc, st); Call("JExitOk"); il.Emit(OpCodes.Ret);
+                    Ld0(); IpAt(pas[k]); next(); il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldloc, st); Call("JExitLink"); il.Emit(OpCodes.Ret);
                     il.MarkLabel(go);
                     return;
                 }
             }
             il.MarkLabel(leave);
-            Ld0(); IpAt(pas[k]); next(); il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldloc, st); Call("JExitOk"); il.Emit(OpCodes.Ret);
+            Ld0(); IpAt(pas[k]); next(); il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldloc, st); Call("JExitLink"); il.Emit(OpCodes.Ret);
         }
         void LeaveAfter(int k, Action next)
         {
-            Ld0(); IpAt(pas[k]); next(); il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldloc, st); Call("JExitOk"); il.Emit(OpCodes.Ret);
+            Ld0(); IpAt(pas[k]); next(); il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldloc, st); Call("JExitLink"); il.Emit(OpCodes.Ret);
         }
         // the interpreter's segment limit check (LimitOk, expand-up only: a region with an expand-down segment is declined):
         // past the limit = leave before this instruction with the fault, as the interpreter would
