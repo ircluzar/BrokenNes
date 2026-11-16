@@ -281,7 +281,53 @@
         "result": "ok",
         "crashInfo": ""
       }
+    },
+    {
+      "id": "nesfix-r5-nwc-mmc3-irq-vs-4015",
+      "description": "Nintendo World Cup (MMC3): a $4015 write must not drop the shared CPU IRQ line unless it clears an APU source. An unconditional RequestIRQ(false) there swallowed pending MMC3 IRQs (lockstep vs Mesen 2.1.1: OAM 45 -> 312 different frames); with the guard it stays at the r4 baseline (2026-11-16).",
+      "kind": "romtest",
+      "rom": "{lib}/Nintendo World Cup (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 1300,
+      "input": "421:Start,431:,491:Start,501:,591:A,601:,781:Start,791:,851:Start,861:,951:A,961:,1021:Right,1051:Right+B,1081:A,1091:Right,1121:Right+B,1241:Down+B,1301:Up+A,1361:Left+B,1421:Right+A,1541:Down+B,1601:Left+B,1661:Right+B,1721:Up+A,1781:Right+A,1841:Right+B,1901:Down+A,1961:Right+B,2021:Left+A,2081:Right+A,2141:Down+B,2201:Up+B,2261:Right+B",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "219CC6EE13464FE5",
+        "framesRun": 1300,
+        "distinctColors": 10,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "nesfix-r5-castelian-frame-irq",
+      "description": "Castelian: OAM matches Mesen 2.1.1 once APU_FIX keeps the frame IRQ pending through $4015 writes and $4017 writes without the inhibit bit. Lockstep: OAM 454 -> 0 different frames (2026-11-16).",
+      "kind": "romtest",
+      "rom": "{lib}/Castelian (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 1400,
+      "input": "601:Start,607:,757:A,765:Start,771:,921:Right,1031:Right+A,1061:Right,1121:Up,1151:Right+B,1211:,1481:Right,1521:Right+A,1561:Right,1631:Right+A,1661:Right,1721:Right+A,1751:,2051:Right",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "1719DCA5CEF7A325",
+        "framesRun": 1400,
+        "distinctColors": 1,
+        "result": "ok",
+        "crashInfo": ""
+      }
     }
   ],
-  "goldenGeneratedUtc": "2026-11-16T18:48:23Z"
+  "goldenGeneratedUtc": "2026-11-16T21:44:51Z"
 }
