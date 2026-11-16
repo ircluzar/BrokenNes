@@ -13,7 +13,7 @@ namespace BrokenNes.Workshop.X86;
 /// A FreeDOS disk runs the workload after "READY"; the clock starts there and stops at "ALLDONE". Real time is the machine's own clock
 /// (instructions / InstructionsPerSecond of the CPU model), so 200% means a P166 runs twice as fast as a real P166 would.
 /// Workloads: dhry (DHRY386 real-mode Dhrystone), bench16 / bench32 (tools/x86-bench BENCH16 / BENCH32 under DOS/32A), v13 (mode 13h pixel
-/// loop, tools/x86-speed), vlfb (VBE 800x600x16 linear framebuffer pixel loop, needs --video s3), idle (the DOS prompt, HLT).
+/// loop, tools/x86-speed), vlfb (VBE 800x600x16 linear framebuffer pixel loop, needs --video s3), fpu (x87 matrix / divide / sqrt loop, tools/x86-speed), idle (the DOS prompt, HLT).
 /// Every line of output is "x86speed: key=value ..." so scripts can parse it; tools/x86-speed/speed.ps1 runs the whole table.
 /// </summary>
 internal static class X86SpeedCli
@@ -62,6 +62,7 @@ internal static class X86SpeedCli
                 break;
             }
             case "v13": puts.Add((Find(@"x86-speed\V13.COM"), @"\V13.COM")); cmd = @"V13 > \OUT.TXT"; break;
+            case "fpu": puts.Add((Find(@"x86-speed\FPU.COM"), @"\FPU.COM")); cmd = @"FPU > \OUT.TXT"; break;
             case "vlfb": puts.Add((Find(@"x86-speed\VLFB.COM"), @"\VLFB.COM")); cmd = @"VLFB > \OUT.TXT"; break;
             case "idle": cmd = "REM"; break;
             default: Console.WriteLine($"x86speed: no workload {work}"); return 1;
