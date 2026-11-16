@@ -26,6 +26,7 @@ for s in (os.getenv("BNT1_SHOTS") or ""):gmatch("%d+") do
   if f + win > last then last = f + win end
 end
 local done, cur, pad = 0, 1, {}
+local useHw = os.getenv("BNT1_HW") == "1"   -- t1-3, see below
 local function writeShot(path)
   local buf = emu.getScreenBuffer()
   local sz = emu.getScreenSize and emu.getScreenSize() or nil
@@ -40,8 +41,11 @@ local function writeShot(path)
   end
   local f = io.open(path, "wb"); f:write(w .. " " .. h .. "\n"); f:write(table.concat(parts)); f:close()
 end
+-- inputPolled comes at line 241, AFTER this frame's endFrame (line 240) has counted it: the frame being polled is done-1. t1-2 used
+-- done here, so every step reached Mesen's pad one frame before it reached BrokenNes's (which latches at the frame's start).
+local pollLag = useHw and 1 or 0
 emu.addEventCallback(function()
-  while cur <= #steps and steps[cur].f <= done do pad = steps[cur].pad; cur = cur + 1 end
+  while cur <= #steps and steps[cur].f <= done - pollLag do pad = steps[cur].pad; cur = cur + 1 end
   emu.setInput(pad, 0)
 end, emu.eventType.inputPolled)
 local function hwFrame()
@@ -50,8 +54,11 @@ local function hwFrame()
   return nil
 end
 local logged = false
+-- BNT1_HW=1 (t1-3): count frames by Mesen's own PPU frame counter, not by endFrame events since this script loaded: the script
+-- can load a few frames after power-on (game-dependent), which put both the input steps and the pictures that many frames late.
 emu.addEventCallback(function()
-  done = done + 1
+  local hf = useHw and hwFrame() or nil
+  if hf and hf > done then done = hf else done = done + 1 end
   if not logged then
     logged = true
     local f = io.open(outDir .. "/start.txt", "w"); f:write("done=" .. done .. " hw=" .. tostring(hwFrame()) .. string.char(10)); f:close()
