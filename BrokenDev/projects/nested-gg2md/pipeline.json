@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "gg2md",
+  "name": "Nested GG: Game Gear -> Genesis",
+  "source": { "console": "gg", "extensions": [".gg"] },
+  "target": { "console": "md", "extension": ".md" },
+  "tool": "BrokenDev/tools/nested-everything/gg2sms.py then sms2md.py",
+  "cli": "python gg2sms.py feedback <in.gg> <tmp.sms> --profile <gg2sms profile path>; python sms2md.py feedback <tmp.sms> <out.md> --profile <sms2md profile path>  (test: python sms2md_test.py projects/nested-gg2md/roster.json --source gg --work <dir>)",
+  "description": "Two layers: gg2sms (GG ports, 12-bit colour -> nearest SMS 6-bit level, GG Start -> SMS Pause) then sms2md's Mode 4 pass-through back end (A). On the Genesis the GG's Start arrives as the pad's Start -> the Z80 NMI -> gg2sms's Start shim. The 160x144 view stays where the GG game puts it inside the SMS name table: centred (SMS columns 6-25, rows 3-20; Genesis frame x 48-207, y 40-183), the rest is what the game left there (black on Vaults).",
+  "colourDecision": "Mode 4 with gg2sms's nearest 6-bit colour (round). A Mode 5 back end would give 9-bit Genesis colour (8 levels per channel instead of 4) but needs a GG-colour path through sms2md's Mode 5 translation (gg2sms already reduces the colours before sms2md sees them), and back end B was the slower, less exact one on CTW (1/139 exact, lag 39 vs 124/139, lag 25). Mode 4 is hardware-proven (md-mode4-test on the user's Genesis). Revisit if a GG game's art depends on the in-between levels.",
+  "grades": ["Perfect", "Playable", "Glitchy", "Boots only", "Black screen", "Build fails"],
+  "profiles": "sms2md profile (BrokenDev/projects/nested-sms2md/profiles/<id>.json) with \"ggprofile\": the gg2sms profile to use for the first layer"
+}

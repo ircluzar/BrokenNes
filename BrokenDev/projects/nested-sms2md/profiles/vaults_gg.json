@@ -2,9 +2,9 @@
   "game": "VRUN: Vaults of Obsolete Code, Game Gear build (9ea616a), through gg2sms then sms2md (gg2md)",
   "ggprofile": "projects/nested-gg2sms/profiles/vaults-gg.json",
   "settings": {},
-  "title_frame": 110,
-  "frames": 1500,
-  "input": "60:A,61:,200:Start,206:,300:Start,306:,400:Right,401:,600:A,601:,900:Left,901:,1200:Start,1206:,1300:A+B,1320:",
+  "title_frame": 49,
+  "frames": 1600,
+  "input": "160:A,161:,300:Start,306:,400:Start,406:,500:Right,501:,700:A,701:,1000:Left,1001:,1300:Start,1306:,1400:A+B,1420:",
   "inputs": [
     {
       "id": "boot",
@@ -18,13 +18,39 @@
     },
     {
       "id": "harness",
-      "frames": 1700,
-      "input": "60:A,61:,200:Start,206:,300:Start,306:,400:Right,401:,600:A,601:,900:Left,901:,1200:Start,1206:,1300:A+B,1320:"
+      "frames": 1800,
+      "input": "160:A,161:,300:Start,306:,400:Start,406:,500:Right,501:,700:A,701:,1000:Left,1001:,1300:Start,1306:,1400:A+B,1420:"
     },
     {
       "id": "pause",
       "frames": 3000,
       "input": "60:A,61:,200:Start,206:,300:Start,306:,400:Right,460:,500:Start,506:,600:Up,606:,700:Down,706:,800:A,806:,900:B,906:,1000:A+B,1030:,1100:Start,1106:,1200:Right+A,1300:Left+B,1400:Up+A,1500:Down+B,1600:,1700:Start,1706:,1800:A+B,1830:,1900:Start,1906:,2000:Right,2500:Left,3000:"
     }
-  ]
+  ],
+  "seed_addr": "D5CB",
+  "seed_check_frame": 500,
+  "notes": "seed_addr = _pg_rng (the pages' generator, VRUN_VOC_GG_dev build/vrun_voc_gg.sym): the room is picked from it on the first press",
+  "entries": [
+    [
+      6,
+      1,
+      16664
+    ],
+    [
+      6,
+      1,
+      16842
+    ],
+    [
+      6,
+      1,
+      16902
+    ],
+    [
+      6,
+      1,
+      17015
+    ]
+  ],
+  "entries_what": "bank 6 save code (voc_options_load/save, voc_suspend_exists/write from the .sym): the pause menu's Start+1 save, which the dynamic pass's scripts do not reach"
 }

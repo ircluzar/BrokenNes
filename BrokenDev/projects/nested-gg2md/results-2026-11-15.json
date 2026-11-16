@@ -1,0 +1,110 @@
+{
+ "pipeline": "sms2md",
+ "games": [
+  {
+   "id": "vaults_gg",
+   "translation": {
+    "out_sha256": "8ee8734dd3d4e394dc7fb1db5bb8b049bbaa1572a2ecdb5ac77ec1cfb0918c8e",
+    "out_size": 1656798,
+    "instructions": 19825,
+    "stats": {
+     "ins": 19697,
+     "mem_fast": 2711,
+     "outi_run_entries": 127,
+     "mem_checked": 1485,
+     "dyn_jumps": 39,
+     "otir_loops": 1
+    }
+   },
+   "video": "mode4",
+   "boot": {
+    "titleFrame": 49,
+    "delay": 100,
+    "match": 0.9967,
+    "seedRefine": 1,
+    "seedMatch": 0.9043
+   },
+   "md": {
+    "frames": 1618,
+    "irqs": 1618,
+    "halts": 1076,
+    "idleFrames": 1076,
+    "error": false,
+    "errKind": 0,
+    "errAddr": 0,
+    "nestMax": 3
+   },
+   "idle": {
+    "smsHaltFrames": 0,
+    "smsFrames": 1600,
+    "mdHaltFrames": 1076,
+    "mdFrames": 1701
+   },
+   "picture": {
+    "samples": 156,
+    "meanMatch": 0.9227,
+    "minMatch": 0.9023,
+    "exact": 15,
+    "lagStart": 13,
+    "lagEnd": -10,
+    "lagMax": 119
+   },
+   "input": [
+    {
+     "frame": 160,
+     "button": "A",
+     "sms": 4,
+     "md": 2
+    },
+    {
+     "frame": 300,
+     "button": "Start",
+     "sms": 24,
+     "md": 50
+    },
+    {
+     "frame": 400,
+     "button": "Start",
+     "sms": 1,
+     "md": 7
+    },
+    {
+     "frame": 500,
+     "button": "Right",
+     "sms": null,
+     "md": null
+    },
+    {
+     "frame": 700,
+     "button": "A",
+     "sms": null,
+     "md": null
+    },
+    {
+     "frame": 1000,
+     "button": "Left",
+     "sms": null,
+     "md": null
+    },
+    {
+     "frame": 1300,
+     "button": "Start",
+     "sms": 7,
+     "md": 9
+    },
+    {
+     "frame": 1400,
+     "button": "A+B",
+     "sms": 5,
+     "md": 0
+    }
+   ],
+   "sound": {
+    "smsMeanRms": 2503.4,
+    "mdMeanRms": 2377.0,
+    "loudnessCorr": 0.322
+   },
+   "grade": "Glitchy"
+  }
+ ]
+}
