@@ -42,6 +42,7 @@ internal static class RomTestCli
         EnsureConsole(); // do this first so usage/IO errors are visible too, not just the report
 
         string? romPath = null, cpu = null, ppu = null, apu = null, outPath = null, inputScript = null;
+        bool latch240 = false;
         int frames = 600;
         HashSet<int> pngAt = new(); string pngDir = "."; int stateAt = -1;   // picture proofs (--png-at f1,f2 --png-dir d) and the save/load check (--state-at f)
         bool json = false;
@@ -60,6 +61,7 @@ internal static class RomTestCli
                     case "--apu": apu = args[++i]; break;
                     case "--frames": frames = int.Parse(args[++i]); break;
                     case "--input": inputScript = args[++i]; break;
+                    case "--input-latch": { var lm = args[++i].ToLowerInvariant(); if (lm == "line240") latch240 = true; else if (lm != "frame") throw new FormatException($"--input-latch expects frame|line240, got '{lm}'"); break; }
                     case "--out": outPath = args[++i]; break;
                     case "--json": json = true; break;
                     case "--png-at": pngAt = args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToHashSet(); break;
@@ -147,17 +149,31 @@ internal static class RomTestCli
             int framesRun = 0;
             int crashFrame = -1;
             var (butcher, butcherAt) = ButcherCli.Parse(args);
+            // --input-latch line240: frame F's input takes effect when the PPU enters line 240 of frame F (crossings
+            // counted from power-on) - the point Mesen 2's script sets the pad (its inputPolled event). Same rule as --trace.
+            if (latch240)
+            {
+                int ppuFramesSeen = 0;
+                nes.SetInputs(held, null);
+                nes.PpuEnteredPostRender += () =>
+                {
+                    int frameEnding = ppuFramesSeen++;
+                    bool changed = false;
+                    while (nextStep < script.Count && script[nextStep].Frame <= frameEnding) { held = (bool[])script[nextStep].Held.Clone(); nextStep++; changed = true; }
+                    if (changed) nes.SetInputs(held, null);
+                };
+            }
             for (int f = 0; f < frames; f++)
             {
                 if (butcher != null && f == butcherAt) nes.ApplyButcher(butcher);
                 // Steps are pre-sorted; a while (not if) so several steps on the same frame - or a
                 // step landing on a frame we happen to be at - all resolve before this frame runs.
-                while (nextStep < script.Count && script[nextStep].Frame <= f)
+                while (!latch240 && nextStep < script.Count && script[nextStep].Frame <= f)
                 {
                     held = (bool[])script[nextStep].Held.Clone();
                     nextStep++;
                 }
-                nes.SetInputs(held, null);
+                if (!latch240) nes.SetInputs(held, null);
 
                 nes.RunFrame();
                 framesRun++;

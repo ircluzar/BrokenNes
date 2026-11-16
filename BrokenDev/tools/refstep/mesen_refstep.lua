@@ -37,6 +37,10 @@ end
 local done, target, started = 0, 0, false
 local p1, p2, shot, half, addrs = 0, 0, false, false, {}
 local pad1, pad2 = {}, {}
+-- the pads of the step before the current one, and the frame the current step starts at (2026-11-16): a step's command arrives in
+-- the endFrame (line 240) of the previous step's last frame, and Mesen polls (line 241) once more in that same frame - BrokenNes
+-- runs that frame's NMI with the previous step's pads, so Mesen must too, or every step reaches Mesen's game a frame early
+local prev1, prev2, stepStart = {}, {}, 0
 
 local packs = {}
 local function packer(n)
@@ -98,6 +102,7 @@ local function waitCommand()
     if cmd == "quit" then c:close(); emu.stop(0); return false end
     if cmd == "run" then
       p1, p2, shot, half = tonumber(m1) or 0, tonumber(m2) or 0, s == "1" or s == "2", s == "2"
+      prev1, prev2, stepStart = pad1, pad2, done
       pad1, pad2 = pad(p1), pad(p2)
       addrs = {}
       if list and list ~= "" and list ~= "-" then for a in list:gmatch("[^,]+") do addrs[#addrs + 1] = tonumber(a) end end
@@ -126,8 +131,13 @@ emu.addEventCallback(start, emu.eventType.startFrame)
 
 emu.addEventCallback(function()
   start()
-  emu.setInput(pad1, 0)
-  emu.setInput(pad2, 1)
+  if console == "nes" and done - 1 < stepStart then   -- NES (measured); the poll belongs to frame done-1 (endFrame already counted it): still the previous step
+    emu.setInput(prev1, 0)
+    emu.setInput(prev2, 1)
+  else
+    emu.setInput(pad1, 0)
+    emu.setInput(pad2, 1)
+  end
 end, emu.eventType.inputPolled)
 
 emu.addEventCallback(function()
