@@ -257,7 +257,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			if (scanline < 240 || scanline == 261) RenderDot();
 
 			// MMC5 IRQ tick at early cycle 3 when rendering enabled
-			if (eventDot && scanline >= 0 && scanline < 240 && scanlineCycle == 3)
+			if (eventDot && scanline >= 0 && scanline <= 240 && scanlineCycle == 3)
 			{
 				bool renderingOn = (PPUMASK & 0x18) != 0;
 				if (bus.cartridge.mapper is Mapper5 mmc5)

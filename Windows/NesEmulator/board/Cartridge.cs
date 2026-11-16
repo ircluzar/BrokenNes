@@ -131,7 +131,10 @@ public class Cartridge
 		{
 			chrROM = new byte[0]; // No CHR-ROM
 		}
-		prgRAM = new byte[8 * 1024];
+		// MMC5 boards carry up to 64 KiB of work RAM (two 32 KiB chips, $5113 bits 0-2); an iNES 1.0 header cannot say
+		// how much, so give the largest, as Mesen and FCEUX do. With 8 KiB every bank aliased onto one: Koei's EWROM/ETROM
+		// games (Nobunaga's Ambition 2, Uncharted Waters, Genghis Khan...) keep their game state across several banks.
+		prgRAM = new byte[mapperID == 5 ? 64 * 1024 : 8 * 1024];
 		// Mapper 30 (UNROM-512) always uses CHR-RAM banked in 8KB windows, up to 32KB (4 banks) -
 		// give it the extra room so the generic CHR-RAM path (save states, the RTC "CHR" corruption
 		// domain, PeekChr/PokeChr) sees the same memory the mapper actually renders from, instead of
