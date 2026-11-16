@@ -581,7 +581,7 @@ public sealed partial class I386
                 int y = (int)(b & 0x1f);
                 if (y != 0)
                 {
-                    _ccSrc1 = Sext(bits, x);
+                    _ccSrc1 = Sext(bits, (x >> y) << 1);   // OF = the result's bit (width-2), for every count (= the old MSB at count 1; 386EX hardware, SingleStepTests D2.5)
                     _ccDst = Sext(bits, x >> y);
                     _ccDst2 = (x >> (y - 1)) & 1;
                     _ccOp = (int)Cc.SHR; _ccMask = LOGIC;
