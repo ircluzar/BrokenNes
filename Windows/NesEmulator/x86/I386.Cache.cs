@@ -244,6 +244,7 @@ public sealed partial class I386
                 op = (int)(b & 7);
                 break;
             case >= 0x70 and <= 0x7f: kind = DK_JCC; op = (int)b; immBits = 8; break;
+            case >= 0xe0 and <= 0xe3: kind = DK_JCC; op = (int)b; immBits = 8; break;   // LOOPNZ / LOOPZ / LOOP / JCXZ: a Jcc on CX (A16) / ECX
             case 0x80: case 0x82: kind = DK_GRP1; bits = 8; modrm = true; immBits = 8; break;
             case 0x81: kind = DK_GRP1; modrm = true; immBits = v; break;
             case 0x83: kind = DK_GRP1; modrm = true; immBits = 8; immSext8 = true; break;
