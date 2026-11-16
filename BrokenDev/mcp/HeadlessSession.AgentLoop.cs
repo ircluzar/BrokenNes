@@ -22,6 +22,23 @@ internal sealed partial class HeadlessSession
     private long recStartFrame;
     private string? recPath;
     private readonly List<MovieMark> recMarks = new();
+    private readonly List<(long frame, double score)> refScores = new();   // the step scores since the reference opened / the recording started
+    private int refHighRun;                                                 // consecutive steps with score > 0.12
+
+    /// <summary>median / max of the step scores, computed here so catalog records never hold an agent's guess.</summary>
+    private JsonObject RefStats()
+    {
+        var j = new JsonObject { ["steps"] = refScores.Count, ["highRun"] = refHighRun };
+        if (refScores.Count == 0) return j;
+        var s = refScores.Select(x => x.score).OrderBy(x => x).ToList();
+        double med = s.Count % 2 == 1 ? s[s.Count / 2] : (s[s.Count / 2 - 1] + s[s.Count / 2]) / 2;
+        var mx = refScores.OrderByDescending(x => x.score).First();
+        j["median"] = Math.Round(med, 4); j["max"] = Math.Round(mx.score, 4); j["maxAtFrame"] = mx.frame;
+        j["over012"] = refScores.Count(x => x.score > 0.12);
+        j["offset"] = reference?.Offset;
+        j["jankHint"] = refHighRun >= 3 ? "score > 0.12 for 3+ steps in a row: compare and describe" : null;
+        return j;
+    }
 
     private void CloseAgentLoop()
     {
@@ -34,6 +51,17 @@ internal sealed partial class HeadlessSession
     {
         foreach (var k in recMarks) m.Marks.Add(k);
         if (recording || recMarks.Count > 0) m.Comments.Add($"recorded with play_step / record (BrokenNes MCP); recording started at frame {recStartFrame}");
+    }
+
+    /// <summary>sha1 of the ROM file, and of the file without a 16-byte iNES header (NES); the catalog checks its record's sha1 against these.</summary>
+    private (string file, string? noHeader) RomSha1()
+    {
+        byte[] b = File.ReadAllBytes(romPath);
+        if (romPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            try { using var z = System.IO.Compression.ZipFile.OpenRead(romPath); var e = z.Entries.OrderByDescending(x => x.Length).First(); using var ms = new MemoryStream(); e.Open().CopyTo(ms); b = ms.ToArray(); } catch { }
+        static string H(ReadOnlySpan<byte> d) => Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(d)).ToLowerInvariant();
+        string? nh = b.Length > 16 && b[0] == (byte)'N' && b[1] == (byte)'E' && b[2] == (byte)'S' && b[3] == 0x1A ? H(b.AsSpan(16)) : null;
+        return (H(b), nh);
     }
 
     private long LagCount() => checks?.Frames.Count(f => f.Lag) ?? 0;
@@ -65,6 +93,8 @@ internal sealed partial class HeadlessSession
         NesEmulator.Debugging.Movies.AutoTasMilestone? msHit = null;
         RunOutcome o = RunOutcome.Frames;
         // try/finally: a bad `until` (ToolError) or a run exception must not leave the pads held for the next tool's frames
+        Pic? minePrev = null;
+        bool wantPrev = reference != null;
         try {
         bool hasMs = milestones is { Count: > 0 };
         if (until is { Length: > 0 } || hasMs)
@@ -75,6 +105,7 @@ internal sealed partial class HeadlessSession
             stoppedBy = byUntil ? "budget" : "frames";
             for (int i = 0; i < budget; i++)
             {
+                if (wantPrev && i > 0) { EnsureBetweenFrames(); minePrev = CurrentPic(); }
                 o = RunFrames(1);
                 if (o != RunOutcome.Frames) { stoppedBy = o.ToString().ToLowerInvariant(); break; }
                 if (hasMs && MilestoneHit(milestones!) is { } hit) { stoppedBy = "milestone"; msHit = hit; break; }
@@ -87,7 +118,13 @@ internal sealed partial class HeadlessSession
         }
         else
         {
-            o = RunFrames(Math.Clamp(frames, 0, 36_000));
+            int n = Math.Clamp(frames, 0, 36_000);
+            if (wantPrev && n >= 2)
+            {
+                o = RunFrames(n - 1);
+                if (o == RunOutcome.Frames) { EnsureBetweenFrames(); minePrev = CurrentPic(); o = RunFrames(1); }
+            }
+            else o = RunFrames(n);
             if (o != RunOutcome.Frames) stoppedBy = o.ToString().ToLowerInvariant();
         }
         } finally { lock (padLock) { held[0] = PadButtons.None; held[1] = PadButtons.None; } }
@@ -137,12 +174,19 @@ internal sealed partial class HeadlessSession
         {
             long t0 = sw.ElapsedMilliseconds;
             var addrs = refRam.Select(r => r.addr).ToList();
-            var (rf, rv, rp) = reference.RunTo(Interlocked.Read(ref framesStarted) + reference.Offset, p1, p2, addrs, true);
+            long target = Interlocked.Read(ref framesStarted) + reference.Offset;
+            Pic? rpPrev = null;
+            if (ran >= 2 && target - 1 > reference.Frame) rpPrev = reference.RunTo(target - 1, p1, p2, Array.Empty<long>(), true).pic;
+            var (rf, rv, rp) = reference.RunTo(target, p1, p2, addrs, true);
             refSyncedAt = Interlocked.Read(ref framesStarted);
-            var rj = new JsonObject { ["emulator"] = reference.Emulator, ["frame"] = rf, ["offset"] = reference.Offset, ["ms"] = sw.ElapsedMilliseconds - t0 };
+            var rj = new JsonObject { ["emulator"] = reference.Emulator, ["frame"] = rf, ["offset"] = reference.Offset };
             if (rp != null && mine != null)
             {
-                rj["diff"] = PicDiff.Compare(mine, rp);
+                var d = PicDiff.StepScore(mine, minePrev, rp, rpPrev);
+                rj["diff"] = d;
+                double sc = (double)d["score"]!;
+                if (ran > 0) { refScores.Add((Interlocked.Read(ref framesStarted), sc)); refHighRun = sc > 0.12 ? refHighRun + 1 : 0; }
+                rj["stats"] = RefStats();
                 if (refPicture && scale > 0) outp.Pngs.Add(rp.Png(scale));
             }
             if (refRam.Count > 0)
@@ -160,6 +204,7 @@ internal sealed partial class HeadlessSession
                 rj["ram"] = ram;
                 rj["ramMismatches"] = mismatches;
             }
+            rj["ms"] = sw.ElapsedMilliseconds - t0;
             j["reference"] = rj;
             if (refPicture && scale > 0) j["pictures"] = "the first image is BrokenNes, the second the reference";
         }
@@ -170,13 +215,14 @@ internal sealed partial class HeadlessSession
 
     // ================================================================================================ recording
 
-    public JsonObject Record(string action, string? path, string? text, string? state, string? statePath = null)
+    public JsonObject Record(string action, string? path, string? text, string? state, string? statePath = null, long? atFrame = null)
     {
         var h = history ?? throw new ToolError(historyNote);
         switch (action)
         {
             case "start":
                 recording = true; recStartFrame = h.FrameIndex; recPath = path is { Length: > 0 } ? path : null; recMarks.Clear();
+                refScores.Clear(); refHighRun = 0;
                 recMarks.Add(new MovieMark(h.FrameIndex, "recording start" + (text is { Length: > 0 } ? ": " + text : "")));
                 return new JsonObject
                 {
@@ -187,8 +233,16 @@ internal sealed partial class HeadlessSession
             {
                 if (!recording) throw new ToolError("no recording: record action start first");
                 string t = text is { Length: > 0 } ? text : $"checkpoint {recMarks.Count}";
-                recMarks.Add(new MovieMark(h.FrameIndex, t));
-                var j = new JsonObject { ["mark"] = t, ["frame"] = h.FrameIndex, ["marks"] = recMarks.Count };
+                long mf = h.FrameIndex;
+                if (atFrame is long af)
+                {
+                    if (af < recStartFrame || af > h.FrameIndex) throw new ToolError($"frame {af}: a mark goes between the recording's start ({recStartFrame}) and now ({h.FrameIndex})");
+                    if ((state is { Length: > 0 } || statePath is { Length: > 0 }) && af != h.FrameIndex) throw new ToolError("state saves the state now: leave frame out with state");
+                    mf = af;
+                }
+                recMarks.Add(new MovieMark(mf, t));
+                recMarks.Sort((x, y) => x.Frame.CompareTo(y.Frame));
+                var j = new JsonObject { ["mark"] = t, ["frame"] = mf, ["now"] = h.FrameIndex, ["marks"] = recMarks.Count };
                 if (statePath is { Length: > 0 }) j["stateFile"] = SaveStateFile(state, statePath);
                 else if (state is { Length: > 0 }) { SaveState(state); j["state"] = state; }
                 return j;
@@ -200,6 +254,16 @@ internal sealed partial class HeadlessSession
                 recMarks.Add(new MovieMark(h.FrameIndex, "recording end" + (text is { Length: > 0 } ? ": " + text : "")));
                 var j = MovieSave(path is { Length: > 0 } ? path : recPath);
                 j["marks"] = J.Arr(recMarks.Select(m => (JsonNode)new JsonObject { ["frame"] = m.Frame, ["text"] = m.Text }));
+                if (reference != null || refScores.Count > 0)
+                {
+                    // the reference summary the catalog record takes (catalog.py update --tas reads <movie>.ref.json): computed here, not by the agent
+                    var rs = RefStats();
+                    rs["emulator"] = reference?.Emulator == "bizhawk" ? "BizHawk 2.11.1" : "Mesen 2.1.1";
+                    rs["frames"] = h.FrameIndex; rs["rom"] = romPath; var (fs1, hs1) = RomSha1(); rs["romSha1"] = fs1; rs["romSha1NoHeader"] = hs1;
+                    j["reference"] = rs;
+                    if (j["file"]?.GetValue<string>() is { Length: > 0 } mp)
+                        try { File.WriteAllText(mp + ".ref.json", rs.ToJsonString()); j["referenceSummary"] = mp + ".ref.json"; } catch (Exception e) { j["referenceSummaryError"] = e.Message; }
+                }
                 if (action == "stop") { recording = false; recMarks.Clear(); }
                 else recMarks.RemoveAt(recMarks.Count - 1);
                 return j;
@@ -216,7 +280,7 @@ internal sealed partial class HeadlessSession
 
     // ================================================================================================ the reference
 
-    public ToolOut Reference(string action, string emulator, long? offset, List<string> ram, int alignFrames, int alignSearch, double scale)
+    public ToolOut Reference(string action, string emulator, long? offset, List<string> ram, int alignFrames, int alignSearch, double scale, bool advance = false)
     {
         switch (action)
         {
@@ -237,21 +301,49 @@ internal sealed partial class HeadlessSession
                     if (now > 0) j["note"] = $"BrokenNes was at frame {now}: the reference ran to {now + reference.Offset} with no pads (open the reference before playing for a faithful comparison)";
                 }
                 else if (reference.Frame > now + reference.Offset)
-                    j["note"] = $"the reference had already done {reference.Frame} frames at its start; BrokenNes is at {now}: the offset is at least {reference.Frame - now} until align or offset changes it";
+                {
+                    // Mesen has already done a frame when its script says hello: offset 0 then put every pad one frame out of step (the NES
+                    // pilot's Battletoads / M.C. Kids drift, 2026-11-15). The offset takes the reference's head start unless one was given.
+                    if (offset == null) { reference.Offset = reference.Frame - now; j["note"] = $"the reference had already done {reference.Frame} frames at its start: offset set to {reference.Offset}"; }
+                    else j["note"] = $"the reference had already done {reference.Frame} frames at its start; BrokenNes is at {now}: the offset is at least {reference.Frame - now} until align or offset changes it";
+                }
                 refSyncedAt = now;
-                if (alignFrames > 0) j["align"] = Align(alignFrames, alignSearch);
+                refScores.Clear(); refHighRun = 0;
+                if (alignFrames > 0) j["align"] = Align(alignFrames, alignSearch, advance);
                 j["reference"] = reference.Describe();
                 return j;
             }
             case "align":
                 if (reference == null) throw new ToolError("no reference: action open first");
-                return Align(Math.Max(30, alignFrames), alignSearch);
+                return Align(Math.Max(30, alignFrames), alignSearch, advance);
             case "offset":
+            {
                 if (reference == null) throw new ToolError("no reference: action open first");
                 if (offset is not long off) throw new ToolError("offset is needed");
-                if (Interlocked.Read(ref framesStarted) + off < reference.Frame) throw new ToolError($"the reference is at frame {reference.Frame}: an offset under {reference.Frame - Interlocked.Read(ref framesStarted)} would need it to go back");
+                EnsureBetweenFrames();
+                long now = Interlocked.Read(ref framesStarted);
+                var j = new JsonObject { ["offsetBefore"] = reference.Offset, ["brokennesFrameBefore"] = now, ["referenceFrameBefore"] = reference.Frame };
+                long behind = reference.Frame - (now + off);
+                if (behind > 0)
+                {
+                    // the reference cannot go back: BrokenNes runs forward instead (no pads), which puts unplayed frames in the movie
+                    GuardAdvance(behind, advance, "offset " + off);
+                    lock (padLock) { held[0] = PadButtons.None; held[1] = PadButtons.None; }
+                    RunFrames(behind);
+                    j["brokennesAdvanced"] = behind;
+                    j["did"] = $"the reference cannot go back, so BrokenNes ran {behind} frames with no pads (frame {now} -> {now + behind}) to make the offset {off}";
+                    if (recording) recMarks.Add(new MovieMark(history?.FrameIndex ?? 0, $"reference offset {off}: BrokenNes advanced {behind} frames with no pads"));
+                }
+                else
+                {
+                    j["brokennesAdvanced"] = 0;
+                    j["did"] = -behind > 0 ? $"offset set; the reference runs {-behind} frames with no pads at the next step to catch up" : "offset set";
+                }
                 reference.Offset = off;
-                return reference.Describe();
+                refSyncedAt = Interlocked.Read(ref framesStarted);
+                j["offset"] = off; j["brokennesFrame"] = refSyncedAt; j["referenceFrame"] = reference.Frame;
+                return j;
+            }
             case "ram":
                 if (reference == null) throw new ToolError("no reference: action open first");
                 SetRefRam(ram);
@@ -263,7 +355,7 @@ internal sealed partial class HeadlessSession
                 var mine = CurrentPic();
                 var (rf, _, rp) = reference.RunTo(Interlocked.Read(ref framesStarted) + reference.Offset, PadButtons.None, PadButtons.None, Array.Empty<long>(), true);
                 refSyncedAt = Interlocked.Read(ref framesStarted);
-                var o = new ToolOut(new JsonObject { ["frame"] = Interlocked.Read(ref framesStarted), ["referenceFrame"] = rf, ["diff"] = PicDiff.Compare(mine, rp!), ["pictures"] = "BrokenNes, then the reference" });
+                var o = new ToolOut(new JsonObject { ["frame"] = Interlocked.Read(ref framesStarted), ["referenceFrame"] = rf, ["diff"] = PicDiff.StepScore(mine, null, rp!, null), ["pictures"] = "BrokenNes, then the reference" });
                 o.Pngs.Add(mine.Png(scale <= 0 ? 1 : scale)); o.Pngs.Add(rp!.Png(scale <= 0 ? 1 : scale));
                 return o;
             }
@@ -301,7 +393,14 @@ internal sealed partial class HeadlessSession
     /// The boot offset: both machines run <paramref name="frames"/> frames with no pads, picture by picture; the offset d (the reference's frame =
     /// BrokenNes's + d) whose pictures match best over the frames both have is kept. Runs the frames (the session's frame moves on by that many).
     /// </summary>
-    private JsonObject Align(int frames, int search)
+    private void GuardAdvance(long frames, bool advance, string what)
+    {
+        if (recording && !advance)
+            throw new ToolError($"{what} would run BrokenNes {frames} frames with no pads during the recording (frames you never looked at, in the movie): nothing was done. " +
+                "Keep the offset, or pass advance:true to do it anyway (it is reported and marked in the movie).");
+    }
+
+    private JsonObject Align(int frames, int search, bool advance)
     {
         var r = reference!;
         frames = Math.Clamp(frames, 30, 1200);
@@ -309,6 +408,8 @@ internal sealed partial class HeadlessSession
         var sw = Stopwatch.StartNew();
         EnsureBetweenFrames();
         long start = Interlocked.Read(ref framesStarted);
+        long offBefore = r.Offset;
+        GuardAdvance(frames, advance, "align");
         if (r.Frame > start + r.Offset) r.Offset = r.Frame - start;
         long rStart = r.Frame;
         lock (padLock) { held[0] = PadButtons.None; held[1] = PadButtons.None; }
@@ -345,13 +446,16 @@ internal sealed partial class HeadlessSession
             if ((d - (rStart - start)) % 5 == 0) curve.Add($"{d}:{avg:F3}");
         }
         long nowMine = Interlocked.Read(ref framesStarted);
+        long extra = 0;
         if (nowMine + bestD < r.Frame)
         {
             // the reference is ahead of where the best offset wants it: BrokenNes runs on (no pads) to catch up
-            long need = r.Frame - bestD - nowMine;
-            RunFrames(need);
-            nowMine += need;
+            extra = r.Frame - bestD - nowMine;
+            RunFrames(extra);
+            nowMine += extra;
         }
+        long advanced = Interlocked.Read(ref framesStarted) - start;
+        if (recording) recMarks.Add(new MovieMark(history?.FrameIndex ?? 0, $"reference align: BrokenNes advanced {advanced} frames with no pads, offset {offBefore} -> {bestD}"));
         r.Offset = bestD;
         r.RunTo(nowMine + bestD, PadButtons.None, PadButtons.None, Array.Empty<long>(), false);
         refSyncedAt = Interlocked.Read(ref framesStarted);
@@ -359,6 +463,8 @@ internal sealed partial class HeadlessSession
         {
             ["offset"] = bestD, ["meanScore"] = Math.Round(best, 4), ["framesCompared"] = frames, ["searched"] = $"{rStart - start - search}..{rStart - start + search}",
             ["curve"] = curve, ["frame"] = Interlocked.Read(ref framesStarted), ["referenceFrame"] = r.Frame, ["ms"] = sw.ElapsedMilliseconds,
+            ["offsetBefore"] = offBefore, ["brokennesFrameBefore"] = start, ["brokennesAdvanced"] = advanced,
+            ["did"] = $"BrokenNes ran {advanced} frames with no pads (frame {start} -> {start + advanced}; {extra} of them so the offset could move back); offset {offBefore} -> {bestD}",
             ["note"] = best > 0.12 ? "no offset makes the boot pictures match well: the two emulators may draw this boot differently (check with reference compare)" : "reference frame = BrokenNes frame + offset from here",
         };
     }

@@ -548,6 +548,7 @@ def main(argv=None):
 
     p = sp.add_parser("add"); rec_args(p); edit_args(p)
     p = sp.add_parser("update"); rec_args(p); edit_args(p); p.add_argument("--expect-rev", type=int)
+    p.add_argument("--agent-grade", choices=GRADES, help="the T2/T3 agent's own grade: kept in extra.t2 and checked against the stored grade")
     p = sp.add_parser("get"); rec_args(p)
     p = sp.add_parser("query"); p.add_argument("--console", choices=CONSOLES); p.add_argument("--grade", choices=GRADES)
     p.add_argument("--tag", choices=TAGS); p.add_argument("--title"); p.add_argument("--tier", type=int)
@@ -586,9 +587,37 @@ def main(argv=None):
         rec = new_record(a.console, a.sha1, ch.pop("title", "") or a.sha1, **ch)
         print("added" if add(rec, base) else "exists (unchanged)")
     elif a.cmd == "update":
-        r = update(a.console, a.sha1, changes_from(a), base, a.expect_rev, append_notes=a.append_notes,
+        ch = changes_from(a)
+        warn = []
+        cur = get(a.console, a.sha1, base)
+        # the reference summary play_step / record computed (record stop writes <movie>.ref.json): it replaces the agent's numbers
+        if a.tas and os.path.exists(a.tas + ".ref.json"):
+            with open(a.tas + ".ref.json", encoding="utf-8") as f:
+                rs = json.load(f)
+            given = ch.get("reference", {})
+            refj = {"emulator": rs.get("emulator", given.get("emulator", "")), "frames": rs.get("frames"), "offset": rs.get("offset"),
+                    "median": rs.get("median"), "max": rs.get("max"), "maxAtFrame": rs.get("maxAtFrame"), "steps": rs.get("steps"),
+                    "over012": rs.get("over012"), "computedBy": "play_step (shift-tolerant score)"}
+            for k in ("median", "max"):
+                if k in given and rs.get(k) is not None and abs(float(given[k]) - float(rs[k])) > 0.02:
+                    warn.append(f"the agent wrote reference {k} {given[k]}, the tool measured {rs[k]}: the tool's value is stored")
+            ch["reference"] = refj
+            if cur is not None:
+                nh, fs = rs.get("romSha1NoHeader"), rs.get("romSha1")
+                ok = a.sha1 in (nh, fs) or (cur.get("dump", {}).get("fileSha1") in (fs,))
+                if not ok:
+                    warn.append(f"sha1 mismatch: the ROM played ({rs.get('rom')}) is {nh or fs} (file {fs}), the record is {a.sha1}")
+                    ch.setdefault("extra", {})["sha1Mismatch"] = {"played": rs.get("rom"), "sha1": nh, "fileSha1": fs}
+        if a.agent_grade:
+            ch.setdefault("extra", {})["t2"] = {"agentGrade": a.agent_grade, "at": now(), "tas": a.tas}
+        r = update(a.console, a.sha1, ch, base, a.expect_rev, append_notes=a.append_notes,
                    add_tags=[t for t in (a.add_tags or "").split(",") if t])
-        print(f"updated rev {r['rev']}")
+        if a.agent_grade and r["grade"] != a.agent_grade:
+            warn.append(f"grade mismatch: the record keeps {r['grade']}, the agent graded {a.agent_grade} (re-check this game)")
+            r = update(a.console, a.sha1, {"extra": {"gradeMismatch": {"stored": r["grade"], "agent": a.agent_grade, "at": now()}}}, base)
+        for w in warn:
+            print("WARNING: " + w)
+        print(f"updated rev {r['rev']} grade {r['grade']}")
     elif a.cmd == "get":
         r = get(a.console, a.sha1, base)
         if r is None:

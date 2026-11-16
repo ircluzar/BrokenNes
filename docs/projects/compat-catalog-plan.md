@@ -86,6 +86,7 @@ Open issues carried into P1+:
 - All tiers on a spread of mappers and genres, including known-good and known-broken games from the certification campaign.
 - Measure tokens per game per tier, hours per game per tier per box, false-alarm rate of the side-by-side comparison, and how often agents get stuck.
 - Then set the pace and the fleet split with the user.
+- **Pilot result (2026-11-15, T2, 50 games)**: OK 16, Jank 25, Broken 1, Not tested 8. 88% reached gameplay and 16% got stuck, mostly at name-entry menus. Each game took 14.4 agent-minutes and 3.65M tokens (98% cache reads). Most Janks are a 1-2 px scroll or one-frame phase difference that the reference score weights too heavily; SMB1 is a confirmed false alarm. Dudes With Attitude (mapper 79) is a confirmed real bug. Fix first: the prompt placeholders, a shift-tolerant score, and align advancing the session. Then run 20 slots (7 i3 boxes x2 + this PC x6), about 8-9 h for the NES. Report: [compat-catalog/pilot-nes-report.md](compat-catalog/pilot-nes-report.md).
 
 ### P5. Full NES run, then each console in order
 - Fan out across the fleet; the dashboard tracks progress.

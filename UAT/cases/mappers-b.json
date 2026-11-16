@@ -317,6 +317,31 @@
         "result": "ok",
         "crashInfo": ""
       }
+    },
+    {
+      "id": "mapb-m079-dudes-map",
+      "description": "Dudes With Attitude (U): headered as mapper 79 with vertical mirroring; it is horizontal (Cartridge CRC fixup -> 113, bit 7 clear). The game builds its island map in $2400 and shows $2000: with the header's mirroring the map was black with yellow squares (compat catalog NES pilot 2026-11-15). Played to the island map; the picture at frame 1400 matched Mesen 2.1.1 (score 0).",
+      "kind": "romtest",
+      "rom": "{lib}/Dudes With Attitude (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 1400,
+      "input": "200:Start,210:,400:Start,410:,600:Start,610:,800:Start,810:,1000:Start,1010:,1200:Start,1210:",
+      "tags": [
+        "corpus",
+        "mappers-b",
+        "mapper79",
+        "mapper113"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "4AF34BACA13CE733",
+        "framesRun": 1400,
+        "distinctColors": 10,
+        "result": "ok",
+        "crashInfo": ""
+      }
     }
   ],
   "goldenGeneratedUtc": "2026-11-15T03:36:52Z"

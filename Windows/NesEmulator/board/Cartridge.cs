@@ -223,6 +223,7 @@ public class Cartridge
 	{
 		{ 0x8EAB381Cu, 79 },   // Deathbots (U): headered as 113, really AVE NINA-06 (79); as 113 its writes flip the mirroring
 		{ 0x5CAA3E61u, 144 },  // Death Race (U): headered as 11, really AGCI 50282 (144); as 11 it crashes on frame 14
+		{ 0xBD29178Au, 113 },  // Dudes With Attitude (U): headered as 79 with vertical mirroring; it is horizontal (113 bit 7 clear): as 79 the island map it builds in $2400 never shows on $2000 (compat catalog pilot 2026-11-15)
 	};
 	private static uint Crc32(byte[] data, int start, int length)
 	{
