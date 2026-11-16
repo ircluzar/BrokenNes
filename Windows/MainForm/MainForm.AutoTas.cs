@@ -10,6 +10,7 @@ using System.Windows.Forms;
 using BrokenNes.Windows.AutoTas;
 using NesEmulator.Debugging.Movies;
 using NesEmulator.Systems;
+using AutoTasPackage = BrokenNes.Windows.AutoTas.AutoTasPackage;
 
 namespace BrokenNes.Windows
 {
