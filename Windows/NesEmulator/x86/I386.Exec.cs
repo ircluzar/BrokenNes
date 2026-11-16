@@ -79,6 +79,7 @@ public sealed partial class I386
             }
             Cycle++;
             _opsz16 = _c16; _adsz16 = _c16; _rep = 0; _curSeg = -1;
+            bool lockPfx = false;
             while (IsPrefix[b1])   // a table test, not a switch: an indirect jump on every opcode costs as much as the dispatch itself
             {
                 switch (b1)
@@ -93,10 +94,11 @@ public sealed partial class I386
                     case 0x67: _adsz16 = !_c16; break;
                     case 0xf3: _rep = 1; break;
                     case 0xf2: _rep = 2; break;
-                    default: break;   // 0xf0 LOCK
+                    default: lockPfx = true; break;   // 0xf0 LOCK
                 }
                 if (!Fetch8(out b1)) return FAIL;
             }
+            if (lockPfx && !LockAllowed(b1)) { Throw0(EX_UD); return FAIL; }
             // the everyday opcodes are dispatched here, to small handlers: going through ExecOne's big switch costs about as much as
             // the instruction itself (measured with Workshop --x86bench); everything else still goes to ExecOne
             int r;
@@ -819,6 +821,27 @@ public sealed partial class I386
         SetSp(sp - n, _spm);
         Store16(ref m, SegSel[seg]);
         return true;
+    }
+
+    /// <summary>LOCK is only legal on the read-modify-write forms with a memory destination (386 manual, LOCK); anything else is #UD
+    /// (SingleStepTests 80386: "lock add dh,bh" etc.). Peeks the opcode's following bytes and puts the fetch position back.</summary>
+    private bool LockAllowed(uint op)
+    {
+        uint ni = NextIp, ifp = _ifPaddr;
+        bool ok = false;
+        uint op2 = 0, modrm;
+        if (op == 0x0f) { if (!Fetch8(out op2)) goto done; }
+        if (!Fetch8(out modrm)) goto done;
+        bool mem = modrm < 0xc0;
+        int ext = (int)((modrm >> 3) & 7);
+        if (op == 0x0f)
+            ok = mem && (op2 is 0xab or 0xb3 or 0xbb or 0xb0 or 0xb1 or 0xc0 or 0xc1 || (op2 == 0xba && ext >= 5) || (op2 == 0xc7 && ext == 1 && Gen >= 5));
+        else
+            ok = mem && ((op < 0x38 && (op & 7) <= 1 && (op & 0x38) != 0x38) || (op is >= 0x80 and <= 0x83 && ext != 7) || op is 0x86 or 0x87
+                || (op is 0xf6 or 0xf7 && ext is 2 or 3) || (op is 0xfe or 0xff && ext <= 1));
+        done:
+        NextIp = ni; _ifPaddr = ifp;
+        return ok;
     }
 
     private bool PopSeg(int seg)
