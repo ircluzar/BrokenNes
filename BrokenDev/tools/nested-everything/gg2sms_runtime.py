@@ -327,7 +327,7 @@ def build(settings, ram, far_bank=None, used=None, hook=None, fast=True):
         if hook and hook['table']:
             lookup(h, v, False, hook['table'])
     else:
-        if any(x in used for x in BLOCKS):
+        if any(x in used for x in BLOCKS + ('h_chain',)):          # (h_chain reads through rdhl too)
             r = Asm(); pieces.append(r)
             r.label('rdhl')                                                    # A = (HL) with the game's bank in slot 2
             r.db(0xC5); r.op_w(LD_A_NN, v['V_BANK']); r.op_w(LD_NN_A, 0xFFFF)

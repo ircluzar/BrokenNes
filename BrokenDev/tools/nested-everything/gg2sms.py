@@ -1006,9 +1006,12 @@ def run_trace(rom_path, out_json, console, frames, inputs, exe):
             '--out', os.path.dirname(out_json) or '.', '--tag', os.path.splitext(os.path.basename(out_json))[0]]
     if inputs:
         args += ['--input', inputs]
-    r = subprocess.run(args, capture_output=True, text=True, timeout=1800)
-    if not os.path.exists(out_json):
-        raise SystemExit(f'trace failed ({r.returncode}): {r.stdout[-400:]} {r.stderr[-400:]}')
+    for attempt in range(2):               # the same trace once more: fleet PCs sometimes lose a Workshop run (memory watchdog)
+        r = subprocess.run(args, capture_output=True, text=True, timeout=1800)
+        if os.path.exists(out_json):
+            break
+    else:
+        raise SystemExit(f'trace failed ({r.returncode}, twice): {r.stdout[-400:]} | stderr: {r.stderr[-1200:]}')
     with open(out_json) as f:
         return json.load(f)
 
@@ -1119,7 +1122,7 @@ def main():
                          'ram': report.get('ram'), 'runtime': report.get('runtime')}
         with open(a.save_profile, 'w', encoding='utf-8') as f:
             json.dump(prof, f, indent=2)
-    return finish(a, out, report, code, write=False)
+    return finish(a, out, report, code)   # (written here too: a copied-unchanged game leaves the loop before its write)
 
 
 def settings_start_button(settings):

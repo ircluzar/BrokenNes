@@ -1,5 +1,5 @@
 {
- "what": "gg2sms_test.py on roster-wide.json, first titles alphabetically (later ones graded with converter 0eafcfa7+, path = which reference graded it), 2026-11-14. Resume with gg2sms_test.py --resume. Names and numbers only.",
+ "what": "gg2sms_test.py on roster-wide.json, first titles alphabetically (later ones graded with converter 0eafcfa7+, path = which reference graded it), 2026-11-14. Resume with gg2sms_test.py --resume. Names and numbers only. 2026-11-16: merged the w2 fleet run (all 387 titles, converter 052badfa, fleetHost = the PC that graded it).",
  "results": [
   {
    "id": "5-in-1-funpak",
@@ -27,7 +27,9 @@
    "lag": 4,
    "patches": 79,
    "unhandled": 0,
-   "residual": 0
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
   },
   {
    "id": "aah-harimanada",
@@ -39,23 +41,25 @@
     0.1558,
     0.4606,
     0.135,
-    0.068,
-    0.8652,
+    0.0688,
+    0.8667,
     0.6474
    ],
    "vsSmsRef": [
     1.0,
     0.8021,
     0.9155,
-    0.5927,
-    0.2944,
+    0.5933,
+    0.2945,
     0.2927
    ],
-   "sound": -0.025,
+   "sound": -0.019,
    "lag": 12,
    "patches": 139,
    "unhandled": 0,
-   "residual": 0
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
   },
   {
    "id": "addams-family-the",
@@ -67,7 +71,7 @@
     1.0,
     1.0,
     1.0,
-    0.9845,
+    0.9892,
     0.999,
     1.0
    ],
@@ -75,7 +79,7 @@
     0.0708,
     0.8033,
     0.8035,
-    0.6898,
+    0.6901,
     0.6928,
     0.693
    ],
@@ -83,7 +87,9 @@
    "lag": 0,
    "patches": 72,
    "unhandled": 0,
-   "residual": 0
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
   },
   {
    "id": "adventures-of-batman-robin-the",
@@ -96,8 +102,8 @@
     0.99,
     0.9695,
     0.3799,
-    0.6099,
-    0.2931
+    0.6137,
+    0.2994
    ],
    "vsSmsRef": [
     0.0234,
@@ -105,13 +111,15 @@
     0.0189,
     0.6694,
     0.3168,
-    0.1824
+    0.165
    ],
-   "sound": 0.594,
+   "sound": 0.593,
    "lag": 0,
    "patches": 59,
    "unhandled": 0,
-   "residual": 0
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
   },
   {
    "id": "aerial-assault",
@@ -120,26 +128,28 @@
    "path": "gg",
    "verdict": "converted",
    "match": [
-    0.9364,
-    0.5753,
-    0.6395,
-    0.1422,
+    0.9411,
+    0.5866,
+    0.6473,
+    0.1442,
     0.415,
     0.0024
    ],
    "vsSmsRef": [
     0.7074,
-    0.1012,
-    0.1062,
-    0.1046,
+    0.1015,
+    0.1066,
+    0.1048,
     0.9216,
     0.0687
    ],
-   "sound": 0.308,
+   "sound": 0.303,
    "lag": 18,
    "patches": 68,
    "unhandled": 0,
-   "residual": 0
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
   },
   {
    "id": "aladdin",
@@ -156,7 +166,7 @@
     0.0
    ],
    "vsSmsRef": [
-    0.9271,
+    0.9583,
     0.9507,
     0.9507,
     0.9899,
@@ -165,9 +175,11 @@
    ],
    "sound": 0.963,
    "lag": 0,
-   "patches": 61,
-   "unhandled": 64,
-   "residual": 128
+   "patches": 63,
+   "unhandled": 63,
+   "residual": 128,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
   },
   {
    "id": "alien-3",
@@ -178,24 +190,26 @@
    "match": [
     0.594,
     0.9992,
-    0.4751,
-    0.4112,
-    0.5184,
+    0.5552,
+    0.4509,
+    0.5347,
     0.3396
    ],
    "vsSmsRef": [
     0.8289,
     0.7416,
-    0.519,
-    0.0305,
-    0.0343,
+    0.5233,
+    0.0318,
+    0.0346,
     0.0393
    ],
    "sound": 0.304,
    "lag": 70,
    "patches": 243,
    "unhandled": 0,
-   "residual": 0
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
   },
   {
    "id": "alien-syndrome",
@@ -205,25 +219,27 @@
    "verdict": "converted",
    "match": [
     0.9246,
-    0.7483,
+    0.7493,
     0.8133,
     0.8924,
-    0.8537,
+    0.8546,
     0.8529
    ],
    "vsSmsRef": [
     0.9647,
-    0.9647,
+    0.9652,
     1.0,
     0.9647,
     0.9971,
     0.9959
    ],
-   "sound": 0.449,
+   "sound": 0.457,
    "lag": 4,
    "patches": 87,
    "unhandled": 0,
-   "residual": 0
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
   },
   {
    "id": "andre-agassi-tennis",
@@ -236,22 +252,24 @@
     0.957,
     0.02,
     0.0076,
-    0.8987,
-    0.8089
+    0.8988,
+    0.675
    ],
    "vsSmsRef": [
     0.0,
-    0.0,
+    0.0224,
     0.0224,
     0.0,
     0.0,
-    0.0001
+    0.0
    ],
-   "sound": 0.398,
+   "sound": 0.4,
    "lag": 0,
    "patches": 89,
    "unhandled": 0,
-   "residual": 1
+   "residual": 1,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
   },
   {
    "id": "arcade-classics",
@@ -279,34 +297,45 @@
    "lag": 38,
    "patches": 138,
    "unhandled": 0,
-   "residual": 0
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
   },
   {
    "id": "arch-rivals",
    "name": "Arch Rivals (U) [!]",
    "grade": "Glitchy",
-   "path": null,
+   "path": "gg",
    "verdict": "converted",
    "match": [
+    0.9789,
     1.0,
-    1.0,
-    0.1776,
-    0.4695,
-    0.183,
-    0.2076
+    0.4642,
+    0.2062,
+    0.2072,
+    0.2132
    ],
-   "vsSmsRef": null,
-   "sound": 0.329,
-   "lag": 8,
-   "patches": 38,
+   "vsSmsRef": [
+    0.0,
+    0.8627,
+    0.0,
+    0.4014,
+    0.5592,
+    0.0
+   ],
+   "sound": 0.594,
+   "lag": 0,
+   "patches": 39,
    "unhandled": 0,
-   "residual": 2
+   "residual": 6,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
   },
   {
    "id": "arena-maze-of-death",
    "name": "Arena - Maze of Death (U) [!]",
    "grade": "Glitchy",
-   "path": null,
+   "path": "gg",
    "verdict": "converted",
    "match": [
     0.6855,
@@ -316,12 +345,10455 @@
     0.5268,
     0.6396
    ],
-   "vsSmsRef": null,
-   "sound": 0.181,
+   "vsSmsRef": [
+    0.9996,
+    0.4531,
+    0.4521,
+    0.4519,
+    0.4372,
+    0.4374
+   ],
+   "sound": 0.188,
    "lag": 0,
    "patches": 179,
    "unhandled": 0,
-   "residual": 0
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "ariel-the-little-mermaid",
+   "name": "Ariel - The Little Mermaid (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9723,
+    0.0163,
+    0.0789,
+    0.0793,
+    0.0792,
+    0.08
+   ],
+   "vsSmsRef": [
+    0.008,
+    0.008,
+    0.008,
+    0.008,
+    0.008,
+    0.008
+   ],
+   "sound": 0.15,
+   "lag": 10,
+   "patches": 79,
+   "unhandled": 0,
+   "residual": 2,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "arliel-crystal-densetsu",
+   "name": "Arliel - Crystal Densetsu (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.1223,
+    0.6817,
+    0.0063,
+    0.9151,
+    0.9426,
+    0.9886
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0189,
+    0.0488,
+    0.0128,
+    0.0284,
+    0.0284
+   ],
+   "sound": 0.292,
+   "lag": 0,
+   "patches": 132,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "asterix-and-the-great-rescue",
+   "name": "Asterix and the Great Rescue (U) [!]",
+   "grade": "Glitchy",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.9594,
+    0.9594,
+    0.9594,
+    0.8175,
+    0.8175,
+    0.8175
+   ],
+   "vsSmsRef": [
+    0.9594,
+    0.9594,
+    0.9594,
+    0.8175,
+    0.8175,
+    0.8175
+   ],
+   "sound": 0.173,
+   "lag": 90,
+   "patches": 104,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "ax-battler-a-legend-of-golden-axe",
+   "name": "Ax Battler - A Legend of Golden Axe (U) (V2.4) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9652,
+    0.8866,
+    0.8578,
+    0.9158,
+    0.8274,
+    0.0433
+   ],
+   "vsSmsRef": [
+    0.9907,
+    0.9644,
+    0.9593,
+    0.9836,
+    0.9456,
+    0.0203
+   ],
+   "sound": 0.162,
+   "lag": 6,
+   "patches": 157,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "ayrton-senna-s-super-monaco-gp-ii",
+   "name": "Ayrton Senna's Super Monaco GP II (U) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0565,
+    0.2056,
+    0.1954,
+    1.0,
+    1.0,
+    0.1956
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 109,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "baku-baku-animal",
+   "name": "Baku Baku Animal (U)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0018,
+    0.0024,
+    0.0008,
+    0.0008,
+    0.0024
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 92,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "baku-baku-animal-sekai-shiikugakari-senshu-ken",
+   "name": "Baku Baku Animal - Sekai Shiikugakari Senshu-ken (J) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0018,
+    0.0024,
+    0.0008,
+    0.0008,
+    0.0024
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 92,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "batman-forever",
+   "name": "Batman Forever (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.7516,
+    0.7803,
+    0.708,
+    0.9251,
+    0.9602,
+    0.9493
+   ],
+   "vsSmsRef": [
+    0.9183,
+    0.9037,
+    0.0994,
+    0.0301,
+    0.816,
+    0.8477
+   ],
+   "sound": -0.153,
+   "lag": 0,
+   "patches": 249,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "batman-returns",
+   "name": "Batman Returns (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "Traceback (most recent call last):",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "batter-up",
+   "name": "Batter Up (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.999,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.8941,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.248,
+   "lag": 112,
+   "patches": 77,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "battleship",
+   "name": "Battleship (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.6976,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0008,
+    0.0276,
+    0.3384,
+    0.0018,
+    0.3412,
+    0.3421
+   ],
+   "sound": 0.894,
+   "lag": 0,
+   "patches": 21,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "battletoads",
+   "name": "Battletoads (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.9583,
+    0.328,
+    0.3317
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.8531,
+    0.8611,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.465,
+   "lag": 36,
+   "patches": 89,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "beavis-and-butt-head",
+   "name": "Beavis and Butt-head (U) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.8266,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0006,
+    0.0,
+    0.0076,
+    0.0082,
+    0.0864
+   ],
+   "sound": 0.819,
+   "lag": 6,
+   "patches": 83,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "berenstain-bears-the-camping-adventure",
+   "name": "Berenstain Bears', The - Camping Adventure (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.1009,
+    0.0998,
+    0.8854,
+    0.1609,
+    0.1612
+   ],
+   "vsSmsRef": [
+    0.9398,
+    0.9463,
+    0.9463,
+    0.9463,
+    0.9463,
+    0.9463
+   ],
+   "sound": 0.0,
+   "lag": 20,
+   "patches": 68,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "berlin-no-kabe",
+   "name": "Berlin no Kabe (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0964,
+    0.0452,
+    0.0962,
+    0.0454,
+    0.0463
+   ],
+   "vsSmsRef": [
+    0.0226,
+    0.0121,
+    0.0193,
+    0.0121,
+    0.0193,
+    0.0193
+   ],
+   "sound": -0.169,
+   "lag": 0,
+   "patches": 64,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "bishoujo-senshi-sailor-moon-s",
+   "name": "Bishoujo Senshi Sailor Moon S (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9472,
+    1.0,
+    1.0,
+    0.0048,
+    0.0171,
+    0.0073
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0157,
+    0.0157,
+    0.0104,
+    0.8653,
+    0.9996
+   ],
+   "sound": 0.218,
+   "lag": 120,
+   "patches": 114,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "bonkers-wax-up",
+   "name": "Bonkers Wax Up! (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9992,
+    0.9925,
+    0.1318,
+    0.9872,
+    0.9852
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0644,
+    0.0648,
+    1.0,
+    0.0643,
+    0.0648
+   ],
+   "sound": 0.177,
+   "lag": 32,
+   "patches": 108,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "bram-stoker-s-dracula",
+   "name": "Bram Stoker's Dracula (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8809,
+    0.7903,
+    1.0,
+    0.8438,
+    0.8438,
+    0.5396
+   ],
+   "vsSmsRef": [
+    0.9572,
+    0.9025,
+    0.901,
+    0.901,
+    0.4626,
+    0.2477
+   ],
+   "sound": 0.185,
+   "lag": 0,
+   "patches": 153,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "bugs-bunny-in-double-trouble",
+   "name": "Bugs Bunny in Double Trouble (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9993,
+    0.982,
+    0.9906,
+    1.0,
+    0.8015
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.9804,
+    0.2466,
+    0.0834,
+    1.0,
+    0.1389
+   ],
+   "sound": 0.712,
+   "lag": 4,
+   "patches": 50,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "bust-a-move",
+   "name": "Bust-A-Move (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0112,
+    0.0079,
+    0.0257,
+    0.0059,
+    0.0464
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0,
+    0.0,
+    1.0,
+    0.7552,
+    0.6168
+   ],
+   "sound": 0.008,
+   "lag": 108,
+   "patches": 35,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "buster-ball",
+   "name": "Buster Ball (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.874,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.7461,
+    0.7352,
+    0.7347,
+    0.7394,
+    0.7352
+   ],
+   "sound": 0.528,
+   "lag": 14,
+   "patches": 66,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "buster-fight",
+   "name": "Buster Fight (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9368,
+    0.7595,
+    0.7088,
+    0.2096,
+    0.1375,
+    0.1283
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.9361,
+    0.9257,
+    0.9373,
+    0.7291,
+    0.0397
+   ],
+   "sound": 0.156,
+   "lag": 0,
+   "patches": 175,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "caesar-s-palace",
+   "name": "Caesar's Palace (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0423,
+    1.0,
+    1.0,
+    1.0,
+    0.5674,
+    0.4931
+   ],
+   "vsSmsRef": [
+    0.0198,
+    0.9637,
+    0.2838,
+    0.2838,
+    0.2915,
+    0.2912
+   ],
+   "sound": 0.359,
+   "lag": 14,
+   "patches": 35,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "captain-america-and-the-avengers",
+   "name": "Captain America and the Avengers (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.3295,
+    0.9088,
+    0.8816
+   ],
+   "vsSmsRef": [
+    0.8646,
+    0.2745,
+    0.2745,
+    0.7577,
+    0.4729,
+    0.4713
+   ],
+   "sound": 0.862,
+   "lag": 6,
+   "patches": 54,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "car-licence",
+   "name": "Car Licence (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0034,
+    0.818,
+    0.3834,
+    1.0,
+    0.253,
+    0.3655
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.5525,
+    0.5778,
+    0.5387,
+    0.5366,
+    0.5623
+   ],
+   "sound": 0.144,
+   "lag": 6,
+   "patches": 80,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "casino-funpak",
+   "name": "Casino Funpak (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.5802,
+    0.5802,
+    0.5757
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.6617,
+    0.5153,
+    0.0972,
+    0.0973,
+    0.0979
+   ],
+   "sound": 0.939,
+   "lag": 2,
+   "patches": 51,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "chakan",
+   "name": "Chakan (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.991,
+    0.341,
+    0.2285,
+    0.2283,
+    0.2281
+   ],
+   "vsSmsRef": [
+    0.988,
+    0.3712,
+    0.3712,
+    0.3712,
+    0.3712,
+    0.3712
+   ],
+   "sound": 0.101,
+   "lag": 42,
+   "patches": 93,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "chaos-89",
+   "name": "Chaos 89 (PD)",
+   "grade": "Perfect",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 1.0,
+   "lag": 0,
+   "patches": 19,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "chase-h-q",
+   "name": "Chase H.Q. (J) [S][!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "Traceback (most recent call last):",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "chessmaster-the",
+   "name": "Chessmaster, The (U) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.612,
+    0.3105,
+    0.3031,
+    0.9485,
+    0.3074,
+    0.5586
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 48,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "chicago-syndicate",
+   "name": "Chicago Syndicate (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0016,
+    0.0016,
+    0.003,
+    0.0037,
+    0.0044
+   ],
+   "vsSmsRef": [
+    0.9531,
+    0.4059,
+    0.3917,
+    0.0002,
+    0.0002,
+    0.0006
+   ],
+   "sound": -0.555,
+   "lag": 30,
+   "patches": 170,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "choplifter-iii",
+   "name": "Choplifter III (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.0041,
+    0.0006,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0016,
+    0.0,
+    0.0004,
+    0.0009,
+    0.0009
+   ],
+   "sound": 0.529,
+   "lag": 32,
+   "patches": 79,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "chuck-rock",
+   "name": "Chuck Rock (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.882,
+    0.7102
+   ],
+   "vsSmsRef": [
+    0.776,
+    0.8316,
+    0.6605,
+    0.8316,
+    0.8316,
+    0.6846
+   ],
+   "sound": 0.656,
+   "lag": 14,
+   "patches": 50,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "chuck-rock-ii-son-of-chuck",
+   "name": "Chuck Rock II - Son of Chuck (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.4306,
+    0.9824,
+    0.4396,
+    0.3805
+   ],
+   "vsSmsRef": [
+    0.9148,
+    0.5847,
+    0.4467,
+    0.6874,
+    0.4469,
+    0.4486
+   ],
+   "sound": 0.268,
+   "lag": 0,
+   "patches": 87,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "cliffhanger",
+   "name": "Cliffhanger (U) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.9423,
+    0.7148,
+    0.8397,
+    0.2652,
+    0.1986,
+    0.1582
+   ],
+   "sound": 0.912,
+   "lag": 0,
+   "patches": 58,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "clutch-hitter",
+   "name": "Clutch Hitter (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0132,
+    0.0132,
+    0.0224,
+    0.0224,
+    0.0224
+   ],
+   "sound": 0.487,
+   "lag": 8,
+   "patches": 27,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "coca-cola-kid",
+   "name": "Coca Cola Kid (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.9095,
+    0.989,
+    0.9112,
+    1.0,
+    0.0158
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.6446,
+    0.6483,
+    0.007,
+    0.0074,
+    0.0074
+   ],
+   "sound": 0.707,
+   "lag": 10,
+   "patches": 130,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "cool-spot",
+   "name": "Cool Spot (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    1.0,
+    0.3594,
+    0.7294,
+    0.0757,
+    0.158,
+    0.4534
+   ],
+   "vsSmsRef": [
+    0.9145,
+    0.9594,
+    0.0422,
+    0.0,
+    0.1907,
+    0.0844
+   ],
+   "sound": 0.379,
+   "lag": 4,
+   "patches": 65,
+   "unhandled": 2,
+   "residual": 2,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "cosmic-spacehead",
+   "name": "Cosmic Spacehead (E) (M4) [!]",
+   "grade": "Glitchy",
+   "path": "sms",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.8914,
+    0.8914,
+    0.8914,
+    0.8914,
+    0.8914,
+    0.8914
+   ],
+   "vsSmsRef": [
+    0.8914,
+    0.8914,
+    0.8914,
+    0.8914,
+    0.8914,
+    0.8914
+   ],
+   "sound": 0.997,
+   "lag": 0,
+   "patches": 116,
+   "unhandled": 2,
+   "residual": 4,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "crayon-shin-chan-taiketsu-tankam-panic",
+   "name": "Crayon Shin-Chan - Taiketsu! Tankam Panic!! (J)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0427,
+    0.0427,
+    0.0565,
+    0.2426,
+    0.054,
+    0.0559
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 89,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "crystal-warriors",
+   "name": "Crystal Warriors (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.1728,
+    0.025,
+    0.0236,
+    0.0119,
+    0.0076,
+    0.0073
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0697,
+    0.0697,
+    0.0697,
+    0.0697,
+    0.0697
+   ],
+   "sound": 0.242,
+   "lag": 18,
+   "patches": 132,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "cutthroat-island",
+   "name": "Cutthroat Island (U) [!]",
+   "grade": "Glitchy",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.9663,
+    0.9343,
+    1.0,
+    0.0037,
+    0.0629,
+    0.0
+   ],
+   "vsSmsRef": [
+    0.9663,
+    0.9343,
+    1.0,
+    0.0037,
+    0.0629,
+    0.0
+   ],
+   "sound": 0.55,
+   "lag": 118,
+   "patches": 122,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "daffy-duck-in-hollywood",
+   "name": "Daffy Duck in Hollywood (E) (M5) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8602,
+    0.1497,
+    0.0054,
+    0.2507,
+    0.1288,
+    0.0714
+   ],
+   "vsSmsRef": [
+    0.0026,
+    0.001,
+    0.025,
+    0.0284,
+    0.0119,
+    0.0925
+   ],
+   "sound": 0.205,
+   "lag": 0,
+   "patches": 98,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "deep-duck-trouble-starring-donald-duck",
+   "name": "Deep Duck Trouble Starring Donald Duck (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9722,
+    1.0,
+    1.0,
+    0.2124,
+    0.0416
+   ],
+   "vsSmsRef": [
+    0.9401,
+    0.3726,
+    0.5901,
+    1.0,
+    0.5527,
+    0.5527
+   ],
+   "sound": 0.441,
+   "lag": 32,
+   "patches": 117,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "desert-speedtrap-starring-road-runner-and-wile-e-coyote",
+   "name": "Desert Speedtrap - Starring Road Runner and Wile E. Coyote (U) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 126,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "desert-strike-return-to-the-gulf",
+   "name": "Desert Strike - Return to the Gulf (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.0398,
+    0.9308,
+    0.9347,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.1767,
+    0.0909,
+    0.095,
+    0.0944
+   ],
+   "sound": 0.602,
+   "lag": 0,
+   "patches": 130,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "devilish",
+   "name": "Devilish (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.9796,
+    0.7478,
+    0.9593,
+    0.9593
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.3818,
+    0.3818,
+    0.3824,
+    0.4953,
+    0.0123
+   ],
+   "sound": 0.906,
+   "lag": 4,
+   "patches": 49,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "doraemon-waku-waku-pocket-paradise",
+   "name": "Doraemon - Waku Waku Pocket Paradise (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.001,
+    0.0056,
+    0.0058,
+    0.0068,
+    1.0,
+    0.0007
+   ],
+   "vsSmsRef": [
+    0.8911,
+    0.759,
+    0.7593,
+    0.7592,
+    1.0,
+    0.0128
+   ],
+   "sound": 0.938,
+   "lag": 0,
+   "patches": 69,
+   "unhandled": 64,
+   "residual": 128,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "double-dragon",
+   "name": "Double Dragon (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.7593,
+    0.8852,
+    0.8692,
+    0.9497,
+    0.6813,
+    0.7131
+   ],
+   "sound": 0.289,
+   "lag": 0,
+   "patches": 71,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "dr-robotnik-s-mean-bean-machine",
+   "name": "Dr. Robotnik's Mean Bean Machine (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.5706,
+    0.1191,
+    0.0055,
+    0.1487,
+    0.1313
+   ],
+   "vsSmsRef": [
+    0.0,
+    1.0,
+    0.8723,
+    0.0945,
+    0.0843,
+    0.0833
+   ],
+   "sound": 0.288,
+   "lag": 26,
+   "patches": 125,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "dragon-the-bruce-lee-story",
+   "name": "Dragon - The Bruce Lee Story (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9898,
+    1.0,
+    1.0,
+    0.121,
+    0.1425
+   ],
+   "vsSmsRef": [
+    0.0164,
+    0.6104,
+    0.6211,
+    0.7579,
+    0.1628,
+    0.1609
+   ],
+   "sound": 0.476,
+   "lag": 0,
+   "patches": 146,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "drop-zone",
+   "name": "Drop Zone (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "no room for the runtime in always-mapped ROM (far stub pieces [64, 40, 36, 16, 16, 9], 181 bytes; free runs [274, 171, 141, 108, 74, 68, 56, 54])",
+   "patches": 0,
+   "unhandled": 2,
+   "residual": 0,
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "dunk-kid-s",
+   "name": "Dunk Kid's (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.548,
+    0.5483,
+    0.8539,
+    0.979,
+    0.658
+   ],
+   "vsSmsRef": [
+    0.0911,
+    0.0887,
+    0.0886,
+    0.0458,
+    0.3799,
+    0.3811
+   ],
+   "sound": 0.443,
+   "lag": 12,
+   "patches": 90,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "dynamite-headdy",
+   "name": "Dynamite Headdy (U)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9424,
+    0.9957,
+    0.999,
+    0.7059,
+    0.5426,
+    0.556
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.672,
+    0.643,
+    0.0076,
+    0.0792,
+    0.0874
+   ],
+   "sound": 0.559,
+   "lag": 10,
+   "patches": 22,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "earthworm-jim",
+   "name": "Earthworm Jim (U) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0439,
+    0.0951,
+    0.567,
+    0.3126,
+    0.1474
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.9581,
+    0.0028,
+    0.0028,
+    0.0028,
+    0.0028
+   ],
+   "sound": 0.619,
+   "lag": 0,
+   "patches": 227,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "ecco-ii-the-tides-of-time",
+   "name": "Ecco II - The Tides of Time (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0234,
+    0.0271,
+    0.9967,
+    0.9974,
+    0.8672,
+    0.5494
+   ],
+   "vsSmsRef": [
+    0.989,
+    0.6078,
+    0.0225,
+    0.0,
+    0.0151,
+    0.0463
+   ],
+   "sound": 0.546,
+   "lag": 0,
+   "patches": 62,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "ecco-the-dolphin",
+   "name": "Ecco the Dolphin (U) [!]",
+   "grade": "Boots only",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0001,
+    0.0004
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0118,
+    0.0045,
+    0.0126,
+    0.0091
+   ],
+   "sound": 0.706,
+   "lag": 2,
+   "patches": 55,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "ecco-the-tides-of-time",
+   "name": "Ecco - The Tides of Time (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0234,
+    0.0271,
+    0.9967,
+    0.9942,
+    0.8682,
+    0.5242
+   ],
+   "vsSmsRef": [
+    0.989,
+    0.6078,
+    0.0225,
+    0.0174,
+    0.016,
+    0.0541
+   ],
+   "sound": 0.548,
+   "lag": 0,
+   "patches": 62,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "ernie-els-golf",
+   "name": "Ernie Els Golf (E)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "the game maps other banks into slot 0: the runtime has nowhere safe to live",
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0,
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "eternal-legend",
+   "name": "Eternal Legend (J) [!]",
+   "grade": "Glitchy",
+   "path": "sms",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    1.0,
+    0.9034,
+    0.8896,
+    0.5276,
+    0.8354,
+    0.6855
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.9034,
+    0.8896,
+    0.5276,
+    0.8354,
+    0.6855
+   ],
+   "sound": 0.207,
+   "lag": 0,
+   "patches": 129,
+   "unhandled": 1,
+   "residual": 2,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "evander-holyfield-s-real-deal-boxing",
+   "name": "Evander Holyfield's 'Real Deal' Boxing (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.1329,
+    0.2523,
+    0.2639,
+    0.1774,
+    0.2608
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    0.4014,
+    0.9997,
+    0.4825,
+    1.0
+   ],
+   "sound": 0.197,
+   "lag": 62,
+   "patches": 56,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "excellent-dizzy-collection-the",
+   "name": "Excellent Dizzy Collection, The (E) [S][!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "the game maps other banks into slot 0: the runtime has nowhere safe to live",
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0,
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "f-1",
+   "name": "F-1 (E) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.1517,
+    0.6142,
+    0.0,
+    0.0171,
+    0.0197
+   ],
+   "vsSmsRef": [
+    0.012,
+    0.0312,
+    0.0412,
+    1.0,
+    0.012,
+    0.012
+   ],
+   "sound": 0.38,
+   "lag": 0,
+   "patches": 50,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "f-15-strike-eagle",
+   "name": "F-15 Strike Eagle (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.0815,
+    0.7671,
+    0.7671
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0,
+    0.0,
+    0.026,
+    0.0033,
+    0.0033
+   ],
+   "sound": 0.531,
+   "lag": 0,
+   "patches": 202,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "faceball-2000",
+   "name": "Faceball 2000 (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.1975,
+    1.0,
+    1.0,
+    1.0,
+    0.9148,
+    0.7579
+   ],
+   "vsSmsRef": [
+    0.4393,
+    0.0963,
+    0.1046,
+    0.0415,
+    0.3333,
+    0.3298
+   ],
+   "sound": 0.703,
+   "lag": 10,
+   "patches": 71,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "factory-panic",
+   "name": "Factory Panic (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9862,
+    0.9434,
+    0.9357,
+    0.9128,
+    0.3905,
+    0.0861
+   ],
+   "vsSmsRef": [
+    0.4691,
+    0.0115,
+    0.3447,
+    0.1044,
+    0.0138,
+    0.3627
+   ],
+   "sound": 0.307,
+   "lag": 2,
+   "patches": 50,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "fantastic-dizzy",
+   "name": "Fantastic Dizzy (U) [S][!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    1.0,
+    1.0,
+    0.7575,
+    0.547,
+    0.547,
+    0.6049
+   ],
+   "vsSmsRef": [
+    0.9581,
+    0.087,
+    0.331,
+    0.3127,
+    0.3122,
+    0.3317
+   ],
+   "sound": -0.074,
+   "lag": 104,
+   "patches": 348,
+   "unhandled": 34,
+   "residual": 6,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "fatal-fury-special",
+   "name": "Fatal Fury Special (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.1212,
+    0.0648,
+    0.1349,
+    0.1435,
+    0.9997,
+    0.3543
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    0.9997,
+    0.9683,
+    0.9997,
+    1.0
+   ],
+   "sound": 0.388,
+   "lag": 34,
+   "patches": 114,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "fifa-international-soccer",
+   "name": "FIFA International Soccer (UE) (M4) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.0474,
+    0.047,
+    0.0045,
+    0.0039
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    0.3427,
+    0.3326,
+    0.0137,
+    0.0043
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 82,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "fifa-soccer-96",
+   "name": "FIFA Soccer 96 (UE) (M4) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9016,
+    0.1908,
+    0.0669,
+    0.0216,
+    0.0021,
+    0.0046
+   ],
+   "vsSmsRef": [
+    0.0035,
+    0.0142,
+    0.0816,
+    0.0817,
+    0.021,
+    0.0207
+   ],
+   "sound": -0.068,
+   "lag": 78,
+   "patches": 83,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "fire-track-by-ben-ryves",
+   "name": "Fire Track by Ben Ryves (PD)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9751,
+    0.9785,
+    0.9266,
+    0.9205,
+    0.9217
+   ],
+   "vsSmsRef": [
+    0.0306,
+    0.0579,
+    0.0549,
+    0.0522,
+    0.0526,
+    0.0526
+   ],
+   "sound": 0.993,
+   "lag": 0,
+   "patches": 72,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "foreman-for-real",
+   "name": "Foreman for Real (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.698,
+    0.2071,
+    0.1391,
+    0.1493
+   ],
+   "vsSmsRef": [
+    0.9427,
+    0.0,
+    0.9001,
+    0.1356,
+    0.0909,
+    0.0474
+   ],
+   "sound": 0.758,
+   "lag": 0,
+   "patches": 165,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "frank-thomas-big-hurt-baseball",
+   "name": "Frank Thomas Big Hurt Baseball (U) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9999,
+    0.9901,
+    0.9908,
+    0.9921,
+    0.9706
+   ],
+   "vsSmsRef": [
+    0.9144,
+    0.01,
+    0.3907,
+    0.3906,
+    0.3829,
+    0.0039
+   ],
+   "sound": 0.904,
+   "lag": 18,
+   "patches": 57,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "fred-couples-golf",
+   "name": "Fred Couples Golf (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.8604,
+    0.0,
+    0.0,
+    0.8604,
+    0.9222,
+    0.0923
+   ],
+   "vsSmsRef": [
+    0.9818,
+    0.3536,
+    0.3536,
+    0.9818,
+    0.9633,
+    0.6217
+   ],
+   "sound": 0.85,
+   "lag": 0,
+   "patches": 50,
+   "unhandled": 63,
+   "residual": 128,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "frogger",
+   "name": "Frogger (Prototype) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9833,
+    0.8816,
+    0.8816,
+    0.865,
+    0.865,
+    0.865
+   ],
+   "vsSmsRef": [
+    0.7523,
+    0.2969,
+    0.2969,
+    0.2967,
+    0.2967,
+    0.2967
+   ],
+   "sound": 0.818,
+   "lag": 14,
+   "patches": 66,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "frogs-by-charles-doty",
+   "name": "Frogs by Charles Doty (PD)",
+   "grade": "Perfect",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0001,
+    0.0001,
+    0.0001,
+    0.0001,
+    0.0001,
+    0.0001
+   ],
+   "sound": 1.0,
+   "lag": 0,
+   "patches": 17,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "from-tv-animation-slam-dunk-shouri-heno-starting-5",
+   "name": "From TV Animation - Slam Dunk - Shouri heno Starting 5 (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.9905,
+    0.0003,
+    0.0003,
+    1.0,
+    0.0355,
+    0.019
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.462,
+    0.462,
+    1.0,
+    0.0231,
+    0.0176
+   ],
+   "sound": 0.715,
+   "lag": 0,
+   "patches": 56,
+   "unhandled": 64,
+   "residual": 128,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "g-loc-air-battle",
+   "name": "G-LOC Air Battle (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0007,
+    0.0,
+    0.0324,
+    0.0215,
+    0.0,
+    0.0438
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    0.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.223,
+   "lag": 82,
+   "patches": 239,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "galaga-91",
+   "name": "Galaga '91 (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.998,
+    0.9957,
+    0.9697,
+    0.9457,
+    0.992,
+    0.9771
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.9694,
+    0.9516,
+    0.9293,
+    0.9377,
+    0.9343
+   ],
+   "sound": 0.639,
+   "lag": 0,
+   "patches": 62,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "gamble-panic",
+   "name": "Gamble Panic (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8413,
+    0.9495,
+    0.9652,
+    0.9495,
+    0.9499,
+    0.9652
+   ],
+   "vsSmsRef": [
+    0.108,
+    0.1642,
+    0.1934,
+    0.1635,
+    0.1635,
+    0.1934
+   ],
+   "sound": 0.768,
+   "lag": 8,
+   "patches": 34,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "gambler-jikochuushin-ha",
+   "name": "Gambler Jikochuushin Ha (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.98,
+    0.9829,
+    0.4635,
+    null,
+    null,
+    null
+   ],
+   "vsSmsRef": [
+    0.8596,
+    0.1613,
+    0.1606,
+    null,
+    null,
+    null
+   ],
+   "lag": 16,
+   "patches": 77,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "ganbare-gorby",
+   "name": "Ganbare Gorby! (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9874,
+    0.9416,
+    0.5467,
+    0.9047,
+    0.158,
+    0.0861
+   ],
+   "vsSmsRef": [
+    0.2194,
+    0.0112,
+    0.0036,
+    0.0653,
+    0.0634,
+    0.0026
+   ],
+   "sound": 0.499,
+   "lag": 18,
+   "patches": 51,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "garfield-caught-in-the-act",
+   "name": "Garfield - Caught in the Act (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0134,
+    0.073,
+    0.0394,
+    0.0452,
+    0.0593,
+    0.0259
+   ],
+   "vsSmsRef": [
+    0.9928,
+    0.0401,
+    0.3442,
+    0.3518,
+    0.3445,
+    0.2261
+   ],
+   "sound": 0.364,
+   "lag": 4,
+   "patches": 68,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "gear-stadium",
+   "name": "Gear Stadium (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.999,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.8646,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.248,
+   "lag": 112,
+   "patches": 75,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "gear-stadium-heiseiban",
+   "name": "Gear Stadium Heiseiban (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.999,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.8526,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.248,
+   "lag": 112,
+   "patches": 75,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "gear-works",
+   "name": "Gear Works (U) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0526,
+    0.0526,
+    0.0526,
+    0.0526,
+    0.0558
+   ],
+   "sound": 0.889,
+   "lag": 4,
+   "patches": 18,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "george-foreman-s-ko-boxing",
+   "name": "George Foreman's KO Boxing (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "Traceback (most recent call last):",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "gg-aleste",
+   "name": "GG Aleste (J)",
+   "grade": "Black screen",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.0203,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0203,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 69,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "gg-doraemon-nora-no-suke-no-yabou",
+   "name": "GG Doraemon - Nora no Suke no Yabou (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0061,
+    0.0029,
+    0.0061,
+    0.0086,
+    0.9987
+   ],
+   "vsSmsRef": [
+    0.4306,
+    1.0,
+    0.0043,
+    1.0,
+    1.0,
+    0.1551
+   ],
+   "sound": -0.024,
+   "lag": 112,
+   "patches": 73,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "gg-hi-res-graphics-demo-by-charles-mcdonald",
+   "name": "GG Hi-Res Graphics Demo by Charles McDonald (PD)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0543,
+    0.0543,
+    0.0543,
+    0.0543,
+    0.0543,
+    0.0543
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 1.0,
+   "lag": 0,
+   "patches": 8,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "gg-hicolor-demo-by-chris-covell",
+   "name": "GG Hicolor Demo by Chris Covell (PD)",
+   "grade": "Glitchy",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.3152,
+    0.2291,
+    0.2389,
+    0.4657,
+    0.2056,
+    0.2437
+   ],
+   "vsSmsRef": [
+    0.3152,
+    0.2291,
+    0.2389,
+    0.4657,
+    0.2056,
+    0.2437
+   ],
+   "sound": 1.0,
+   "lag": 0,
+   "patches": 25,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "gg-hicolor-demo-v1-05-by-chris-covell",
+   "name": "GG Hicolor Demo v1.05 by Chris Covell (PD)",
+   "grade": "Glitchy",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.3152,
+    0.2291,
+    0.2389,
+    0.4657,
+    0.2055,
+    0.243
+   ],
+   "vsSmsRef": [
+    0.3152,
+    0.2291,
+    0.2389,
+    0.4657,
+    0.2055,
+    0.243
+   ],
+   "sound": 1.0,
+   "lag": 0,
+   "patches": 25,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "gg-nibbles-by-martin-konrad-v1",
+   "name": "GG Nibbles by Martin Konrad V1 (PD)",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.999,
+    0.999,
+    0.9989,
+    0.9989,
+    0.9989
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0166,
+    0.0171,
+    0.0166,
+    0.0169,
+    0.0169
+   ],
+   "sound": 1.0,
+   "lag": 0,
+   "patches": 14,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "gg-nibbles-by-martin-konrad-v2",
+   "name": "GG Nibbles by Martin Konrad V2 (PD)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.999,
+    1.0,
+    0.9157,
+    0.8635,
+    0.8311
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0978,
+    0.1484,
+    0.124,
+    0.124,
+    0.124
+   ],
+   "sound": 1.0,
+   "lag": 0,
+   "patches": 15,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "gg-nibbles-by-martin-konrad-v3",
+   "name": "GG Nibbles by Martin Konrad V3 (PD)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9987,
+    0.9898,
+    0.9938,
+    0.9959,
+    0.8315
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0977,
+    0.0977,
+    0.1241,
+    0.1241,
+    0.1241
+   ],
+   "sound": 1.0,
+   "lag": 0,
+   "patches": 15,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "gg-nibbles-by-martin-konrad-v4",
+   "name": "GG Nibbles by Martin Konrad V4 (PD)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9952,
+    0.9367,
+    0.9945,
+    0.9124,
+    0.8231
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0977,
+    0.1396,
+    0.1153,
+    0.1153,
+    0.1153
+   ],
+   "sound": 1.0,
+   "lag": 0,
+   "patches": 15,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "gg-portrait-pai-chan",
+   "name": "GG Portrait - Pai Chan (J) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.1408,
+    0.1408,
+    0.2614,
+    0.0525,
+    0.0525
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 95,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "gg-portrait-yuuki-akira",
+   "name": "GG Portrait - Yuuki Akira (J) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.772,
+    0.8251,
+    0.2654,
+    0.4594,
+    0.5964,
+    0.0858
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 99,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "gg-turrican-demo-v0-9-by-martin-konrad",
+   "name": "GG Turrican Demo V0.9 by Martin Konrad (PD)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.7146,
+    0.7146,
+    0.7165,
+    0.6964,
+    0.7203,
+    0.7167
+   ],
+   "vsSmsRef": [
+    0.1943,
+    0.1851,
+    0.1878,
+    0.2456,
+    0.2124,
+    0.1877
+   ],
+   "sound": 0.498,
+   "lag": 116,
+   "patches": 163,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "gg-turrican-demo-v1-0-by-martin-konrad",
+   "name": "GG Turrican Demo V1.0 by Martin Konrad (PD)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.5887,
+    0.5929,
+    0.5929,
+    0.5929,
+    0.5929,
+    0.5929
+   ],
+   "vsSmsRef": [
+    0.075,
+    0.0795,
+    0.0795,
+    0.0795,
+    0.0795,
+    0.0795
+   ],
+   "sound": 0.367,
+   "lag": 88,
+   "patches": 167,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "godzilla-kaiju-dai-shingeki",
+   "name": "Godzilla - Kaiju Dai Shingeki (J) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "trace failed (4294967295): Master System godzilla-kaiju-dai-shingeki (Sms2, Sega, Ntsc) | CPU Z80 | PPU SMS | APU SMS (SN76489)",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "gp-rider",
+   "name": "GP Rider (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8455,
+    1.0,
+    0.9891,
+    0.9891,
+    1.0,
+    0.9274
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.8468,
+    0.1165,
+    0.1165,
+    0.1424,
+    0.1497
+   ],
+   "sound": 0.639,
+   "lag": 118,
+   "patches": 120,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "greendog",
+   "name": "Greendog (U)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9438,
+    1.0,
+    0.9583,
+    0.7268,
+    0.7259,
+    0.3043
+   ],
+   "vsSmsRef": [
+    0.9201,
+    0.1308,
+    0.1304,
+    0.3119,
+    0.3114,
+    0.3108
+   ],
+   "sound": -0.065,
+   "lag": 32,
+   "patches": 174,
+   "unhandled": 0,
+   "residual": 472,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "griffin",
+   "name": "Griffin (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.6894,
+    0.7946,
+    0.5787,
+    0.9964,
+    0.9964
+   ],
+   "vsSmsRef": [
+    0.6981,
+    0.746,
+    0.7871,
+    0.7995,
+    0.8111,
+    0.8111
+   ],
+   "sound": 0.463,
+   "lag": 0,
+   "patches": 103,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "gunstar-heroes",
+   "name": "Gunstar Heroes (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.134,
+    0.098,
+    0.1132,
+    0.0478,
+    0.1426
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    0.7071,
+    1.0,
+    0.3691,
+    0.6436
+   ],
+   "sound": 0.444,
+   "lag": 46,
+   "patches": 190,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "halley-wars",
+   "name": "Halley Wars (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.969,
+    0.6291,
+    0.9598,
+    0.8474,
+    0.9216,
+    0.9097
+   ],
+   "vsSmsRef": [
+    0.8819,
+    1.0,
+    0.9847,
+    0.9659,
+    0.9614,
+    0.9735
+   ],
+   "sound": 0.752,
+   "lag": 6,
+   "patches": 45,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "head-buster",
+   "name": "Head Buster (J)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "trace failed (4294967295): Game Gear head-buster (GameGear, Sega, Ntsc) | CPU Z80 | PPU GG | APU GG (SN76489)",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "home-alone",
+   "name": "Home Alone (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8715,
+    0.5215,
+    null,
+    null,
+    null,
+    null
+   ],
+   "vsSmsRef": [
+    0.9656,
+    0.8337,
+    null,
+    null,
+    null,
+    null
+   ],
+   "lag": 46,
+   "patches": 53,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "honoo-no-doukyuuji-dodge-danpei",
+   "name": "Honoo no Doukyuuji - Dodge Danpei (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.1188,
+    0.1174,
+    0.9978,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   "sound": 0.865,
+   "lag": 0,
+   "patches": 57,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "hook",
+   "name": "Hook (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.9782,
+    1.0,
+    1.0,
+    0.5935
+   ],
+   "vsSmsRef": [
+    0.9423,
+    0.1211,
+    0.4239,
+    0.8403,
+    0.0052,
+    0.4188
+   ],
+   "sound": 0.746,
+   "lag": 0,
+   "patches": 53,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "house-of-tarot",
+   "name": "House of Tarot (J) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.1601,
+    0.2381,
+    0.2385,
+    0.2336,
+    1.0,
+    0.7423
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.359,
+   "lag": 12,
+   "patches": 22,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "hurricanes",
+   "name": "Hurricanes (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.1619,
+    0.9585,
+    0.9625,
+    0.9585
+   ],
+   "vsSmsRef": [
+    0.9463,
+    0.8946,
+    1.0,
+    0.9493,
+    0.9493,
+    0.9493
+   ],
+   "sound": 0.513,
+   "lag": 0,
+   "patches": 145,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "hyokkori-hyoutan-jima",
+   "name": "Hyokkori Hyoutan Jima (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.9364,
+    0.9404
+   ],
+   "vsSmsRef": [
+    0.7478,
+    0.065,
+    0.0535,
+    0.0032,
+    0.0041,
+    0.0025
+   ],
+   "sound": 0.716,
+   "lag": 2,
+   "patches": 33,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "hyper-chou-pro-yakyuu-92",
+   "name": "Hyper Chou Pro Yakyuu '92 (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.4628,
+    0.9986,
+    0.9975
+   ],
+   "vsSmsRef": [
+    0.972,
+    0.9035,
+    0.9035,
+    1.0,
+    0.6672,
+    0.6816
+   ],
+   "lag": 30,
+   "patches": 89,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "ichidant-r-gg-puzzle-action",
+   "name": "Ichidant~R GG - Puzzle & Action (J)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.0407,
+    0.0407,
+    0.0008,
+    0.0,
+    0.0
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 75,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "in-the-wake-of-vampire",
+   "name": "In the Wake of Vampire (J)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "trace failed (3762504530): Game Gear in-the-wake-of-vampire (GameGear, Sega, Ntsc) | CPU Z80 | PPU GG | APU GG (SN76489)",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "incredible-crash-dummies-the",
+   "name": "Incredible Crash Dummies, The (U)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.1731,
+    0.1583,
+    0.0226,
+    0.0319,
+    0.0094
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0007,
+    0.0007,
+    0.0003,
+    0.0008,
+    0.0012
+   ],
+   "sound": 0.178,
+   "lag": 28,
+   "patches": 64,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "incredible-hulk-the",
+   "name": "Incredible Hulk, The (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.7105,
+    0.1151,
+    0.1327,
+    0.9225,
+    0.4668
+   ],
+   "vsSmsRef": [
+    0.9231,
+    0.9233,
+    0.9362,
+    0.8392,
+    0.4621,
+    0.426
+   ],
+   "sound": 0.283,
+   "lag": 0,
+   "patches": 154,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "indiana-jones-and-the-last-crusade",
+   "name": "Indiana Jones and the Last Crusade (U) [t1]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0746,
+    0.7347,
+    0.3586,
+    0.4701,
+    0.3725,
+    0.3221
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.7301,
+    0.5621,
+    0.5879,
+    0.5348,
+    0.5283
+   ],
+   "sound": 0.295,
+   "lag": 0,
+   "patches": 88,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "iron-man-x-o-manowar-in-heavy-metal",
+   "name": "Iron Man X-O Manowar in Heavy Metal (U)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8145,
+    0.0102,
+    0.7994,
+    0.4263,
+    0.4103,
+    0.4186
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0178,
+    1.0,
+    0.3371,
+    0.3371,
+    0.3371
+   ],
+   "sound": 0.552,
+   "lag": 18,
+   "patches": 89,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "itchy-scratchy-game-the",
+   "name": "Itchy & Scratchy Game, The (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "trace failed (4294967295): Game Gear itchy-scratchy-game-the (GameGear, Sega, Ntsc) | CPU Z80 | PPU GG | APU GG (SN76489)",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "j-league-soccer-dream-eleven",
+   "name": "J.League Soccer - Dream Eleven (J) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.023,
+    0.0434,
+    0.0434,
+    0.5883,
+    0.5842,
+    0.5842
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 140,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "james-bond-007-the-duel",
+   "name": "James Bond 007 - The Duel (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "trace failed (3762504530): Game Gear james-bond-007-the-duel (GameGear, Sega, Ntsc) | CPU Z80 | PPU GG | APU GG (SN76489)",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "james-pond-3-operation-starfish",
+   "name": "James Pond 3 - Operation Starfish (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.777,
+    0.9382,
+    0.9382,
+    0.1732,
+    0.1725
+   ],
+   "vsSmsRef": [
+    0.9122,
+    1.0,
+    1.0,
+    0.9682,
+    0.971,
+    1.0
+   ],
+   "sound": 0.496,
+   "lag": 0,
+   "patches": 81,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "james-pond-ii-codename-robocod",
+   "name": "James Pond II - Codename RoboCod (U) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9588,
+    0.9588,
+    0.974,
+    0.974,
+    0.974
+   ],
+   "vsSmsRef": [
+    0.8936,
+    0.6775,
+    0.6775,
+    0.6775,
+    0.6775,
+    0.6775
+   ],
+   "sound": 0.854,
+   "lag": 0,
+   "patches": 55,
+   "unhandled": 0,
+   "residual": 34,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "jang-pung-ii",
+   "name": "Jang Pung II (K) [S]",
+   "grade": "Black screen",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.8116,
+    0.8116,
+    0.8116,
+    0.8116,
+    0.8116,
+    0.8116
+   ],
+   "vsSmsRef": [
+    0.8116,
+    0.8116,
+    0.8116,
+    0.8116,
+    0.8116,
+    0.8116
+   ],
+   "sound": 1.0,
+   "lag": 0,
+   "patches": 13,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "jeopardy",
+   "name": "Jeopardy! (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.1737,
+    0.0,
+    0.9075,
+    0.0,
+    0.9618,
+    0.9618
+   ],
+   "vsSmsRef": [
+    0.8908,
+    0.0,
+    0.0371,
+    0.0,
+    0.0315,
+    0.0315
+   ],
+   "sound": -0.217,
+   "lag": 116,
+   "patches": 57,
+   "unhandled": 4,
+   "residual": 2,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "jeopardy-sports-edition",
+   "name": "Jeopardy! - Sports Edition (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "trace failed (3762504530): Game Gear jeopardy-sports-edition (GameGear, Sega, Ntsc) | CPU Z80 | PPU GG | APU GG (SN76489)",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "joe-montana-s-football",
+   "name": "Joe Montana's Football (JU) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "trace failed (3762504530): Game Gear joe-montana-s-football (GameGear, Sega, Ntsc) | CPU Z80 | PPU GG | APU GG (SN76489)",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "judge-dredd",
+   "name": "Judge Dredd (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "Traceback (most recent call last):",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "junction",
+   "name": "Junction (U)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.7695,
+    0.1451,
+    0.1464,
+    0.9385,
+    0.9799,
+    0.9566
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.6013,
+    0.6012,
+    0.6013,
+    0.6014,
+    0.6014
+   ],
+   "sound": 0.092,
+   "lag": 6,
+   "patches": 21,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "jungle-book-the",
+   "name": "Jungle Book, The (U) (Aug 1993) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.948,
+    0.6852,
+    1.0,
+    0.9629,
+    0.9566,
+    0.9546
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0836,
+    0.2823,
+    0.0681,
+    0.0681,
+    0.0681
+   ],
+   "sound": 0.044,
+   "lag": 4,
+   "patches": 182,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "jurassic-park",
+   "name": "Jurassic Park (UE) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "Traceback (most recent call last):",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "kaitou-saint-tail",
+   "name": "Kaitou Saint Tail (J)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.001,
+    0.1039,
+    0.1043,
+    0.5691,
+    0.5184,
+    0.5206
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 96,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "kawasaki-superbike-challenge",
+   "name": "Kawasaki Superbike Challenge (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "trace failed (3762504530): Game Gear kawasaki-superbike-challenge (GameGear, Sega, Ntsc) | CPU Z80 | PPU GG | APU GG (SN76489)",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "kenyuu-densetsu-yaiba",
+   "name": "Kenyuu Densetsu Yaiba (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9718,
+    0.0324,
+    0.0332,
+    1.0,
+    0.0394,
+    0.0267
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0336,
+    1.0,
+    0.0,
+    0.0454,
+    0.0494
+   ],
+   "sound": 0.204,
+   "lag": 4,
+   "patches": 87,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "kick-rush",
+   "name": "Kick & Rush (J)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.0,
+    0.0652,
+    0.0021,
+    0.0139,
+    0.0025,
+    0.0083
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 72,
+   "unhandled": 64,
+   "residual": 128,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "kinetic-connection",
+   "name": "Kinetic Connection (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.8005,
+    1.0,
+    1.0,
+    1.0,
+    0.9993
+   ],
+   "vsSmsRef": [
+    0.0341,
+    0.0383,
+    0.039,
+    0.0291,
+    0.0392,
+    0.0574
+   ],
+   "sound": 0.962,
+   "lag": 2,
+   "patches": 33,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "kishin-douji-zenki",
+   "name": "Kishin Douji Zenki (J)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    1.0,
+    0.9889,
+    0.9576,
+    0.0484,
+    0.0283,
+    0.0286
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": -0.071,
+   "lag": 0,
+   "patches": 19,
+   "unhandled": 63,
+   "residual": 126,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "klax",
+   "name": "Klax (U) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.9676,
+    0.9958,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.8922,
+    0.7442,
+    0.7119,
+    0.6778,
+    0.788,
+    0.7603
+   ],
+   "sound": 0.854,
+   "lag": 0,
+   "patches": 152,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "kuni-chan-no-game-tengoku",
+   "name": "Kuni-chan no Game Tengoku (J)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.1083,
+    0.3658,
+    0.3631,
+    0.3657,
+    0.6139,
+    0.3455
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 109,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "kuni-chan-no-game-tengoku-part-2",
+   "name": "Kuni-chan no Game Tengoku Part 2 (J)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "trace failed (3762504530): Game Gear kuni-chan-no-game-tengoku-part-2 (GameGear, Sega, Ntsc) | CPU Z80 | PPU GG | APU GG (SN76489)",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "last-action-hero",
+   "name": "Last Action Hero (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "trace failed (4294967295): Master System last-action-hero (Sms2, Sega, Ntsc) | CPU Z80 | PPU SMS | APU SMS (SN76489)",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "legend-of-illusion-starring-mickey-mouse",
+   "name": "Legend of Illusion Starring Mickey Mouse (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0458,
+    1.0,
+    0.0458,
+    1.0,
+    0.7352
+   ],
+   "vsSmsRef": [
+    0.9901,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.0939
+   ],
+   "sound": 0.628,
+   "lag": 4,
+   "patches": 129,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "lemmings",
+   "name": "Lemmings (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.4734,
+    0.9326,
+    0.2458,
+    0.404,
+    0.404
+   ],
+   "vsSmsRef": [
+    0.8932,
+    0.5359,
+    0.5702,
+    0.3756,
+    0.3756,
+    0.3756
+   ],
+   "sound": 0.483,
+   "lag": 2,
+   "patches": 129,
+   "unhandled": 0,
+   "residual": 4,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "lion-king-the",
+   "name": "Lion King, The (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8994,
+    0.1715,
+    0.7053,
+    0.1632,
+    0.3425,
+    0.4066
+   ],
+   "vsSmsRef": [
+    0.023,
+    0.5005,
+    0.0,
+    0.0596,
+    0.0595,
+    0.0595
+   ],
+   "sound": -0.044,
+   "lag": 6,
+   "patches": 129,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "lost-world-the-jurassic-park",
+   "name": "Lost World, The - Jurassic Park (U)",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9952,
+    1.0,
+    0.9982,
+    0.9982,
+    0.9982
+   ],
+   "vsSmsRef": [
+    0.3722,
+    0.0,
+    0.9804,
+    0.014,
+    0.014,
+    0.014
+   ],
+   "sound": 0.925,
+   "lag": 4,
+   "patches": 236,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "lucky-dime-caper-the-starring-donald-duck",
+   "name": "Lucky Dime Caper, The Starring Donald Duck (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.048,
+    0.033,
+    0.4275,
+    0.3976,
+    0.9894
+   ],
+   "vsSmsRef": [
+    0.986,
+    0.0,
+    0.221,
+    0.0013,
+    0.0621,
+    0.0366
+   ],
+   "sound": 0.033,
+   "lag": 20,
+   "patches": 14,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "lunar-sanposuru-gakuen",
+   "name": "Lunar - Sanposuru Gakuen (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.7228,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0003,
+    0.0,
+    0.0003,
+    0.0003,
+    0.6132
+   ],
+   "sound": 0.339,
+   "lag": 14,
+   "patches": 83,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "madden-nfl-95",
+   "name": "Madden NFL '95 (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "trace failed (3762504530): Game Gear madden-nfl-95 (GameGear, Sega, Ntsc) | CPU Z80 | PPU GG | APU GG (SN76489)",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "madden-nfl-96",
+   "name": "Madden NFL '96 (U) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.9996,
+    0.985,
+    0.9841
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    0.0,
+    0.0219,
+    0.022,
+    0.0221
+   ],
+   "sound": 0.818,
+   "lag": 0,
+   "patches": 119,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "madoh-monogatari-iii-kyuukyoku-joo-sama",
+   "name": "Madoh Monogatari III - Kyuukyoku Joo-sama [v1] (JP)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.1166,
+    0.4263,
+    0.4926,
+    0.4317,
+    0.4926,
+    0.4317
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": -0.169,
+   "lag": 0,
+   "patches": 42,
+   "unhandled": 31,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "madou-monogatari-a-doki-doki-bake-shon",
+   "name": "Madou Monogatari A - Doki Doki - Bake Shon (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9997,
+    0.1078,
+    0.0564,
+    0.9439,
+    0.8516,
+    0.904
+   ],
+   "vsSmsRef": [
+    0.9996,
+    1.0,
+    0.7609,
+    0.7607,
+    0.7609,
+    0.7612
+   ],
+   "sound": 0.103,
+   "lag": 28,
+   "patches": 136,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "madou-monogatari-i",
+   "name": "Madou Monogatari I (J)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "Traceback (most recent call last):",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "madou-monogatari-ii-aruru-16-sai",
+   "name": "Madou Monogatari II - Aruru 16-sai (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.8711,
+    0.7972,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.001,
+    0.049,
+    0.0012,
+    0.9889,
+    0.836,
+    0.049
+   ],
+   "sound": 0.657,
+   "lag": 2,
+   "patches": 88,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "madou-monogatari-iii-kyukyoku-joo-sama",
+   "name": "Madou Monogatari III - Kyukyoku Joo-sama (J)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.1166,
+    0.4263,
+    0.4926,
+    0.4317,
+    0.4926,
+    0.4317
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": -0.091,
+   "lag": 0,
+   "patches": 42,
+   "unhandled": 31,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "magic-knight-rayearth",
+   "name": "Magic Knight Rayearth (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9962,
+    0.9755,
+    0.9763,
+    0.6771,
+    0.0147,
+    0.0079
+   ],
+   "vsSmsRef": [
+    0.8424,
+    0.8411,
+    0.8432,
+    1.0,
+    0.9027,
+    0.9027
+   ],
+   "sound": 0.361,
+   "lag": 16,
+   "patches": 86,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "magic-knight-rayearth-2-making-of-magic-knight",
+   "name": "Magic Knight Rayearth 2 - Making of Magic Knight (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0036,
+    0.1451,
+    0.1451,
+    0.1451,
+    0.1451,
+    0.1451
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0402,
+    0.0402,
+    0.0402,
+    0.0402,
+    0.0402
+   ],
+   "sound": 0.703,
+   "lag": 20,
+   "patches": 83,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "magical-puzzle-popils",
+   "name": "Magical Puzzle Popils (J)",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9958,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0041,
+    0.2038,
+    0.2144,
+    0.2105,
+    0.2543,
+    0.0
+   ],
+   "sound": 0.814,
+   "lag": 0,
+   "patches": 31,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "magical-taruruuto-kun",
+   "name": "Magical Taruruuto-kun (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.1081,
+    0.9013,
+    0.1161,
+    0.1158,
+    0.8285
+   ],
+   "vsSmsRef": [
+    0.0175,
+    0.9249,
+    0.5585,
+    0.9281,
+    0.9249,
+    0.5585
+   ],
+   "sound": 0.006,
+   "lag": 0,
+   "patches": 256,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "majesco-game-gear-bios",
+   "name": "Majesco Game Gear BIOS (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "the game maps other banks into slot 0: the runtime has nowhere safe to live",
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0,
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "majors-pro-baseball-the",
+   "name": "Majors Pro Baseball, The (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.7471,
+    0.7471,
+    0.7374,
+    0.7374,
+    0.7374
+   ],
+   "vsSmsRef": [
+    0.7269,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 22,
+   "patches": 26,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "mappy",
+   "name": "Mappy (J)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "no room for the runtime in always-mapped ROM (far stub pieces [64, 40, 16, 9], 129 bytes; free runs [29, 20, 19, 17])",
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0,
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "marble-madness",
+   "name": "Marble Madness (U)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.3958,
+    0.9969,
+    0.1898,
+    0.1948,
+    0.1953,
+    0.1956
+   ],
+   "vsSmsRef": [
+    0.3399,
+    0.2801,
+    0.0954,
+    0.1021,
+    0.0764,
+    0.0765
+   ],
+   "sound": -0.232,
+   "lag": 24,
+   "patches": 62,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "marko-s-magic-football",
+   "name": "Marko's Magic Football (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9349,
+    1.0,
+    1.0,
+    0.4353,
+    0.0564,
+    0.2331
+   ],
+   "vsSmsRef": [
+    0.9618,
+    0.0227,
+    0.8804,
+    0.7046,
+    0.7024,
+    0.7001
+   ],
+   "sound": 0.257,
+   "lag": 0,
+   "patches": 109,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "megaman",
+   "name": "Megaman (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.9998,
+    0.9998,
+    0.9998
+   ],
+   "vsSmsRef": [
+    0.9172,
+    0.0198,
+    0.9704,
+    0.9104,
+    0.928,
+    0.0227
+   ],
+   "sound": 0.76,
+   "lag": 14,
+   "patches": 209,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "megami-tensei-gaiden-last-bible",
+   "name": "Megami Tensei Gaiden - Last Bible (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.3894,
+    0.0,
+    0.4117,
+    0.9957,
+    0.9585
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.381,
+   "lag": 0,
+   "patches": 117,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "megami-tensei-gaiden-last-bible-special",
+   "name": "Megami Tensei Gaiden - Last Bible Special (J)",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.9994,
+    1.0,
+    1.0,
+    0.9994
+   ],
+   "vsSmsRef": [
+    0.8576,
+    0.8722,
+    0.8722,
+    0.8722,
+    0.894,
+    0.8719
+   ],
+   "sound": 0.883,
+   "lag": 12,
+   "patches": 117,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "mick-mack-as-the-global-gladiators",
+   "name": "Mick & Mack as the Global Gladiators (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    1.0,
+    1.0,
+    0.6223,
+    0.5621,
+    0.3066,
+    0.0728
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    0.0,
+    0.0586,
+    0.0803,
+    0.1234
+   ],
+   "sound": 0.326,
+   "lag": 0,
+   "patches": 71,
+   "unhandled": 2,
+   "residual": 2,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "mickey-s-ultimate-challenge",
+   "name": "Mickey's Ultimate Challenge (U)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.9812,
+    0.9812,
+    0.9812
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.71,
+   "lag": 12,
+   "patches": 28,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "micro-machines-2-turbo-tournament",
+   "name": "Micro Machines 2 - Turbo Tournament (E)",
+   "grade": "Glitchy",
+   "path": "sms",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.9688,
+    0.9688,
+    0.9688,
+    0.9688,
+    0.9688,
+    0.9688
+   ],
+   "vsSmsRef": [
+    0.9688,
+    0.9688,
+    0.9688,
+    0.9688,
+    0.9688,
+    0.9688
+   ],
+   "sound": 0.585,
+   "lag": 0,
+   "patches": 289,
+   "unhandled": 2,
+   "residual": 11,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "mighty-morphin-power-rangers",
+   "name": "Mighty Morphin Power Rangers (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "Traceback (most recent call last):",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "mighty-morphin-power-rangers-the-movie",
+   "name": "Mighty Morphin Power Rangers - The Movie (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.0384,
+    0.6776,
+    0.5958,
+    0.6572,
+    0.4846,
+    0.2263
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    0.8337,
+    0.9467,
+    0.8252,
+    1.0
+   ],
+   "sound": 0.604,
+   "lag": 0,
+   "patches": 106,
+   "unhandled": 64,
+   "residual": 128,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "mlbpa-baseball",
+   "name": "MLBPA Baseball (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.6821,
+    0.6877,
+    0.0342
+   ],
+   "vsSmsRef": [
+    0.0044,
+    0.3118,
+    0.0185,
+    0.0265,
+    0.0261,
+    0.0264
+   ],
+   "sound": 0.301,
+   "lag": 4,
+   "patches": 54,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "mod2psg-v1-0-secret-of-monkey-island",
+   "name": "MOD2PSG V1.0 - Secret of Monkey Island (PD)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "already an SMS game by trace (no GG-only port use, no colour RAM writes): copied unchanged",
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0,
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "mod2psg-v1-1-secret-of-monkey-island",
+   "name": "MOD2PSG V1.1 - Secret of Monkey Island (PD)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "already an SMS game by trace (no GG-only port use, no colour RAM writes): copied unchanged",
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0,
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "mod2psg-v1-2-secret-of-monkey-island",
+   "name": "MOD2PSG V1.2 - Secret of Monkey Island (PD)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "already an SMS game by trace (no GG-only port use, no colour RAM writes): copied unchanged",
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0,
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "mod2psg-v1-3-secret-of-monkey-island",
+   "name": "MOD2PSG V1.3 - Secret of Monkey Island (PD)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "already an SMS game by trace (no GG-only port use, no colour RAM writes): copied unchanged",
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0,
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "mod2psg-v1-3-shadow-of-the-beast",
+   "name": "MOD2PSG V1.3 - Shadow of the Beast (PD)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "already an SMS game by trace (no GG-only port use, no colour RAM writes): copied unchanged",
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0,
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "mod2psg-v1-5-secret-of-monkey-island",
+   "name": "MOD2PSG V1.5 - Secret of Monkey Island (PD)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "already an SMS game by trace (no GG-only port use, no colour RAM writes): copied unchanged",
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0,
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "mod2psg-v1-5-shadow-of-the-beast",
+   "name": "MOD2PSG V1.5 - Shadow of the Beast (PD)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "already an SMS game by trace (no GG-only port use, no colour RAM writes): copied unchanged",
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0,
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "mod2psg-v1-6-secret-of-monkey-island",
+   "name": "MOD2PSG V1.6 - Secret of Monkey Island (PD)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": -0.448,
+   "lag": 0,
+   "patches": 4,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "mod2psg-v1-6-shadow-of-the-beast",
+   "name": "MOD2PSG V1.6 - Shadow of the Beast (PD)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": -0.505,
+   "lag": 0,
+   "patches": 4,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "mod2psg-v1-7-secret-of-monkey-island",
+   "name": "MOD2PSG V1.7 - Secret of Monkey Island (PD)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": -0.376,
+   "lag": 0,
+   "patches": 4,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "mod2psg-v1-7-shadow-of-the-beast",
+   "name": "MOD2PSG V1.7 - Shadow of the Beast (PD)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": -0.52,
+   "lag": 0,
+   "patches": 4,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "mod2psg-v1-8-secret-of-monkey-island",
+   "name": "MOD2PSG V1.8 - Secret of Monkey Island (PD)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": -0.271,
+   "lag": 0,
+   "patches": 4,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "mod2psg-v1-8-shadow-of-the-beast",
+   "name": "MOD2PSG V1.8 - Shadow of the Beast (PD)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": -0.32,
+   "lag": 0,
+   "patches": 4,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "moldorian",
+   "name": "Moldorian (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9992,
+    0.2216,
+    0.2216,
+    0.2218,
+    0.9905,
+    0.9923
+   ],
+   "vsSmsRef": [
+    0.0017,
+    0.1057,
+    0.1054,
+    0.1239,
+    0.1071,
+    0.1246
+   ],
+   "sound": 0.493,
+   "lag": 18,
+   "patches": 20,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "monster-truck-wars",
+   "name": "Monster Truck Wars (U) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.8874,
+    0.9107,
+    0.1187,
+    0.0898,
+    0.139,
+    0.1321
+   ],
+   "sound": 0.8,
+   "lag": 0,
+   "patches": 142,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "monster-world-ii-dragon-no-wana",
+   "name": "Monster World II - Dragon no Wana (J)",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.998,
+    0.9988,
+    0.9961,
+    0.9966,
+    0.9982
+   ],
+   "vsSmsRef": [
+    0.3297,
+    0.0359,
+    0.036,
+    0.0361,
+    0.0359,
+    0.0361
+   ],
+   "sound": 0.945,
+   "lag": 2,
+   "patches": 35,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "mortal-kombat",
+   "name": "Mortal Kombat (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.5689,
+    1.0,
+    1.0,
+    1.0,
+    0.7289
+   ],
+   "vsSmsRef": [
+    0.8901,
+    1.0,
+    0.9252,
+    0.9252,
+    0.9442,
+    0.7552
+   ],
+   "sound": 1.0,
+   "lag": 24,
+   "patches": 209,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "mortal-kombat-3",
+   "name": "Mortal Kombat 3 (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.1266,
+    0.7727,
+    0.9296,
+    0.4636,
+    0.8938
+   ],
+   "vsSmsRef": [
+    0.9291,
+    0.8724,
+    0.8701,
+    0.9096,
+    0.9041,
+    0.8984
+   ],
+   "sound": 0.666,
+   "lag": 50,
+   "patches": 217,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "mortal-kombat-ii",
+   "name": "Mortal Kombat II (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.5689,
+    0.8092,
+    0.969,
+    1.0,
+    0.4019
+   ],
+   "vsSmsRef": [
+    0.9149,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 50,
+   "patches": 232,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "ms-pac-man",
+   "name": "Ms. Pac-Man (U) [!]",
+   "grade": "Glitchy",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.9645,
+    0.9231,
+    0.8913,
+    0.9231,
+    0.9209,
+    0.8804
+   ],
+   "vsSmsRef": [
+    0.9645,
+    0.9231,
+    0.8913,
+    0.9231,
+    0.9209,
+    0.8804
+   ],
+   "sound": 0.0,
+   "lag": 2,
+   "patches": 125,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "nazo-puyo",
+   "name": "Nazo Puyo (J) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.999,
+    0.9955,
+    0.9953,
+    0.9953
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.5816,
+    0.6758,
+    0.6758,
+    0.6702,
+    0.675
+   ],
+   "sound": 0.856,
+   "lag": 4,
+   "patches": 105,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "nazo-puyo-2",
+   "name": "Nazo Puyo 2 (J) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.9912,
+    0.9917
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.585,
+    0.6847,
+    0.6847,
+    0.6789,
+    0.6784
+   ],
+   "sound": 0.8,
+   "lag": 6,
+   "patches": 137,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "nazo-puyo-aruru-no-ru",
+   "name": "Nazo Puyo Aruru no Ru (J) (Editor Prototype)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8803,
+    0.6295,
+    0.017,
+    0.5263,
+    0.4894,
+    0.5055
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.2005,
+    0.0001,
+    0.2004,
+    0.1416,
+    0.134
+   ],
+   "sound": 0.218,
+   "lag": 30,
+   "patches": 68,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "nba-action",
+   "name": "NBA Action (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0206,
+    0.3257,
+    0.1174,
+    0.0454,
+    0.0454,
+    0.0447
+   ],
+   "vsSmsRef": [
+    0.8447,
+    0.8577,
+    0.8352,
+    0.8351,
+    0.8351,
+    0.8351
+   ],
+   "sound": 0.282,
+   "lag": 46,
+   "patches": 147,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "nba-jam",
+   "name": "NBA Jam (U) (V1.1) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.5696,
+    0.0836,
+    0.6863,
+    0.6876
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0,
+    0.7899,
+    1.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.821,
+   "lag": 24,
+   "patches": 162,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "nba-jam-tournament-edition",
+   "name": "NBA Jam Tournament Edition (U) [!]",
+   "grade": "Glitchy",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.9999,
+    0.8144,
+    1.0,
+    0.0068,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.9999,
+    0.8144,
+    1.0,
+    0.0068,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 1348,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "neko-daisuki",
+   "name": "Neko Daisuki! (J)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.2875,
+    0.2877,
+    0.2875,
+    0.0892,
+    0.085
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 39,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "nfl-95",
+   "name": "NFL '95 (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "no room for the runtime in always-mapped ROM (far stub pieces [64, 40, 16, 9], 129 bytes; free runs [])",
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0,
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "nfl-quarterback-club",
+   "name": "NFL Quarterback Club (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.1297,
+    0.7736,
+    1.0,
+    0.9943,
+    1.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0265,
+    0.0622,
+    0.0059,
+    0.0863,
+    0.0059
+   ],
+   "sound": 0.8,
+   "lag": 0,
+   "patches": 102,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "nfl-quarterback-club-96",
+   "name": "NFL Quarterback Club '96 (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "Traceback (most recent call last):",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "nhl-all-star-hockey",
+   "name": "NHL All-Star Hockey (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    1.0,
+    1.0,
+    0.107,
+    0.0066,
+    0.0188,
+    0.0334
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.331,
+   "lag": 16,
+   "patches": 48,
+   "unhandled": 2,
+   "residual": 4,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "nhl-hockey",
+   "name": "NHL Hockey (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8333,
+    1.0,
+    0.8788,
+    0.0405,
+    0.3398,
+    0.3496
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.8932,
+    0.8734,
+    1.0,
+    0.2696,
+    0.2763
+   ],
+   "sound": 0.238,
+   "lag": 18,
+   "patches": 43,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "ninja-gaiden",
+   "name": "Ninja Gaiden (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9158,
+    1.0,
+    0.5648,
+    0.5568,
+    0.5649,
+    0.5648
+   ],
+   "vsSmsRef": [
+    0.8393,
+    0.9559,
+    0.3053,
+    0.3053,
+    0.3053,
+    0.3053
+   ],
+   "sound": 0.336,
+   "lag": 16,
+   "patches": 102,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "ninku",
+   "name": "Ninku (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.0595,
+    0.0009,
+    0.001,
+    0.2662,
+    0.2571,
+    0.0264
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0,
+    0.9592,
+    0.9586,
+    0.9091,
+    0.0738
+   ],
+   "sound": 0.138,
+   "lag": 12,
+   "patches": 57,
+   "unhandled": 63,
+   "residual": 126,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "ninku-2-tenkuryu-e-no-michi",
+   "name": "Ninku 2 - Tenkuryu-e no Michi (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.7411,
+    1.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.1182,
+    0.1182,
+    1.0,
+    1.0,
+    0.766
+   ],
+   "sound": 0.598,
+   "lag": 0,
+   "patches": 136,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "ninku-gaiden-hiroyuki-daikatsugeki",
+   "name": "Ninku Gaiden - Hiroyuki Daikatsugeki (J)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "Traceback (most recent call last):",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "nomo-s-world-series-baseball",
+   "name": "Nomo's World Series Baseball (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.3888,
+    0.7342,
+    0.9566,
+    0.0116,
+    0.0148,
+    0.0148
+   ],
+   "sound": 0.531,
+   "lag": 6,
+   "patches": 47,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "olympic-gold-barcelona-92",
+   "name": "Olympic Gold - Barcelona '92 (U) (M8) [S][!]",
+   "grade": "Perfect",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0399,
+    0.5772,
+    0.0043,
+    0.0002,
+    0.0312,
+    0.0064
+   ],
+   "sound": 0.955,
+   "lag": 0,
+   "patches": 56,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "ottifants-the",
+   "name": "Ottifants, The (E)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.2072,
+    0.4914,
+    0.5184,
+    0.2471,
+    0.1052
+   ],
+   "vsSmsRef": [
+    0.8873,
+    0.3503,
+    0.3387,
+    0.2453,
+    0.3216,
+    0.3654
+   ],
+   "sound": 0.713,
+   "lag": 2,
+   "patches": 64,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "outrun",
+   "name": "OutRun (JU)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.0227,
+    0.0,
+    0.0406,
+    0.0414,
+    0.0434,
+    0.0241
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.9171,
+    0.7764,
+    0.7765,
+    0.7765,
+    0.776
+   ],
+   "sound": 0.558,
+   "lag": 0,
+   "patches": 74,
+   "unhandled": 64,
+   "residual": 128,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "outrun-europa",
+   "name": "OutRun Europa (U) [S][!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8658,
+    0.7368,
+    0.8956,
+    0.6477,
+    0.6779,
+    0.0678
+   ],
+   "vsSmsRef": [
+    0.868,
+    0.2451,
+    0.0905,
+    0.0917,
+    0.0927,
+    0.0994
+   ],
+   "sound": 0.505,
+   "lag": 0,
+   "patches": 9,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "pac-attack",
+   "name": "Pac-Attack (U) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8914,
+    0.8065,
+    0.2274,
+    0.228,
+    0.2261,
+    0.2259
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 106,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "pac-in-time",
+   "name": "Pac-In-Time (Prototype) [!]",
+   "grade": "Black screen",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.9238,
+    0.1078,
+    0.2334,
+    0.5876,
+    0.49,
+    0.421
+   ],
+   "vsSmsRef": [
+    0.9238,
+    0.1078,
+    0.2334,
+    0.5876,
+    0.49,
+    0.421
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 209,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "panzer-dragoon-mini",
+   "name": "Panzer Dragoon Mini (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    1.0,
+    1.0,
+    0.8293,
+    0.0033,
+    0.9727
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.4858,
+    0.4858,
+    1.0,
+    0.0015,
+    0.0015
+   ],
+   "sound": 0.668,
+   "lag": 60,
+   "patches": 104,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "paperboy",
+   "name": "Paperboy (U) [t1]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0102,
+    0.0102,
+    0.0188,
+    0.0188,
+    0.0188
+   ],
+   "vsSmsRef": [
+    0.6109,
+    0.0448,
+    0.0441,
+    0.4915,
+    0.5548,
+    0.4916
+   ],
+   "sound": 0.891,
+   "lag": 0,
+   "patches": 59,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "paperboy-2",
+   "name": "Paperboy 2 (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.1186,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.9092,
+    0.0228,
+    0.025,
+    0.025,
+    0.025,
+    0.0253
+   ],
+   "sound": 0.774,
+   "lag": 120,
+   "patches": 25,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "pengo",
+   "name": "Pengo (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9961,
+    1.0,
+    0.9618,
+    0.964,
+    0.9623,
+    0.969
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.378,
+   "lag": 4,
+   "patches": 20,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "pet-club-inu-daisuki",
+   "name": "Pet Club Inu Daisuki! (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.0,
+    0.1651,
+    0.1654,
+    0.1657,
+    0.1662,
+    0.166
+   ],
+   "vsSmsRef": [
+    0.0482,
+    0.7034,
+    0.7038,
+    0.7018,
+    0.7032,
+    0.7039
+   ],
+   "sound": 0.959,
+   "lag": 0,
+   "patches": 52,
+   "unhandled": 64,
+   "residual": 128,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "pete-sampras-tennis",
+   "name": "Pete Sampras Tennis (E) [!]",
+   "grade": "Black screen",
+   "path": "sms",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.038,
+    0.9688,
+    0.9688,
+    0.9688,
+    0.9688,
+    0.9688
+   ],
+   "vsSmsRef": [
+    0.038,
+    0.9688,
+    0.9688,
+    0.9688,
+    0.9688,
+    0.9688
+   ],
+   "sound": 0.999,
+   "lag": 0,
+   "patches": 401,
+   "unhandled": 2,
+   "residual": 11,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "pga-tour-96",
+   "name": "PGA Tour 96 (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8759,
+    1.0,
+    1.0,
+    0.8094,
+    0.7677,
+    0.9774
+   ],
+   "vsSmsRef": [
+    0.9418,
+    0.0979,
+    0.0,
+    0.0,
+    0.0018,
+    0.0073
+   ],
+   "sound": 0.352,
+   "lag": 46,
+   "patches": 27,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "pga-tour-golf",
+   "name": "PGA Tour Golf (U) (V1.0) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.0049,
+    0.9659,
+    0.9589,
+    0.9605
+   ],
+   "vsSmsRef": [
+    0.1071,
+    0.0546,
+    0.04,
+    0.04,
+    0.04,
+    0.04
+   ],
+   "sound": 0.677,
+   "lag": 0,
+   "patches": 120,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "pga-tour-golf-ii",
+   "name": "PGA Tour Golf II (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.1458,
+    0.1442,
+    0.0431,
+    0.0586,
+    0.0586
+   ],
+   "vsSmsRef": [
+    0.8342,
+    0.1812,
+    0.181,
+    0.0043,
+    0.0255,
+    0.0255
+   ],
+   "sound": 0.271,
+   "lag": 22,
+   "patches": 52,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "phantasy-star-adventure",
+   "name": "Phantasy Star Adventure (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0026,
+    0.0502,
+    0.5968,
+    0.7276,
+    0.5789,
+    0.5969
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0097,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.228,
+   "lag": 2,
+   "patches": 37,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "phantasy-star-gaiden",
+   "name": "Phantasy Star Gaiden (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9945,
+    1.0,
+    1.0,
+    0.9652,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.9696,
+    0.8845,
+    0.8845,
+    0.7447,
+    0.7447,
+    0.7447
+   ],
+   "sound": 0.334,
+   "lag": 16,
+   "patches": 32,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "phantom-2040",
+   "name": "Phantom 2040 (U) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.9946,
+    0.9942
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    0.0,
+    0.7683,
+    0.2158,
+    0.2349
+   ],
+   "sound": 0.8,
+   "lag": 0,
+   "patches": 75,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "pinball-dreams",
+   "name": "Pinball Dreams (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.9994,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.9423,
+    0.0758,
+    0.6917,
+    0.0223,
+    0.0306,
+    0.0304
+   ],
+   "sound": 0.67,
+   "lag": 6,
+   "patches": 48,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "pocket-jansou",
+   "name": "Pocket Jansou (J)",
+   "grade": "Boots only",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.7651,
+    0.7072,
+    0.7028,
+    0.0003,
+    0.0003,
+    0.0003
+   ],
+   "vsSmsRef": [
+    0.986,
+    0.986,
+    0.986,
+    0.986,
+    0.986,
+    0.986
+   ],
+   "sound": 0.0,
+   "lag": 118,
+   "patches": 54,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "pokemon-legends",
+   "name": "Pokemon Legends (Eternal Legend Hack)",
+   "grade": "Glitchy",
+   "path": "sms",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    1.0,
+    0.9574,
+    0.9428,
+    0.5276,
+    0.7353,
+    0.6655
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.9574,
+    0.9428,
+    0.5276,
+    0.7353,
+    0.6655
+   ],
+   "sound": 0.207,
+   "lag": 0,
+   "patches": 129,
+   "unhandled": 1,
+   "residual": 2,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "poker-faced-paul-s-blackjack",
+   "name": "Poker Faced Paul's Blackjack (U) [!]",
+   "grade": "Perfect",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.9111,
+    0.3004,
+    0.0356,
+    0.0358,
+    0.0222,
+    0.0148
+   ],
+   "sound": 0.975,
+   "lag": 0,
+   "patches": 74,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "poker-faced-paul-s-gin",
+   "name": "Poker Faced Paul's Gin (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0349,
+    0.9302,
+    0.4731,
+    0.8953,
+    0.8953,
+    0.8105
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0026,
+    0.0,
+    0.0137,
+    0.0137,
+    0.0158
+   ],
+   "sound": 0.296,
+   "lag": 22,
+   "patches": 42,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "poker-faced-paul-s-solitaire",
+   "name": "Poker Faced Paul's Solitaire (U) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9934,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.9111,
+    0.5561,
+    0.0235,
+    0.023,
+    0.0216,
+    0.1569
+   ],
+   "sound": 0.963,
+   "lag": 0,
+   "patches": 67,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "pop-breaker",
+   "name": "Pop Breaker (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.4381,
+    0.4381,
+    1.0,
+    0.4381,
+    0.4354,
+    0.4354
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    0.7366,
+    1.0,
+    0.9923,
+    0.9923
+   ],
+   "sound": 0.224,
+   "lag": 26,
+   "patches": 218,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "popeye-s-beach-volleyball",
+   "name": "Popeye's Beach Volleyball (J)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.1237
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 117,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "power-strike-ii",
+   "name": "Power Strike II (U)",
+   "grade": "Boots only",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0253,
+    0.0017,
+    0.0045,
+    0.0017,
+    0.0057,
+    0.0
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 118,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "predator-2",
+   "name": "Predator 2 (U) [S][!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.2579,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.8317,
+    0.0691,
+    0.0691,
+    1.0,
+    0.0461,
+    0.5777
+   ],
+   "sound": 0.817,
+   "lag": 2,
+   "patches": 60,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "primal-rage",
+   "name": "Primal Rage (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.7273,
+    0.0863,
+    0.1132,
+    0.167,
+    0.179
+   ],
+   "vsSmsRef": [
+    0.9666,
+    0.8757,
+    0.8757,
+    0.8757,
+    0.8757,
+    0.8757
+   ],
+   "sound": 0.482,
+   "lag": 0,
+   "patches": 148,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "prince-of-persia",
+   "name": "Prince of Persia (U) [S][!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.988,
+    1.0,
+    0.9388,
+    0.9388,
+    1.0,
+    0.988
+   ],
+   "vsSmsRef": [
+    0.7879,
+    0.3829,
+    0.3639,
+    0.3636,
+    0.3812,
+    0.3629
+   ],
+   "sound": 0.864,
+   "lag": 4,
+   "patches": 125,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "pro-yakyuu-91-the",
+   "name": "Pro Yakyuu '91, The (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.8742,
+    0.9592,
+    0.9093,
+    0.8812
+   ],
+   "vsSmsRef": [
+    0.0312,
+    0.0312,
+    0.0,
+    0.0,
+    0.2915,
+    0.2904
+   ],
+   "sound": 0.628,
+   "lag": 38,
+   "patches": 63,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "pro-yakyuu-gg-league-94",
+   "name": "Pro Yakyuu GG League '94 (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9743,
+    1.0,
+    1.0,
+    1.0,
+    0.998,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0613,
+    0.0305,
+    0.0175,
+    0.1003,
+    0.1026,
+    0.1026
+   ],
+   "sound": 0.613,
+   "lag": 6,
+   "patches": 49,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "psychic-world",
+   "name": "Psychic World (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0,
+    0.0001,
+    0.0001,
+    0.0001,
+    0.0201
+   ],
+   "vsSmsRef": [
+    0.0005,
+    0.0,
+    0.0003,
+    0.0003,
+    0.0003,
+    0.0257
+   ],
+   "sound": 0.376,
+   "lag": 22,
+   "patches": 95,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "putt-putter",
+   "name": "Putt & Putter (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.4766,
+    0.9626,
+    0.5661,
+    1.0,
+    0.6263,
+    0.7271
+   ],
+   "vsSmsRef": [
+    0.4802,
+    0.4802,
+    0.6819,
+    0.4801,
+    0.3841,
+    0.5879
+   ],
+   "sound": 0.445,
+   "lag": 4,
+   "patches": 76,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "puyo-puyo-2",
+   "name": "Puyo Puyo 2 (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.6917,
+    0.6908,
+    0.6904,
+    0.6762,
+    0.6709
+   ],
+   "vsSmsRef": [
+    0.0263,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.358,
+   "lag": 38,
+   "patches": 78,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "puzlow-kids",
+   "name": "Puzlow Kids (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.9776,
+    0.9539,
+    0.9256,
+    0.9033
+   ],
+   "vsSmsRef": [
+    0.0984,
+    1.0,
+    0.6782,
+    0.6721,
+    0.6641,
+    0.6556
+   ],
+   "sound": 0.66,
+   "lag": 0,
+   "patches": 105,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "puzzle-bobble",
+   "name": "Puzzle Bobble (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0155,
+    0.0586,
+    0.0002,
+    0.0002,
+    1.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0,
+    1.0,
+    1.0,
+    1.0,
+    0.0313
+   ],
+   "sound": -0.027,
+   "lag": 72,
+   "patches": 35,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "quiz-gear-fight-the",
+   "name": "Quiz Gear Fight!!, The (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0285,
+    1.0,
+    1.0,
+    1.0,
+    0.042,
+    0.9653
+   ],
+   "vsSmsRef": [
+    0.4245,
+    0.0481,
+    0.0509,
+    0.2773,
+    1.0,
+    0.0979
+   ],
+   "sound": 0.623,
+   "lag": 10,
+   "patches": 33,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "r-b-i-baseball-94",
+   "name": "R.B.I. Baseball '94 (U) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9995,
+    0.998,
+    0.9989,
+    1.0,
+    0.9943,
+    0.9991
+   ],
+   "vsSmsRef": [
+    0.9075,
+    0.9164,
+    0.9184,
+    0.9036,
+    0.9088,
+    0.9088
+   ],
+   "sound": 0.938,
+   "lag": 6,
+   "patches": 55,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "r-c-grand-prix",
+   "name": "R.C. Grand Prix (U) [S][!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.4568,
+    0.0356,
+    0.0356,
+    0.0356,
+    0.0362
+   ],
+   "sound": 0.705,
+   "lag": 0,
+   "patches": 53,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "rastan-saga",
+   "name": "Rastan Saga (J) [S]",
+   "grade": "Perfect",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0312,
+    0.0312,
+    0.0312,
+    0.0312,
+    0.0312,
+    0.0312
+   ],
+   "sound": 0.953,
+   "lag": 0,
+   "patches": 84,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "ren-stimpy-quest-for-the-shaven-yak-the",
+   "name": "Ren & Stimpy - Quest for the Shaven Yak, The (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9984,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.8009
+   ],
+   "vsSmsRef": [
+    0.9129,
+    0.5185,
+    0.5185,
+    0.0002,
+    1.0,
+    0.0114
+   ],
+   "sound": 0.722,
+   "lag": 0,
+   "patches": 47,
+   "unhandled": 0,
+   "residual": 1,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "revenge-of-drancon",
+   "name": "Revenge of Drancon (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9706,
+    0.4883,
+    0.4724,
+    0.3637,
+    0.9706
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": -0.234,
+   "lag": 4,
+   "patches": 39,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "riddick-bowe-boxing",
+   "name": "Riddick Bowe Boxing (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0129,
+    1.0,
+    1.0,
+    0.4798,
+    0.4798
+   ],
+   "vsSmsRef": [
+    0.0858,
+    0.5907,
+    0.5907,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.437,
+   "lag": 12,
+   "patches": 93,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "rise-of-the-robots",
+   "name": "Rise of the Robots (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.9828,
+    0.8792
+   ],
+   "vsSmsRef": [
+    0.8906,
+    0.8789,
+    0.6447,
+    0.8867,
+    0.7439,
+    0.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 65,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "road-rash",
+   "name": "Road Rash (U)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8823,
+    0.7152,
+    0.2426,
+    0.2063,
+    0.1183,
+    0.1351
+   ],
+   "vsSmsRef": [
+    0.9708,
+    0.9063,
+    0.1526,
+    0.5522,
+    0.4597,
+    0.2788
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 199,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "robocop-3",
+   "name": "Robocop 3 (U) [!]",
+   "grade": "Black screen",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.75,
+    0.89,
+    0.9194,
+    0.89,
+    0.9194,
+    0.89
+   ],
+   "vsSmsRef": [
+    0.75,
+    0.89,
+    0.9194,
+    0.89,
+    0.9194,
+    0.89
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 136,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "robocop-versus-the-terminator",
+   "name": "Robocop versus The Terminator (U) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.9127,
+    0.859,
+    0.9264,
+    0.9264,
+    0.8896,
+    0.6704
+   ],
+   "sound": 0.842,
+   "lag": 2,
+   "patches": 226,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "ronald-in-the-magical-world",
+   "name": "Ronald in the Magical World (JU) [t1]",
+   "grade": "Glitchy",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.9713,
+    0.8314,
+    0.6872,
+    0.9136,
+    0.828,
+    0.7151
+   ],
+   "vsSmsRef": [
+    0.9713,
+    0.8314,
+    0.6872,
+    0.9136,
+    0.828,
+    0.7151
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 135,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "royal-stone",
+   "name": "Royal Stone (J)",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.955,
+    0.9995,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.5785,
+    0.5785,
+    0.024,
+    0.024,
+    0.024
+   ],
+   "sound": 0.867,
+   "lag": 24,
+   "patches": 48,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "ryu-kyu",
+   "name": "Ryu Kyu (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.9719,
+    1.0,
+    0.9719
+   ],
+   "vsSmsRef": [
+    0.5644,
+    0.7589,
+    0.7636,
+    0.4131,
+    0.4131,
+    0.4131
+   ],
+   "sound": 0.533,
+   "lag": 12,
+   "patches": 212,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "s-s-lucifer-man-overboard",
+   "name": "S.S. Lucifer - Man Overboard! (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    1.0,
+    0.7416,
+    0.3988,
+    0.0448,
+    0.0579,
+    0.057
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.4541,
+    0.1717,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.818,
+   "lag": 0,
+   "patches": 266,
+   "unhandled": 2,
+   "residual": 4,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "samurai-shodown",
+   "name": "Samurai Shodown (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0697,
+    0.8977,
+    0.1276,
+    0.0308,
+    0.8161
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.9653,
+    0.9449,
+    1.0,
+    0.091,
+    0.6143
+   ],
+   "sound": -0.029,
+   "lag": 68,
+   "patches": 43,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "samurai-spirits",
+   "name": "Samurai Spirits (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0748,
+    0.0983,
+    0.0983,
+    0.0154,
+    0.7
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    0.0773,
+    1.0,
+    0.0461,
+    0.0978
+   ],
+   "sound": 0.078,
+   "lag": 62,
+   "patches": 43,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "scratch-golf",
+   "name": "Scratch Golf (JU) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0495,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0197,
+    1.0,
+    0.028,
+    0.028,
+    0.028,
+    0.028
+   ],
+   "sound": 0.447,
+   "lag": 20,
+   "patches": 21,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "sd-gundam-winner-s-history",
+   "name": "SD Gundam - Winner's History (J)",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9666,
+    1.0,
+    1.0,
+    0.9991,
+    0.998,
+    0.998
+   ],
+   "vsSmsRef": [
+    0.0205,
+    1.0,
+    0.009,
+    0.8948,
+    0.9265,
+    0.9265
+   ],
+   "sound": 0.836,
+   "lag": 24,
+   "patches": 117,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "sega-game-pack-4-in-1",
+   "name": "Sega Game Pack 4 in 1 (U) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0673,
+    0.2341,
+    0.2341,
+    0.233,
+    0.233,
+    0.2341
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 104,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "sega-tween",
+   "name": "Sega Tween (Normal) by Ben Ryves (PD)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8046,
+    0.8339,
+    0.8382,
+    0.8004,
+    0.8207,
+    0.802
+   ],
+   "vsSmsRef": [
+    0.0045,
+    0.0672,
+    0.0396,
+    0.0015,
+    0.0331,
+    0.0638
+   ],
+   "sound": 1.0,
+   "lag": 2,
+   "patches": 19,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "sensible-soccer",
+   "name": "Sensible Soccer (E)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.3255,
+    0.0243,
+    0.0946,
+    0.0361
+   ],
+   "vsSmsRef": [
+    0.0227,
+    0.0751,
+    0.3251,
+    0.0659,
+    0.0375,
+    0.6716
+   ],
+   "sound": 0.287,
+   "lag": 0,
+   "patches": 142,
+   "unhandled": 0,
+   "residual": 1,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "shadam-crusader",
+   "name": "Shadam Crusader (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8418,
+    0.0771,
+    0.0474,
+    0.0771,
+    0.0428,
+    0.003
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.994,
+    0.9944,
+    1.0,
+    0.8412,
+    0.0361
+   ],
+   "sound": -0.171,
+   "lag": 0,
+   "patches": 89,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "shanghai-ii",
+   "name": "Shanghai II (J)",
+   "grade": "Perfect",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.3588,
+    1.0,
+    0.6699,
+    0.6398,
+    0.6398,
+    0.6699
+   ],
+   "sound": 0.962,
+   "lag": 0,
+   "patches": 38,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "shaq-fu",
+   "name": "Shaq Fu (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.4161,
+    1.0,
+    1.0,
+    0.1234,
+    0.5311,
+    0.4915
+   ],
+   "vsSmsRef": [
+    0.7367,
+    0.941,
+    0.0918,
+    0.0187,
+    0.1017,
+    0.1014
+   ],
+   "sound": 0.737,
+   "lag": 18,
+   "patches": 109,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "shikinjou",
+   "name": "Shikinjou (J)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "Traceback (most recent call last):",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "shining-force-gaiden",
+   "name": "Shining Force Gaiden (J) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 83,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "shining-force-gaiden-final-conflict",
+   "name": "Shining Force Gaiden - Final Conflict (J)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.3846,
+    0.3846,
+    0.3846,
+    0.436,
+    0.1806
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 98,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "shining-force-gaiden-ii",
+   "name": "Shining Force Gaiden II (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9081,
+    0.9012,
+    0.633,
+    0.8781,
+    0.9872
+   ],
+   "vsSmsRef": [
+    0.9998,
+    1.0,
+    0.9358,
+    0.9358,
+    1.0,
+    0.9358
+   ],
+   "sound": 0.759,
+   "lag": 4,
+   "patches": 106,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "side-pocket",
+   "name": "Side Pocket (U)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.5369,
+    1.0,
+    0.4269,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0,
+    1.0,
+    0.4811,
+    1.0,
+    0.735,
+    0.735
+   ],
+   "sound": 0.6,
+   "lag": 60,
+   "patches": 55,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "simple-text-demo-by-charles-doty",
+   "name": "Simple Text Demo by Charles Doty (PD)",
+   "grade": "Perfect",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.9388,
+    0.9388,
+    0.9388,
+    0.9388,
+    0.9388,
+    0.9388
+   ],
+   "sound": 1.0,
+   "lag": 0,
+   "patches": 17,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "simpsons-the-bart-vs-the-space-mutants",
+   "name": "Simpsons, The - Bart vs. The Space Mutants (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.4497,
+    0.796,
+    0.6762
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0471,
+    1.0,
+    0.6122,
+    0.6111,
+    0.6116
+   ],
+   "sound": 0.677,
+   "lag": 0,
+   "patches": 53,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "simpsons-the-bart-vs-the-world",
+   "name": "Simpsons, The - Bart vs. The World (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.8933,
+    0.4908,
+    0.0633,
+    0.0112,
+    0.0112
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.901,
+    0.9375,
+    0.0413,
+    0.0413,
+    0.0413
+   ],
+   "sound": -0.505,
+   "lag": 0,
+   "patches": 101,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "simpsons-the-bartman-meets-radioactive-man",
+   "name": "Simpsons, The - Bartman Meets Radioactive Man (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.0,
+    0.8645,
+    0.5576,
+    0.4269,
+    0.2737,
+    0.2572
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.4892,
+    0.3944
+   ],
+   "sound": 0.319,
+   "lag": 0,
+   "patches": 32,
+   "unhandled": 64,
+   "residual": 126,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "simpsons-the-krusty-s-fun-house",
+   "name": "Simpsons, The - Krusty's Fun House (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.8673,
+    1.0,
+    0.2797
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.8133,
+    0.0041,
+    0.2483,
+    0.2491,
+    0.0532
+   ],
+   "sound": 0.26,
+   "lag": 14,
+   "patches": 181,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "skweek",
+   "name": "Skweek (J) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.8389,
+    0.3794,
+    0.3837,
+    0.377,
+    0.839
+   ],
+   "vsSmsRef": [
+    0.5313,
+    0.1408,
+    0.1408,
+    0.1408,
+    0.1408,
+    0.1408
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 132,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "slider",
+   "name": "Slider (U)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.5437,
+    0.8389,
+    0.3779,
+    0.3837,
+    0.3738,
+    0.839
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.0668,
+    0.0668
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 133,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "smurfs-the",
+   "name": "Smurfs, The (E) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "Traceback (most recent call last):",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "solitaire-funpak",
+   "name": "Solitaire Funpak (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.9919,
+    0.9827,
+    0.9827,
+    0.9919
+   ],
+   "vsSmsRef": [
+    0.0688,
+    0.0,
+    0.0006,
+    0.0012,
+    0.0013,
+    0.0006
+   ],
+   "sound": 0.532,
+   "lag": 0,
+   "patches": 92,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "solitaire-poker",
+   "name": "Solitaire Poker (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.9625,
+    1.0,
+    0.9625
+   ],
+   "vsSmsRef": [
+    0.5592,
+    0.7581,
+    0.7642,
+    0.4131,
+    0.4131,
+    0.4131
+   ],
+   "sound": 0.498,
+   "lag": 12,
+   "patches": 212,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "sonic-blast",
+   "name": "Sonic Blast (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "Traceback (most recent call last):",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "sonic-drift",
+   "name": "Sonic Drift (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.003,
+    1.0,
+    1.0,
+    1.0,
+    0.9776,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0312,
+    0.1547,
+    0.1547,
+    0.8918,
+    0.1301,
+    0.1547
+   ],
+   "sound": 0.47,
+   "lag": 2,
+   "patches": 129,
+   "unhandled": 0,
+   "residual": 1,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "sonic-drift-2",
+   "name": "Sonic Drift 2 (J) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.2781,
+    0.2784,
+    0.8749,
+    0.8773,
+    0.2784
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 131,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "sonic-labyrinth",
+   "name": "Sonic Labyrinth (U) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0599,
+    0.0598,
+    0.0358,
+    0.0456,
+    0.0457
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.051,
+   "lag": 0,
+   "patches": 16,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "sonic-spinball",
+   "name": "Sonic Spinball (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9062,
+    0.5086,
+    0.4768,
+    0.1104,
+    0.0257,
+    0.1428
+   ],
+   "vsSmsRef": [
+    0.9682,
+    0.7434,
+    0.7434,
+    0.7434,
+    0.7434,
+    0.7434
+   ],
+   "sound": 0.115,
+   "lag": 0,
+   "patches": 169,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "sonic-tails",
+   "name": "Sonic & Tails (J) [!]",
+   "grade": "Black screen",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.372,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.372,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.999,
+   "lag": 6,
+   "patches": 198,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "sonic-tails-2",
+   "name": "Sonic & Tails 2 (J) [t1]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.5214,
+    1.0,
+    0.1209,
+    0.0501,
+    0.9051,
+    0.4279
+   ],
+   "vsSmsRef": [
+    0.4592,
+    0.7433,
+    0.0052,
+    0.0002,
+    0.7174,
+    0.0085
+   ],
+   "sound": -0.034,
+   "lag": 0,
+   "patches": 122,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "sonic-the-hedgehog-triple-trouble",
+   "name": "Sonic The Hedgehog - Triple Trouble (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0077,
+    0.9986,
+    0.0,
+    0.0145,
+    0.0238
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.368,
+   "lag": 42,
+   "patches": 91,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "soukoban",
+   "name": "Soukoban (J)",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.962,
+    1.0,
+    1.0,
+    1.0,
+    0.9841,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.8453,
+    0.5989,
+    0.599,
+    0.5994,
+    0.941,
+    0.929
+   ],
+   "sound": 0.81,
+   "lag": 0,
+   "patches": 22,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "space-harrier",
+   "name": "Space Harrier (JU) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.1092,
+    0.0203,
+    0.0203,
+    0.9145,
+    0.8087,
+    0.8215
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.5866,
+    0.5825,
+    0.0135,
+    0.0976,
+    0.0182
+   ],
+   "sound": 0.148,
+   "lag": 12,
+   "patches": 57,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "spider-man-and-the-x-men-in-arcade-s-revenge",
+   "name": "Spider-Man and the X-Men in Arcade's Revenge (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.0336,
+    0.5476,
+    0.8586,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.9713,
+    0.8561,
+    0.0207,
+    0.7734,
+    0.8384,
+    0.7734
+   ],
+   "sound": 0.57,
+   "lag": 68,
+   "patches": 32,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "spider-man-return-of-the-sinister-six",
+   "name": "Spider-Man - Return of the Sinister Six (U)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.5288,
+    0.4584,
+    0.3744,
+    0.5642,
+    0.0131
+   ],
+   "vsSmsRef": [
+    0.8758,
+    0.5709,
+    0.0002,
+    0.4452,
+    0.5484,
+    0.9293
+   ],
+   "sound": 0.007,
+   "lag": 0,
+   "patches": 33,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "spider-man-vs-the-kingpin",
+   "name": "Spider-Man vs. The Kingpin (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.2176,
+    0.2156,
+    0.2158,
+    0.03,
+    0.0
+   ],
+   "vsSmsRef": [
+    0.8861,
+    0.9544,
+    0.9544,
+    0.9544,
+    0.9544,
+    0.9544
+   ],
+   "sound": 0.0,
+   "lag": 120,
+   "patches": 84,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "sports-illustrated-championship-football-baseball",
+   "name": "Sports Illustrated Championship Football & Baseball (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.972,
+    0.7128,
+    0.6921,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.451,
+   "lag": 0,
+   "patches": 52,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "sports-trivia",
+   "name": "Sports Trivia (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.9976,
+    1.0,
+    1.0,
+    0.9987
+   ],
+   "vsSmsRef": [
+    0.9518,
+    0.6697,
+    0.0548,
+    0.0,
+    0.0,
+    0.0001
+   ],
+   "sound": 0.287,
+   "lag": 6,
+   "patches": 17,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "sports-trivia-championship-edition",
+   "name": "Sports Trivia - Championship Edition (U)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.2808,
+    0.9608,
+    0.9601
+   ],
+   "vsSmsRef": [
+    0.9518,
+    0.6697,
+    0.0008,
+    0.3225,
+    0.3193,
+    0.3193
+   ],
+   "sound": 0.247,
+   "lag": 6,
+   "patches": 17,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "star-trek-generations-beyond-the-nexus",
+   "name": "Star Trek Generations - Beyond the Nexus (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9957,
+    0.8182,
+    0.4991,
+    0.498,
+    0.5968,
+    0.6322
+   ],
+   "vsSmsRef": [
+    0.9904,
+    1.0,
+    0.4639,
+    0.4642,
+    0.7808,
+    0.7057
+   ],
+   "sound": 0.72,
+   "lag": 0,
+   "patches": 41,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "star-trek-tng-advanced-holodeck-tutorial",
+   "name": "Star Trek TNG - Advanced Holodeck Tutorial (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9099,
+    0.8732,
+    0.3441,
+    0.5914,
+    0.5869,
+    0.5897
+   ],
+   "vsSmsRef": [
+    0.9237,
+    1.0,
+    0.2436,
+    0.5694,
+    0.5667,
+    0.5689
+   ],
+   "sound": 0.729,
+   "lag": 0,
+   "patches": 39,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "star-wars",
+   "name": "Star Wars (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9912,
+    0.9796,
+    1.0,
+    0.1868,
+    0.6211
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.5313,
+    0.7813,
+    0.9825,
+    0.7837,
+    0.1782
+   ],
+   "sound": 0.716,
+   "lag": 0,
+   "patches": 73,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "stargate",
+   "name": "Stargate (U)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.2814,
+    0.7786,
+    0.3177,
+    0.2814,
+    0.5209
+   ],
+   "vsSmsRef": [
+    0.9192,
+    0.6462,
+    0.6462,
+    0.6462,
+    0.6462,
+    0.6462
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 136,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "streets-of-rage",
+   "name": "Streets of Rage (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9532,
+    1.0,
+    1.0,
+    0.9821,
+    0.388,
+    0.1264
+   ],
+   "vsSmsRef": [
+    0.9784,
+    0.9857,
+    0.9857,
+    0.7166,
+    0.7166,
+    0.7166
+   ],
+   "sound": 0.678,
+   "lag": 18,
+   "patches": 104,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "streets-of-rage-ii",
+   "name": "Streets of Rage II (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9944,
+    1.0,
+    1.0,
+    0.9774,
+    0.3921,
+    0.3629
+   ],
+   "vsSmsRef": [
+    0.8874,
+    0.9868,
+    0.9868,
+    0.9882,
+    0.9889,
+    0.9889
+   ],
+   "sound": 0.126,
+   "lag": 18,
+   "patches": 100,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "strider-returns",
+   "name": "Strider Returns (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.5742,
+    0.5043,
+    0.6092,
+    0.5661,
+    0.9969
+   ],
+   "vsSmsRef": [
+    0.8562,
+    0.569,
+    0.5886,
+    0.3632,
+    0.6891,
+    0.6579
+   ],
+   "sound": 0.317,
+   "lag": 0,
+   "patches": 91,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "super-battletank",
+   "name": "Super Battletank (U) [!]",
+   "grade": "Glitchy",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.9127,
+    0.6709,
+    0.3523,
+    0.5329,
+    0.5954,
+    0.3549
+   ],
+   "vsSmsRef": [
+    0.9127,
+    0.6709,
+    0.3523,
+    0.5329,
+    0.5954,
+    0.3549
+   ],
+   "sound": -0.044,
+   "lag": 114,
+   "patches": 64,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "super-columns",
+   "name": "Super Columns (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0,
+    0.0758,
+    1.0,
+    0.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0
+   ],
+   "sound": 0.15,
+   "lag": 26,
+   "patches": 136,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "super-golf",
+   "name": "Super Golf (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.4241,
+    0.4234,
+    0.4144,
+    0.4508,
+    0.4508
+   ],
+   "vsSmsRef": [
+    0.7786,
+    0.7786,
+    0.7786,
+    0.7786,
+    0.7786,
+    0.7786
+   ],
+   "sound": 0.426,
+   "lag": 14,
+   "patches": 28,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "super-kick-off",
+   "name": "Super Kick Off (J) [S][!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9704,
+    1.0,
+    0.9607,
+    0.9221,
+    0.9484
+   ],
+   "vsSmsRef": [
+    0.0312,
+    0.0707,
+    0.0265,
+    0.0531,
+    0.0788,
+    0.0297
+   ],
+   "sound": 0.589,
+   "lag": 4,
+   "patches": 44,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "super-monaco-gp",
+   "name": "Super Monaco GP (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.8167,
+    0.8689,
+    0.9202,
+    0.9814
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.3326,
+    0.3449,
+    0.0344,
+    0.0344,
+    0.0344
+   ],
+   "sound": 0.471,
+   "lag": 44,
+   "patches": 111,
+   "unhandled": 0,
+   "residual": 4,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "super-off-road",
+   "name": "Super Off-Road (U)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.9806,
+    0.305,
+    0.3091
+   ],
+   "vsSmsRef": [
+    0.6737,
+    0.7556,
+    0.7221,
+    0.013,
+    0.0126,
+    0.0126
+   ],
+   "sound": 0.886,
+   "lag": 16,
+   "patches": 108,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "super-return-of-the-jedi",
+   "name": "Super Return of the Jedi (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.7756,
+    0.9961,
+    0.4408,
+    0.4408,
+    0.4408
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.9439,
+    0.4851,
+    0.4851,
+    0.4851,
+    0.4851
+   ],
+   "sound": 0.496,
+   "lag": 14,
+   "patches": 83,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "super-smash-t-v",
+   "name": "Super Smash T.V. (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.8784,
+    1.0,
+    0.9889,
+    1.0,
+    0.1392
+   ],
+   "vsSmsRef": [
+    0.924,
+    0.9267,
+    0.9266,
+    0.1147,
+    0.9667,
+    0.9667
+   ],
+   "sound": 0.545,
+   "lag": 0,
+   "patches": 30,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "super-space-invaders",
+   "name": "Super Space Invaders (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.7793,
+    0.7664,
+    0.6488,
+    0.6485,
+    0.654,
+    0.6575
+   ],
+   "vsSmsRef": [
+    0.6509,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.146,
+   "lag": 0,
+   "patches": 64,
+   "unhandled": 2,
+   "residual": 4,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "superman",
+   "name": "Superman (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0583,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.5536,
+    0.1359,
+    0.1388,
+    0.1553,
+    0.1228,
+    0.1212
+   ],
+   "sound": 0.871,
+   "lag": 2,
+   "patches": 123,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "surf-ninjas",
+   "name": "Surf Ninjas (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.842,
+    0.8361,
+    0.0431,
+    0.0055,
+    0.1484
+   ],
+   "vsSmsRef": [
+    0.9463,
+    0.0,
+    0.3038,
+    0.0249,
+    0.4635,
+    0.0028
+   ],
+   "sound": 0.039,
+   "lag": 40,
+   "patches": 23,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "sylvan-tale",
+   "name": "Sylvan Tale (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.2189,
+    0.9762,
+    0.9638,
+    0.2576,
+    0.2528,
+    0.208
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.9942,
+    1.0,
+    0.9956,
+    1.0,
+    0.1086
+   ],
+   "sound": -0.174,
+   "lag": 32,
+   "patches": 150,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "t2-the-arcade-game",
+   "name": "T2 - The Arcade Game (U) [!]",
+   "grade": "Glitchy",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.9466,
+    0.7656,
+    0.7618,
+    0.5,
+    0.9361,
+    0.9301
+   ],
+   "vsSmsRef": [
+    0.9466,
+    0.7656,
+    0.7618,
+    0.5,
+    0.9361,
+    0.9301
+   ],
+   "sound": 0.099,
+   "lag": 18,
+   "patches": 112,
+   "unhandled": 0,
+   "residual": 1,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "tails-sky-patrol",
+   "name": "Tails' Sky Patrol (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.5486,
+    0.9948,
+    0.7331,
+    1.0,
+    0.9782
+   ],
+   "vsSmsRef": [
+    0.6024,
+    0.0147,
+    0.0742,
+    0.0413,
+    0.0147,
+    1.0
+   ],
+   "sound": 0.762,
+   "lag": 2,
+   "patches": 65,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "taisen-gata-daisenryaku-g",
+   "name": "Taisen-gata Daisenryaku G (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9712,
+    0.1723,
+    0.0,
+    0.7242,
+    0.5427,
+    0.4935
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.9865,
+    0.0011,
+    1.0,
+    0.3876,
+    1.0
+   ],
+   "sound": 0.172,
+   "lag": 0,
+   "patches": 62,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "taisen-mahjong-haopai",
+   "name": "Taisen Mahjong HaoPai (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0006,
+    0.6763,
+    0.0136,
+    0.0502,
+    0.0499,
+    0.0008
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0368,
+    0.0368,
+    0.9967,
+    0.9338,
+    0.0
+   ],
+   "sound": 0.036,
+   "lag": 118,
+   "patches": 34,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "taisen-mahjong-haopai-2",
+   "name": "Taisen Mahjong HaoPai 2 (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.6083,
+    0.0,
+    0.1782,
+    0.9064,
+    0.8786,
+    0.9519
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.8456,
+    0.9335,
+    0.0007,
+    0.0178,
+    0.0206
+   ],
+   "sound": 0.366,
+   "lag": 74,
+   "patches": 34,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "tale-spin",
+   "name": "Tale Spin (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.7686,
+    0.6338,
+    0.5091,
+    0.0039,
+    0.0138,
+    0.014
+   ],
+   "vsSmsRef": [
+    0.8969,
+    1.0,
+    0.8008,
+    1.0,
+    0.762,
+    0.7664
+   ],
+   "sound": 0.141,
+   "lag": 74,
+   "patches": 126,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "tama-friends-3choume-kouen-tamalympics",
+   "name": "Tama & Friends - 3choume Kouen - Tamalympics (J)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.0326,
+    0.0326,
+    0.0305,
+    0.0305,
+    0.0326
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 8,
+   "patches": 195,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "tanto-r",
+   "name": "Tanto-R (J)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0214,
+    0.0241,
+    1.0,
+    0.0497,
+    0.0482
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 82,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "taz-in-escape-from-mars",
+   "name": "Taz in Escape from Mars (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.3556,
+    0.9918,
+    0.9981,
+    0.1193,
+    0.3877
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.9999,
+    0.3885,
+    0.3956,
+    0.4015,
+    0.3805
+   ],
+   "sound": 0.349,
+   "lag": 34,
+   "patches": 60,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "taz-mania-the-search-for-the-lost-seabirds",
+   "name": "Taz-Mania - The Search for the Lost Seabirds (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.4393,
+    0.364,
+    0.5779,
+    0.5029,
+    0.0041
+   ],
+   "vsSmsRef": [
+    0.9603,
+    0.006,
+    0.0074,
+    0.0058,
+    0.0045,
+    0.9336
+   ],
+   "sound": 0.536,
+   "lag": 0,
+   "patches": 31,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "tempo-jr",
+   "name": "Tempo Jr. (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "Traceback (most recent call last):",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "terminator-2-judgment-day",
+   "name": "Terminator 2 - Judgment Day (U)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.8752,
+    0.3922,
+    0.6254,
+    0.6528
+   ],
+   "vsSmsRef": [
+    0.9688,
+    0.6654,
+    0.7388,
+    0.8434,
+    0.4762,
+    0.5947
+   ],
+   "sound": 0.825,
+   "lag": 0,
+   "patches": 90,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "terminator-the",
+   "name": "Terminator, The (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8829,
+    0.2314,
+    0.9816,
+    0.4608,
+    0.3997,
+    0.6134
+   ],
+   "vsSmsRef": [
+    0.7005,
+    0.5697,
+    0.4153,
+    0.5455,
+    0.5025,
+    0.4478
+   ],
+   "sound": -0.015,
+   "lag": 0,
+   "patches": 118,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "tesserae",
+   "name": "Tesserae (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.1158,
+    0.0405,
+    0.0396,
+    0.0454,
+    0.0513,
+    0.0534
+   ],
+   "vsSmsRef": [
+    0.0149,
+    0.0027,
+    0.0021,
+    0.0061,
+    0.0054,
+    0.0064
+   ],
+   "sound": -0.007,
+   "lag": 20,
+   "patches": 138,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "tintin-au-tibet",
+   "name": "Tintin au Tibet (E) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.995,
+    0.6029,
+    0.6087
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0037,
+    0.0036,
+    0.0031
+   ],
+   "sound": 0.194,
+   "lag": 0,
+   "patches": 804,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "tom-and-jerry-the-movie",
+   "name": "Tom and Jerry - The Movie (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0981,
+    0.0094,
+    0.0417,
+    0.0501,
+    0.1043,
+    0.0792
+   ],
+   "vsSmsRef": [
+    0.0108,
+    0.9922,
+    0.0044,
+    0.0044,
+    0.0609,
+    0.0653
+   ],
+   "sound": 0.3,
+   "lag": 40,
+   "patches": 99,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "torarete-tamaruka",
+   "name": "Torarete Tamaruka! (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.6626,
+    0.4995,
+    0.0908,
+    0.1813,
+    0.0674
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.1805
+   ],
+   "sound": 0.051,
+   "lag": 50,
+   "patches": 91,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "true-lies",
+   "name": "True Lies (U)",
+   "grade": "Perfect",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.9604,
+    0.8897,
+    0.8897,
+    0.7176,
+    0.7176,
+    0.7176
+   ],
+   "sound": 0.963,
+   "lag": 0,
+   "patches": 125,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "twisty-by-charles-macdonald",
+   "name": "Twisty by Charles MacDonald (PD)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.4781,
+    0.8701,
+    0.4448,
+    0.5158,
+    0.9742,
+    0.431
+   ],
+   "vsSmsRef": [
+    0.7147,
+    0.9274,
+    0.7177,
+    0.7363,
+    0.9878,
+    0.6949
+   ],
+   "sound": 1.0,
+   "lag": 2,
+   "patches": 12,
+   "unhandled": 2,
+   "residual": 2,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "ultimate-soccer",
+   "name": "Ultimate Soccer (E)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0413,
+    0.6282,
+    0.0014,
+    0.0,
+    0.2395,
+    0.1805
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0484,
+    0.0483,
+    0.0,
+    0.0336,
+    0.0336
+   ],
+   "sound": 0.385,
+   "lag": 0,
+   "patches": 129,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "urban-strike",
+   "name": "Urban Strike (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.1879,
+    0.0684,
+    0.0628
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.9612,
+    0.6991,
+    0.1619,
+    0.185,
+    0.177
+   ],
+   "sound": 0.522,
+   "lag": 4,
+   "patches": 241,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "vampire-master-of-darkness",
+   "name": "Vampire - Master of Darkness (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.3493,
+    0.4225
+   ],
+   "vsSmsRef": [
+    0.9901,
+    0.9514,
+    0.8912,
+    0.8911,
+    1.0,
+    0.47
+   ],
+   "sound": 0.711,
+   "lag": 4,
+   "patches": 113,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "virtua-fighter-animation",
+   "name": "Virtua Fighter Animation (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.8757,
+    0.8888
+   ],
+   "vsSmsRef": [
+    0.7448,
+    0.0003,
+    0.8038,
+    1.0,
+    0.31,
+    0.3105
+   ],
+   "sound": 0.848,
+   "lag": 2,
+   "patches": 343,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "virtua-fighter-mini",
+   "name": "Virtua Fighter Mini (J) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.9034,
+    0.8732
+   ],
+   "vsSmsRef": [
+    0.7448,
+    0.8093,
+    0.8104,
+    1.0,
+    0.4069,
+    0.3101
+   ],
+   "sound": 0.852,
+   "lag": 2,
+   "patches": 343,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "vr-troopers",
+   "name": "VR Troopers (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0176,
+    0.9489,
+    0.9489,
+    0.4243,
+    0.1197,
+    0.1215
+   ],
+   "vsSmsRef": [
+    0.0043,
+    0.9761,
+    0.9761,
+    1.0,
+    0.5525,
+    0.5525
+   ],
+   "sound": 0.376,
+   "lag": 0,
+   "patches": 130,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "wagyan-land",
+   "name": "Wagyan Land (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.1373,
+    0.7975,
+    0.1416,
+    0.7952,
+    0.9938
+   ],
+   "vsSmsRef": [
+    0.0571,
+    0.058,
+    0.008,
+    0.0072,
+    0.008,
+    0.0082
+   ],
+   "sound": 0.417,
+   "lag": 24,
+   "patches": 50,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "wheel-of-fortune",
+   "name": "Wheel of Fortune (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.4399,
+    0.9898,
+    0.9899,
+    0.9915,
+    0.9901
+   ],
+   "vsSmsRef": [
+    0.9633,
+    0.7249,
+    0.7557,
+    0.7557,
+    0.7553,
+    0.7547
+   ],
+   "sound": 0.962,
+   "lag": 28,
+   "patches": 386,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "wimbledon",
+   "name": "Wimbledon (U) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.2651,
+    0.0317,
+    0.0317,
+    0.0267,
+    0.0317,
+    0.0314
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 108,
+   "unhandled": 0,
+   "residual": 128,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "windows-for-gg-by-victor-kemp",
+   "name": "Windows for GG by Victor Kemp (PD)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9942,
+    0.9942,
+    0.034,
+    0.9901,
+    0.8072,
+    0.8067
+   ],
+   "vsSmsRef": [
+    0.0497,
+    0.0497,
+    0.0426,
+    0.0497,
+    0.001,
+    0.0009
+   ],
+   "sound": 1.0,
+   "lag": 0,
+   "patches": 151,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "winter-olympics-lillehammer-94",
+   "name": "Winter Olympics - Lillehammer '94 (U) [!]",
+   "grade": "Boots only",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.2698,
+    0.0099,
+    0.0296,
+    0.1052,
+    0.1052,
+    0.1052
+   ],
+   "vsSmsRef": [
+    0.0047,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.13,
+   "lag": 10,
+   "patches": 84,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "wizard-pinball",
+   "name": "Wizard Pinball (U) [!]",
+   "grade": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.8465,
+    1.0,
+    0.9877
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.1483,
+    0.1483,
+    0.4902,
+    0.4916,
+    0.5298
+   ],
+   "sound": 0.904,
+   "lag": 2,
+   "patches": 38,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "wolfchild",
+   "name": "Wolfchild (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8588,
+    0.8572,
+    0.9378,
+    1.0,
+    1.0,
+    0.0628
+   ],
+   "vsSmsRef": [
+    0.9635,
+    0.9338,
+    0.9814,
+    0.9708,
+    0.8866,
+    0.108
+   ],
+   "sound": 0.46,
+   "lag": 0,
+   "patches": 71,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "woody-pop",
+   "name": "Woody Pop (U) (V1.1) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9609,
+    0.0003,
+    0.0559,
+    0.0003,
+    0.0133
+   ],
+   "vsSmsRef": [
+    0.0117,
+    0.0,
+    0.005,
+    0.0681,
+    0.005,
+    0.002
+   ],
+   "sound": 0.016,
+   "lag": 116,
+   "patches": 18,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "world-class-leader-golf",
+   "name": "World Class Leader Golf (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0078,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0111,
+    0.5389,
+    0.0287,
+    0.0028,
+    0.5499,
+    0.0291
+   ],
+   "sound": 0.989,
+   "lag": 0,
+   "patches": 42,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "world-cup-94",
+   "name": "World Cup 94 (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0258,
+    0.9849,
+    0.984,
+    0.9748,
+    0.4716,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0023,
+    0.0712,
+    0.0725,
+    0.0,
+    0.0072
+   ],
+   "sound": 0.433,
+   "lag": 0,
+   "patches": 116,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "world-cup-soccer",
+   "name": "World Cup Soccer (U) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.6471,
+    0.6268,
+    0.0021,
+    0.0139,
+    0.0025,
+    0.0082
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 71,
+   "unhandled": 64,
+   "residual": 128,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "world-derby",
+   "name": "World Derby (J)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8367,
+    0.0773,
+    0.0,
+    0.0809,
+    0.0,
+    0.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 73,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "world-series-baseball",
+   "name": "World Series Baseball (U) (V1.0) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.5957,
+    0.6899,
+    0.6899,
+    0.0545,
+    0.0579,
+    0.0579
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 32,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "world-series-baseball-95",
+   "name": "World Series Baseball '95 (U) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8293,
+    0.0306,
+    0.0306,
+    0.0247,
+    0.0316,
+    0.0316
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 45,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "wwf-raw",
+   "name": "WWF Raw (U) [!]",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.0,
+    0.4863,
+    0.2078,
+    0.2078,
+    0.2078
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 65,
+   "unhandled": 0,
+   "residual": 10,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "wwf-steel-cage-challenge",
+   "name": "WWF Steel Cage Challenge (U) [S][!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.8966,
+    0.8963,
+    0.0,
+    0.0,
+    0.0,
+    0.0001
+   ],
+   "sound": 0.617,
+   "lag": 8,
+   "patches": 25,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "x-men",
+   "name": "X-Men (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.1672,
+    1.0,
+    0.2475,
+    0.9861,
+    0.9851
+   ],
+   "vsSmsRef": [
+    0.9463,
+    1.0,
+    0.0313,
+    1.0,
+    0.6477,
+    0.6473
+   ],
+   "sound": 0.665,
+   "lag": 74,
+   "patches": 26,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "x-men-gamemaster-s-legacy",
+   "name": "X-Men - Gamemaster's Legacy (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.2152,
+    0.0164,
+    0.215,
+    0.7881,
+    0.7881
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    0.5495,
+    1.0,
+    0.6185,
+    0.4247
+   ],
+   "sound": 0.526,
+   "lag": 74,
+   "patches": 29,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "x-men-mojo-world",
+   "name": "X-Men - Mojo World (U) [!]",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "no room for the runtime in always-mapped ROM (far stub pieces [64, 42, 40, 17, 9], 172 bytes; free runs [62, 29, 28, 20])",
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0,
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "xaropinho",
+   "name": "Xaropinho (Mappy Hack)",
+   "grade": "Build fails",
+   "path": null,
+   "verdict": "no room for the runtime in always-mapped ROM (far stub pieces [64, 40, 16, 9], 129 bytes; free runs [29, 20, 19, 17])",
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0,
+   "fleetHost": "DIAMOND"
+  },
+  {
+   "id": "yogi-bear-in-yogi-bear-s-goldrush",
+   "name": "Yogi Bear in Yogi Bear's Goldrush (Prototype) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.1997,
+    0.0155,
+    0.0454,
+    0.0428,
+    0.3066
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.202,
+    0.3576,
+    0.6326,
+    0.4697,
+    0.0181
+   ],
+   "sound": 0.095,
+   "lag": 0,
+   "patches": 296,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "EMERALD"
+  },
+  {
+   "id": "yuu-yuu-hakusho",
+   "name": "Yuu Yuu Hakusho (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.384,
+    0.9271
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.656,
+   "lag": 6,
+   "patches": 16,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "OPAL"
+  },
+  {
+   "id": "yuu-yuu-hakusho-ii",
+   "name": "Yuu Yuu Hakusho II (J)",
+   "grade": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9996,
+    0.02,
+    0.02,
+    0.1252,
+    0.4644,
+    0.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 98,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "PEARL"
+  },
+  {
+   "id": "zan-gear",
+   "name": "Zan Gear (J)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9826,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.761,
+    0.0078,
+    0.0412,
+    0.0465,
+    0.0412,
+    0.0477
+   ],
+   "sound": 0.728,
+   "lag": 12,
+   "patches": 13,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "SAPPHIRE"
+  },
+  {
+   "id": "zool",
+   "name": "Zool (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9287,
+    0.6187,
+    0.994,
+    0.8117,
+    0.9973
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0464,
+    0.0539,
+    0.0436,
+    0.0485
+   ],
+   "sound": 0.464,
+   "lag": 28,
+   "patches": 144,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "ZIRCON"
+  },
+  {
+   "id": "zoop",
+   "name": "Zoop (U) [!]",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8854,
+    0.1849,
+    0.0859,
+    0.1387,
+    0.9714,
+    0.0452
+   ],
+   "vsSmsRef": [
+    0.9463,
+    0.3874,
+    0.0544,
+    0.9849,
+    0.9817,
+    1.0
+   ],
+   "sound": 0.095,
+   "lag": 116,
+   "patches": 117,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "buttons 1+2",
+   "fleetHost": "CORAL"
+  },
+  {
+   "id": "zoop-em-up-by-martin-konrad",
+   "name": "Zoop'em Up by Martin Konrad (PD)",
+   "grade": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9013,
+    0.003,
+    0.5233,
+    0.0007,
+    0.7342,
+    0.0007
+   ],
+   "vsSmsRef": [
+    0.9993,
+    0.0002,
+    0.002,
+    0.0005,
+    0.0012,
+    0.0017
+   ],
+   "sound": 1.0,
+   "lag": 118,
+   "patches": 51,
+   "unhandled": 0,
+   "residual": 0,
+   "smsStart": "Pause",
+   "fleetHost": "DIAMOND"
   }
  ]
 }
