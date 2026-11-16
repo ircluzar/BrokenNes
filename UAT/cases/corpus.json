@@ -400,7 +400,7 @@
       "frames": 600,
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "6B4C1986A3A8AAF5",
+        "frameBufferHash": "8B211A7A2E651F85",
         "framesRun": 600,
         "distinctColors": 4,
         "result": "ok",
@@ -422,7 +422,7 @@
       "frames": 600,
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "965B02D1D8A98AF9",
+        "frameBufferHash": "C58E3584E79A2F95",
         "framesRun": 600,
         "distinctColors": 11,
         "result": "ok",
@@ -474,5 +474,5 @@
       }
     }
   ],
-  "goldenGeneratedUtc": "2026-11-15T03:21:33Z"
+  "goldenGeneratedUtc": "2026-11-16T10:05:56Z"
 }

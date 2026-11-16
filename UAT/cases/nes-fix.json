@@ -54,7 +54,7 @@
     },
     {
       "id": "nesfix-m005-nobunaga2-map",
-      "description": "MMC5 $5204 in-frame bit drops at line 240 (BIT/BVS wait loop) + 64 KiB WRAM: the strategy map used to ignore every input; now it reaches the province screen. Checked by lockstep vs Mesen 2.1.1 (2026-11-16).",
+      "description": "MMC5 $5204 in-frame bit drops at line 240 (BIT/BVS wait loop) + 64 KiB WRAM: the strategy map used to ignore every input; now it reaches the province screen. Checked by lockstep vs Mesen 2.1.1 (2026-11-16). 2026-11-16 r2: PPU_FIX's vblank dot-skip no longer jumps over line 240's dot 3 (the in-frame drop): the map scroll no longer falls 34 frames behind; nametables/palette/OAM identical to Mesen over 2228 frames.",
       "kind": "romtest",
       "rom": "{lib}/Nobunaga's Ambition 2 (U).nes",
       "cpu": "FIX",
@@ -68,7 +68,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "DEBCD27B6747681B",
+        "frameBufferHash": "F53BD54ADBF11E0D",
         "framesRun": 2400,
         "distinctColors": 13,
         "result": "ok",
@@ -97,7 +97,30 @@
         "result": "ok",
         "crashInfo": ""
       }
+    },
+    {
+      "id": "nesfix-m011-raid2020-sprites",
+      "description": "Sprite overflow with the hardware evaluation bug + OAMADDR held at 0 on dots 257-320 + the OAMADDR>=8 copy over OAM 0-7 at render start: Raid 2020's NMI reads $2002 bit 5 to rotate its sprites (DMA from $2003=$40). OAM/palette identical to Mesen 2.1.1 over 1204 frames (2026-11-16, nes-fix-r2).",
+      "kind": "romtest",
+      "rom": "{lib}/Raid 2020 (U) [!].nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 1204,
+      "input": "360:Start,370:,490:Start,500:,560:A,570:,630:B,640:,700:Start,712:A,724:,784:B,794:,884:Right+B,1084:",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "BA635EDEBEA6DEC7",
+        "framesRun": 1204,
+        "distinctColors": 10,
+        "result": "ok",
+        "crashInfo": ""
+      }
     }
   ],
-  "goldenGeneratedUtc": "2026-11-16T00:00:00Z"
+  "goldenGeneratedUtc": "2026-11-16T09:39:32Z"
 }

@@ -215,9 +215,10 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		for (int c = 0; c < elapsedCycles; c++)
 		{
 			// Speed (Lite AOT, 2026-11-14): lines 240-260 (after 241's dot 1) do nothing per dot but count - no fetches, no pixels, no loopy-v, no events -
-			// so the dots up to the line's last one are counted in one step; the last dot runs below as always (the end of line). With a $2006 copy
+			// so the dots up to the line's last one are counted in one step (line 240 only after its dot 3: the MMC5 hook drops the "in frame" flag there - skipping it left
+			// $5204 bit 6 set for a whole frame whenever a batch began at 240:0-2, and Nobunaga's Ambition 2 lost a frame each time); the last dot runs below as always (the end of line). With a $2006 copy
 			// in flight (vUpdateDelay) every dot runs.
-			if (scanline >= 240 && scanline <= 260 && vUpdateDelay == 0 && (scanline != 241 || scanlineCycle > 1))
+			if (scanline >= 240 && scanline <= 260 && vUpdateDelay == 0 && (scanline != 241 || scanlineCycle > 1) && (scanline != 240 || scanlineCycle > 3))
 			{
 				int k = Math.Min(340 - scanlineCycle, elapsedCycles - 1 - c);
 				if (k > 0) { scanlineCycle += k; c += k; }
@@ -236,6 +237,10 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			if (eventDot && scanline == 261 && sc == 1)
 			{
 				PPUSTATUS &= 0x1F;
+				// 2C02 OAMADDR quirk (nesdev "PPU registers", Mesen): if OAMADDR is 8 or more when rendering starts, the eight
+				// bytes at OAMADDR & $F8 are copied over OAM 0-7. Raid 2020 rotates its sprites by DMAing from $2003 = $40 and
+				// relies on the copy (sprites 0-1 hidden); without it two sprites drew at the wrong place every other frame.
+				if ((PPUMASK & 0x18) != 0 && OAMADDR >= 8) { int src = OAMADDR & 0xF8; for (int i = 0; i < 8; i++) oam[i] = oam[src + i]; }
 			}
 
 			// Hardware raises VBlank at scanline 241 dot 1, asserting /NMI there when enabled. This
@@ -535,6 +540,9 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 				{
 					bus.cartridge?.mapper?.PpuPhaseHint(true, ((PPUCTRL ^ bandTallXor) & 0x20) != 0, true);
 					EvaluateNextLineSprites();
+					// Dots 257-320 of every rendered line hold OAMADDR at 0 (hardware, Mesen). A game that leaves $2003 non-zero
+					// and DMAs in the next vblank then fills OAM from 0, not from the stale address (Raid 2020: sprites 0-1 swapped).
+					OAMADDR = 0;
 				}
 				else if ((act & RdSprFetch) != 0)
 				{
@@ -634,21 +642,38 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	private void EvaluateNextLineSprites()
 	{
 		nSprCount = 0; nSprZeroOnLine = false;
-		if (scanline >= 239) return; // pre-render (261) and the last visible line have no next visible line
+		if (scanline >= 240) return; // the pre-render line (261) evaluates nothing
 		int h = ((PPUCTRL ^ bandTallXor) & 0x20) != 0 ? 16 : 8;
-		for (int i = 0; i < 64; i++)
+		// Line 239 still evaluates (for the line 240 that is never drawn): only its overflow flag can matter.
+		bool keep = scanline < 239;
+		int n = 0;
+		for (; n < 64 && nSprCount < 8; n++)
 		{
-			int row = scanline - oam[i * 4];
+			int row = scanline - oam[n * 4];
 			if ((uint)row >= (uint)h) continue;
-			if (nSprCount == 8) { PPUSTATUS |= 0x20; break; }
-			if (i == 0) nSprZeroOnLine = true;
-			nSprTile[nSprCount] = oam[i * 4 + 1];
-			nSprAttr[nSprCount] = oam[i * 4 + 2];
-			nSprX[nSprCount] = oam[i * 4 + 3];
+			if (!keep) { nSprCount++; continue; }
+			if (n == 0) nSprZeroOnLine = true;
+			nSprTile[nSprCount] = oam[n * 4 + 1];
+			nSprAttr[nSprCount] = oam[n * 4 + 2];
+			nSprX[nSprCount] = oam[n * 4 + 3];
 			nSprRow[nSprCount] = (byte)row;
 			nSprLo[nSprCount] = 0; nSprHi[nSprCount] = 0;
 			nSprCount++;
 		}
+		// Overflow, with the hardware's evaluation bug (as Mesen): once eight are found, the PPU keeps scanning but steps the byte
+		// index m together with the sprite index n, so it compares tile / attribute / X bytes as if they were Y. Raid 2020 reads the
+		// flag ($2002 bit 5) in its NMI as a timing/branch condition; the plain "ninth sprite in range" test missed it.
+		if (nSprCount == 8)
+		{
+			int m = 0;
+			while (n < 64)
+			{
+				int row = scanline - oam[n * 4 + m];
+				if ((uint)row < (uint)h) { PPUSTATUS |= 0x20; break; }
+				n++; m = (m + 1) & 3;
+			}
+		}
+		if (!keep) nSprCount = 0;
 	}
 
 	private void FetchSpritePattern(int slot, bool high)
