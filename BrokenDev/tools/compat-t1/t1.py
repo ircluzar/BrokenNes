@@ -90,12 +90,41 @@ class Slot:
             shutil.rmtree(self.path, ignore_errors=True)
 
 
+LAUNCH_FAIL = -999     # run(): the command was never started (tool error, not a game result)
+CMDLINE_MAX = 32000   # CreateProcess's own limit is 32767 characters
+
+
+def direct_cmd(cmd):
+    """A Workshop reached through a one-line .cmd host (`@"dotnet.exe" "Workshop.dll" %*`, kit\workshop_t13\ws.cmd) runs inside
+    cmd.exe, whose command line stops at 8191 characters: a 10-minute input script (~10.6k) failed there with "The command line is
+    too long." before BrokenNes started (2026-11-16 deep-Jank run, graded Broken). Run the host's own command directly instead."""
+    if not cmd or not str(cmd[0]).lower().endswith((".cmd", ".bat")):
+        return cmd
+    try:
+        line = [l.strip() for l in open(cmd[0], encoding="utf-8", errors="replace") if l.strip() and not l.strip().lower().startswith(("rem", "::", "@echo"))]
+        if len(line) == 1 and line[0].endswith("%*"):
+            import shlex
+            head = shlex.split(line[0].lstrip("@")[:-2], posix=False)
+            head = [h.strip('"') for h in head]
+            if head and all(os.path.exists(h) for h in head):
+                return head + list(cmd[1:])
+    except OSError:
+        pass
+    return cmd
+
+
 def run(cmd, timeout, env=None, cwd=None):
     t = time.time()
+    cmd = direct_cmd(cmd)
+    n = len(subprocess.list2cmdline(cmd))
+    if n > CMDLINE_MAX:
+        return LAUNCH_FAIL, "", f"t1 tool error: command line {n} characters (limit {CMDLINE_MAX}); BrokenNes not started", 0.0, False
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env, cwd=cwd,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         return p.returncode, p.stdout or "", p.stderr or "", time.time() - t, False
+    except OSError as e:
+        return LAUNCH_FAIL, "", f"t1 tool error: could not start {cmd[0]}: {e}", time.time() - t, False
     except subprocess.TimeoutExpired as e:
         return None, (e.stdout or b"").decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or ""), "", time.time() - t, True
 
@@ -331,6 +360,9 @@ def check_nes(rec, minutes, keep_dir):
     # pass 1: boot with no input, a picture every 30 frames -> where the title settles
     p1 = nes_romtest(rom, PROBE_FRAMES, range(PROBE_STEP, PROBE_FRAMES + 1, PROBE_STEP), os.path.join(work, "probe"))
     res["probe"] = dict(exit=p1["code"], secs=p1["secs"], timeout=p1["timeout"])
+    if launch_failed(p1):
+        res["probe"]["error"] = (p1["err"] + p1["out"]).strip()[-600:]
+        return tool_error(res, "boot probe", p1)
     rep = p1["report"] or {}
     mapper = (rec.get("dump") or {}).get("mapper")
     res["mapper"] = mapper
@@ -431,6 +463,9 @@ def check_console(rec, console, minutes, keep_dir):
     res = dict(version=T1_VERSION, at=catalog.now(), console=console)
     p1 = con_run(rom, console, PROBE_FRAMES, range(PROBE_STEP, PROBE_FRAMES + 1, PROBE_STEP), os.path.join(work, "probe"))
     res["probe"] = dict(exit=p1["code"], secs=p1["secs"], timeout=p1["timeout"])
+    if launch_failed(p1):
+        res["probe"]["error"] = (p1["err"] + p1["out"]).strip()[-600:]
+        return tool_error(res, "boot probe", p1)
     if p1["timeout"]:
         return grade_result(res, "Broken", ["crash", "timing"], "the boot hung (no frames for minutes)")
     if p1["code"] != 0 or not p1["pngs"]:
@@ -503,7 +538,28 @@ def grade_result(res, grade, tags, why):
     return res
 
 
+def launch_failed(p):
+    """BrokenNes never ran: not started at all, or exited non-zero in under a second (Windows' "The command line is too long.",
+    a missing exe / runtime, or a silent exit in under a second). A real crash runs frames first and says why."""
+    if p.get("timeout"):
+        return False
+    txt = ((p.get("err") or "") + (p.get("out") or "")).lower()
+    if p.get("code") in (0, None):
+        return False
+    return (p.get("code") == LAUNCH_FAIL or "command line is too long" in txt or "t1 tool error" in txt
+            or "is not recognized as an internal" in txt or "you must install or update .net" in txt
+            or ((p.get("secs") or 0) < 1 and not txt.strip()))
+
+
+def tool_error(res, where, p):
+    txt = ((p.get("err") or "") + (p.get("out") or "")).strip()
+    res["version"] = T1_VERSION + "-error"
+    return grade_result(res, "Not tested", [], f"T1 tool error ({where}: BrokenNes did not start, exit {p.get('code')} in {p.get('secs')} s): {txt[-200:]}")
+
+
 def grade_compare(res, p2, cmp, title):
+    if launch_failed(p2):
+        return tool_error(res, "input script", p2)
     if p2["timeout"]:
         return grade_result(res, "Broken", ["crash", "timing"], "hung during the input script")
     if not p2["ok"]:
@@ -565,6 +621,16 @@ def grade_compare(res, p2, cmp, title):
 
 # ------------------------------------------------------------------------------------------------ catalog
 def write_record(console, rec, res, keep_dir, version):
+    if str(res.get("version", "")).endswith("-error"):
+        # a tool error says nothing about the game: never replace a grade (or any tier) with it. The record keeps its grade,
+        # tier, tags and earlier extra.t1; the failed run goes to extra.t1Error. Only a record never graded gets it as extra.t1.
+        if rec.get("grade", "Not tested") != "Not tested" or int(rec.get("tier") or 0) > 0:
+            catalog.update(console, rec["sha1"], {"extra": {"t1Error": res}},
+                           append_notes=f"T1 tool error (grade kept: {rec.get('grade')} T{rec.get('tier')}): {res['why'][:240]}")
+        else:
+            catalog.update(console, rec["sha1"], {"extra": {"t1": res}, "brokennesVersion": version},
+                           append_notes=f"T1 tool error (Not tested): {res['why'][:240]}")
+        return
     changes = {
         "grade": res["grade"], "tier": max(1, int(rec.get("tier") or 0)) if res["grade"] != "Not tested" else max(1, int(rec.get("tier") or 0)),
         "tags": sorted(set(res["tags"])), "screenshots": keep_dir, "core": CORES if console == "nes" else "default", "brokennesVersion": version,
