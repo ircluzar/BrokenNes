@@ -166,6 +166,29 @@
         "result": "ok",
         "crashInfo": ""
       }
+    },
+    {
+      "id": "nesfix-r3-radracer2-fourscreen",
+      "description": "Rad Racer II (NES-TVROM): four-screen nametables (2 KiB cart VRAM at $2800-$2FFF) were never implemented, so the road scene mirrored onto CIRAM. PPU_FIX now honours iNES byte 6 bit 3. Lockstep vs Mesen 2.1.1: nametables 391 -> 1 different frame of 1001 (2026-11-16).",
+      "kind": "romtest",
+      "rom": "{lib}/Rad Racer 2 (U) [!].nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "421:Start,431:,581:Start,591:A,601:,661:B,691:Up+B,721:Up+A+B,781:Start,791:,881:Up+B",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "287EE19D7FC71919",
+        "framesRun": 900,
+        "distinctColors": 14,
+        "result": "ok",
+        "crashInfo": ""
+      }
     }
   ],
   "goldenGeneratedUtc": "2026-11-16T09:39:32Z"

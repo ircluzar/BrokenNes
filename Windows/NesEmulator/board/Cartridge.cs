@@ -18,6 +18,7 @@ public class Cartridge
 	public bool mirrorHorizontal;
 	public bool mirrorVertical;
 	public Mirroring mirroringMode;
+	public bool fourScreen;   // iNES byte 6 bit 3 (Rad Racer II, Gauntlet, ...): see PPU_FIX.MirrorVRAMAddressUnbent
 	public bool hasBattery;
 	public bool hasTrainer;
 	public byte[] prgRAM;
@@ -88,7 +89,9 @@ public class Cartridge
 		hasTrainer = (flag6 & 0x04) != 0;
 		if ((flag6 & 0x08) != 0)
 		{
-			// Four-screen mirroring not implemented
+			// Four-screen: the cart carries 2 KiB more nametable RAM ($2800-$2FFF; $2000-$27FF stay CIRAM, Mesen's layout).
+			// Only PPU_FIX honours it (fourScreen); the frozen cores keep the old behaviour (mirroringMode untouched).
+			fourScreen = true;
 		}
 		else if ((flag6 & 0x01) != 0)
 		{
