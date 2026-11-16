@@ -278,5 +278,11 @@
       "FloatingWindow": true,
       "AutoLoad": false
     }
+  },
+  "PreferredPlatformsForExtensions": {
+    ".bin": "GEN",
+    ".gen": "GEN",
+    ".md": "GEN",
+    ".smd": "GEN"
   }
 }
