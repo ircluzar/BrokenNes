@@ -118,6 +118,7 @@ def luma(img, w=None, h=None):
     return l
 
 
+RANK_CONSOLES = ("gg", "gbc", "gb")   # rank compare only where Mesen's colours differ (SMS/SNES/MD: raw brightness is stricter and right)
 RANK = False   # other consoles: compare brightness RANKS (Mesen's Game Gear / GBC colour correction makes the same picture darker)
 
 
@@ -405,7 +406,7 @@ def con_run(rom, console, frames, png_at, out_dir, script=None):
 
 def check_console(rec, console, minutes, keep_dir):
     global REF_LAG, WIN, RANK
-    REF_LAG, WIN, RANK = 4, 6, True   # SNES pictures sit ~6 frames lower on Mesen's counter, Game Boy ~3: search f-10..f+2
+    REF_LAG, WIN, RANK = 4, 6, console in RANK_CONSOLES   # SNES pictures sit ~6 frames lower on Mesen's counter, Game Boy ~3: search f-10..f+2
     rom = rec.get("path") or rec["file"]["path"]
     work = os.path.join(SCRATCH, rec["sha1"])
     shutil.rmtree(work, ignore_errors=True)
@@ -765,7 +766,7 @@ def cmd_regrade(a):
     """re-score the kept checkpoint pictures (bn_/ref_ PNGs in the record's screenshots folder) with the current picdiff and grade again;
     no emulator runs. For records graded by an older comparison."""
     global RANK
-    RANK = a.console != "nes"
+    RANK = a.console in RANK_CONSOLES
     n = seen = 0
     # (a list first: catalog.iter_records yields inside `with open(...)`, so the record file is still open and cannot be replaced)
     for rec in list(catalog.iter_records(a.console)):
