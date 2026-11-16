@@ -58,6 +58,30 @@
    "expr": "[$0736]"
   },
   {
+   "name": "dying",
+   "address": "$00F1",
+   "size": 1,
+   "format": "u8",
+   "meaning": "Player_IsDying: nonzero from the frame Mario is killed (hit while small, pit); timer freezes, lives drop only later on the map",
+   "read": "[$00F1]!=0",
+   "priority": 1,
+   "verified": true,
+   "source": "driver 2026-11-15: replay of a player's log, 0 -> 1 at the stall",
+   "expr": "[$00F1]"
+  },
+  {
+   "name": "in_air",
+   "address": "$00D8",
+   "size": 1,
+   "format": "u8 flag",
+   "meaning": "Player_InAir: 1 while jumping/falling, 0 on the ground (use for 'landed' search goals)",
+   "read": "[$00D8]==0",
+   "priority": 2,
+   "verified": true,
+   "source": "driver 2026-11-15 jump test",
+   "expr": "[$00D8]"
+  },
+  {
    "name": "powerup",
    "address": "$00ED",
    "size": 1,

@@ -181,7 +181,7 @@ namespace BrokenNes.Windows
             if (path == null && clean) { path = p.StateOf(ch, false); clean = false; }
             if (path == null) return atLast = $"chapter {ch.Id} has no state (a replay from full.bnm is not built yet)";
             byte[] state;
-            try { state = File.ReadAllBytes(path); } catch (IOException e) { return atLast = e.Message; }
+            try { state = ReadAutoTasStateFile(path); } catch (Exception e) when (e is IOException or InvalidDataException) { return atLast = e.Message; }
             bool wasPaused = isPaused;
             try
             {
@@ -358,8 +358,19 @@ namespace BrokenNes.Windows
             if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("the path must be under the AutoTAS root " + root);
             byte[] s = await RunOnEmulationThreadAsync(() => { lock (emulationLock) return AtSaveNow(); });
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-            File.WriteAllBytes(full, s);
+            new NesEmulator.Debugging.Movies.AutoTasState { Console = nes != null ? "nes" : "other", Cores = "FIX/FIX/FIX", State = s }.Save(full);
             return full;
+        }
+
+        /// <summary>Reads a package state: the tools' "bnstate 1" file (header + gzip), or a bare save-state file (older samples).</summary>
+        private static byte[] ReadAutoTasStateFile(string path)
+        {
+            var head = new byte[9];
+            int n;
+            using (var f = File.OpenRead(path)) n = f.Read(head, 0, 9);
+            return n == 9 && Encoding.ASCII.GetString(head) == NesEmulator.Debugging.Movies.AutoTasState.Magic
+                ? NesEmulator.Debugging.Movies.AutoTasState.Load(path).State
+                : File.ReadAllBytes(path);
         }
 
         private T AtUi<T>(Func<T> f) => InvokeRequired ? (T)Invoke(f) : f();

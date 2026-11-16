@@ -46,6 +46,8 @@ class Bridge:
 
     def raw(self, tool, **args):
         args = {k: v for k, v in args.items() if v is not None}
+        if not self.pc and tool != "screenshot":
+            return self._http(tool, args)   # local: straight to the daemon (no node start per call: ~10x faster)
         r = subprocess.run(["node", os.path.join(BRIDGE, "mcp.mjs"), tool, json.dumps(args), "--port", str(self.port)],
                            capture_output=True, text=True, timeout=900)
         try:
@@ -54,6 +56,21 @@ class Bridge:
             raise BridgeError(f"{tool}: {r.stdout}{r.stderr}")
         if out.get("error") or out.get("isError"):
             raise BridgeError(f"{tool}: {json.dumps(out)[:2000]}")
+        return out
+
+    def _http(self, tool, args):
+        import urllib.request
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/call", data=json.dumps({"tool": tool, "args": args}).encode(), method="POST")
+        r = json.loads(urllib.request.urlopen(req, timeout=900).read())
+        res = r.get("result") or {}
+        texts = []
+        for c in res.get("content", []):
+            if c.get("type") == "text":
+                try: texts.append(json.loads(c["text"]))
+                except ValueError: texts.append(c["text"])
+        out = {"isError": bool(res.get("isError")), "text": texts[0] if len(texts) == 1 else texts, "images": []}
+        if r.get("error") or out["isError"]:
+            raise BridgeError(f"{tool}: {json.dumps(r)[:2000]}")
         return out
 
     def stop(self):
