@@ -1266,7 +1266,7 @@ public sealed partial class I386
     private bool Ins(int bits)
     {
         if (!CheckIoperm((int)L16(2), bits)) return false;
-        if (_rep != 0 && _rep != 1) return Throw0(EX_UD);
+        // (F2 is a REP here too, as for MOVS/STOS/LODS: a 386 runs REPNE INS/OUTS; SingleStepTests F2 6C)
         int dir = Dir(bits), n = bits / 8;
         var md = new OptAddr();
         while (_rep == 0 || CxNonZero())
@@ -1284,7 +1284,7 @@ public sealed partial class I386
     {
         if (_curSeg == -1) _curSeg = SEG_DS;
         if (!CheckIoperm((int)L16(2), bits)) return false;
-        if (_rep != 0 && _rep != 1) return Throw0(EX_UD);
+        // (F2 is a REP here too, as for MOVS/STOS/LODS: a 386 runs REPNE INS/OUTS; SingleStepTests F2 6C)
         int dir = Dir(bits), n = bits / 8;
         var ms = new OptAddr();
         while (_rep == 0 || CxNonZero())
