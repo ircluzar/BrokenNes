@@ -26,7 +26,7 @@ public sealed partial class I386
     private const byte DK_SLOW = 0, DK_MOVEG = 1, DK_MOVGE = 2, DK_ALUEG = 3, DK_ALUGE = 4, DK_ALUAI = 5, DK_GRP1 = 6, DK_GRP2 = 7,
         DK_TESTEG = 8, DK_G3TEST = 9, DK_GRP3 = 10, DK_MOVEI = 11, DK_LEA = 12, DK_MOVRI = 13, DK_INC = 14, DK_DEC = 15, DK_PUSH = 16,
         DK_POP = 17, DK_JCC = 18, DK_JMP = 19, DK_CALL = 20, DK_RET = 21,
-        DK_INTERP = 22, DK_MOVX = 23, DK_CBW = 24, DK_SETCC = 25, DK_IMUL = 26, DK_GRP5 = 27, DK_LEAVE = 28;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
+        DK_INTERP = 22, DK_MOVX = 23, DK_CBW = 24, DK_SETCC = 25, DK_IMUL = 26, DK_GRP5 = 27, DK_LEAVE = 28, DK_STOS = 29;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
 
     /// <summary>Decode the instruction at <paramref name="paddr"/> (in a fast-fetch code page) into <paramref name="e"/>; Kind 0 if it is not
     /// one of the cached forms.</summary>
@@ -273,6 +273,7 @@ public sealed partial class I386
             case 0xfe: kind = DK_GRP5; bits = 8; modrm = true; break;                // INC / DEC Eb (others: #UD, the ordinary path)
             case 0xff: kind = DK_GRP5; modrm = true; break;                         // INC / DEC / CALL / JMP / PUSH Ev
             case 0xc9: kind = DK_LEAVE; break;
+            case 0xaa: case 0xab: kind = DK_STOS; bits = (b & 1) == 0 ? 8 : v; break;   // STOSB / STOSW / STOSD without REP (REP: the ordinary path)
             case 0xa0: case 0xa1: kind = DK_MOVGE; bits = (b & 1) == 0 ? 8 : v; moffs = true; break;   // MOV AL/eAX, moffs
             case 0xa2: case 0xa3: kind = DK_MOVEG; bits = (b & 1) == 0 ? 8 : v; moffs = true; break;   // MOV moffs, AL/eAX
             default: return;

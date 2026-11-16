@@ -192,6 +192,15 @@ public sealed class Vga
                 if (addr < RamSize) Ram[addr] = val8;
             }
         }
+        else if ((Gr[5] & 3) == 0 && Gr[3] == 0 && Gr[1] == 0)
+        {   // planar write mode 0, no rotate, no logic op, no set / reset (the common case): the byte to every enabled plane under the bit mask
+            if (addr * 4 >= RamSize) return;
+            uint bm = Gr[8] * 0x01010101u, wm = Mask16[Sr[2] & 0xf];
+            ref byte r0 = ref Ram[(int)addr * 4];
+            uint cur = System.Runtime.CompilerServices.Unsafe.ReadUnaligned<uint>(ref r0);
+            uint nv = (val * 0x01010101u & bm) | (_latch & ~bm);
+            System.Runtime.CompilerServices.Unsafe.WriteUnaligned(ref r0, (cur & ~wm) | (nv & wm));
+        }
         else
         {
             uint bitMask;
@@ -226,10 +235,9 @@ public sealed class Vga
         doWrite:
             uint writeMask = Mask16[Sr[2] & 0xf];
             if (addr * 4 >= RamSize) return;
-            int o = (int)addr * 4;
-            uint cur = (uint)(Ram[o] | (Ram[o + 1] << 8) | (Ram[o + 2] << 16) | (Ram[o + 3] << 24));
-            cur = (cur & ~writeMask) | (val & writeMask);
-            Ram[o] = (byte)cur; Ram[o + 1] = (byte)(cur >> 8); Ram[o + 2] = (byte)(cur >> 16); Ram[o + 3] = (byte)(cur >> 24);
+            ref byte o = ref Ram[(int)addr * 4];
+            uint cur = System.Runtime.CompilerServices.Unsafe.ReadUnaligned<uint>(ref o);
+            System.Runtime.CompilerServices.Unsafe.WriteUnaligned(ref o, (cur & ~writeMask) | (val & writeMask));
         }
     }
 

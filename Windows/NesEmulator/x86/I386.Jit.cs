@@ -694,6 +694,7 @@ public sealed partial class I386
         foreach (var e in ins)
         {
             if (e.Kind is DK_PUSH or DK_POP or DK_CALL or DK_RET) usedSegs.Add(SEG_SS);
+            if (e.Kind == DK_STOS) usedSegs.Add(SEG_ES);
             if (DcHasModrm(e.Kind) && e.Mod != 3 && e.Kind != DK_LEA) usedSegs.Add(e.Seg);
         }
         foreach (int s in usedSegs)
@@ -1161,6 +1162,25 @@ public sealed partial class I386
                     }
                     else if (mem) SmcCheck(la, bits / 8);
                     break;
+                case DK_STOS:
+                {
+                    // Stos(bits) without REP: [ES:eDI] = AL / eAX, eDI += (DF ? -n : n) (address size); the video card's memory through JWrSlow / JWrLin
+                    int n1 = bits / 8, asz = e.A16 ? 16 : 32;
+                    LdReg(asz, 7); Stl(ea);
+                    LimitCheck(k, SEG_ES, ea, n1);
+                    il.Emit(OpCodes.Ldloc, sb[SEG_ES]!); Ld(ea); Op(OpCodes.Add); Stl(la);
+                    Xlat(k, n1, true);
+                    LdReg(bits, 0); Stl(t);
+                    StMem(bits, la, t);
+                    var up = il.DefineLabel(); var adv = il.DefineLabel();
+                    LdF(FFlags); U4(DF); Op(OpCodes.And); il.Emit(OpCodes.Brfalse, up);
+                    I4(-n1); il.Emit(OpCodes.Br, adv);
+                    il.MarkLabel(up); I4(n1);
+                    il.MarkLabel(adv); Stl(Y);
+                    StReg(asz, 7, () => { Ld(ea); Ld(Y); Op(OpCodes.Add); });
+                    SmcCheck(pg ? pax : la, n1);
+                    break;
+                }
                 case DK_LEAVE:
                     Prep();
                     Ld0(); Call("JLeave"); FailIfFalse();
