@@ -1,0 +1,10 @@
+{
+  "game": "smb3",
+  "note": "Input macros as play_step steps. Frame counts are first guesses: refine and set verified when a run proves them.",
+  "macros": {
+    "title_to_map": {"verified": false, "steps": [{"frames": 120}, {"buttons": ["Start"], "frames": 5}, {"frames": 60}, {"buttons": ["Start"], "frames": 5}, {"frames": 120}]},
+    "enter_level":  {"verified": false, "steps": [{"buttons": ["A"], "frames": 5}, {"frames": 90}]},
+    "map_right":    {"verified": false, "steps": [{"buttons": ["Right"], "frames": 5}, {"frames": 30}]},
+    "run_right":    {"verified": false, "steps": [{"buttons": ["Right", "B"], "frames": 30}]}
+  }
+}

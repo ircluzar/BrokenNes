@@ -194,3 +194,9 @@ pilot/complete and verified_at set. It is in the index rows too.
 
 **Tests:** `BrokenNes.Mcp.exe --autotas-test` (the movie tests' own game: two chapters across two sessions, a state file, both
 milestone forms, stitch, verify from power-on, a broken hash must fail) and `python -I BrokenDev/tools/catalog/test_autotas.py [manifest]`.
+
+### Python tooling and fleet (2026-11-15)
+Generic agent tooling is in `BrokenDev/tools/autotas/lib/` (bridge, chapter, package, game); per-game intel as data in
+`BrokenDev/tools/autotas/games/<game>/` (SMB3 first, all entries unverified until step 0). Proven end to end on fleet PC PEARL
+(`tests/test_fleet_e2e.py`: save_state path, record mark state_path and load_state path through the bridge, stitch + verify 2/2).
+Only PEARL runs the new MCP build: Application Control blocked it on the other six PCs. See `BrokenDev/tools/autotas/README.md`.
