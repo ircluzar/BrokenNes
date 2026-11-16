@@ -796,6 +796,7 @@ public sealed partial class I386
         uint b = LReg(bits, _reg);
         // the register form addresses outside the operand; the bit offset is signed (tiny386 took it unsigned)
         if (_mod != 3) _addr += (uint)(((int)Sext(bits, b) >> (bits == 16 ? 4 : 5)) * (bits / 8));
+        if (_mod != 3 && _adsz16) _addr &= 0xffff;   // with 16-bit addressing the sum wraps at 64 KB (386EX hardware, SingleStepTests 66 0F AB)
         if (!TranslateE(bits, op == 0 ? 1 : 3)) return false;
         BitOp(op, bits, b);
         return true;
