@@ -72,6 +72,9 @@ internal static class X86BootCli
         // --exclog N: the last N CPU exceptions other than page faults (printed at the end), with a count per vector
         var excRing = new Queue<string>(); var excCount = new long[32]; int excKeep = int.Parse(Arg(args, "--exclog") ?? "0");
         string biosIn = "";
+        // --portlog: I/O accesses per port and direction (printed at the end, the busiest first)
+        var portCount = new long[0x20000];
+        if (args.Contains("--portlog")) m.PortLog = (p, w) => portCount[(p & 0xffff) | (w ? 0x10000 : 0)]++;
         if (excKeep > 0 && args.Contains("--bioslog"))   // BIOS services called from V86 mode (under Windows), with the registers before and after
             m.BiosLog = (n, before) =>
             {
@@ -194,6 +197,9 @@ internal static class X86BootCli
                 Console.WriteLine($"  {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} SS {m.Cpu.SegSel[2]:X4} ESP {m.Cpu.R[4]:X8} EAX {m.Cpu.R[0]:X8} CR0 {m.Cpu.Cr0:X} FL {m.Cpu.Flags:X} | {bytes} | stk {stk}");
                 m.Cpu.Step(1);
             }
+        if (args.Contains("--portlog"))
+            Console.WriteLine("ports: " + string.Join(" ", Enumerable.Range(0, 0x20000).Where(i => portCount[i] > 0).OrderByDescending(i => portCount[i]).Take(40)
+                .Select(i => $"{((i & 0x10000) != 0 ? "out" : "in")}{i & 0xffff:X}={portCount[i]}")));
         if (args.Contains("--vgadump"))   // why a picture is blank: the registers, the palette and how much video memory is non-zero
         {
             var v = m.Vga;

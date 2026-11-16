@@ -124,8 +124,12 @@ public sealed partial class PcMachine : IX86Bus
     public readonly long[] IrqCount = new long[256];
     public int AckIrq() { int v = Pic.ReadIrq(); IrqCount[v & 0xff]++; return v; }
 
+    /// <summary>Debug tools: called with (port, isWrite) on every I/O access (null unless a tool sets it).</summary>
+    public Action<int, bool>? PortLog;
+
     public byte In8(int port)
     {
+        PortLog?.Invoke(port, false);
         if (Pci != null && Pci.In(port, 1, out uint pv)) return (byte)pv;
         if (Ata != null && Ata.In(port, false, out int av)) return (byte)av;
         if (Card != null && Card.In(port, false, out int cv)) return (byte)cv;
@@ -154,6 +158,7 @@ public sealed partial class PcMachine : IX86Bus
 
     public void Out8(int port, byte v)
     {
+        PortLog?.Invoke(port, true);
         if (Pci != null && (Pci.Out(port, 1, v) || PmTrap(port))) return;
         if (Ata != null && Ata.Out(port, false, v)) return;
         if (Card != null && Card.Out(port, false, v)) return;
@@ -180,6 +185,7 @@ public sealed partial class PcMachine : IX86Bus
 
     public ushort In16(int port)
     {
+        PortLog?.Invoke(port, false);
         if (Pci != null && Pci.In(port, 2, out uint pv)) return (ushort)pv;
         if (Ata != null && Ata.In(port, true, out int av)) return (ushort)av;
         if (Card != null && Card.In(port, true, out int cv)) return (ushort)cv;
@@ -189,6 +195,7 @@ public sealed partial class PcMachine : IX86Bus
     }
     public void Out16(int port, ushort v)
     {
+        PortLog?.Invoke(port, true);
         if (Pci != null && Pci.Out(port, 2, v)) return;
         if (Ata != null && Ata.Out(port, true, v)) return;
         if (Card != null && Card.Out(port, true, v)) return;
