@@ -102,6 +102,7 @@ def main():
     ap.add_argument("--vals"); ap.add_argument("--want"); ap.add_argument("--then", default="none")
     ap.add_argument("--within", type=int, default=120); ap.add_argument("--apply", action="store_true")
     ap.add_argument("--survive", type=int, default=30, help="search: the try must also live this many more frames holding --then")
+    ap.add_argument("--settle", type=int, default=0, help="search: the want must still be true this many frames later (no jump-apex false hits)")
     ap.add_argument("--patience", type=int, default=0, help="advance: when stuck, wait 30 frames and retry up to N times (auto-scrollers)")
     ap.add_argument("--stop-when", dest="stopwhen", help="step: also stop early when this expression is true")
     a = ap.parse_intermixed_args(); pkg, ch = a.pkg, a.ch
@@ -253,6 +254,13 @@ def search(b, r, cfg, pkg, ch, a):
         if res.get("stoppedBy") == "milestone": died += 1; continue
         if res.get("stoppedBy") != "condition": missed.append((env, res.get("ram"))); continue
         total += int(res.get("framesRun", 0) or 0)
+        if getattr(a, "settle", 0):   # reject jump-apex false hits: the want must still hold a few frames later
+            st = b.call("play_step", session=r["session"], buttons=btns(a.then), frames=a.settle, scale=0, milestones=dead or None, ram=["w=" + a.want])
+            if st.get("stoppedBy") == "milestone": died += 1; continue
+            if not st["ram"]["w"]: missed.append((env, res.get("ram"))); continue
+            b.call("load_state", session=r["session"], path=tmp)
+            for bt, n in steps: b.call("play_step", session=r["session"], buttons=bt, frames=n, scale=0)
+            b.call("play_step", session=r["session"], buttons=btns(a.then), frames=int(res.get("framesRun", 0) or 0), scale=0)
         if a.survive and dead:   # not a doomed spot: holding --then a little longer must not kill Mario
             b.call("save_state", session=r["session"], name="_srv")
             sv = b.call("play_step", session=r["session"], buttons=btns(a.then), frames=a.survive, scale=0, milestones=dead)

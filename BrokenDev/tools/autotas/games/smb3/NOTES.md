@@ -36,3 +36,10 @@ moving right fast enough to fly over it.
 - Hanging piranha: search "none:{w} Right+B:{r} Right+B+A:{j}" from a stop near x~1985.
 - Card box: search with want '[$7D9D] != 0 || [$7D9E] != 0' (empty card slots fill).
 - x ($0075 high byte) is unreliable in goal rooms; >>> GOAL can come ~80 frames after the map appears.
+
+## 1-6 (done 2026-11-16 by a sonnet escalation, 2940 frames, 0 deaths, card 1-up)
+- Not a true auto-scroller: platform chain + rail lifts. From a689 the ledge jump bonks; jump earlier from a637.
+- Upper route: pink brick row (y=16) then Right+B 28, Right+B+A 44, Right+B 30 onto the hanging wood platform.
+- Rail lift under the bush platform: land on its right end, stand still ~450 frames. Green paratroopa before the card: jump over.
+- Card slots already filled change per run: want only the next EMPTY slot. y wraps above the screen (170-250 = above).
+- Hold Left in the air to brake onto small platforms. Use search --settle 4 to reject apex hits.
