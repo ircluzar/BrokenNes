@@ -192,6 +192,8 @@ public class CPU_FIX : ICPU {
 		nmiRequested = true;
 	}
 	private long nmiRaisedRel = -1;
+	/// <summary>The PPU's $2002 race: a status read on the dot VBlank rises (or the one after) takes the NMI back.</summary>
+	internal void CancelNmi() { nmiRequested = false; nmiDeferOne = false; nmiRaisedRel = -1; }
 	private bool nmiDeferOne;
 	private int dispatchedCycles; // the running instruction's length once its accesses are done; 0 before
 
