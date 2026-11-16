@@ -17,3 +17,8 @@ Picture only, or a 5-call search on the lives digit.
 ## Findings
 - 12-bit colour: a shade difference everywhere is the reference palette, not a bug.
 - A band of wrong tiles at the window edge on our side only = Jank `picture`.
+
+## T2 bridge notes (smoke test 2026-11-16, ZIRCON)
+- play_step button names: `A` (= button 1), `B` (= button 2), `Pause`, `Reset`, d-pad; the GG also has `Start`. `Start` on an SMS game is refused.
+- The bridge server cannot open `.7z`: the T2 list (`cc_t2_fleet/games_flat_smsgg.json`) points at unpacked, sha1-checked copies; the archive is in `archive`.
+- The reference picture is cropped from Mesen's 256x240 (`diff.cropped`); on the GG a step cropped at "x 0, y 0" compared the wrong window: ignore it.
