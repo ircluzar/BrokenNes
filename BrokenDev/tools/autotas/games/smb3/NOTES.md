@@ -29,3 +29,10 @@ moving right fast enough to fly over it.
 - Level tiles live in $6000 (SRAM): 0x43 = door tile, 0x02 air, 0xE4 solid: read it to find doors.
 - Boom-Boom: stomps show as score jumps ($0715); after each stomp hold Left. The ball touches Mario by itself in the right corner.
 - `resume NAME` drops checkpoints saved later in the log.
+
+## 1-5 (done 2026-11-16 by a sonnet escalation, 3226 frames, 0 deaths)
+- The wall at x~1889 is a decoy: the dark recess left of it is a slide tunnel (Left ~60, drop in, hold Right).
+- The two pipes at the cave start are decoys. The exit is a CEILING pipe at the dead end (x~2260): hold A ~30 frames with Up.
+- Hanging piranha: search "none:{w} Right+B:{r} Right+B+A:{j}" from a stop near x~1985.
+- Card box: search with want '[$7D9D] != 0 || [$7D9E] != 0' (empty card slots fill).
+- x ($0075 high byte) is unreliable in goal rooms; >>> GOAL can come ~80 frames after the map appears.

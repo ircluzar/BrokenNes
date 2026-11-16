@@ -156,7 +156,7 @@ def run_cmd(a, pkg, ch):
         b.call("load_state", session=sess, path=sub["path"])
         r.update(port=b.port, session=sess, log=[x[:] for x in sub["inputs"]] if "inputs" in sub else r["log"][:sub["log"]], frames=sub["frames"], armed=sub["armed"])
         r.pop("goal_frame", None); r.pop("finished", None)
-        r["subs"] = {k: v for k, v in r["subs"].items() if v["log"] <= sub["log"]}
+        # later checkpoints are kept: each stores its own inputs, so `resume` to one of them still works
         store(pkg, ch, r)
         cfg = json.load(open(os.path.join(gamelib.load(r["game"]).dir, "runner.json"), encoding="utf-8"))
         res = b.call("play_step", session=sess, frames=0, scale=0, ram=cfg["ram"])
@@ -286,6 +286,13 @@ def advance(b, r, cfg, pkg, ch, a):
     if not ad: sys.exit("this game's runner.json has no advance recipe")
     n = int(a.args[0]) if a.args else 6
     stride = int(ad["stride"])
+    if ad.get("ready"):   # the level may still be loading (black screen, junk x): let it finish before any hop
+        for _ in range(40):
+            if b.call("play_step", session=r["session"], frames=0, scale=0, ram=["k=" + names(ad["ready"], cfg)])["ram"]["k"]: break
+            res, ev = do_step(b, r, cfg, [], 10)
+            ran = int(res.get("framesRun", 0) or 0)
+            if ran: r["log"].append([[], ran]); r["frames"] += ran
+        store(pkg, ch, r)
     for i in range(n):
         cur = b.call("play_step", session=r["session"], frames=0, scale=0, ram=cfg["ram"])["ram"]
         target = int(cur[ad["start"]]) + stride
