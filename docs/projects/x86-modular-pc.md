@@ -12,11 +12,11 @@ paging, V86) with our block JIT (`I386.Jit.cs`), `PcMachine` with 16 MB `Default
 One immutable record, `PcConfig`, built by presets and editable in the desktop app:
 
 ```
-PcConfig { CpuModel, ClockKHz, RamMB, Video, Sound[], Storage (Int13Hle | Ide), Bus (Isa | Pci430TX), Bios (Hle | SeaBios) }
+PcConfig { CpuModel, ClockKHz, RamMB, Video, Sound[], Storage (Int13Hle | Ide), Bus (Isa | Pci430TX) }   // BIOS is always ours; features switch on with the devices
 ```
 
 * Presets: `DOS-386` (386DX-33, 4 MB, VGA, ISA, HLE BIOS) = today's default behaviour, `DOS-486` (486DX2-66, 16 MB, ET4000),
-  `Win98-P166` (Pentium MMX 166, 64 MB, S3 Trio64, i430TX PCI, IDE + ATAPI, SB16-compatible later, SeaBIOS).
+  `Win98-P166` (Pentium MMX 166, 64 MB, S3 Trio64, i430TX PCI, IDE + ATAPI, SB16-compatible later, our BIOS with the Win98 feature set).
 * The current default config stays byte-identical (battery goldens unchanged): new devices are only built when the config asks.
 * Desktop: an "x86 machine" submenu in the core menus (catalog style, short labels), changes apply on reset.
 * Save states: the config is serialized first (versioned block); a state loads only into the same config,
@@ -61,14 +61,29 @@ optional PCI config space, `Render(into frame)`, Save/Load. The current VGA impl
   Bus-master DMA (PIIX4) later, only if PIO is a measured bottleneck. HLE INT 13 stays for the DOS presets.
 * RAM: config 4-128 MB, Win98 preset 64 MB; CMOS + E820 report it. Memory stays one flat array.
 * PCI: i430TX/PIIX4-style host bridge + ISA bridge + IDE function, config mechanism #1 (CF8/CFC), PCI IRQ routing.
-* BIOS decision: keep the HLE BIOS for DOS presets (fast boot, already proven); use SeaBIOS for the Win98 preset,
-  because Windows 98 setup wants a real PnP/PCI/ACPI-or-APM BIOS and writing that HLE is a dead end.
-  Downloads needed (NOT fetched, need the user's approval of each exact file):
-  * SeaBIOS 1.16.3 source tarball, https://www.seabios.org/downloads/seabios-1.16.3.tar.gz, LGPLv3 (we build bios.bin ourselves
-    with a small BrokenNes config; or the prebuilt `bios-256k.bin` from the same release line).
-  * VGA BIOS: SeaVGABIOS is in the same tarball (LGPLv3) for VGA/Bochs-VBE; for the S3 card an S3 Trio64 option ROM
-    is copyrighted, so we write a small own VBE option ROM (or HLE INT 10 VBE trap) instead; no download.
-  * Optional fallback: Bochs BIOS `BIOS-bochs-latest` + LGPL VGABIOS 0.8b, https://github.com/bochs-emu/Bochs (LGPL), only if SeaBIOS has a blocker.
+* BIOS decision (user, 2026-11-15): no MIT PC BIOS that boots Windows 98 exists (SeaBIOS is LGPL-3, b-dmitry1/BIOS is
+  an 8 KB embedded BIOS), so we EXTEND OUR OWN C# BIOS (`PcMachine.Bios.cs`). No SeaBIOS or other BIOS download.
+  Video BIOS (INT 10h + VBE) is also ours, per card. Features, in build order (each gated on the config, so the DOS default
+  stays byte-identical):
+  1. Real 64 KB ROM image at F0000 (+ C0000 video ROM area) with stubs that trap to C# (the current `_special` pattern),
+     correct BDA/EBDA (EBDA at 9FC00, 40:0E), equipment word, POST order: CPU/RAM size -> PIC/PIT/DMA -> video -> disks -> boot.
+  2. INT 15h memory: E801, 88h (up to 64 MB), E820 map (0-9FC00 RAM, EBDA/ROM reserved, 1 MB-top RAM, ACPI area if any),
+     C0h config table, A20 (port 92 + 2401-2403), 87h block move, 89h (rare).
+  3. ATA in the BIOS: detect drives via IDENTIFY on the real `Ide` device, translate CHS (LBA-assist), fill the fixed-disk
+     parameter table (INT 41/46) and BDA 40:75; INT 13h 00-15h through the controller (no more image-direct HLE on IDE configs);
+     INT 13h extensions 41h-48h (EDD 3.0: extended read/write/verify/seek, 48h drive params with DPTE). Win98 setup needs
+     these for >8 GB and for its real-mode stage.
+  4. El Torito boot (INT 13h 4Ah-4Dh, no-emulation and floppy-emulation) from the ATAPI CD, boot order CD/HDD/floppy in CMOS.
+  5. PCI BIOS (INT 1Ah B1xx: present, find device/class, read/write config, get IRQ routing $PIR table) + the 32-bit
+     BIOS32 service directory ("_32_" at E0000-FFFFF) and $PIR table; POST assigns PCI BARs and IRQs (S3 LFB, IDE).
+  6. APM 1.2 (INT 15h 53xx, real + 16/32-bit protected-mode interface) so Win98 can power off; idle call = HLT.
+  7. PnP BIOS ("$PnP" header, functions 00-02 for system device nodes: PIC, PIT, RTC, KBC, DMA, COM/LPT if present):
+     Windows 98 uses it to enumerate legacy devices. ACPI only if Win98 setup proves it needs it (it does not on
+     pre-1999 machines; we stay APM + PnP, so Win98 installs the "Standard PC / Plug and Play BIOS" HAL).
+  8. Shadow/keyboard/serial polish (INT 14h, INT 17h stubs, INT 16h 10h-12h extended keys, F000:FFF5 date, model byte FC).
+  Video BIOS per card: VGA = today's INT 10h; ET4000 = its extended modes 2Dh-38h + VBE 1.2 banked;
+  S3 Trio64 = INT 10h + VBE 2.0 (4F00-4F0A, LFB, protected-mode interface 4F0A) via a C0000 option ROM image we generate,
+  PCI ROM header so Windows sees a real option ROM. Nothing downloaded.
 * Windows 98 media: only from the user. Never downloaded.
 
 ## 5. Speed plan
@@ -98,11 +113,11 @@ optional PCI config space, `Render(into frame)`, Save/Load. The current VGA impl
 2. Devices: IDE IDENTIFY/read/write tests via FreeDOS `fdisk`/`format`, ATAPI with a FreeDOS CD driver and an
    ISO we build ourselves; VBE modes via a small own test COM; S3 accel vs a software reference.
 3. DOS games on every preset: existing Vaults DOS, Super VRUN DOS, catalog games; default preset frame-hash identical.
-4. FreeDOS install from ISO onto an IDE image under SeaBIOS (dry run of the Win98 path).
+4. FreeDOS install from ISO (El Torito) onto an IDE image under our BIOS (dry run of the Win98 path).
 5. Windows 98 SE setup from the user's ISO -> boot to desktop -> S3 driver at 800x600x16 -> timing/benchmarks.
 
 ## Phases
 
 M1 PcConfig + IoMap + save-state block (no behaviour change) · M2 CPU models (486 FPU/CPUID, Pentium + MMX) ·
-M3 IDE + ATAPI + RAM · M4 PCI + SeaBIOS (after download approval) · M5 ET4000 + S3 Trio64 + VBE ·
+M3 IDE + ATAPI + RAM · M4 PCI + our BIOS Win98 features (E820, INT 13 ext, El Torito, PCI BIOS, APM, PnP) · M5 ET4000 + S3 Trio64 + VBE ·
 M6 speed climb to 200% · M7 Windows 98 with the user's media.
