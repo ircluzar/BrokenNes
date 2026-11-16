@@ -241,7 +241,8 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			// Hardware raises VBlank at scanline 241 dot 1, asserting /NMI there when enabled. This
 			// used to live in the end-of-scanline block below, which fired it at the END of 241 -
 			// i.e. scanline 242 dot 0, 340 dots late.
-			if (eventDot && scanline == 241 && sc == 1)
+			if (eventDot && scanline == 241 && sc == 1 && suppressVblank) suppressVblank = false;
+			else if (eventDot && scanline == 241 && sc == 1)
 			{
 				PPUSTATUS |= 0x80;
 				if ((PPUCTRL & 0x80) != 0)
@@ -877,6 +878,8 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		}
 	}
 
+	private bool suppressVblank;   // the $2002 race (see ReadPPURegister); one-shot, consumed at 241 dot 1
+
 	public byte ReadPPURegister(ushort address)
 	{
 		byte result = 0x00;
@@ -895,6 +898,13 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 					// line: Zelda II polls sprite 0 twice in the frame after its pause menu closes,
 					// and clearing bit 6 here left the second poll spinning forever.
 					PPUSTATUS &= 0x7F;
+					// The $2002 race: a read one dot before VBlank is raised (scanline 241, dot 0 done, dot 1 next) returns
+					// it clear AND stops it being set this frame, so neither the flag nor the NMI happens. Vice: Project
+					// Doom's boot loop (LDA $2002 / BPL) lands its read there on frame 3 and Mesen waits a whole frame more.
+					if (scanline == 241 && scanlineCycle == 1) suppressVblank = true;
+					// A read on the dot VBlank rises or the next one returns it set (and clears it) but cancels that frame's
+					// NMI (Mesen 2.1.1 measured on Vice's boot: flag seen, no NMI taken).
+					else if (scanline == 241 && (scanlineCycle == 2 || scanlineCycle == 3) && bus.cpu is CPU_FIX fixCpu) fixCpu.CancelNmi();
 					w = false; // the ONE shared $2005/$2006 write toggle - both halves, not just $2006
 					return result;
 				}
