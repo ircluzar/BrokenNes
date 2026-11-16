@@ -61,6 +61,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--sega-chips-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaChipsTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--z80test", StringComparison.OrdinalIgnoreCase)) return Sega.Z80TestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86test", StringComparison.OrdinalIgnoreCase)) return X86.X86TestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--x86cpu", StringComparison.OrdinalIgnoreCase)) return X86.X86CpuCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86dev", StringComparison.OrdinalIgnoreCase)) return X86.X86DevCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86bench", StringComparison.OrdinalIgnoreCase)) return X86.X86BenchCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86session", StringComparison.OrdinalIgnoreCase)) return X86.X86SessionCli.Run(args);

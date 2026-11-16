@@ -23,6 +23,7 @@ public sealed partial class I386
         w.Write(_ccOp); w.Write(_ccDst); w.Write(_ccDst2); w.Write(_ccSrc1); w.Write(_ccSrc2); w.Write(_ccMask);
         w.Write(MemSize);
         w.Write(Mem, 0, (int)MemSize);
+        if (!_legacy) SaveModelState(w);
     }
 
     public void LoadState(BinaryReader r)
@@ -38,6 +39,7 @@ public sealed partial class I386
         uint size = r.ReadUInt32();
         if (size != MemSize) throw new InvalidDataException($"state has {size} bytes of memory, this machine {MemSize}");
         if (r.Read(Mem, 0, (int)size) != size) throw new EndOfStreamException();
+        if (!_legacy) LoadModelState(r);
         TlbClear();
         _ifLaddr = ulong.MaxValue; _ifPaddr = 0;
     }

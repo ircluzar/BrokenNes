@@ -42,10 +42,17 @@ public sealed partial class PcMachine : IX86Bus
     public long Clock => Cpu.Cycle + _idle;
     public long PitNow => (long)((Int128)Clock * Pit8254.Freq / InstructionsPerSecond);
 
-    public PcMachine(int memBytes = DefaultMemory)
+    /// <param name="cpu">A CPU model (I386.Model.cs); null or the legacy model = the original console's 486-class tiny386 core.</param>
+    public PcMachine(int memBytes = DefaultMemory, CpuModel? cpu = null)
     {
         MemKb = memBytes / 1024;
-        Cpu = new I386(4, memBytes, this);
+        Cpu = cpu == null || cpu.Legacy ? new I386(4, memBytes, this) : new I386(cpu, memBytes, this);
+        if (cpu != null && !cpu.Legacy)
+        {
+            InstructionsPerSecond = cpu.Ips;
+            Cpu.InstructionClock = () => Clock;     // RDTSC counts HLT time too
+            Cpu.Ferr = () => Pic.Pulse(13);         // FERR# -> IRQ 13 (CR0.NE clear: DOS / Windows 9x style FPU errors)
+        }
         Pit = new Pit8254(() => PitNow, () => Pic.Pulse(0));
         Kbc = new Kbc8042(Pic);
         Cmos = new Cmos(() => PitNow, MemKb);
