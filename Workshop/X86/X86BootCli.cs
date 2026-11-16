@@ -53,8 +53,10 @@ internal static class X86BootCli
         var cfg = Arg(args, "--machine") is string mp ? PcConfig.Preset(mp) : PcConfig.Default;
         if (Arg(args, "--mem") is string mem) cfg = cfg with { MemoryMB = int.Parse(mem) };
         if (Arg(args, "--bootorder") is string bo) cfg = cfg with { BootOrder = bo.ToUpperInvariant() };
-        var model = Arg(args, "--cpu") is string cs ? CpuModel.Parse(cs) ?? throw new ArgumentException($"no CPU model {cs}") : null;
-        var video = (Arg(args, "--video") ?? "vga").ToLowerInvariant() is "s3" or "s3trio64" ? PcVideo.S3Trio64 : PcVideo.Vga;
+        // --machine names a whole machine (the desktop's presets): its CPU model and video card, unless --cpu / --video say otherwise
+        var preset = Arg(args, "--machine") is string mk && PcMachinePreset.Known(mk) ? PcMachinePreset.Find(mk) : null;
+        var model = Arg(args, "--cpu") is string cs ? CpuModel.Parse(cs) ?? throw new ArgumentException($"no CPU model {cs}") : preset?.Cpu;
+        var video = Arg(args, "--video") is string vs ? (vs.ToLowerInvariant() is "s3" or "s3trio64" ? PcVideo.S3Trio64 : PcVideo.Vga) : preset?.Video ?? PcVideo.Vga;
         var m = cfg == PcConfig.Default ? new PcMachine(PcMachine.DefaultMemory, model, video) : new PcMachine(cfg, model, video);
         if (Arg(args, "--ips") is string ips) m.InstructionsPerSecond = long.Parse(ips);
         if (Arg(args, "--hdd") is string h) m.Hdd[0] = new DiskImage(File.ReadAllBytes(h), false);
@@ -65,6 +67,8 @@ internal static class X86BootCli
         string? until = Arg(args, "--until"), type = Arg(args, "--type"), shot = Arg(args, "--shot");
         var sw = Stopwatch.StartNew();
         m.PowerOn();
+        // --loadstate: carry on from a --savestate of the same machine (its disks come from the state; the CD stays the one given)
+        if (Arg(args, "--loadstate") is string ls) m.LoadState(File.ReadAllBytes(ls));
         var shotAt = Args(args, "--shotat").Select(x => { int i = x.IndexOf('='); return (f: int.Parse(x[..i]), p: x[(i + 1)..]); }).OrderBy(x => x.f).ToList();
         int n = 0;
         foreach (var (sf, sp) in shotAt) { n += RunUntil(m, null, sf - n); X86Shots.SavePng(m.Vga, sp); Console.WriteLine($"x86boot: frame {n} at {sw.Elapsed.TotalSeconds:F1} s, cycle {m.Cpu.Cycle}"); }
@@ -102,9 +106,12 @@ internal static class X86BootCli
         int stepMax = int.Parse(Arg(args, "--stepframes") ?? "20000"), si = 0;
         foreach (var st in Args(args, "--step"))
         {
-            int i = st.IndexOf("=>"); string u = st[..i], keys = st[(i + 2)..].Replace("\\n", "\n").Replace("\\e", "\x1b");
-            int ns = RunUntil(m, u, stepMax, true); n += ns;   // (the screen only: the teletype log keeps earlier screens' text)
-            bool ok = Screen(m).Contains(u);
+            int i = st.IndexOf("=>"); string u = st[..i], keys = st[(i + 2)..].Replace("\\n", "\n").Replace("\\e", "\x1b").Replace("\\t", "\t")
+                .Replace("\\u", "\x01").Replace("\\d", "\x02").Replace("\\l", "\x03").Replace("\\r", "\x04");
+            // "@N=>KEYS": graphics screens have no text to match, so wait N frames then type
+            bool wait = u.StartsWith('@') && int.TryParse(u[1..], out _);
+            int ns = wait ? RunUntil(m, null, int.Parse(u[1..])) : RunUntil(m, u, stepMax, true); n += ns;   // (the screen only: the teletype log keeps earlier screens' text)
+            bool ok = wait || Screen(m).Contains(u);
             Console.WriteLine($"x86boot: step {si} \"{u}\" {(ok ? "found" : "NOT found")} after {ns} frames (total {n}, {sw.Elapsed.TotalSeconds:F0} s){(m.Stopped != null ? ", STOPPED: " + m.Stopped : "")}");
             if (shot != null) X86Shots.SavePng(m.Vga, Path.ChangeExtension(shot, null) + $"_step{si}.png");
             si++;
@@ -130,6 +137,7 @@ internal static class X86BootCli
         Console.WriteLine(Screen(m).TrimEnd());
         Console.WriteLine("----------------");
         if (shot != null) X86Shots.SavePng(m.Vga, shot);
+        if (Arg(args, "--savestate") is string ss) File.WriteAllBytes(ss, m.SaveState());
         if (Arg(args, "--save") is string save && m.Hdd[0] != null) File.WriteAllBytes(save, m.Hdd[0]!.Data);
         foreach (var g in Args(args, "--get"))
         {
@@ -185,6 +193,13 @@ internal static class X86BootCli
     {
         foreach (char ch in text)
         {
+            if (ch is >= '\x01' and <= '\x04')   // arrow keys (\u \d \l \r in --step): E0-prefixed set-1 codes
+            {
+                byte c = ch switch { '\x01' => 0x48, '\x02' => 0x50, '\x03' => 0x4b, _ => 0x4d };
+                m.Kbc.KeyBytes(0xe0, c); m.Kbc.KeyBytes(0xe0, (byte)(c | 0x80));
+                m.RunFrame(); m.RunFrame();
+                continue;
+            }
             if (!Keys.TryGetValue(ch, out var k)) continue;
             if (k.shift) m.Kbc.KeyBytes(0x2a);
             m.Kbc.KeyBytes(k.code, (byte)(k.code | 0x80));

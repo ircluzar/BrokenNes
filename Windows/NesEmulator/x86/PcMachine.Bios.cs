@@ -151,6 +151,7 @@ public sealed partial class PcMachine
         ushort equip = 0x0020;                                  // 80x25 colour
         int nfl = (Floppy[0] != null ? 1 : 0) + (Floppy[1] != null ? 1 : 0);
         if (nfl > 0) equip |= (ushort)(1 | ((nfl - 1) << 6));
+        if (Cpu.Model.Fpu) equip |= 0x0002;                     // math coprocessor installed (Windows 98 Setup checks INT 11h)
         PhysW16(0x410, equip);
         PhysW16(0x413, 640);
         PhysW16(0x41a, 0x1e); PhysW16(0x41c, 0x1e);
