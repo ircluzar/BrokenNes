@@ -205,6 +205,8 @@ param(
     [string]$Plans = '',
     [ValidateSet('', 'fast', 'accurate')][string]$Nmi = '',
     [switch]$Quick,
+    # 'nested-everything <pipeline> <in> <out>': -Set key=value,... (the pipeline's settings, see 'nested-everything list'); -Profile and -Feedback as for nested
+    [string[]]$Set = @(),
     # 'tool <id> <args...>': the arguments after the tool id are passed to the tool
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @()
 )
@@ -231,6 +233,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\Timeflow.ps1')
 . (Join-Path $here 'lib\TimeflowPlay.ps1')
 . (Join-Path $here 'lib\Nested.ps1')
+. (Join-Path $here 'lib\NestedEverything.ps1')
 . (Join-Path $here 'lib\Instrument.ps1')
 . (Join-Path $here 'lib\Catalog.ps1')
 
@@ -270,7 +273,7 @@ function Get-BdProjectStatus {
 }
 
 try {
-    if ($Rest.Count -gt 0 -and @('tool', 'emulators', 'new', 'movie', 'timeflow', 'nested', 'instrument') -notcontains $Verb.ToLowerInvariant()) { throw "unexpected argument(s) for '$Verb': $($Rest -join ' ')" }
+    if ($Rest.Count -gt 0 -and @('tool', 'emulators', 'new', 'movie', 'timeflow', 'nested', 'nested-everything', 'instrument') -notcontains $Verb.ToLowerInvariant()) { throw "unexpected argument(s) for '$Verb': $($Rest -join ' ')" }
     # -Emu a,b and -Scenario a,b: one comma list or several values, the same either way (pwsh -File passes a,b as one string)
     $Emu = @($Emu | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $Scenario = @($Scenario | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -557,6 +560,14 @@ try {
             if ($r.firstBad) { exit 0 } else { exit 1 }
         }
         'catalog' { exit (Invoke-BdCatalog -Action $Target -NoBrowser:$NoBrowser -Stop:$Stop) }
+        'nested-everything' {
+            # list | <pipeline id> <in> <out> [-Profile <game id or file>] [-Feedback none|brokennes] [-Set key=value,...]
+            $r = Invoke-BdNestedEverything -Id $Target -Rest $Rest -Profile $Profile -Feedback $Feedback -Set $Set -Json:$Json
+            if ($r -is [string]) { $r; exit 0 }
+            if ($null -eq $r) { exit 0 }
+            if ($Json) { $r | ConvertTo-Json }
+            exit $(if ($r.exitCode -le 1) { $r.exitCode } else { 1 })
+        }
         'nested' {
             switch ($Target.ToLowerInvariant()) {
                 'core'  { $r = Invoke-BdNestedCore -Profile $Profile; if ($Json) { $r | ConvertTo-Json }; exit 0 }

@@ -1,0 +1,445 @@
+{
+ "what": "gg2sms_test.py round 2 (2026-11-14, converter 77dc1ca8+): BrokenNes GG core vs SMS core, harness grades (first opinion). lag = frames the converted game boots later (pad script and checkpoints moved). Names and numbers only.",
+ "results": [
+  {
+   "id": "vaults-gg",
+   "name": "VRUN: Vaults of Obsolete Code (GG, 9ea616a)",
+   "grade": "Glitchy",
+   "round1": "Glitchy",
+   "verdict": "converted",
+   "match": [
+    0.9972,
+    0.7895,
+    0.7834,
+    0.7896,
+    0.7829,
+    0.7851
+   ],
+   "sound": 0.246,
+   "lag": 0,
+   "patches": 32,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "vaults-gg-seeded",
+   "name": "Vaults GG, fixed-seed build (play-compare, VOC_GAME_SEED=4321)",
+   "grade": "Playable",
+   "round1": "Glitchy",
+   "verdict": "converted",
+   "match": [
+    0.9586,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.974,
+   "lag": 0,
+   "patches": 32,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "gg-demo-by-charles-macdonald",
+   "name": "GG Demo by Charles MacDonald (PD)",
+   "grade": "Playable",
+   "round1": "Playable",
+   "verdict": "converted",
+   "match": [
+    0.9768,
+    0.9758,
+    0.9802,
+    0.9721,
+    0.9719,
+    0.9772
+   ],
+   "sound": 1.0,
+   "lag": 0,
+   "patches": 11,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "columns",
+   "name": "Columns (U) [!]",
+   "grade": "Glitchy",
+   "round1": "Build fails",
+   "verdict": "converted",
+   "match": [
+    0.0447,
+    0.0223,
+    0.0222,
+    0.0222,
+    0.0222,
+    0.0227
+   ],
+   "sound": 0.285,
+   "lag": 20,
+   "patches": 122,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "fantasy-zone-gear",
+   "name": "Fantasy Zone Gear (JU) [!]",
+   "grade": "Glitchy",
+   "round1": "Build fails",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.8458,
+    1.0,
+    0.7286,
+    0.1355,
+    0.1122
+   ],
+   "sound": 0.24,
+   "lag": 4,
+   "patches": 18,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "bubble-bobble",
+   "name": "Bubble Bobble (U) [!]",
+   "grade": "Glitchy",
+   "round1": "Build fails",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.001,
+    0.856,
+    0.849,
+    0.853
+   ],
+   "sound": 0.67,
+   "lag": 2,
+   "patches": 121,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "pac-man",
+   "name": "Pac-Man (J)",
+   "grade": "Playable",
+   "round1": "Build fails",
+   "verdict": "converted",
+   "match": [
+    0.9987,
+    1.0,
+    1.0,
+    0.9968,
+    0.9968,
+    0.9968
+   ],
+   "sound": 0.989,
+   "lag": 0,
+   "patches": 97,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "wonder-boy",
+   "name": "Wonder Boy (E) [!]",
+   "grade": "Glitchy",
+   "round1": "Build fails",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.615,
+   "lag": 4,
+   "patches": 39,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "castle-of-illusion-starring-mickey-mouse",
+   "name": "Castle of Illusion Starring Mickey Mouse (U) [S][!]",
+   "grade": "Glitchy",
+   "round1": "Glitchy",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.7809,
+    0.6677,
+    0.0004,
+    0.0028,
+    0.0364
+   ],
+   "sound": 0.49,
+   "lag": 44,
+   "patches": 61,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "land-of-illusion-starring-mickey-mouse",
+   "name": "Land of Illusion Starring Mickey Mouse (U) [!]",
+   "grade": "Black screen",
+   "round1": "Black screen",
+   "verdict": "converted",
+   "match": [
+    0.9793,
+    0.1012,
+    0.0,
+    0.1012,
+    0.0,
+    0.4799
+   ],
+   "sound": 0.139,
+   "lag": 0,
+   "patches": 59,
+   "unhandled": 0,
+   "residual": 2
+  },
+  {
+   "id": "sonic-the-hedgehog",
+   "name": "Sonic The Hedgehog (U) (V1.1) [!]",
+   "grade": "Glitchy",
+   "round1": "Build fails",
+   "verdict": "converted",
+   "match": [
+    0.0001,
+    0.0279,
+    0.0199,
+    0.0199,
+    0.0301,
+    0.0199
+   ],
+   "sound": -0.113,
+   "lag": 0,
+   "patches": 78,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "dragon-crystal",
+   "name": "Dragon Crystal (U) [!]",
+   "grade": "Glitchy",
+   "round1": "Build fails",
+   "verdict": "converted",
+   "match": [
+    0.9175,
+    0.8526,
+    0.0007,
+    0.0007,
+    0.0007,
+    0.0007
+   ],
+   "sound": 0.529,
+   "lag": 0,
+   "patches": 105,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "gg-shinobi",
+   "name": "GG Shinobi (E) [!]",
+   "grade": "Glitchy",
+   "round1": "Build fails",
+   "verdict": "converted",
+   "match": [
+    0.4482,
+    0.1541,
+    0.1202,
+    0.1134,
+    0.1196,
+    0.1186
+   ],
+   "sound": 0.071,
+   "lag": 92,
+   "patches": 113,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "shinobi-ii-the-silent-fury",
+   "name": "Shinobi II - The Silent Fury (U) [!]",
+   "grade": "Glitchy",
+   "round1": "Build fails",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    1.0,
+    0.9196,
+    0.3453,
+    0.9322
+   ],
+   "sound": 0.119,
+   "lag": 22,
+   "patches": 87,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "sonic-chaos",
+   "name": "Sonic Chaos (U) [!]",
+   "grade": "Glitchy",
+   "round1": "Build fails",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.0174,
+    0.0075,
+    0.0342,
+    0.0073,
+    0.2578
+   ],
+   "sound": 0.132,
+   "lag": 16,
+   "patches": 133,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "sonic-the-hedgehog-2",
+   "name": "Sonic The Hedgehog 2 (U) [!]",
+   "grade": "Glitchy",
+   "round1": "Build fails",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9826,
+    0.9685,
+    0.9228,
+    0.5554,
+    0.4408
+   ],
+   "sound": 0.726,
+   "lag": 12,
+   "patches": 59,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "tails-adventures",
+   "name": "Tails' Adventures (U) [!]",
+   "grade": "Glitchy",
+   "round1": "Build fails",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0164,
+    0.0004,
+    0.0115,
+    0.0027,
+    0.0025
+   ],
+   "sound": 0.459,
+   "lag": 14,
+   "patches": 255,
+   "unhandled": 0,
+   "residual": 29
+  },
+  {
+   "id": "defenders-of-oasis",
+   "name": "Defenders of Oasis (U) [!]",
+   "grade": "Glitchy",
+   "round1": "Glitchy",
+   "verdict": "converted",
+   "match": [
+    0.8065,
+    0.0767,
+    0.0503,
+    0.0771,
+    0.0416,
+    0.0045
+   ],
+   "sound": -0.072,
+   "lag": 0,
+   "patches": 91,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "ristar-the-shooting-star",
+   "name": "Ristar the Shooting Star (U) [!]",
+   "grade": "Glitchy",
+   "round1": "Build fails",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.8318,
+    0.8996,
+    0.9998,
+    0.4746,
+    0.1551
+   ],
+   "sound": 0.527,
+   "lag": 24,
+   "patches": 141,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "micro-machines",
+   "name": "Micro Machines (E)",
+   "grade": "Black screen",
+   "round1": "Build fails",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.0,
+    0.1773,
+    0.1869,
+    0.2061,
+    0.1651,
+    0.1619
+   ],
+   "sound": 0.066,
+   "lag": 0,
+   "patches": 182,
+   "unhandled": 2,
+   "residual": 10
+  },
+  {
+   "id": "wonder-boy-the-dragon-s-trap",
+   "name": "Wonder Boy - The Dragon's Trap (E) [!]",
+   "grade": "Playable",
+   "round1": "Build fails",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9977,
+    0.997,
+    0.9961,
+    0.9888,
+    0.9936
+   ],
+   "sound": 0.964,
+   "lag": 2,
+   "patches": 35,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "shining-force-ii-the-sword-of-hajya",
+   "name": "Shining Force II - The Sword of Hajya (U) [!]",
+   "grade": "Black screen",
+   "round1": "Black screen",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.7321,
+    0.4536,
+    0.4536,
+    0.4536,
+    0.4599,
+    0.1785
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 102,
+   "unhandled": 4,
+   "residual": 2
+  }
+ ]
+}

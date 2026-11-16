@@ -1,0 +1,122 @@
+{
+ "what": "The GG -> SMS test roster: our own Vaults GG first, then the 20 Game Gear games of the Sega cores' roster (Workshop/Sega/RosterSuite.cs) from the user's disk. ROMs are never copied into git.",
+ "folder": "X:\\EMULATION\\Sega Game Gear",
+ "games": [
+  {
+   "id": "vaults-gg",
+   "name": "VRUN: Vaults of Obsolete Code (GG, 9ea616a)",
+   "rom": "T:\\BrokenDev\\Releases\\VRUN_Vaults_GG\\2026-11-10_9ea616a\\VRUN_Vaults_GG_9ea616a.gg",
+   "profile": "profiles/vaults-gg.json",
+   "own": true
+  },
+  {
+   "id": "vaults-gg-seeded",
+   "name": "Vaults GG, fixed-seed build (play-compare, VOC_GAME_SEED=4321)",
+   "rom": "C:\\BrokenNes-work\\play-compare\\vrun-voc-gg\\port\\out\\vrun_voc_gg.gg",
+   "profile": "profiles/vaults-gg.json",
+   "own": true
+  },
+  {
+   "id": "gg-demo-by-charles-macdonald",
+   "name": "GG Demo by Charles MacDonald (PD)",
+   "rom": "GG Demo by Charles MacDonald (PD).gg",
+   "profile": "profiles/gg-demo.json"
+  },
+  {
+   "id": "columns",
+   "name": "Columns (U) [!]",
+   "rom": "Columns (U) [!].gg"
+  },
+  {
+   "id": "fantasy-zone-gear",
+   "name": "Fantasy Zone Gear (JU) [!]",
+   "rom": "Fantasy Zone Gear (JU) [!].gg"
+  },
+  {
+   "id": "bubble-bobble",
+   "name": "Bubble Bobble (U) [!]",
+   "rom": "Bubble Bobble (U) [!].gg"
+  },
+  {
+   "id": "pac-man",
+   "name": "Pac-Man (J)",
+   "rom": "Pac-Man (J).gg"
+  },
+  {
+   "id": "wonder-boy",
+   "name": "Wonder Boy (E) [!]",
+   "rom": "Wonder Boy (E) [!].gg"
+  },
+  {
+   "id": "castle-of-illusion-starring-mickey-mouse",
+   "name": "Castle of Illusion Starring Mickey Mouse (U) [S][!]",
+   "rom": "Castle of Illusion Starring Mickey Mouse (U) [S][!].gg"
+  },
+  {
+   "id": "land-of-illusion-starring-mickey-mouse",
+   "name": "Land of Illusion Starring Mickey Mouse (U) [!]",
+   "rom": "Land of Illusion Starring Mickey Mouse (U) [!].gg"
+  },
+  {
+   "id": "sonic-the-hedgehog",
+   "name": "Sonic The Hedgehog (U) (V1.1) [!]",
+   "rom": "Sonic The Hedgehog (U) (V1.1) [!].gg"
+  },
+  {
+   "id": "dragon-crystal",
+   "name": "Dragon Crystal (U) [!]",
+   "rom": "Dragon Crystal (U) [!].gg"
+  },
+  {
+   "id": "gg-shinobi",
+   "name": "GG Shinobi (E) [!]",
+   "rom": "GG Shinobi (E) [!].gg"
+  },
+  {
+   "id": "shinobi-ii-the-silent-fury",
+   "name": "Shinobi II - The Silent Fury (U) [!]",
+   "rom": "Shinobi II - The Silent Fury (U) [!].gg"
+  },
+  {
+   "id": "sonic-chaos",
+   "name": "Sonic Chaos (U) [!]",
+   "rom": "Sonic Chaos (U) [!].gg"
+  },
+  {
+   "id": "sonic-the-hedgehog-2",
+   "name": "Sonic The Hedgehog 2 (U) [!]",
+   "rom": "Sonic The Hedgehog 2 (U) [!].gg"
+  },
+  {
+   "id": "tails-adventures",
+   "name": "Tails' Adventures (U) [!]",
+   "rom": "Tails' Adventures (U) [!].gg"
+  },
+  {
+   "id": "defenders-of-oasis",
+   "name": "Defenders of Oasis (U) [!]",
+   "rom": "Defenders of Oasis (U) [!].gg"
+  },
+  {
+   "id": "ristar-the-shooting-star",
+   "name": "Ristar the Shooting Star (U) [!]",
+   "rom": "Ristar the Shooting Star (U) [!].gg"
+  },
+  {
+   "id": "micro-machines",
+   "name": "Micro Machines (E)",
+   "rom": "Micro Machines (E).gg",
+   "profile": "profiles/micro-machines.json"
+  },
+  {
+   "id": "wonder-boy-the-dragon-s-trap",
+   "name": "Wonder Boy - The Dragon's Trap (E) [!]",
+   "rom": "Wonder Boy - The Dragon's Trap (E) [!].gg"
+  },
+  {
+   "id": "shining-force-ii-the-sword-of-hajya",
+   "name": "Shining Force II - The Sword of Hajya (U) [!]",
+   "rom": "Shining Force II - The Sword of Hajya (U) [!].gg"
+  }
+ ]
+}

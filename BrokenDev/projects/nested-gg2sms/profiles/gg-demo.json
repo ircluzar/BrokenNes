@@ -1,0 +1,4 @@
+{
+  "what": "GG Demo by Charles MacDonald: changes colours on raster lines; the fast data-port path's extra cycles in the colour case are tested off here",
+  "fast": false
+}
