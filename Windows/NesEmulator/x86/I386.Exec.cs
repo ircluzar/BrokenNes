@@ -903,6 +903,8 @@ public sealed partial class I386
         for (int i = 0; i < 8; i++) { if (i == 3) continue; if (!Translate(ref m[i], 1, SEG_SS, (sp + n * (uint)i) & _spm, bits / 8)) return false; }
         for (int i = 0; i < 8; i++) { if (i == 3) continue; SReg(bits, 7 - i, Load(bits, ref m[i])); }
         SetSp(sp + n * 8, _spm);
+        // POPAD on a 16-bit stack: a 386 puts the high word of the ESP image it skips into ESP's high word (SingleStepTests 80386 66 61)
+        if (bits == 32 && _spm == 0xffff && Translate(ref m[3], 1, SEG_SS, (sp + 12) & _spm, 4)) R[4] = (Load(32, ref m[3]) & 0xffff0000) | (R[4] & 0xffff);
         return true;
     }
 
