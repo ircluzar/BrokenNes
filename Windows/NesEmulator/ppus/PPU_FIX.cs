@@ -138,6 +138,10 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		// (and per $2001 write) rather than per dot; bus can be null during construction and core
 		// hot-swap, which is why this is not done in the constructor.
 		vPipelineOn = (scanline < 240 || scanline == 261) && (PPUMASK & 0x18) != 0;
+		// Four-screen carts: CIRAM ($2000-$27FF) + the cart's 2 KiB ($2800-$2FFF) live in one 4 KiB vram (CIRAM first, so traces
+		// and states keep CIRAM at 0-$7FF). Checked here because the cartridge is attached after construction and a state may bring a 2 KiB vram.
+		fourScreen = bus?.cartridge?.fourScreen == true;
+		if (fourScreen && vram.Length < 4096) { var nv = new byte[4096]; Array.Copy(vram, nv, vram.Length); vram = nv; }
 		dataPortCollision = bus?.PpuCaughtUpPerInstruction ?? false;
 		// Per-line caches for the pixel pipeline: only MMC5 listens to per-tile fetch hooks, and with no
 		// cartridge the power-on test pattern is left on screen.
@@ -147,7 +151,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		var mt = bus?.cartridge?.mapper?.GetType();
 		ntPlainMapper = mt == typeof(Mapper0) || mt == typeof(Mapper1) || mt == typeof(Mapper2) || mt == typeof(Mapper3) || mt == typeof(Mapper4) || mt == typeof(Mapper7) || mt == typeof(Mapper30);
 	}
-	private bool mmc5TileHooks, hasCartridge, ntPlainMapper;
+	private bool mmc5TileHooks, hasCartridge, ntPlainMapper, fourScreen;
 	// PPUMASK-derived colour-output state, refreshed whenever $2001 changes and at the top of every
 	// scanline. Both are pure output-stage effects - they never touch what is stored in palette RAM.
 	//   greyMask  - PPUMASK bit 0 (greyscale) ANDs the palette INDEX with $30 on its way out of
@@ -1184,6 +1188,8 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	private ushort MirrorVRAMAddressUnbent(ushort address)
 	{
 		ushort offset = (ushort)(address & 0x0FFF);
+
+		if (fourScreen) return offset;   // four-screen: every nametable is its own 1 KiB (vram is 4 KiB)
 
 		int ntIndex = offset / 0x400;
 		int innerOffset = offset % 0x400;
