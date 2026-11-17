@@ -35,6 +35,8 @@ var dirs = new Dictionary<string, (ConsoleKind k, string dir, string[] ext)>
     ["wm"] = (ConsoleKind.WideMess, "X:/EMULATION/Super Nintendo/Super Nintendo (U)", new[] { ".smc", ".sfc" }),
 };
 var (kind, dir, exts) = dirs[console];
+// BFUZZ_ROMS: another ROM folder (the fleet PCs get a copy of the pool; they cannot see X: or this PC's corpus)
+if (Environment.GetEnvironmentVariable("BFUZZ_ROMS") is { Length: > 0 } romDir) dir = romDir;
 if (kind == ConsoleKind.WideMess) Consoles.WideMessEnabled = true;
 var roms = Directory.EnumerateFiles(dir).Where(f => exts.Contains(Path.GetExtension(f).ToLowerInvariant()) && !f.Contains("32X")).ToArray();
 log.WriteLine($"{console}: {roms.Length} roms, seed0 {seed0}, budget {budget}s");
