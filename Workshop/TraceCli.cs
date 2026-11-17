@@ -132,6 +132,9 @@ internal static class TraceCli
         "                  INCLUSIVE until the next step. Buttons: A,B,Select,Start,Up,Down,Left,Right.\n" +
         "                  Example: \"60:Start,66:,120:Right+A,180:\"\n" +
         "  --ntsc-frame-timing  default 'on'. See the determinism notes in TraceCli.cs.\n" +
+        "  --sample line0  take each record at the first instruction boundary on PPU line 0 (Mesen's\n" +
+        "                  state_trace rule) instead of RunFrame's return; RunFrame's fixed dot budget\n" +
+        "                  drifts against the PPU frame while rendering is off (Ikari Warriors).\n" +
         "  --input-latch   frame (default): each step applies from the start of the frame it names.\n" +
         "                  line240: frame F's step takes effect when the PPU enters line 240 of\n" +
         "                  frame F (counted from power-on) - exactly where Mesen 2.1.1's script sets\n" +
@@ -298,7 +301,7 @@ internal static class TraceCli
         // --prg-state / --poke-at: see PrgSampler and the poke block below.
         string prgMode = "off";
         string? pokeSpec = null;
-        bool inputLatchLine240 = false, inputLatchLine241 = false;
+        bool inputLatchLine240 = false, inputLatchLine241 = false, sampleLine0 = false;
 
         try
         {
@@ -314,6 +317,7 @@ internal static class TraceCli
                     case "--input": inputScript = args[++i]; break;
                     case "--out": outPath = args[++i]; break;
                     case "--ntsc-frame-timing": ntscFrameTiming = ParseOnOff(args[++i]); break;
+                case "--sample": sampleLine0 = args[++i] == "line0"; break;
                 case "--input-latch":
                     {
                         string mode = args[++i].ToLowerInvariant();
@@ -601,7 +605,7 @@ internal static class TraceCli
             // Reusable buffers: a 1800-frame trace hashes ~3.7 MB of RAM, and there is no reason to
             // allocate a fresh array 1800 times to do it.
             var ramSnapshot = new byte[WorkRamSize];
-            Span<byte> digest = stackalloc byte[32];
+            byte[] digest = new byte[32];
             var line = new StringBuilder(64);
 
             // Power-on RAM override. BrokenNes fills work RAM with FCEUX's default pattern, which is
@@ -794,27 +798,8 @@ internal static class TraceCli
                 if (inputLatchLine241) nes.PpuEnteredVblank += latch; else nes.PpuEnteredPostRender += latch;
             }
 
-            for (int f = 0; f < frames; f++)
+            void SampleFrame(int f)
             {
-                curFrame = f;
-                // Identical to RomTestCli's loop: a while (not if) so multiple steps on the same
-                // frame all resolve, and the step's held set is in effect for the frame it names.
-                while (!inputLatchLine240 && nextStep < script.Count && script[nextStep].Frame <= f)
-                {
-                    held = (bool[])script[nextStep].Held.Clone();
-                    nextStep++;
-                }
-                if (!inputLatchLine240) nes.SetInputs(held, null);
-
-                // Pokes land here - after the input for this frame is latched in, before the frame
-                // is emulated. See the --poke-at block for why this exact instant is the one the
-                // Mesen side mirrors.
-                if (pokeCount > 0 && pokes.TryGetValue(f, out var framePokes))
-                {
-                    foreach (var (addr, value) in framePokes) nes.PokeSystemRam(addr, value);
-                }
-
-                nes.RunFrame();
 
                 // END of frame: sampled immediately after the call that advanced this frame
                 // returned, which is the boundary the other emulator is told to sample at too.
@@ -854,6 +839,41 @@ internal static class TraceCli
                     Console.Error.WriteLine($"ram-dump: frame {f} -> {path}{(ppuSampler != null ? " (+ ciram/oam/pal" + (ppuChr ? "/chr" : "") + (ppuSampler.FrameEnabled ? "/fb" : "") + ")" : "")}");
                 }
 
+            }
+            if (sampleLine0) nes.PpuEnteredFrameStart += () => { if (emitted < frames) SampleFrame(emitted); };
+
+            for (int f = 0; f < frames; f++)
+            {
+                curFrame = f;
+                // Identical to RomTestCli's loop: a while (not if) so multiple steps on the same
+                // frame all resolve, and the step's held set is in effect for the frame it names.
+                while (!inputLatchLine240 && nextStep < script.Count && script[nextStep].Frame <= f)
+                {
+                    held = (bool[])script[nextStep].Held.Clone();
+                    nextStep++;
+                }
+                if (!inputLatchLine240) nes.SetInputs(held, null);
+
+                // Pokes land here - after the input for this frame is latched in, before the frame
+                // is emulated. See the --poke-at block for why this exact instant is the one the
+                // Mesen side mirrors.
+                if (pokeCount > 0 && pokes.TryGetValue(f, out var framePokes))
+                {
+                    foreach (var (addr, value) in framePokes) nes.PokeSystemRam(addr, value);
+                }
+
+                if (sampleLine0)
+                {
+                    // --sample line0: the record is taken by the PpuEnteredFrameStart hook (Mesen's rule). Run until
+                    // this frame's record exists; a drifting RunFrame budget can need 0 or 2 calls now and then.
+                    int guard = 0;
+                    while (emitted <= f && guard++ < 4) nes.RunFrame();
+                }
+                else
+                {
+                    nes.RunFrame();
+                    SampleFrame(f);
+                }
                 if (nes.IsCrashed()) { crashFrame = f; break; }
             }
 
