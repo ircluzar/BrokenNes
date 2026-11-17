@@ -35,7 +35,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "catalog"))
 import catalog  # noqa: E402
 
-T1_VERSION = "t1-4"   # t1-4: NES input latch line241 (was line240 in t1-3: Lunar Pool / Death Race / Classic Concentration poll $4016 near 240:140 and read the next step early; line241 matches Mesen's inputPolled). t1-3: input latched at the same point on both sides + NES picture window fixed
+T1_VERSION = "t1-4"   # (md: BrokenNes pictures mapped onto Genplus-gx's colour ladder before comparing, see MD_LADDER) t1-4: NES input latch line241 (was line240 in t1-3: Lunar Pool / Death Race / Classic Concentration poll $4016 near 240:140 and read the next step early; line241 matches Mesen's inputPolled). t1-3: input latched at the same point on both sides + NES picture window fixed
 LATCH = os.environ.get("BNT1_LATCH", "line241")   # "frame" = the t1-2 behaviour (a frame of input skew vs Mesen)
 HEAVY = os.environ.get("BNT1_HEAVY", r"C:\BrokenNes-work\heavy")
 SLOTS = int(os.environ.get("BNT1_SLOTS", "4"))
@@ -166,6 +166,21 @@ RANK = False   # other consoles: compare brightness RANKS (Mesen's Game Gear / G
 def ranks(l):
     u, inv = np.unique(l, return_inverse=True)
     return (inv.reshape(l.shape) * (255 // max(1, len(u) - 1))).astype(np.int32) if len(u) > 1 else np.zeros_like(l)
+
+
+# Genesis colour: BrokenNes outputs the measured (non-linear) DAC ladder 0,49,87,119,146,174,206,255 per 3-bit level; BizHawk's
+# Genplus-gx outputs the linear 0,34,...,238. Same picture, different brightness: ~0.05-0.08 on picdiff's edge term, which made
+# whole title screens "close, not same" (Streets of Rage, Mortal Kombat, Earthworm Jim...). Map BrokenNes's MD pictures onto the
+# reference ladder before comparing them with BizHawk's. Nearest level, so shadow/highlight mid-levels land on a neighbour.
+MD_LADDER = False
+_MD_BN = np.array([0, 49, 87, 119, 146, 174, 206, 255])
+_MD_GP = np.array([0, 34, 68, 102, 136, 170, 204, 238])
+
+
+def to_ref_ladder(img):
+    if not MD_LADDER or img is None:
+        return img
+    return _MD_GP[np.abs(img[..., None] - _MD_BN).argmin(-1)].astype(np.int32)
 
 
 def picdiff(a, b):
@@ -332,7 +347,7 @@ def best_match(img, ref_pics, f):
         p = ref_pics.get(k)
         if p is None:
             continue
-        s = picdiff(img, fit_ref(load_ref(p), img))
+        s = picdiff(to_ref_ladder(img), fit_ref(load_ref(p), img))
         if best is None or s < best[0]:
             best = (s, k)
     return best
@@ -458,8 +473,9 @@ def con_run(rom, console, frames, png_at, out_dir, script=None):
 
 
 def check_console(rec, console, minutes, keep_dir):
-    global REF_LAG, WIN, RANK
-    REF_LAG, WIN, RANK = 4, 6, console in RANK_CONSOLES   # SNES pictures sit ~6 frames lower on Mesen's counter, Game Boy ~3: search f-10..f+2
+    global REF_LAG, WIN, RANK, MD_LADDER
+    REF_LAG, WIN, RANK = 4, 6, console in RANK_CONSOLES
+    MD_LADDER = console == "md"   # SNES pictures sit ~6 frames lower on Mesen's counter, Game Boy ~3: search f-10..f+2
     rom = rec.get("path") or rec["file"]["path"]
     work = os.path.join(SCRATCH, rec["sha1"])
     shutil.rmtree(work, ignore_errors=True)
@@ -852,8 +868,9 @@ def cmd_ingest(a):
 def cmd_regrade(a):
     """re-score the kept checkpoint pictures (bn_/ref_ PNGs in the record's screenshots folder) with the current picdiff and grade again;
     no emulator runs. For records graded by an older comparison."""
-    global RANK
+    global RANK, MD_LADDER
     RANK = a.console in RANK_CONSOLES
+    MD_LADDER = a.console == "md"
     n = seen = 0
     # (a list first: catalog.iter_records yields inside `with open(...)`, so the record file is still open and cannot be replaced)
     for rec in list(catalog.iter_records(a.console)):
@@ -868,7 +885,7 @@ def cmd_regrade(a):
         for r in cmp:
             if r.get("bn") and r.get("ref") and os.path.exists(os.path.join(kd, r["bn"])) and os.path.exists(os.path.join(kd, r["ref"])):
                 bimg = load_png(os.path.join(kd, r["bn"]))
-                r["score"] = picdiff(bimg, load_png(os.path.join(kd, r["ref"])))
+                r["score"] = picdiff(to_ref_ladder(bimg), load_png(os.path.join(kd, r["ref"])))
                 r["bnHash"] = hash(bimg.tobytes())
             elif r.get("bn") and os.path.exists(os.path.join(kd, r["bn"])):
                 r["bnHash"] = hash(load_png(os.path.join(kd, r["bn"])).tobytes())
