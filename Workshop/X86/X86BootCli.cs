@@ -90,7 +90,7 @@ internal static class X86BootCli
             {
                 excCount[v & 31]++;
                 if (v == 14 || (((m.Cpu.Flags >> 17) & 1) != 0 && v is 6 or 13 && !(v == 13 && m.Cpu.SegSel[1] == 0xf000 && m.Cpu.Ip < 0xe800))) return;   // (V86 monitor traps: the usual traffic)
-                excRing.Enqueue($"#{v} err {e:X} at {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} CR0 {m.Cpu.Cr0:X} VM {(m.Cpu.Flags >> 17) & 1} EAX {m.Cpu.R[0]:X8} ESI {m.Cpu.R[6]:X8} EDI {m.Cpu.R[7]:X8} EBX {m.Cpu.R[3]:X8} DS {m.Cpu.SegSel[3]:X4}/{m.Cpu.SegBase[3]:X}/{m.Cpu.SegLimit[3]:X} ES {m.Cpu.SegSel[0]:X4}/{m.Cpu.SegLimit[0]:X} CSbase {m.Cpu.SegBase[1]:X} cyc {m.Cpu.Cycle} | " + string.Join(" ", Enumerable.Range(0, 10).Select(i => m.Phys8(m.Cpu.SegBase[1] + m.Cpu.Ip + (uint)i).ToString("X2"))));
+                excRing.Enqueue($"#{v} err {e:X} at {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} CR0 {m.Cpu.Cr0:X} VM {(m.Cpu.Flags >> 17) & 1} EAX {m.Cpu.R[0]:X8} ESI {m.Cpu.R[6]:X8} EDI {m.Cpu.R[7]:X8} EBX {m.Cpu.R[3]:X8} DS {m.Cpu.SegSel[3]:X4}/{m.Cpu.SegBase[3]:X}/{m.Cpu.SegLimit[3]:X} ES {m.Cpu.SegSel[0]:X4}/{m.Cpu.SegLimit[0]:X} CSbase {m.Cpu.SegBase[1]:X} cyc {m.Cpu.Cycle} | " + LinBytes(m, m.Cpu.SegBase[1] + m.Cpu.Ip, 10));
                 if (excRing.Count > excKeep) excRing.Dequeue();
             };
         if (excKeep > 0)
@@ -147,6 +147,26 @@ internal static class X86BootCli
             }
         }) { IsBackground = true } : null;
         sampler?.Start();
+        if (Arg(args, "--watchlin") is string wl)   // --watchlin HEXLIN: run --frames frames; once the page is present, in small slices, printing each change of the dword there
+        {
+            uint wa = Convert.ToUInt32(wl, 16); int slice = int.Parse(Arg(args, "--watchslice") ?? "40"); uint last = 0; bool have = false; int changes = 0;
+            long target = m.Cpu.Cycle; 
+            for (; n < frames && changes < 400; n++)
+            {
+                uint p0 = LinPhys(m, wa);
+                if (!have && (p0 == 0xffffffff || (m.Cpu.Cr0 & 0x80000000) == 0)) { if (!m.RunFrame()) break; continue; }
+                // the frame in slices
+                long end = m.Clock + m.InstructionsPerSecond / 70;
+                while (m.Clock < end && m.Stopped == null)
+                {
+                    m.RunClock(slice);
+                    uint p = (m.Cpu.Cr0 & 0x80000000) != 0 ? LinPhys(m, wa) : 0xffffffff;
+                    if (p == 0xffffffff) continue;
+                    uint v = m.Phys32(p);
+                    if (!have || v != last) { Console.WriteLine($"watch {wa:X8} (phys {p:X8}) = {v:X8} (was {last:X8}) at {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} frame {n} cyc {m.Cpu.Cycle}"); last = v; have = true; changes++; }
+                }
+            }
+        }
         n += RunUntil(m, until, frames - n);
         sampling = false;
         if (sampler != null) foreach (var kv in hot.OrderByDescending(x => x.Value).Take(30)) Console.WriteLine($"  hot {kv.Key} {kv.Value}");
@@ -184,6 +204,24 @@ internal static class X86BootCli
             n += RunUntil(m, null, 35);   // let the keys land before looking for the next screen
         }
         if (Arg(args, "--after") is string aft) { n += RunUntil(m, null, int.Parse(aft)); }
+        // --tracewhen "VEC:SEL" (with --trace N): run on in small clock slices until exception VEC is raised with CS = SEL, then trace from the handler
+        if (Arg(args, "--tracewhen") is string tw)
+        {
+            var tp = tw.Split(':'); int tv = Convert.ToInt32(tp[0]); uint tsel = Convert.ToUInt32(tp[1], 16); bool hit = false;
+            var prevLog = m.Cpu.ExceptionLog;
+            m.Cpu.ExceptionLog = (v, e) => { prevLog?.Invoke(v, e); if (v == tv && m.Cpu.SegSel[1] == tsel) { if (!hit) Console.WriteLine($"tracewhen: #{v} err {e:X} at {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} EAX {m.Cpu.R[0]:X8} EDX {m.Cpu.R[2]:X8} | {LinBytes(m, m.Cpu.SegBase[1] + m.Cpu.Ip, 8)}"); hit = true; } };
+            long slices = 0;
+            while (!hit && slices++ < 20_000_000) m.RunClock(20);
+            m.Cpu.ExceptionLog = prevLog;
+            Console.WriteLine($"tracewhen: {(hit ? "hit" : "not hit")} after {slices} slices");
+        }
+        // --traceat HEXLO-HEXHI (with --trace N): run on in 1-instruction clock slices until the linear CS:EIP is inside the range, then trace
+        if (Arg(args, "--traceat") is string ta)
+        {
+            var tp = ta.Split('-'); uint lo = Convert.ToUInt32(tp[0], 16), hi = Convert.ToUInt32(tp[1], 16); long sl = 0; int tslice = int.Parse(Arg(args, "--traceslice") ?? "1");
+            while (sl++ < 400_000_000) { uint l = m.Cpu.SegBase[1] + m.Cpu.Ip; if (l >= lo && l < hi) break; m.RunClock(tslice); }
+            Console.WriteLine($"traceat: at {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} after {sl} slices");
+        }
         if (Arg(args, "--trace") is string trc)   // one instruction at a time: where a hang loops
         {
             Console.WriteLine("  IVT " + string.Join(" ", Enumerable.Range(0, 32).Select(i => $"{i:X2}={m.Phys16((uint)i * 4 + 2):X4}:{m.Phys16((uint)i * 4):X4}")) + $" | 40:67 {m.Phys32(0x467):X8} CMOS0F {m.Cmos.Ram[0x0f]:X2} 40:72 {m.Phys16(0x472):X4}");
@@ -192,9 +230,9 @@ internal static class X86BootCli
             for (int k = 0; k < int.Parse(trc2); k++)
             {
                 uint lin = m.Cpu.SegBase[1] + m.Cpu.Ip, sp = m.Cpu.SegBase[2] + (m.Cpu.R[4] & 0xffff);
-                var bytes = string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(lin + (uint)i).ToString("X2")));
+                var bytes = LinBytes(m, lin, 8);
                 var stk = string.Join(" ", Enumerable.Range(0, 6).Select(i => m.Phys16(sp + (uint)i * 2).ToString("X4")));
-                Console.WriteLine($"  {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} SS {m.Cpu.SegSel[2]:X4} ESP {m.Cpu.R[4]:X8} EAX {m.Cpu.R[0]:X8} CR0 {m.Cpu.Cr0:X} FL {m.Cpu.Flags:X} | {bytes} | stk {stk}");
+                Console.WriteLine($"  {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} SS {m.Cpu.SegSel[2]:X4} ESP {m.Cpu.R[4]:X8} EAX {m.Cpu.R[0]:X8} EBX {m.Cpu.R[3]:X8} ECX {m.Cpu.R[1]:X8} EDX {m.Cpu.R[2]:X8} ESI {m.Cpu.R[6]:X8} EDI {m.Cpu.R[7]:X8} DS {m.Cpu.SegSel[3]:X4} ES {m.Cpu.SegSel[0]:X4} FL {m.Cpu.Flags:X} | {bytes} | stk {stk}");
                 m.Cpu.Step(1);
             }
         if (args.Contains("--portlog"))
@@ -213,9 +251,29 @@ internal static class X86BootCli
             {
                 m.RunClock(997);
                 uint lin = m.Cpu.SegBase[1] + m.Cpu.Ip;
-                var bytes = string.Join(" ", Enumerable.Range(0, 12).Select(i => m.Phys8(lin + (uint)i).ToString("X2")));
+                var bytes = LinBytes(m, lin, 12);
                 Console.WriteLine($"  {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} lin {lin:X8} EAX {m.Cpu.R[0]:X8} ECX {m.Cpu.R[1]:X8} EDX {m.Cpu.R[2]:X8} ESP {m.Cpu.R[4]:X8} IF {(m.Cpu.Flags >> 9) & 1} | {bytes}");
             }
+        foreach (var pg in Args(args, "--physgrep"))   // --physgrep "B1 B2 ..": where physical memory holds these bytes (with 24 bytes before and after)
+        {
+            var pb = pg.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => Convert.ToByte(x, 16)).ToArray(); var pmem = m.Cpu.Mem; int hits = 0;
+            for (int a = 0; a + pb.Length < pmem.Length && hits < 200; a++)
+            {
+                if (pmem[a] != pb[0] || !pmem.AsSpan(a, pb.Length).SequenceEqual(pb)) continue;
+                hits++;
+                Console.WriteLine($"physgrep @{a:X8}: {string.Join(" ", pmem.AsSpan(Math.Max(0, a - 24), 24 + pb.Length + 24).ToArray().Select(b => b.ToString("X2")))}");
+            }
+        }
+        foreach (var da in Args(args, "--dump"))   // --dump HEXLIN:LEN: bytes at a linear address (through the page tables)
+        {
+            var parts = da.Split(':'); uint a0 = Convert.ToUInt32(parts[0], 16); int len = parts.Length > 1 ? int.Parse(parts[1]) : 64;
+            for (int k = 0; k < len; k += 16) Console.WriteLine($"dump {a0 + (uint)k:X8}: {LinBytes(m, a0 + (uint)k, Math.Min(16, len - k))}");
+        }
+        foreach (var la in Args(args, "--linmap"))   // --linmap HEXLIN[:COUNTPAGES]: where linear pages land (paging on)
+        {
+            var parts = la.Split(':'); uint a0 = Convert.ToUInt32(parts[0], 16); int np = parts.Length > 1 ? int.Parse(parts[1]) : 1;
+            Console.WriteLine($"linmap {a0:X8}: " + string.Join(" ", Enumerable.Range(0, np).Select(k => { uint p = LinPhys(m, a0 + (uint)k * 4096); return p == 0xffffffff ? "--" : (p >> 12).ToString("X"); })) + $" | {LinBytes(m, a0, 16)}");
+        }
         if (args.Contains("--jitstat")) Console.WriteLine($"jit: compiled {m.Cpu.JitCompiled} reused {m.Cpu.JitReused} runs {m.Cpu.JitRuns} invalid {m.Cpu.JitInvalid} cycle {m.Cpu.Cycle} compiled-instrs {m.Cpu.JitInstrsTotal} ({100.0 * m.Cpu.JitInstrsTotal / Math.Max(1, m.Cpu.Cycle):F1}%) (set X86_JITSTAT for the per-block counts)");
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.JitTop(25)) Console.WriteLine("  blk " + l);
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.InterpTop(40)) Console.WriteLine("  interp " + l);
@@ -299,6 +357,16 @@ internal static class X86BootCli
             m.RunFrame(); m.RunFrame();
         }
     }
+
+    /// <summary>A linear address through the page tables (when paging is on), for the tools: 0xffffffff when not present.</summary>
+    public static uint LinPhys(PcMachine m, uint la)
+    {
+        if ((m.Cpu.Cr0 & 0x80000000) == 0) return la;
+        uint pde = m.Phys32((m.Cpu.Cr3 & ~0xfffu) + (la >> 22) * 4); if ((pde & 1) == 0) return 0xffffffff;
+        if ((pde & 0x80) != 0 && (m.Cpu.Cr4 & 0x10) != 0) return (pde & 0xffc00000) | (la & 0x3fffff);
+        uint pte = m.Phys32((pde & ~0xfffu) + ((la >> 12) & 0x3ff) * 4); return (pte & 1) == 0 ? 0xffffffff : (pte & ~0xfffu) | (la & 0xfff);
+    }
+    public static string LinBytes(PcMachine m, uint la, int n) => string.Join(" ", Enumerable.Range(0, n).Select(i => { uint p = LinPhys(m, la + (uint)i); return p == 0xffffffff ? "??" : m.Phys8(p).ToString("X2"); }));
 
     private static string? Arg(string[] a, string k) { int i = Array.FindIndex(a, x => x.Equals(k, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
     private static IEnumerable<string> Args(string[] a, string k) { for (int i = 0; i + 1 < a.Length; i++) if (a[i].Equals(k, StringComparison.OrdinalIgnoreCase)) yield return a[i + 1]; }
