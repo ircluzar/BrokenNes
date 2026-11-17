@@ -439,6 +439,8 @@ public sealed partial class PcMachine : IX86Bus
         if ((version == 5) != (S3 != null))
             throw new InvalidDataException($"this state was saved with the {(version == 5 ? "S3 Trio64" : "VGA")} video card, this machine has the {(S3 != null ? "S3 Trio64" : "VGA")}");
         Cpu.LoadState(r);
+        // a state saved before the INT 10h mode-set replay: its ROM gets the new stub (the old one was OUT E0h / IRET)
+        if (Cpu.Mem.Length > Rom + 0x10000 - 1 && Cpu.Mem[Rom + StubBase + 0x40] == 0xe6 && Cpu.Mem[Rom + StubBase + 0x42] == 0xcf) InstallInt10Replay();
         _idle = r.ReadInt64(); _port61 = r.ReadByte(); _lastFrame = r.ReadInt64(); InstructionsPerSecond = r.ReadInt64();
         Pic.Load(r); Pit.Load(r); Kbc.Load(r); Cmos.Load(r); Vga.Load(r);
         if (version >= 2) Opl.Load(r); else { Opl.Reset(); Opl.Resync(); }

@@ -199,12 +199,71 @@ public sealed partial class PcMachine
 
     public void TeletypeString(string s) { foreach (char c in s) TeletypeChar((byte)c, 7, ActivePage); }
 
+    // ---- the mode-set replay (Windows 98's VDD) ----
+    // A real video BIOS programs the card with OUT instructions; a V86 monitor (Windows 98's VDD) traps them and keeps its own copy of
+    // the registers. Ours sets them from C#, so the VDD's copy kept the boot logo's mode 13h after Device_Init's INT 10h AX=0003, its
+    // text-mode check failed, it never let the display driver's OUTs through, and the first GUI boot stayed black. So in V86 mode the
+    // INT 10h stub, after the C# service, replays a mode set's register writes in machine code from a table the service fills.
+    private const uint Int10Replay = 0xe070, Int10Table = 0xd000;
+
+    private void InstallInt10Replay()
+    {
+        var m = Cpu.Mem;
+        uint s = Rom + StubBase + 0x10 * 4;
+        m[s + 2] = 0xeb; m[s + 3] = (byte)(Int10Replay - (StubBase + 0x10 * 4 + 4));   // OUT E0h,AL / JMP replay
+        byte[] code =
+        {
+            0x1e, 0x56, 0x52, 0x50,             // push ds, si, dx, ax
+            0x0e, 0x1f,                         // push cs / pop ds
+            0xbe, 0x00, 0xd0,   // mov si, table
+            0xad,                               // L: lodsw (port; 0 = end; bit 15 = IN instead of OUT)
+            0x85, 0xc0,                         // test ax, ax
+            0x74, 0x12,                         // jz done
+            0x89, 0xc2,                         // mov dx, ax
+            0x81, 0xe2, 0xff, 0x7f,             // and dx, 7fffh
+            0xa9, 0x00, 0x80,                   // test ax, 8000h
+            0xac,                               // lodsb (value)
+            0x75, 0x03,                         // jnz in
+            0xee,                               // out dx, al
+            0xeb, 0xec,                         // jmp L
+            0xec,                               // in: in al, dx
+            0xeb, 0xe9,                         // jmp L
+            0x58, 0x5a, 0x5e, 0x1f,             // done: pop ax, dx, si, ds
+            0xcf,                               // iret
+        };
+        Array.Copy(code, 0, m, Rom + Int10Replay, code.Length);
+        m[Rom + Int10Table] = 0; m[Rom + Int10Table + 1] = 0;
+    }
+
+    /// <summary>Fills the replay table with the writes that load the card's current standard registers (the VGA BIOS mode set's order).</summary>
+    private void QueueModeReplay()
+    {
+        var m = Cpu.Mem; uint o = Rom + Int10Table;
+        void E(int port, int v) { m[o] = (byte)port; m[o + 1] = (byte)(port >> 8); m[o + 2] = (byte)v; o += 3; }
+        var v = Vga;
+        E(0x3c4, 0); E(0x3c5, 1);                                  // sequencer reset
+        E(0x3c2, v.Msr);
+        for (int i = 1; i < 5; i++) { E(0x3c4, i); E(0x3c5, v.Sr[i]); }
+        E(0x3c4, 0); E(0x3c5, v.Sr[0]);
+        E(0x3d4, 0x11); E(0x3d5, v.Cr[0x11] & 0x7f);               // unlock CR0-7
+        for (int i = 0; i < 25; i++) { E(0x3d4, i); E(0x3d5, v.Cr[i]); }
+        for (int i = 0; i < 9; i++) { E(0x3ce, i); E(0x3cf, v.Gr[i]); }
+        E(0x3da | 0x8000, 0);                                      // reset the attribute flip-flop
+        for (int i = 0; i < 21; i++) { E(0x3c0, i); E(0x3c0, v.Ar[i]); }
+        E(0x3c0, 0x20);                                            // video on
+        m[o] = 0; m[o + 1] = 0;
+    }
+
     private void Int10()
     {
+        Cpu.Mem[Rom + Int10Table] = 0; Cpu.Mem[Rom + Int10Table + 1] = 0;
         int page = (int)BH;
         switch (AH)
         {
-            case 0x00: SetMode((int)AL); AL = (uint)(VMode == 0x13 ? 0x20 : 0x30); break;
+            case 0x00:
+                SetMode((int)AL); AL = (uint)(VMode == 0x13 ? 0x20 : 0x30);
+                if ((C.Flags & I386.VM) != 0) QueueModeReplay();
+                break;
             case 0x01:
             {
                 int s = (int)CH, e = (int)CL;

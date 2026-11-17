@@ -132,6 +132,7 @@ public sealed partial class PcMachine
         Code(IrqSlaveStub, -1, 0x50, 0xb0, 0x20, 0xe6, 0xa0, 0xe6, 0x20, 0x58, 0xcf);
         Code(Int19Stub, I_INT19, 0xe6, 0xe0, 0xcf);
         Code(IretStub, -1, 0xcf);
+        InstallInt10Replay();
         // reset vector: OUT E0h = a full reset (POST, then boot) like a real BIOS. A jump to FFFF:0000 used to go straight to INT 19h, which kept the
         // old OS's hooked vectors and hung Windows 98 Setup's restart ("Waiting for system shutdown").
         Code(0xfff0, I_RESET, 0xe6, 0xe0, 0xeb, 0xfc);
