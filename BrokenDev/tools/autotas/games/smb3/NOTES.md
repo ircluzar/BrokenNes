@@ -43,3 +43,13 @@ moving right fast enough to fly over it.
 - Rail lift under the bush platform: land on its right end, stand still ~450 frames. Green paratroopa before the card: jump over.
 - Card slots already filled change per run: want only the next EMPTY slot. y wraps above the screen (170-250 = above).
 - Hold Left in the air to brake onto small platforms. Use search --settle 4 to reject apex hits.
+
+## Airship + Hammer Bro (done 2026-11-16 by a sonnet escalation, 8249 frames, 0 deaths)
+- Map from node 6: Up 8 starts the Hammer Bro battle. Bro stays high: jump from the right wall onto the platform edge,
+  wait for its hop, Right+A ~20 at it; walk into the chest. Then Right, Right, A on the castle.
+- King scenes: wait ~600 frames, A, wait, A at the letter (before and after the airship).
+- Airship: cannon pillars every ~100 px: search 'none:{w} Right+B+A:{j} Right+B:{k} none:20' with a y want and --settle 4.
+  advance is too slow here (~7 min/hop). Pipe: centre at x=1412, Down 45.
+- Larry: boss hit counter $0083 (runner name `boss`); search want '[$0083] == N'. Wait ~100 after each hit, ~300 for the wand,
+  walk Left to it, ~1000 frames of scenes.
+- Never kill a runner command mid-run (REPLAY MISMATCH); resume an advance checkpoint to recover.

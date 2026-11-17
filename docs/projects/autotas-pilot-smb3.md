@@ -89,3 +89,34 @@ one chapter at a time. The dotnet-hosted fleet build was not needed, because loc
 4. Popular platformers next, in this order: SMB1 (simpler and well documented), Mega Man 2, Kirby's Adventure.
    Then games with menus (Zelda), where `advance` needs a different "forward" measure (rooms, not x).
 5. Search cost grows with grid size × frames: keep grids under ~100 tries. A server-side search tool would cut the time ~5x.
+
+## Round 2 (2026-11-16, branch autotas-r2): SMB3 World 1 complete + SMB1 World 1
+
+Players: Haiku 5.5 low first; on a stall the driver escalated straight to a sonnet player or the search solver (no Haiku retries).
+
+| game | chapter | frames | deaths | who solved the hard spots |
+|---|---|---|---|---|
+| SMB3 | 1-4 (auto-scroll) | 4641 | 0 | Haiku advance to x~666; **sonnet**: the rest (sinking lifts, the scroll ends at a pipe, goal room) |
+| SMB3 | fort | 3053 | 0 | Haiku advance through the first rooms; **sonnet**: two hidden doors (one works only after ~330 idle frames), Boom-Boom |
+| SMB3 | 1-5 | 3226 | 0 | Haiku advance to the decoy wall; **sonnet**: slide tunnel, ceiling pipe, piranha, card |
+| SMB3 | 1-6 | 2940 | 0 | Haiku advance 2 hops; **sonnet**: upper route, rail lift, card |
+| SMB3 | airship | 8249 | 0 | **sonnet** (Haiku could not read the map): Hammer Bro, king scenes, airship pillars, Larry ($0083 hit counter) |
+| SMB1 | boot | 194 | 0 | driver (Start sweep: frames 31-37 all reach control at 194) |
+| SMB1 | 1-1 | 2284 | 0 | **Haiku** advance, whole level (24 hops); driver: the end-of-level wait |
+| SMB1 | 1-2 | 3064 | 0 | Haiku advance; **sonnet**: koopa under a low ceiling (stand back, wait 65, hop) |
+| SMB1 | 1-3 | 1951 | 0 | Haiku advance; **sonnet**: two-step treetop climb |
+| SMB1 | 1-4 | 1888 | 0 | Haiku advance to Bowser; **search solver**: want = axe ([$0770]==2), one grid, 28 frames |
+
+Both packages verify from power-on (`--autotas verify`). SMB1: T:\BrokenDev\Catalog\tas\nes\smb1\v1 (catalog nes/facee9c5...).
+SMB3: 9 chapters, boot to the World 2 map.
+
+Findings:
+- Haiku low + `advance` is good at plain running stretches (SMB1 1-1 fully, most of every level), and bad at anything that
+  needs a plan or reading the picture: hidden doors/pipes, auto-scroll timing, the SMB3 map. Every SMB3 chapter after 1-3 needed sonnet.
+- SMB1 is much easier than SMB3 for the autopilot: 1 of 4 levels fully Haiku, the other 3 one sonnet/solver spot each.
+- Sonnet cost: 70-320k tokens and 20 min - 3.6 h per chapter (airship the most). Haiku: ~80k tokens per session.
+- Tool changes this round (lib/run.py, generic): `--patience` waits, step-up fallback, stall push, level-end playout
+  (`end_expr`, counted as a hop goal), level-load wait (`ready`), `search --settle` (no jump-apex hits), grid cap (400),
+  stale-lock pid check, `resume` keeps later checkpoints. Game data: games/smb1 (new), games/smb3/NOTES.md per chapter.
+- Next tool wins (from the escalation players): a tile-map reader (SMB3 $6000: doors 0x43), "best near-miss" output for
+  search, a boss-hit counter per game in runner.json, and advance progress output so a tool timeout never kills it mid-hop.
