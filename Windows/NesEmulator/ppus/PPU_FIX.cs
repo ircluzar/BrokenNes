@@ -211,7 +211,11 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 
 	// New batched step to reduce managed/WASM call overhead; processes 'elapsedCycles' PPU cycles
 	private static readonly byte[] EventDot = BuildEventDot();
-	private static byte[] BuildEventDot() { var t = new byte[342]; t[1] = t[3] = t[261] = 1; return t; }
+	private static byte[] BuildEventDot() { var t = new byte[342]; t[1] = t[3] = 1; for (int d = 261; d <= 319; d++) if (((d - 257) & 7) == 4 || ((d - 257) & 7) == 6) t[d] = 1; return t; }
+	// The line whose MMC3 A12 clock already happened (see the sprite-fetch hook below); -1 = none yet this line.
+	private int mmc3ClockedLine = -1;
+	// Not in the savestate: a state taken after this line's clock (past dot 261 with rendering on) already had it.
+	private void DeriveMmc3ClockedLine() => mmc3ClockedLine = scanlineCycle > 261 && (PPUMASK & 0x18) != 0 ? scanline : -1;
 
 	public void Step(int elapsedCycles)
 	{
@@ -236,7 +240,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			// is the classic cause of a corrupt top scanline for one that busy-waits on $2002 and
 			// then races VRAM writes against the end of vblank, and it mis-times any raster effect
 			// that counts cycles from the NMI.
-			int sc = scanlineCycle;   // speed: dots 1, 3 and 261 are the only ones the event checks below can match (one table lookup instead of the comparisons)
+			int sc = scanlineCycle;   // speed: dots 1, 3 and the sprite-fetch dots 261-319 are the only ones the event checks below can match (one table lookup instead of the comparisons)
 			bool eventDot = (uint)sc < (uint)EventDot.Length && EventDot[sc] != 0;
 			if (eventDot && scanline == 261 && sc == 1)
 			{
@@ -283,10 +287,15 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			// ran on 194 where Mesen runs it on 193, drawing the bar one row low). Clocked at dot 261,
 			// the A12 rise of the first sprite-pattern fetch, rather than the commonly quoted 260 - with
 			// CPU_FIX's last-cycle IRQ poll that puts Mega Man 3's MMC3-timed split writes on Mesen's dots.
-			if (eventDot && (scanline < 240 || scanline == 261) && scanlineCycle == 261)
+			// Rendering switched on later in the sprite-fetch window (dots 262-320) still raises A12 on the next sprite
+			// pattern fetch, and Mesen 2.1.1 counts that line: Hunt for Red October blanks lines 153-162 and turns the
+			// background back on at 162:303, so its status-bar IRQ came a line (or two) late (OAM 42, from frame 2691).
+			if (eventDot && scanlineCycle == 3) mmc3ClockedLine = -1;
+			if (eventDot && (scanline < 240 || scanline == 261) && scanlineCycle >= 261 && mmc3ClockedLine != scanline)
 			{
 				if ((PPUMASK & 0x18) != 0 && bus.cartridge.mapper is Mapper4)
 				{
+					mmc3ClockedLine = scanline;
 					Mapper4 mmc3 = (Mapper4)bus.cartridge.mapper;
 					mmc3.ClockScanlineCounterHardware();
 					if (mmc3.IRQPending())
@@ -1541,7 +1550,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			if (s.frame != null && s.frame.Length == ScreenWidth * ScreenHeight * 4) { EnsureFrameBuffer(); frameBuffer = (byte[])s.frame.Clone(); }
 			// Either stored latch being set means the shared toggle was set - covers a state saved
 			// by this core (which writes both) and one carried across from a core that keeps them apart.
-			PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;w=s.scrollLatch||s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; oddFrame=s.oddFrame; RefreshColorMask();
+			PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;w=s.scrollLatch||s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; oddFrame=s.oddFrame; RefreshColorMask(); DeriveMmc3ClockedLine();
 			UnpackPipeline(s.fixPipeline);
 
 			RefreshLineFlagsAfterLoad(); return; }
@@ -1551,7 +1560,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			if (je.TryGetProperty("oam", out var pOam)) { if (pOam.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pOam.EnumerateArray()){ if(i>=oam.Length) break; oam[i++]=(byte)el.GetInt32(); } } else if (pOam.ValueKind==System.Text.Json.JsonValueKind.String) { try { var b=pOam.GetBytesFromBase64(); Array.Copy(b,oam,Math.Min(b.Length, oam.Length)); } catch {} } }
 			if (je.TryGetProperty("frame", out var pFrame) && pFrame.ValueKind==System.Text.Json.JsonValueKind.Array) { EnsureFrameBuffer(); int i=0; foreach(var el in pFrame.EnumerateArray()){ if(i>=frameBuffer!.Length) break; frameBuffer![i++]=(byte)el.GetInt32(); } }
 			byte GetB(string name){return je.TryGetProperty(name,out var p)?(byte)p.GetInt32():(byte)0;} ushort GetU16(string name){return je.TryGetProperty(name,out var p)?(ushort)p.GetInt32():(ushort)0;}
-			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");w=(je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean())||(je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean());v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32(); if(je.TryGetProperty("oddFrame", out var pof)) oddFrame=pof.GetBoolean();
+			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");w=(je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean())||(je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean());v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32(); if(je.TryGetProperty("oddFrame", out var pof)) oddFrame=pof.GetBoolean(); DeriveMmc3ClockedLine();
 			RefreshColorMask();
 			byte[]? pipe = null; if (je.TryGetProperty("fixPipeline", out var pfp)) { if (pfp.ValueKind==System.Text.Json.JsonValueKind.String) { try { pipe = pfp.GetBytesFromBase64(); } catch {} } else if (pfp.ValueKind==System.Text.Json.JsonValueKind.Array) { pipe = new byte[pfp.GetArrayLength()]; int k=0; foreach (var el in pfp.EnumerateArray()) pipe[k++] = (byte)el.GetInt32(); } }
 			UnpackPipeline(pipe);

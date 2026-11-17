@@ -284,6 +284,9 @@ function Invoke-RomTestCase {
     # powerOnRam (optional): fceux (BrokenNes' own fill, the default) | zeros | ones
     $por = Get-Prop $Case 'powerOnRam' $null
     if ($por) { $a += @('--power-on-ram', [string]$por) }
+    # inputLatch (optional): frame (default) | line240 | line241 - when scripted input takes effect (Mesen-lockstep guards use line241)
+    $lat = Get-Prop $Case 'inputLatch' $null
+    if ($lat) { $a += @('--input-latch', [string]$lat) }
     $a += Get-ButcherArgs $Case
     $a += '--json'
 
