@@ -35,15 +35,19 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "catalog"))
 import catalog  # noqa: E402
 
-T1_VERSION = "t1-3"   # t1-3: NES input latched at the same point on both sides (BrokenNes --input-latch line240, as Mesen's inputPolled) + NES picture window fixed
-LATCH = os.environ.get("BNT1_LATCH", "line240")   # "frame" = the t1-2 behaviour (a frame of input skew vs Mesen)
+T1_VERSION = "t1-4"   # t1-4: NES input latch line241 (was line240 in t1-3: Lunar Pool / Death Race / Classic Concentration poll $4016 near 240:140 and read the next step early; line241 matches Mesen's inputPolled). t1-3: input latched at the same point on both sides + NES picture window fixed
+LATCH = os.environ.get("BNT1_LATCH", "line241")   # "frame" = the t1-2 behaviour (a frame of input skew vs Mesen)
 HEAVY = os.environ.get("BNT1_HEAVY", r"C:\BrokenNes-work\heavy")
 SLOTS = int(os.environ.get("BNT1_SLOTS", "4"))
 WORKSHOP = os.environ.get("BNT1_WORKSHOP", r"C:\BrokenNes-work\cc_t1_bin\BrokenNes.Workshop.exe")
 # t1-3 needs a Workshop with --input-latch: the fleet kit ships it beside the old one (kit\workshop_t13) so jobs running the old
 # exe are never disturbed; a job pointed at kit\workshop picks the new one up when it is there
+# t1-4 needs line241 (kit\workshop_t14, same ws.cmd host); a kit without it falls back to workshop_t13 (line240 only: BNT1_LATCH=line240)
+_t14 = os.path.join(os.path.dirname(os.path.dirname(WORKSHOP)), "workshop_t14", "ws.cmd")
 _t13 = os.path.join(os.path.dirname(os.path.dirname(WORKSHOP)), "workshop_t13", "ws.cmd")   # hosts the framework-dependent DLL with kit\dotnet
-if os.path.basename(os.path.dirname(WORKSHOP)).lower() == "workshop" and os.path.exists(_t13):
+if os.path.basename(os.path.dirname(WORKSHOP)).lower() == "workshop" and os.path.exists(_t14):
+    WORKSHOP = _t14
+elif os.path.basename(os.path.dirname(WORKSHOP)).lower() == "workshop" and os.path.exists(_t13):
     WORKSHOP = _t13
 MESEN = os.environ.get("BNT1_MESEN", r"T:\BrokenDev\env\emulators\mesen-2.1.1\Mesen.exe")
 SCRATCH = os.environ.get("BNT1_SCRATCH", r"C:\BrokenNes-work\cc_t1_run\work")
@@ -404,7 +408,7 @@ def check_nes(rec, minutes, keep_dir):
     res["tas"] = bnm if p2["ok"] else None
     if not p2["ok"]:
         res["bn"]["error"] = (p2["err"] + p2["out"]).strip()[-400:]
-    if LATCH == "line240" and p2["ok"]:
+    if LATCH in ("line240", "line241") and p2["ok"]:
         # the graded pictures: the same script with the pad latched where Mesen latches it (the .bnm keeps frame-start input)
         pl = nes_romtest(rom, end + 1, cps, os.path.join(work, "bnl"), script, LATCH)
         if pl["code"] in (0, 1) and pl["pngs"]:
