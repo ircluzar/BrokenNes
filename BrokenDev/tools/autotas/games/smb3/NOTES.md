@@ -15,3 +15,41 @@ Clean-up recipe applied to the post-1-1 state and verified in 1-2 (see cleanup.j
 Research route used a P-wing via inventory writes; that is not a TAS route.
 Gotchas: the map needs ~2 directional presses after the intro walk; card box only collects when touched while not
 moving right fast enough to fly over it.
+
+## 1-4 (auto-scroll, done 2026-11-16 by a sonnet escalation, 4641 frames, 0 deaths)
+- The scroll ends at a wood wall; the exit is a PIPE: stand on its top centre, hold Down ~40 frames. The goal room
+  (Boomerang Bro behind) has the card box: Right+B and jump into it, then none 600.
+- Waiting is safe while Mario's x stays ahead of the left screen edge (~150-300 frames); wood lifts SINK once stood on: jump off at once.
+- `air` reads 0 at a jump apex: end a search pattern with a short none:20 token so --want is checked after landing.
+- After landing at speed, Mario slides off narrow platforms: add Left ~4 frames.
+
+## Fortress W1 (done 2026-11-16 by a sonnet escalation, 3053 frames, 0 deaths; clear bits $7D04|=$10, $7D06|=$08)
+- The "dead end" at x~1764 has a brown door at x~1744 (Left 20, none 20, Up 10). Spike room: the exit door at its right wall
+  (x~467) is invisible and only works ~330 frames after arriving (search "none:{w} Up:{u} none:80" finds it).
+- Level tiles live in $6000 (SRAM): 0x43 = door tile, 0x02 air, 0xE4 solid: read it to find doors.
+- Boom-Boom: stomps show as score jumps ($0715); after each stomp hold Left. The ball touches Mario by itself in the right corner.
+- `resume NAME` drops checkpoints saved later in the log.
+
+## 1-5 (done 2026-11-16 by a sonnet escalation, 3226 frames, 0 deaths)
+- The wall at x~1889 is a decoy: the dark recess left of it is a slide tunnel (Left ~60, drop in, hold Right).
+- The two pipes at the cave start are decoys. The exit is a CEILING pipe at the dead end (x~2260): hold A ~30 frames with Up.
+- Hanging piranha: search "none:{w} Right+B:{r} Right+B+A:{j}" from a stop near x~1985.
+- Card box: search with want '[$7D9D] != 0 || [$7D9E] != 0' (empty card slots fill).
+- x ($0075 high byte) is unreliable in goal rooms; >>> GOAL can come ~80 frames after the map appears.
+
+## 1-6 (done 2026-11-16 by a sonnet escalation, 2940 frames, 0 deaths, card 1-up)
+- Not a true auto-scroller: platform chain + rail lifts. From a689 the ledge jump bonks; jump earlier from a637.
+- Upper route: pink brick row (y=16) then Right+B 28, Right+B+A 44, Right+B 30 onto the hanging wood platform.
+- Rail lift under the bush platform: land on its right end, stand still ~450 frames. Green paratroopa before the card: jump over.
+- Card slots already filled change per run: want only the next EMPTY slot. y wraps above the screen (170-250 = above).
+- Hold Left in the air to brake onto small platforms. Use search --settle 4 to reject apex hits.
+
+## Airship + Hammer Bro (done 2026-11-16 by a sonnet escalation, 8249 frames, 0 deaths)
+- Map from node 6: Up 8 starts the Hammer Bro battle. Bro stays high: jump from the right wall onto the platform edge,
+  wait for its hop, Right+A ~20 at it; walk into the chest. Then Right, Right, A on the castle.
+- King scenes: wait ~600 frames, A, wait, A at the letter (before and after the airship).
+- Airship: cannon pillars every ~100 px: search 'none:{w} Right+B+A:{j} Right+B:{k} none:20' with a y want and --settle 4.
+  advance is too slow here (~7 min/hop). Pipe: centre at x=1412, Down 45.
+- Larry: boss hit counter $0083 (runner name `boss`); search want '[$0083] == N'. Wait ~100 after each hit, ~300 for the wand,
+  walk Left to it, ~1000 frames of scenes.
+- Never kill a runner command mid-run (REPLAY MISMATCH); resume an advance checkpoint to recover.

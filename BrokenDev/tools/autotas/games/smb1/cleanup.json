@@ -1,0 +1,40 @@
+{
+ "game": "smb1",
+ "apply": "load raw state (title or 1-1 start), write each rule, run 1 frame, save clean state",
+ "rules": [
+  {
+   "addr": "$075A",
+   "value": [
+    2
+   ],
+   "what": "lives = starting 2 (= 3 lives, 0-based; verified at power-on boot 2026-11-16)"
+  },
+  {
+   "addr": "$07DD",
+   "value": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "what": "score = 0 (six BCD bytes)"
+  },
+  {
+   "addr": "$075E",
+   "value": [
+    0
+   ],
+   "what": "coins = 0 (see dossier caveat)"
+  }
+ ],
+ "untouched": [
+  "$075F world",
+  "$0760 level",
+  "RNG",
+  "timer (game resets on level entry)"
+ ],
+ "verified": true,
+ "caveat": "starting lives value unconfirmed; leave power-up ($0756) to the route"
+}

@@ -1,0 +1,7 @@
+{
+  "game": "smb1",
+  "note": "Input macros as play_step steps. Frame counts are first guesses; unverified.",
+  "macros": {
+    "title_to_level": {"verified": false, "steps": [{"frames": 120}, {"buttons": ["Start"], "frames": 5}, {"frames": 120}]}
+  }
+}

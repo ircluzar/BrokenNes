@@ -13,7 +13,8 @@
   "time=[$05EE]*100+[$05EF]*10+[$05F0]",
   "mapx=[$0079]",
   "mapy=[$0075]",
-  "coins=[$7DA2]"
+  "coins=[$7DA2]",
+  "boss=[$0083]"
  ],
  "in_level": "[$070A] != 0",
  "on_map": "[$070A] == 0 && [$0729] == $0D",
@@ -37,6 +38,8 @@
    "$7D9E"
   ],
   "wait_pattern": "none:{w} Right+B:{a} Right+B+A:{j}",
-  "wait_vals": "w=10..90:20,a=0..16:8,j=8..24:8"
+  "wait_vals": "w=10..90:20,a=0..16:8,j=8..24:8",
+  "up_want": "x >= {X} && air == 0 && y <= {Y}",
+  "ready": "mode != 0 && time <= 300 && time > 0"
  }
 }
