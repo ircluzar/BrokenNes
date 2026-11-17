@@ -1,0 +1,288 @@
+{
+  "LastWrittenFrom": "2.11.1",
+  "FirstBoot": false,
+  "UpdateAutoCheckEnabled": false,
+  "SkipOutdatedOsCheck": true,
+  "SkipSuperuserPrivsCheck": true,
+  "RAAutostart": false,
+  "PreferredCores": {
+    "md": "Genplus-gx"
+  },
+  "DontTryOtherCores": true,
+  "SingleInstanceMode": false,
+  "AutoLoadLastSaveSlot": false,
+  "AutoSaveLastSaveSlot": false,
+  "AutosaveSaveRAM": false,
+  "PathEntries": {
+    "Paths": [
+      {
+        "Type": "Base",
+        "Path": "C:\\BHSCRATCH\\bizhawk",
+        "System": "Global_NULL"
+      },
+      {
+        "Type": "ROM",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\roms",
+        "System": "Global_NULL"
+      },
+      {
+        "Type": "Firmware",
+        "Path": "C:\\brokennes\\kit\\bizhawk\\Firmware",
+        "System": "Global_NULL"
+      },
+      {
+        "Type": "Movies",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\movies",
+        "System": "Global_NULL"
+      },
+      {
+        "Type": "Movie backups",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\movies",
+        "System": "Global_NULL"
+      },
+      {
+        "Type": "A/V Dumps",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\avdumps",
+        "System": "Global_NULL"
+      },
+      {
+        "Type": "Tools",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\tools",
+        "System": "Global_NULL"
+      },
+      {
+        "Type": "Lua",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\lua",
+        "System": "Global_NULL"
+      },
+      {
+        "Type": "Watch (.wch)",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\watch",
+        "System": "Global_NULL"
+      },
+      {
+        "Type": "Debug Logs",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\logs",
+        "System": "Global_NULL"
+      },
+      {
+        "Type": "Macros",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\macros",
+        "System": "Global_NULL"
+      },
+      {
+        "Type": "Multi-Disk Bundles",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\bundles",
+        "System": "Global_NULL"
+      },
+      {
+        "Type": "External Tools",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\exttools",
+        "System": "Global_NULL"
+      },
+      {
+        "Type": "Temp Files",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\temp",
+        "System": "Global_NULL"
+      },
+      {
+        "Type": "Base",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\NES",
+        "System": "NES"
+      },
+      {
+        "Type": "ROM",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\roms",
+        "System": "NES"
+      },
+      {
+        "Type": "Savestates",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\states",
+        "System": "NES"
+      },
+      {
+        "Type": "Save RAM",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\NES\\SaveRAM",
+        "System": "NES"
+      },
+      {
+        "Type": "Screenshots",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\screenshots",
+        "System": "NES"
+      },
+      {
+        "Type": "Cheats",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\cheats",
+        "System": "NES"
+      },
+      {
+        "Type": "Base",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\SNES",
+        "System": "SNES"
+      },
+      {
+        "Type": "ROM",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\roms",
+        "System": "SNES"
+      },
+      {
+        "Type": "Savestates",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\states",
+        "System": "SNES"
+      },
+      {
+        "Type": "Save RAM",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\SNES\\SaveRAM",
+        "System": "SNES"
+      },
+      {
+        "Type": "Screenshots",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\screenshots",
+        "System": "SNES"
+      },
+      {
+        "Type": "Cheats",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\cheats",
+        "System": "SNES"
+      },
+      {
+        "Type": "Palettes",
+        "Path": "C:\\BHSCRATCH\\bizhawk\\palettes",
+        "System": "NES"
+      }
+    ],
+    "UseRecentForRoms": false,
+    "LastRomPath": "C:\\BHSCRATCH\\bizhawk\\roms"
+  },
+  "SoundEnabled": false,
+  "SoundEnabledNormal": false,
+  "SoundEnabledRWFF": false,
+  "Unthrottled": false,
+  "ClockThrottle": false,
+  "VSyncThrottle": false,
+  "SoundThrottle": false,
+  "VSync": false,
+  "FrameSkip": 0,
+  "AutoMinimizeSkipping": false,
+  "Rewind": {
+    "Enabled": false
+  },
+  "RunInBackground": true,
+  "AcceptBackgroundInput": false,
+  "AcceptBackgroundInputControllerOnly": false,
+  "StartPaused": true,
+  "PauseWhenMenuActivated": false,
+  "StartFullscreen": false,
+  "ScreenshotCaptureOsd": false,
+  "RunLuaDuringTurbo": true,
+  "HotkeyBindings": {
+    "Frame Advance": "",
+    "Rewind": "",
+    "Pause": "",
+    "Fast Forward": "",
+    "Turbo": "",
+    "Screenshot": "",
+    "Full Screen": "",
+    "Open ROM": "",
+    "Close ROM": "",
+    "Flush SaveRAM": "",
+    "Larger Window": "",
+    "Smaller Window": "",
+    "Increase Speed": "",
+    "Decrease Speed": "",
+    "Reset Speed": "",
+    "Reboot Core": "",
+    "Screen Raw to Clipboard": "",
+    "Screen Client to Clipboard": "",
+    "Capture Mouse": "",
+    "Save State 1": "",
+    "Save State 2": "",
+    "Save State 3": "",
+    "Save State 4": "",
+    "Save State 5": "",
+    "Save State 6": "",
+    "Save State 7": "",
+    "Save State 8": "",
+    "Save State 9": "",
+    "Save State 10": "",
+    "Load State 1": "",
+    "Load State 2": "",
+    "Load State 3": "",
+    "Load State 4": "",
+    "Load State 5": "",
+    "Load State 6": "",
+    "Load State 7": "",
+    "Load State 8": "",
+    "Load State 9": "",
+    "Load State 10": "",
+    "Select State 1": "",
+    "Select State 2": "",
+    "Select State 3": "",
+    "Select State 4": "",
+    "Select State 5": "",
+    "Select State 6": "",
+    "Select State 7": "",
+    "Select State 8": "",
+    "Select State 9": "",
+    "Select State 10": "",
+    "Quick Load": "",
+    "Quick Save": "",
+    "Toggle read-only": "",
+    "ToolBox": "",
+    "Add Branch": "",
+    "Delete Branch": "",
+    "Toggle Follow Cursor": "",
+    "Toggle Auto-Restore": "",
+    "Seek To Green Arrow": "",
+    "Toggle Turbo Seek": "",
+    "Undo": "",
+    "Redo": "",
+    "Seek To Prev Marker": "",
+    "Seek To Next Marker": "",
+    "Set Marker": "",
+    "Delete Marker": "",
+    "Sel. bet. Markers": "",
+    "Select All": "",
+    "Reselect Clip.": "",
+    "Clear Frames": "",
+    "Delete Frames": "",
+    "Insert Frame": "",
+    "Insert # Frames": "",
+    "Clone Frames": "",
+    "Clone # Times": "",
+    "Analog Increment": "",
+    "Analog Decrement": "",
+    "Analog Incr. by 10": "",
+    "Analog Decr. by 10": "",
+    "Analog Maximum": "",
+    "Analog Minimum": "",
+    "Open RA Overlay": "",
+    "RA Up": "",
+    "RA Down": "",
+    "RA Left": "",
+    "RA Right": "",
+    "RA Confirm": "",
+    "RA Cancel": "",
+    "RA Quit": ""
+  },
+  "SaveWindowPosition": true,
+  "MainWindowPosition": "-32000, -32000",
+  "CommonToolSettings": {
+    "BizHawk.Client.EmuHawk.LuaConsole": {
+      "_wndx": -32000,
+      "_wndy": -32000,
+      "Width": null,
+      "Height": null,
+      "SaveWindowPosition": true,
+      "TopMost": false,
+      "FloatingWindow": true,
+      "AutoLoad": false
+    }
+  },
+  "PreferredPlatformsForExtensions": {
+    ".bin": "GEN",
+    ".gen": "GEN",
+    ".md": "GEN",
+    ".smd": "GEN"
+  }
+}
