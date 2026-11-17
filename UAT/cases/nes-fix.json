@@ -327,7 +327,32 @@
         "result": "ok",
         "crashInfo": ""
       }
+    },
+    {
+      "id": "nesfix-r6-hro-mmc3-late-render",
+      "description": "Hunt for Red October: blanks lines 153-162 and re-enables the background at 162:303, inside the sprite-fetch window; Mesen 2.1.1 counts that line's A12 rise, so PPU_FIX now clocks MMC3 on the first sprite pattern fetch with rendering on (dots 261-319), not only at dot 261. Lockstep OAM 42 -> 0 (2026-11-17). Frame 2720 differs from the old timing.",
+      "kind": "romtest",
+      "rom": "{lib}/Hunt for Red October, The (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 2720,
+      "input": "1142:Start,1152:,1302:Start,1312:,2032:Start,2042:,2222:Right,2282:Up,2342:B,2372:Right,2492:A,2522:Down,2612:",
+      "powerOnRam": "zeros",
+      "inputLatch": "line241",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "6277D30B9306B455",
+        "framesRun": 2720,
+        "distinctColors": 12,
+        "result": "ok",
+        "crashInfo": ""
+      }
     }
   ],
-  "goldenGeneratedUtc": "2026-11-16T21:44:51Z"
+  "goldenGeneratedUtc": "2026-11-17T05:46:37Z"
 }

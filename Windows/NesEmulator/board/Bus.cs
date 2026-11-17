@@ -245,7 +245,7 @@ public class Bus : IBus
 			}
 			return run;
 		}
-		private bool oamDmaPending; private long oamDmaWriteCycle; private bool lastPreciseAccessWrite;
+		private bool oamDmaPending; private long oamDmaWriteCycle; private int oamDmaPage = -1; private bool lastPreciseAccessWrite;
 		// One DMA cycle with the CPU halted: the PPU/APU advance a cycle (settling any dots a write borrowed).
 		private void TickHaltedCycle() { int dots = 3 + preciseCarryDots; preciseCarryDots = 0; if (dots > 0) ppu!.Step(dots); else preciseCarryDots = dots; StepAPU(1); }
 		/// <summary>Runs an OAM DMA started by the instruction that just finished, cycle by cycle, following
@@ -265,14 +265,24 @@ public class Bus : IBus
 			int spriteCounter = 0; bool spriteActive = true;
 			while (dmcRunning || spriteActive)
 			{
-				bool get = ((c + OamDmaParityOffset) & 1) == 0, dmcRead = false;
+				bool get = ((c + OamDmaParityOffset) & 1) == 0, dmcRead = false, dmaPut = false;
+				int dmaIndex = (spriteCounter >> 1);
 				if (get) { if (dmcRunning && !needHalt && !needDummy) dmcRead = true; else if (spriteActive) spriteCounter++; }
-				else if (spriteActive && (spriteCounter & 1) == 1) { if (++spriteCounter == 512) spriteActive = false; }
+				else if (spriteActive && (spriteCounter & 1) == 1) { dmaPut = true; if (++spriteCounter == 512) spriteActive = false; }
 				if (needHalt) needHalt = false; else if (needDummy) needDummy = false;
 				TickHaltedCycle(); c++; cycles++;
+				if (dmaPut && oamDmaPage >= 0)
+				{
+					// Mesen 2.1.1's DMA: the byte read on the get cycle goes to $2004 on the put cycle, through the PPU's
+					// own $2004 rules (a put while rendering is lost and only bumps OAMADDR).
+					bool wasIn = insidePreciseTick; insidePreciseTick = true;
+					try { byte b = Read((ushort)((oamDmaPage << 8) | dmaIndex)); ((PPU_FIX)ppu!).WriteOamDmaByte(b); }
+					finally { insidePreciseTick = wasIn; }
+				}
 				if (dmcRead) dmcRunning = false;
 				if (dmcDmaPending) { dmcDmaPending = false; dmcRunning = true; needHalt = true; needDummy = true; }
 			}
+			oamDmaPage = -1;
 			return cycles;
 		}
 		private void PreciseTick(bool isWrite)
@@ -772,8 +782,9 @@ public class Bus : IBus
 			// transfer; the reads are not. (`insidePreciseTick` is PreciseTick's own re-entrancy
 			// guard, and reusing it here is exactly the same statement: these bus accesses belong to
 			// a cycle that has already been charged.)
-			bool wasInside = insidePreciseTick; insidePreciseTick = true;
-			try { ppu.WriteOAMDMA(value); } finally { insidePreciseTick = wasInside; }
+			bool timedDma = preciseWindow && PreciseSteppingActive && cpu is CPU_FIX && ppu is PPU_FIX && Butcher == null;
+			if (timedDma) oamDmaPage = value;   // copied byte by byte on the DMA's put cycles (RunPendingOamDma)
+			else { bool wasInside = insidePreciseTick; insidePreciseTick = true; try { ppu.WriteOAMDMA(value); } finally { insidePreciseTick = wasInside; } }
 			instr.OamDmaWrites++;
 			// The CPU stall is real hardware behavior, not a speed/accuracy trade-off -
 			// CpuFastOamDmaStall previously gated this off entirely, meaning "strict" mode

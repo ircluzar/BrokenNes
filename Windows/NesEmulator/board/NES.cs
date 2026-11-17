@@ -1390,6 +1390,7 @@ namespace NesEmulator
 				PpuEnteredPostRender?.Invoke();
 			}
 			if (sl >= 241 && lastClockScanline >= 0 && lastClockScanline < 241) PpuEnteredVblank?.Invoke();
+			if (sl < 240 && lastClockScanline >= 240) PpuEnteredFrameStart?.Invoke();
 			lastClockScanline = sl;
 		}
 		/// <summary>Raised when the PPU crosses from the visible lines into line 240 - where Mesen 2.1.1 ends a
@@ -1397,6 +1398,10 @@ namespace NesEmulator
 		public event Action? PpuEnteredPostRender;
 		/// <summary>Raised when the PPU crosses into line 241 (vblank). The --input-latch line241 harness mode.</summary>
 		public event Action? PpuEnteredVblank;
+		/// <summary>Raised at the first PPU catch-up on line 0 (pre-render -> visible): Mesen 2.1.1's state-trace sample
+		/// point. The --sample line0 harness mode records there, since RunFrame's fixed dot budget drifts against the
+		/// PPU's own frame whenever rendering is off (no odd-frame skipped dot).</summary>
+		public event Action? PpuEnteredFrameStart;
 		private bool awaitingFrameStart;
 
 		private void PresentCompletedFrame(IPPU ppu)
