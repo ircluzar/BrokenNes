@@ -835,9 +835,45 @@ def cmd_work(a):
         print(f"[{i + 1}/{len(sh['records'])}] {rec['title']}: {res['grade']} {res['tags']} - {res['why']} ({res['seconds']}s)", flush=True)
 
 
+def deep_add(console, rec, res, src, counts):
+    """--deep-add: non-destructive ingest of a deep (long-script) T1 run. The result goes under extra.t1deep with a note and the
+    screenshots are copied to a sibling t1deep folder; the record's own T1 result is untouched. The grade is lowered to Broken ONLY
+    for a Broken+crash result with bn_*.png screenshots that is not a launch/tool error, and only when the record is below tier 2
+    and not already Broken or Nothing. Tier-2+ records are never changed."""
+    sha = rec["sha1"]
+    kd = os.path.join(os.path.dirname(keep_dir_for(console, sha)), "t1deep")
+    os.makedirs(kd, exist_ok=True)
+    for fn in os.listdir(src):
+        if fn != "result.json":
+            shutil.copy2(os.path.join(src, fn), os.path.join(kd, fn))
+    if res.get("tas"):
+        res["tas"] = os.path.join(kd, "t1.bnm")
+    why = str(res.get("why") or "")
+    is_err = (str(res.get("version", "")).endswith("-error") or "t1 tool error" in why.lower() or "launch" in why.lower()
+              and "failed" in why.lower())
+    has_shots = any(f.startswith("bn_") and f.endswith(".png") for f in os.listdir(src))
+    changes = {"extra": {"t1deep": res}}
+    grade = rec.get("grade", "Not tested")
+    tier = int(rec.get("tier") or 0)
+    crash = res.get("grade") == "Broken" and "crash" in (res.get("tags") or []) and has_shots and not is_err
+    if tier >= 2:
+        key, note = "noted", f"T1 deep {res.get('grade')} {res.get('tags')}: {why[:200]} (T2+ record, NOT changed)"
+    elif crash and grade not in ("Broken", "Nothing"):
+        changes["grade"] = "Broken"
+        changes["tags"] = sorted(set(rec.get("tags") or []) | set(res.get("tags") or []))
+        key, note = "lowered", f"T1 deep Broken (crash proven by screenshots, was {grade} T{tier}): {why[:240]}"
+    else:
+        key, note = "noted", f"T1 deep {res.get('grade')} {res.get('tags')}: {why[:240]} (grade kept: {grade} T{tier})"
+    if is_err:
+        key = "noted"
+    catalog.update(console, sha, changes, append_notes=note)
+    counts[key] = counts.get(key, 0) + 1
+
+
 def cmd_ingest(a):
     version = git_version()
     n = skipped = 0
+    dcounts = {}
     for sha in sorted(os.listdir(a.results)):
         rj = os.path.join(a.results, sha, "result.json")
         if not os.path.exists(rj):
@@ -845,6 +881,9 @@ def cmd_ingest(a):
         rec = catalog.get(a.console, sha)
         if rec is None:
             print("no record", sha); continue
+        if getattr(a, "deep_add", False):
+            deep_add(a.console, rec, json.load(open(rj, encoding="utf-8")), os.path.join(a.results, sha), dcounts)
+            continue
         if not a.force and ((rec.get("extra") or {}).get("t1") or {}).get("version") == T1_VERSION:
             skipped += 1; continue
         res = json.load(open(rj, encoding="utf-8"))
@@ -862,6 +901,9 @@ def cmd_ingest(a):
             f.write(json.dumps({"sha1": sha, "title": rec["title"], "grade": res["grade"], "tags": res["tags"], "why": res["why"],
                                 "mapper": res.get("mapper"), "seconds": res.get("seconds"), "host": res.get("fleetHost")}) + "\n")
         n += 1
+    if getattr(a, "deep_add", False):
+        print(f"deep-add ingested {dcounts}")
+        return
     print(f"ingested {n}, skipped {skipped} (already T1 {T1_VERSION})")
 
 
@@ -921,6 +963,8 @@ def main():
         q.add_argument("--console", default="nes")
         q.add_argument("--minutes", type=float, default=1.0)
         q.add_argument("--force", action="store_true")
+        if name == "ingest":
+            q.add_argument("--deep-add", action="store_true", dest="deep_add")
         for x in args:
             q.add_argument("--" + x, required=True)
     for name in ("run", "one", "report", "regrade"):
