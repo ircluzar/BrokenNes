@@ -1105,6 +1105,15 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 				break;
 			case 0x0004: // OAM Data
 				OAMDATA = value;
+				if ((scanline < 240 || scanline == 261) && (PPUMASK & 0x18) != 0)
+				{
+					// A write while rendering (visible or pre-render line) does not reach OAM: it only bumps the high
+					// 6 bits of OAMADDR (Mesen 2.1.1). Spot's sprite DMA runs from line 258 into line 1, so the bytes
+					// it puts after the pre-render line starts are lost there - writing them gave OAM 10 diffs.
+					OAMADDR = (byte)(OAMADDR + 4);
+					if (scanlineCycle >= 257 && scanlineCycle <= 320) OAMADDR = 0;   // the sprite fetch dots hold it at 0
+					break;
+				}
 				oam[OAMADDR] = bus.Butcher is { SpritesActive: true } sb ? sb.FilterOamWrite(OAMADDR, OAMDATA) : OAMDATA;
 				if ((OAMADDR & 3) == 2) oam[OAMADDR] &= 0xE3;   // attribute bits 2-4 do not exist in OAM: they read back 0 (Mesen too)
 				OAMADDR++;
@@ -1293,6 +1302,9 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 				return offset;
 		}
 	}
+
+	/// <summary>One byte of a cycle-timed OAM DMA (the precise CPU_FIX path): a $2004 write on its put cycle.</summary>
+	public void WriteOamDmaByte(byte value) => WritePPURegister(0x2004, value);
 
 	public void WriteOAMDMA(byte page)
 	{
