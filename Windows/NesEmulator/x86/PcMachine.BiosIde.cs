@@ -40,6 +40,7 @@ public sealed partial class PcMachine
             PhysW16((i == 0 ? 0x41u : 0x46u) * 4, (ushort)(FixedDiskTable + i * 16)); PhysW16((i == 0 ? 0x41u : 0x46u) * 4 + 2, (ushort)RomSeg);
         }
         // CMOS: drive types 47 (user-defined) with the geometry, so setup programs and Windows' real-mode check agree
+        if (Fdc != null) Cmos.Ram[0x10] = 0x40;   // the floppy controller's drive A: is a 3.5" 1.44 MB drive
         Cmos.Ram[0x12] = (byte)((Hdd[0] != null ? 0xf0 : 0) | (Hdd[1] != null ? 0x0f : 0));
         Cmos.Ram[0x19] = (byte)(Hdd[0] != null ? 47 : 0); Cmos.Ram[0x1a] = (byte)(Hdd[1] != null ? 47 : 0);
         int ext = Math.Min(MemKb - 1024, 0xffff);

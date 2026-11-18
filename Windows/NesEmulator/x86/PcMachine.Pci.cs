@@ -30,9 +30,18 @@ public sealed class PciFunction
     }
     public void W16(int o, int v) { Cfg[o] = (byte)v; Cfg[o + 1] = (byte)(v >> 8); }
     public uint Read32(int reg) { reg &= 0xfc; return (uint)(Cfg[reg] | Cfg[reg + 1] << 8 | Cfg[reg + 2] << 16 | Cfg[reg + 3] << 24); }
+    /// <summary>Size of the I/O window behind BAR0 (0: no BAR). The low bits read back as zero (bit 0 = I/O space), so sizing works.</summary>
+    public int IoBarSize;
+    public int IoBase => (Cfg[4] & 1) != 0 && IoBarSize != 0 ? (int)(Read32(0x10) & 0xfffc & ~(uint)(IoBarSize - 1)) : -1;
     public void WriteByte(int reg, byte v)
     {
-        if (reg == 0x04) Cfg[4] = (byte)(v & 0x07);
+        if (reg is >= 0x10 and <= 0x13 && IoBarSize != 0)
+        {
+            Cfg[reg] = v;
+            uint b = (Read32(0x10) & ~(uint)(IoBarSize - 1) & 0xffff) | 1;
+            for (int i = 0; i < 4; i++) Cfg[0x10 + i] = (byte)(b >> (8 * i));
+        }
+        else if (reg == 0x04) Cfg[4] = (byte)(v & 0x07);
         else if (reg is 0x05 or 0x0c or 0x0d or 0x3c || reg >= 0x40) Cfg[reg] = v;
     }
 }
@@ -40,12 +49,13 @@ public sealed class PciFunction
 /// <summary>PCI bus 0 behind configuration mechanism #1, plus the PIIX4 I/O it owns (CF9h reset control, 4D0h/4D1h ELCR).</summary>
 public sealed class PciBus
 {
-    public const byte HostDevFn = 0x00, IsaDevFn = 0x38, IdeDevFn = 0x39, VgaDevFn = 0x48;   // 00.0, 07.0, 07.1, 09.0
+    public const byte HostDevFn = 0x00, IsaDevFn = 0x38, IdeDevFn = 0x39, VgaDevFn = 0x48, NicDevFn = 0x50;   // 00.0, 07.0, 07.1, 09.0, 0A.0
     private readonly PcMachine _m;
     public readonly SortedDictionary<byte, PciFunction> Functions = new();
     public uint Address;
     public byte Elcr1, Elcr2, ResetControl;
     public PciFunction Isa => Functions[IsaDevFn];
+    public PciFunction? NicFn;
 
     public PciBus(PcMachine m) { _m = m; Reset(); }
 
@@ -60,6 +70,12 @@ public sealed class PciBus
             var ide = Functions[IdeDevFn] = new PciFunction("PIIX4 IDE", 0x8086, 0x7111, 0x010180, 0x01);
             ide.Cfg[4] = 0x01;                                    // I/O decode on, legacy ports (no bus master DMA yet)
             ide.Cfg[0x41] = 0x80; ide.Cfg[0x43] = 0x80;           // IDETIM: both channels' decode enabled
+        }
+        if (_m.Nic != null)
+        {
+            var nic = NicFn = Functions[NicDevFn] = new PciFunction("RTL8029 Ethernet", Rtl8029.Vendor, Rtl8029.Device, 0x020000, 0x00) { IoBarSize = Rtl8029.IoSize };
+            nic.Cfg[0x10] = 1; nic.Cfg[0x3d] = 1;                 // I/O BAR, INTA#
+            nic.W16(0x2c, Rtl8029.Vendor); nic.W16(0x2e, Rtl8029.Device);
         }
         Functions[HostDevFn].Cfg[4] = 0x06;
         isa.Cfg[4] = 0x07;
@@ -140,7 +156,9 @@ public sealed class PciBus
     {
         Address = r.ReadUInt32(); Elcr1 = r.ReadByte(); Elcr2 = r.ReadByte(); ResetControl = r.ReadByte();
         int n = r.ReadInt32();
-        if (n != Functions.Count) throw new InvalidDataException($"this x86 state's PCI bus has {n} functions, this machine has {Functions.Count}");
+        // a state saved before the network card: the card stays as a cold boot left it (unconfigured), everything else must match
+        bool oldNoNic = Functions.ContainsKey(NicDevFn) && n == Functions.Count - 1;
+        if (n != Functions.Count && !oldNoNic) throw new InvalidDataException($"this x86 state's PCI bus has {n} functions, this machine has {Functions.Count}");
         for (int i = 0; i < n; i++)
         {
             byte df = r.ReadByte();
@@ -159,7 +177,7 @@ public sealed partial class PcMachine
     // ROM offsets in F000h (the classic machine leaves 0000-9FFF empty)
     private const uint Bios32Dir = 0x9000, PirTable = 0x9020, PnpHeader = 0x9100,
         Bios32Entry = 0x9200, Pci32Entry = 0x9210, ApmEntry = 0x9220, PnpRealEntry = 0x9230, PnpPmEntry = 0x9240;
-    private const int SvgaIrq = 11;
+    private const int SvgaIrq = 11, NicIrq = 10, NicIoBase = 0xe000;
     private bool _apmConnected;
     private byte _apmInterface;               // 0 none, 1 real, 2 16-bit PM, 3 32-bit PM
 
@@ -197,6 +215,15 @@ public sealed partial class PcMachine
             pci.Elcr2 = 1 << (SvgaIrq - 8);
         }
         if (pci.Functions.TryGetValue(PciBus.IdeDevFn, out var ide)) ide.Cfg[0x3c] = 14;
+        // the network card: I/O at E000h (32 ports), INTA# -> PIRQB -> IRQ 10 (level-triggered)
+        if (pci.Functions.TryGetValue(PciBus.NicDevFn, out var nic))
+        {
+            pci.ConfigWrite(0, PciBus.NicDevFn, 0x10, NicIoBase | 1, 4);
+            pci.ConfigWrite(0, PciBus.NicDevFn, 0x04, 0x01, 1);
+            pci.Isa.Cfg[0x61] = NicIrq;
+            nic.Cfg[0x3c] = NicIrq;
+            pci.Elcr2 |= 1 << (NicIrq - 8);
+        }
 
         // $PIR: the routing table (one slot entry per device that has an interrupt pin)
         var pir = BuildPir();
@@ -228,6 +255,7 @@ public sealed partial class PcMachine
         }
         slots.Add(Slot(7, 0, 0x60, 0x61, 0x62, 0x63));
         if (S3 != null) slots.Add(Slot(PciBus.VgaDevFn >> 3, 1, 0x60, 0x61, 0x62, 0x63));
+        if (Nic != null) slots.Add(Slot(PciBus.NicDevFn >> 3, 2, 0x61, 0x62, 0x63, 0x60));
         int size = 32 + 16 * slots.Count;
         var t = new byte[size];
         Encoding.ASCII.GetBytes("$PIR").CopyTo(t, 0);
@@ -336,7 +364,8 @@ public sealed partial class PcMachine
                 // CL = pin (0Ah-0Dh = INTA#-INTD#), CH = IRQ
                 int pin = (int)CL - 0x0a; uint irq = CH;
                 if (pin is < 0 or > 3 || irq > 15) { Done(0x88); return; }
-                pci.Isa.Cfg[0x60 + pin] = (byte)(irq == 0 ? 0x80 : irq);   // every $PIR slot wires INTA#-INTD# to PIRQA-D
+                int link = (pin + (devFn >> 3 == PciBus.NicDevFn >> 3 ? 1 : 0)) & 3;   // the $PIR: slot 0A rotates its pins by one link
+                pci.Isa.Cfg[0x60 + link] = (byte)(irq == 0 ? 0x80 : irq);
                 pci.ConfigWrite(0, devFn, 0x3c, irq, 1);
                 Done(0); return;
             }
@@ -500,6 +529,8 @@ public sealed partial class PcMachine
         if (Kbc.HasMouse) Node("PNP0F13", 9, 2, 0, d => Irq(d, 12));   // the PS/2 mouse on the 8042
         // the SB16 (Windows 98's SB16AWE.INF knows the legacy SB16 as *PNPB003; there is no SB Pro driver in Windows 98): 220h, 388h, IRQ 5, DMA 1 + 5
         if (Card?.Id == "SB16_D072") Node("PNPB003", 4, 1, 0, d => { Io(d, 0x220, 16); Io(d, 0x388, 4); Irq(d, 5); d.AddRange(new byte[] { 0x2a, 0x02, 0x08 }); d.AddRange(new byte[] { 0x2a, 0x20, 0x16 }); });
+        // the 82077AA floppy controller: 3F0h-3F5h, 3F7h, IRQ 6, DMA 2 (8-bit)
+        if (Fdc != null) Node("PNP0700", 1, 2, 0, d => { Io(d, 0x3f0, 6); Io(d, 0x3f7, 1); Irq(d, 6); d.AddRange(new byte[] { 0x2a, 0x04, 0x00 }); });
         Node("PNP0800", 4, 1, 0, d => Io(d, 0x61, 1));
         if (Cpu.Model.Fpu) Node("PNP0C04", 0x0b, 0x80, 0, d => { Io(d, 0xf0, 16); Irq(d, 13); });
         Node("PNP0A03", 6, 4, 0, d => Io(d, 0xcf8, 8));

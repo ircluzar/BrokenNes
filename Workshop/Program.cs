@@ -69,9 +69,11 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--x86opl", StringComparison.OrdinalIgnoreCase)) return X86.X86OplCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86engines", StringComparison.OrdinalIgnoreCase)) return X86.X86EnginesCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86cards", StringComparison.OrdinalIgnoreCase)) return X86.X86CardsCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--x86fdc", StringComparison.OrdinalIgnoreCase)) return X86.X86FdcCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86video", StringComparison.OrdinalIgnoreCase)) return X86.X86VideoCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86disk", StringComparison.OrdinalIgnoreCase)) return X86.X86BootCli.Disk(args);
         if (args.Length > 0 && args[0].Equals("--x86boot", StringComparison.OrdinalIgnoreCase)) return X86.X86BootCli.Boot(args);
+        if (args.Length > 0 && args[0].Equals("--x86nettest", StringComparison.OrdinalIgnoreCase)) return X86.X86NetTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86sst", StringComparison.OrdinalIgnoreCase)) return X86.X86SstCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86t386", StringComparison.OrdinalIgnoreCase)) return X86.X86T386Cli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86ide", StringComparison.OrdinalIgnoreCase)) return X86.X86IdeCli.Run(args);

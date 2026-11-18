@@ -70,6 +70,15 @@ internal static class X86BootCli
         m.PowerOn();
         // --loadstate: carry on from a --savestate of the same machine (its disks come from the state; the CD stays the one given)
         if (Arg(args, "--loadstate") is string ls) m.LoadState(File.ReadAllBytes(ls));
+        // --net: plug the network card into the built-in NAT (DHCP, DNS, the HTTPS bridge); off by default
+        PcNat? nat = null;
+        if (Arg(args, "--niclog") is string nl && m.Nic != null)
+        {
+            var nw = new StreamWriter(nl); int nn = 0;
+            m.Nic.Trace = (o, w, v, wd) => { if (nn++ < 200000) nw.WriteLine($"{m.Clock} {(w ? "OUT" : "IN ")} {o:X2} {(wd ? v.ToString("X4") : v.ToString("X2"))}"); };
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => nw.Flush();
+        }
+        if (args.Contains("--net") && m.Nic != null) { nat = new PcNat { Log = l => Console.WriteLine("net: " + l) }; m.Nic.Link = nat; }
         // --exclog N: the last N CPU exceptions other than page faults (printed at the end), with a count per vector
         var excRing = new Queue<string>(); var excCount = new long[32]; int excKeep = int.Parse(Arg(args, "--exclog") ?? "0");
         string biosIn = "";
@@ -295,6 +304,7 @@ internal static class X86BootCli
             var parts = la.Split(':'); uint a0 = Convert.ToUInt32(parts[0], 16); int np = parts.Length > 1 ? int.Parse(parts[1]) : 1;
             Console.WriteLine($"linmap {a0:X8}: " + string.Join(" ", Enumerable.Range(0, np).Select(k => { uint p = LinPhys(m, a0 + (uint)k * 4096); return p == 0xffffffff ? "--" : (p >> 12).ToString("X"); })) + $" | {LinBytes(m, a0, 16)}");
         }
+        if (m.Nic != null) Console.WriteLine($"nic: sent {m.Nic.FramesSent} frames, received {m.Nic.FramesReceived}; BAR0 {m.Pci!.NicFn!.Read32(0x10):X8} cmd {m.Pci.NicFn.Cfg[4]:X2} line {m.Pci.NicFn.Cfg[0x3c]} PIRQB {m.Pci.Isa.Cfg[0x61]:X2}");
         if (args.Contains("--jitstat")) Console.WriteLine($"jit: compiled {m.Cpu.JitCompiled} reused {m.Cpu.JitReused} runs {m.Cpu.JitRuns} invalid {m.Cpu.JitInvalid} cycle {m.Cpu.Cycle} compiled-instrs {m.Cpu.JitInstrsTotal} ({100.0 * m.Cpu.JitInstrsTotal / Math.Max(1, m.Cpu.Cycle):F1}%) (set X86_JITSTAT for the per-block counts)");
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.JitTop(25)) Console.WriteLine("  blk " + l);
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.InterpTop(40)) Console.WriteLine("  interp " + l);

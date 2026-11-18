@@ -47,7 +47,8 @@ internal static class X86PciCli
         Check(Cfg(0x38, 0) == 0x71108086, "PIIX4 ISA 8086:7110");
         Check(Cfg(0x39, 0) == 0x71118086, "PIIX4 IDE 8086:7111");
         Check(Cfg(0x48, 0) == 0x88115333, "S3 Trio64 5333:8811 at 09.0");
-        Check(Cfg(0x50, 0) == 0xffffffff, "empty slot reads FFFFFFFFh");
+        Check(Cfg(0x58, 0) == 0xffffffff, "empty slot reads FFFFFFFFh");   // (0A.0 is the network card)
+        Check(Cfg(0x50, 0) == 0x802910ec, "network card RTL8029 at 0A.0");
         Check((Cfg(0x38, 0x60) & 0xff) == 11, "PIRQA routed to IRQ 11");
         Check((Cfg(0x48, 0x3c) & 0xff) == 11, "S3 interrupt line 11");
         // BAR sizing on the S3
@@ -114,7 +115,7 @@ internal static class X86PciCli
         Check(W(0x51a) == 0xf000 && D(0x51c) == 0x9220, $"APM 32-bit connect (AX {W(0x51a):X4} EBX {D(0x51c):X8})");
         Check(W(0x524) == 0 && m.Phys8(0x520) >= 8 && W(0x522) > 9, $"PnP nodes: {m.Phys8(0x520)} of up to {W(0x522)} bytes (AX {W(0x524):X4})");
         Check(W(0x528) == 0 && m.Phys8(0x526) == 1 && W(0x600) > 9 && m.Phys8(0x602) == 0 && D(0x603) == 0x0000d041, $"PnP node 0 = PNP0000 (AX {W(0x528):X4}, id {D(0x603):X8}, next {m.Phys8(0x526)})");
-        Check(W(0x546) >> 8 == 0 && (W(0x548) & 1) == 0 && W(0x540) == 32 && m.Phys8(0x561) == 0x38 && m.Phys8(0x562) == 0x60, $"IRQ routing options (AH {W(0x546) >> 8:X2}, size {W(0x540)})");
+        Check(W(0x546) >> 8 == 0 && (W(0x548) & 1) == 0 && W(0x540) == 48 && m.Phys8(0x561) == 0x38 && m.Phys8(0x562) == 0x60, $"IRQ routing options (AH {W(0x546) >> 8:X2}, size {W(0x540)})");
         Check(D(0x54c) == 0x534d4150 && D(0x708) == 0x9fc00 && D(0x710) == 1, "E820 entry 0 = 0-9FC00 RAM");
 
         // ROM structures

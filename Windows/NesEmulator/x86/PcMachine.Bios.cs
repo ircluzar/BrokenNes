@@ -134,7 +134,7 @@ public sealed partial class PcMachine
         Code(Int19Stub, I_INT19, 0xe6, 0xe0, 0xcf);
         Code(IretStub, -1, 0xcf);
         InstallInt10Replay();
-        if (Ata != null) InstallInt13Pio();
+        if (Ata != null) { InstallInt13Pio(); InstallInt13Fdc(); }
         // reset vector: OUT E0h = a full reset (POST, then boot) like a real BIOS. A jump to FFFF:0000 used to go straight to INT 19h, which kept the
         // old OS's hooked vectors and hung Windows 98 Setup's restart ("Waiting for system shutdown").
         Code(0xfff0, I_RESET, 0xe6, 0xe0, 0xeb, 0xfc);
@@ -554,6 +554,7 @@ public sealed partial class PcMachine
         int dl = (int)DL;
         uint fn = AH;
         if (Int13PioSetup(dl, fn)) return;
+        if (Int13FdcSetup(dl, fn)) return;
         if (Ata != null && Int13Ide(dl, fn)) return;
         var d = Disk(dl);
         if (fn == 0x01) { AH = Lin8(dl >= 0x80 ? 0x474u : 0x441u); SetCF(AH != 0); return; }

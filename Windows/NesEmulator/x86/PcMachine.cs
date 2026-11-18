@@ -46,6 +46,11 @@ public sealed partial class PcMachine : IX86Bus
 
     /// <summary>What the board is built with (docs/projects/x86-modular-pc.md). Fixed for the machine's life: a change is a new machine.</summary>
     public readonly PcConfig Config;
+    /// <summary>The PCI network card (an RTL8029 / NE2000; PCI boards only). Its cable (Nic.Link) is host-side and starts unplugged.</summary>
+    public readonly Rtl8029? Nic;
+    /// <summary>The 82077AA floppy controller (the PCI 430TX board only; the other boards serve floppies through the BIOS alone).</summary>
+    public readonly Fdc82077? Fdc;
+    private bool NicPort(int port, out int off) { off = 0; if (Nic == null) return false; int b = Pci!.NicFn!.IoBase; if (b < 0 || port < b || port >= b + Rtl8029.IoSize) return false; off = port - b; return true; }
     /// <summary>The IDE controller (null on a BIOS-only machine: the default).</summary>
     public readonly AtaController? Ata;
     /// <summary>The ATAPI CD-ROM's disc (secondary master; IDE machines only). Read-only media: not part of a save state.</summary>
@@ -80,7 +85,14 @@ public sealed partial class PcMachine : IX86Bus
         Opl = new Opl2(() => PitNow);
         Dma = new Dma8237(this);
         if (config.Storage == PcStorage.Ide) Ata = new AtaController(Pic);
-        if (config.Bus != PcBus.Isa) Pci = new PciBus(this);
+        if (config.Bus != PcBus.Isa)
+        {
+            Nic = new Rtl8029();
+            Nic.SetIrq = on => { int irq = Pci!.Isa.Cfg[0x61]; if (irq < 16) Pic.SetIrq(irq, on ? 1 : 0); };
+            Pci = new PciBus(this);
+        }
+        if (config.Bus == PcBus.Pci430TX)
+            Fdc = new Fdc82077(n => Floppy[n], Dma[2], on => Pic.SetIrq(6, on ? 1 : 0), () => (long)((Int128)Clock * 1_000_000 / InstructionsPerSecond));
         Pic.Raise = () => Cpu.RaiseIrq();
         RegisterTraps();
     }
@@ -144,7 +156,9 @@ public sealed partial class PcMachine : IX86Bus
     {
         PortLog?.Invoke(port, false);
         if (Pci != null && Pci.In(port, 1, out uint pv)) return (byte)pv;
+        if (NicPort(port, out int no)) return (byte)Nic!.In(no, false);
         if (Ata != null && Ata.In(port, false, out int av)) return (byte)av;
+        if (Fdc != null && Fdc82077.IsPort(port)) return Fdc.In(port);
         if (Card != null && Card.In(port, false, out int cv)) return (byte)cv;
         if (S3 != null && S3Trio64.IsEnginePort(port)) return (byte)S3.EngineIn(port & 0xfffe, (port & 1) != 0);
         switch (port)
@@ -174,7 +188,9 @@ public sealed partial class PcMachine : IX86Bus
         PortLog?.Invoke(port, true);
         PortTrace?.Invoke(port, true, v);
         if (Pci != null && (Pci.Out(port, 1, v) || PmTrap(port))) return;
+        if (NicPort(port, out int no)) { Nic!.Out(no, v, false); return; }
         if (Ata != null && Ata.Out(port, false, v)) return;
+        if (Fdc != null && Fdc82077.IsPort(port)) { Fdc.Out(port, v); return; }
         if (Card != null && Card.Out(port, false, v)) return;
         if (S3 != null && S3Trio64.IsEnginePort(port)) { S3.EngineOut8(port, v); return; }
         switch (port)
@@ -201,6 +217,7 @@ public sealed partial class PcMachine : IX86Bus
     {
         PortLog?.Invoke(port, false);
         if (Pci != null && Pci.In(port, 2, out uint pv)) return (ushort)pv;
+        if (NicPort(port, out int no)) return (ushort)(no is >= 0x10 and < 0x18 ? Nic!.In(no, true) : Nic!.In(no, false) | Nic.In(no + 1, false) << 8);
         if (Ata != null && Ata.In(port, true, out int av)) return (ushort)av;
         if (Card != null && Card.In(port, true, out int cv)) return (ushort)cv;
         if (S3 != null && S3Trio64.IsEnginePort(port)) return (ushort)(S3.EngineIn(port, false) | S3.EngineIn(port, true) << 8);
@@ -211,6 +228,7 @@ public sealed partial class PcMachine : IX86Bus
     {
         PortLog?.Invoke(port, true);
         if (Pci != null && Pci.Out(port, 2, v)) return;
+        if (NicPort(port, out int no)) { if (no is >= 0x10 and < 0x18) Nic!.Out(no, v, true); else { Nic!.Out(no, (byte)v, false); Nic.Out(no + 1, v >> 8, false); } return; }
         if (Ata != null && Ata.Out(port, true, v)) return;
         if (Card != null && Card.Out(port, true, v)) return;
         if (S3 != null && S3Trio64.IsEnginePort(port)) { S3.EngineOut16(port, v); return; }
@@ -332,6 +350,8 @@ public sealed partial class PcMachine : IX86Bus
     {
         Batches++;
         Card?.Advance();
+        Nic?.Poll();
+        Fdc?.Poll();
         Pit.UpdateIrq();
         Kbc.Pump();
         try
@@ -361,7 +381,7 @@ public sealed partial class PcMachine : IX86Bus
     private void AdlibWait() => _idle += Math.Max(1, InstructionsPerSecond * 11 / 20_000_000);
 
     /// <summary>Headless tests: lets <paramref name="instr"/> instructions of machine time pass without running the CPU (as a halted CPU sleeps), the sound card caught up.</summary>
-    public void IdleFor(long instr) { _idle += instr; Card?.Advance(); }
+    public void IdleFor(long instr) { _idle += instr; Card?.Advance(); Fdc?.Poll(); }
 
     // ================= power =================
 
@@ -382,6 +402,8 @@ public sealed partial class PcMachine : IX86Bus
         _cdEmu = null; _cdBoot = false;
         WireAta();
         Ata?.Reset();
+        Nic?.Reset();
+        Fdc?.PowerOn();
         Pci?.Reset();
         Post();
     }
@@ -449,7 +471,9 @@ public sealed partial class PcMachine : IX86Bus
                 SaveBiosExtras(w);
                 if (Config.Bus != PcBus.Isa) SavePci(w);
             }
+            if (Nic != null) { w.Write(0x3043494e); Nic.Save(w); }   // "NIC0", after the config block
             if (Kbc.HasMouse) { w.Write(0x4d325350); Kbc.SaveMouse(w); }   // "PS2M"
+            if (Fdc != null) { w.Write(0x30434446); Fdc.Save(w); }   // "FDC0"
         }
         return ms.ToArray();
     }
@@ -504,6 +528,7 @@ public sealed partial class PcMachine : IX86Bus
         string? picId = null; byte[]? picBlob = null;
         string? svgaId = null; byte[]? svgaBlob = null;
         PcConfig? saved = null; bool mouse = false;
+        bool nicLoaded = false, fdcLoaded = false;
         while (r.BaseStream.Position + 4 <= r.BaseStream.Length)
         {
             int magic = r.ReadInt32();
@@ -519,9 +544,13 @@ public sealed partial class PcMachine : IX86Bus
                 LoadBiosExtras(r);
                 if (Config.Bus != PcBus.Isa) LoadPci(r);
             }
+            else if (magic == 0x3043494e && Nic != null) { Nic.Load(r); nicLoaded = true; }
+            else if (magic == 0x30434446 && Fdc != null) { Fdc.Load(r); fdcLoaded = true; }
             else throw new InvalidDataException($"unknown block {magic:X8} in an x86 state");
         }
+        if (Nic != null && !nicLoaded) Nic.Reset();   // a state from before the card: it sits there as after a cold boot, unconfigured
         if (!mouse) Kbc.ResetMouse();
+        if (Fdc != null && !fdcLoaded) Fdc.PowerOn();   // a state from before the controller: it starts as after a cold boot
         if (saved == null && ConfigInState) throw new InvalidDataException($"this x86 state is for the classic machine (486, BIOS disks), this machine is {Config}");
         WireAta();
         // the video card must be the one the state was saved on: a mismatch is an error, never a guess
