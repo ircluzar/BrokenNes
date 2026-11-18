@@ -417,7 +417,10 @@ public sealed partial class PcMachine
         var v = Vga;
         byte[] sr = (byte[])v.Sr.Clone(), gr = (byte[])v.Gr.Clone(), cr = (byte[])v.Cr.Clone(), ar = (byte[])v.Ar.Clone(), pal = (byte[])v.Palette.Clone();
         byte msr = v.Msr, sri = v.SrIndex, gri = v.GrIndex, cri = v.CrIndex, ari = v.ArIndex, aff = v.ArFlipFlop;
-        bool memSet = AH == 0x00 || AH == 0x11;
+        bool memSet = AH == 0x00 || AH == 0x11 || AX == 0x4f02;
+        byte[]? s3State = null;
+        if (v.S3 != null) { var ms = new System.IO.MemoryStream(); using (var bw = new System.IO.BinaryWriter(ms, System.Text.Encoding.UTF8, true)) v.S3.Save(bw); s3State = ms.ToArray(); }
+        byte[]? srx = v.S3 != null ? (byte[])v.S3.SrExt.Clone() : null;
         byte[]? ram = memSet ? (byte[])v.Ram.Clone() : null;
         int mode = (int)AL, fn = (int)AH;
         _v86Video = true;
@@ -433,6 +436,19 @@ public sealed partial class PcMachine
         bool crLow = false; for (int i = 0; i < 8; i++) crLow |= cr[i] != v.Cr[i];
         if (crLow) { E(0x3d4, 0x11); E(0x3d5, v.Cr[0x11] & 0x7f); }
         for (int i = 0; i < 25; i++) if (cr[i] != v.Cr[i] || (crLow && i == 0x11)) { E(0x3d4, i); E(0x3d5, v.Cr[i]); }
+        // the S3 extensions a VBE mode set programs (CR30-6F behind the CR38/39 locks, SR09-1F behind SR08)
+        bool crx = false; for (int i = 0x30; i < 0x70; i++) crx |= cr[i] != v.Cr[i];
+        if (crx)
+        {
+            E(0x3d4, 0x38); E(0x3d5, 0x48); E(0x3d4, 0x39); E(0x3d5, 0xa5);
+            for (int i = 0x30; i < 0x70; i++) if (i is not (0x38 or 0x39) && cr[i] != v.Cr[i]) { E(0x3d4, i); E(0x3d5, v.Cr[i]); }
+            E(0x3d4, 0x38); E(0x3d5, v.Cr[0x38]); E(0x3d4, 0x39); E(0x3d5, v.Cr[0x39]);
+        }
+        if (srx != null)
+        {
+            bool sd = false; for (int i = 9; i < 0x20; i++) sd |= srx[i] != v.S3!.SrExt[i];
+            if (sd) { E(0x3c4, 8); E(0x3c5, 6); for (int i = 9; i < 0x20; i++) if (srx[i] != v.S3!.SrExt[i]) { E(0x3c4, i); E(0x3c5, v.S3.SrExt[i]); } E(0x3c4, 8); E(0x3c5, v.S3.SrExt[8]); }
+        }
         for (int i = 0; i < 9; i++) if (gr[i] != v.Gr[i]) { E(0x3ce, i); E(0x3cf, v.Gr[i]); }
         bool arD = false; for (int i = 0; i < 21; i++) arD |= ar[i] != v.Ar[i];
         if (arD) { E(0x3da | 0x8000, 0); for (int i = 0; i < 21; i++) if (ar[i] != v.Ar[i]) { E(0x3c0, i); E(0x3c0, v.Ar[i]); } E(0x3c0, 0x20); }
@@ -444,6 +460,7 @@ public sealed partial class PcMachine
         Array.Copy(sr, v.Sr, sr.Length); Array.Copy(gr, v.Gr, gr.Length); Array.Copy(cr, v.Cr, cr.Length); Array.Copy(ar, v.Ar, ar.Length); Array.Copy(pal, v.Palette, pal.Length);
         v.Msr = msr; v.SrIndex = sri; v.GrIndex = gri; v.CrIndex = cri; v.ArIndex = ari; v.ArFlipFlop = aff;
         if (ram != null) Array.Copy(ram, v.Ram, ram.Length);
+        if (s3State != null) using (var br = new System.IO.BinaryReader(new System.IO.MemoryStream(s3State))) v.S3!.Load(br);
         // a text mode set clears the VM's own text buffer (its B8000, wherever the VDD maps it)
         if (fn == 0x00 && (mode & 0x80) == 0 && (mode & 0x7f) is <= 3 or 7)
             for (uint i = 0; i < 0x4000; i += 2) { LinW8(0xb8000 + i, 0x20); LinW8(0xb8001 + i, 0x07); }
