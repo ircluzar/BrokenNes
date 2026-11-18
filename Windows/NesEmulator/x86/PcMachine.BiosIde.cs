@@ -142,20 +142,20 @@ public sealed partial class PcMachine
             case 0x42:
             {
                 uint p = SegB(I386.SEG_DS) + SI;
-                int count = Phys16(p + 2);
-                uint buf = (uint)(Phys16(p + 6) << 4) + Phys16(p + 4);
-                long lba = Phys32(p + 8) | ((long)Phys32(p + 12) << 32);
-                if (lba < 0 || lba + count > cd.Sectors) { PhysW16(p + 2, 0); AH = 0x04; SetCF(true); return true; }
-                for (int i = 0; i < count * 2048; i++) PhysW8(buf + (uint)i, cd.Data[lba * 2048 + i]);
+                int count = Lin16(p + 2);
+                uint buf = (uint)(Lin16(p + 6) << 4) + Lin16(p + 4);
+                long lba = Lin32(p + 8) | ((long)Lin32(p + 12) << 32);
+                if (lba < 0 || lba + count > cd.Sectors) { LinW16(p + 2, 0); AH = 0x04; SetCF(true); return true; }
+                for (int i = 0; i < count * 2048; i++) LinW8(buf + (uint)i, cd.Data[lba * 2048 + i]);
                 AH = 0; Ok(); return true;
             }
             case 0x48:
             {
                 uint p = SegB(I386.SEG_DS) + SI;
-                if (Phys16(p) < 0x1a) { Fail(0x01); return true; }
-                PhysW16(p, 0x1a); PhysW16(p + 2, 0x74);      // removable, changeline, lockable, geometry not valid
-                PhysW32(p + 4, 0); PhysW32(p + 8, 0); PhysW32(p + 12, 0);
-                PhysW32(p + 16, (uint)cd.Sectors); PhysW32(p + 20, 0); PhysW16(p + 24, 2048);
+                if (Lin16(p) < 0x1a) { Fail(0x01); return true; }
+                LinW16(p, 0x1a); LinW16(p + 2, 0x74);      // removable, changeline, lockable, geometry not valid
+                LinW32(p + 4, 0); LinW32(p + 8, 0); LinW32(p + 12, 0);
+                LinW32(p + 16, (uint)cd.Sectors); LinW32(p + 20, 0); LinW16(p + 24, 2048);
                 AH = 0; Ok(); return true;
             }
             default: Fail(0x01); return true;

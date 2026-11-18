@@ -260,6 +260,21 @@ public sealed partial class PcMachine : IX86Bus
     public void PhysW8(uint a, byte v) { if (a is >= 0xa0000 and < 0xc0000) Vga.MemWrite(a, v); else if (a < Cpu.MemSize) { Cpu.Mem[a] = v; Cpu.MemTouched(); } else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
     public void PhysW16(uint a, ushort v) { PhysW8(a, (byte)v); PhysW8(a + 1, (byte)(v >> 8)); }
     public void PhysW32(uint a, uint v) { PhysW16(a, (ushort)v); PhysW16(a + 2, (ushort)(v >> 16)); }
+    // Linear (guest-virtual) access for BIOS services: under Windows the V86 VM's 0-1 MB is paged, not identity-mapped,
+    // so a buffer at ES:BX must go through the page tables (an INT 13h read written to the physical address corrupted DLL loads).
+    public uint LinToPhys(uint la)
+    {
+        if ((Cpu.Cr0 & 0x80000000) == 0) return la;
+        uint pde = Phys32((Cpu.Cr3 & ~0xfffu) + (la >> 22) * 4); if ((pde & 1) == 0) return 0xffffffff;
+        if ((pde & 0x80) != 0 && (Cpu.Cr4 & 0x10) != 0) return (pde & 0xffc00000) | (la & 0x3fffff);
+        uint pte = Phys32((pde & ~0xfffu) + ((la >> 12) & 0x3ff) * 4); return (pte & 1) == 0 ? 0xffffffff : (pte & ~0xfffu) | (la & 0xfff);
+    }
+    public byte Lin8(uint a) { uint p = LinToPhys(a); return p == 0xffffffff ? (byte)0xff : Phys8(p); }
+    public ushort Lin16(uint a) => (ushort)(Lin8(a) | (Lin8(a + 1) << 8));
+    public uint Lin32(uint a) => (uint)(Lin16(a) | (Lin16(a + 2) << 16));
+    public void LinW8(uint a, byte v) { uint p = LinToPhys(a); if (p != 0xffffffff) PhysW8(p, v); }
+    public void LinW16(uint a, ushort v) { LinW8(a, (byte)v); LinW8(a + 1, (byte)(v >> 8)); }
+    public void LinW32(uint a, uint v) { LinW16(a, (ushort)v); LinW16(a + 2, (ushort)(v >> 16)); }
 
     // ================= running =================
 

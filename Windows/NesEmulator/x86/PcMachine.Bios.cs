@@ -446,7 +446,7 @@ public sealed partial class PcMachine
 
     private DiskImage? Disk(int dl) => dl switch { 0 => _cdEmu ?? Floppy[0], 1 => Floppy[1], 0x80 => Hdd[0], 0x81 => Hdd[1], _ => null };
 
-    private void DiskStatus(int dl, uint st) { PhysW8(dl >= 0x80 ? 0x474u : 0x441u, (byte)st); AH = st; SetCF(st != 0); }
+    private void DiskStatus(int dl, uint st) { LinW8(dl >= 0x80 ? 0x474u : 0x441u, (byte)st); AH = st; SetCF(st != 0); }
 
     private void Int13()
     {
@@ -454,7 +454,7 @@ public sealed partial class PcMachine
         uint fn = AH;
         if (Ata != null && Int13Ide(dl, fn)) return;
         var d = Disk(dl);
-        if (fn == 0x01) { AH = Phys8(dl >= 0x80 ? 0x474u : 0x441u); SetCF(AH != 0); return; }
+        if (fn == 0x01) { AH = Lin8(dl >= 0x80 ? 0x474u : 0x441u); SetCF(AH != 0); return; }
         if (fn == 0x08 && dl < 0x80 && d == null) { Fail(0x01); return; }
         if (fn == 0x15 && d == null) { AH = 0; Ok(); return; }
         if (d == null) { DiskStatus(dl, dl >= 0x80 ? 0x01u : 0x80u); return; }
@@ -497,21 +497,21 @@ public sealed partial class PcMachine
             case 0x42: case 0x43:
             {
                 uint p = SegB(I386.SEG_DS) + SI;
-                int count = Phys16(p + 2);
-                uint buf = (uint)(Phys16(p + 6) << 4) + Phys16(p + 4);
-                long lba = Phys32(p + 8) | ((long)Phys32(p + 12) << 32);
-                if (Phys32(p + 4) == 0xffffffff && Phys8(p) >= 0x18) buf = Phys32(p + 16);
-                if (!Transfer(d, lba, count, buf, fn == 0x43)) { PhysW16(p + 2, 0); DiskStatus(dl, 0x04); return; }
+                int count = Lin16(p + 2);
+                uint buf = (uint)(Lin16(p + 6) << 4) + Lin16(p + 4);
+                long lba = Lin32(p + 8) | ((long)Lin32(p + 12) << 32);
+                if (Lin32(p + 4) == 0xffffffff && Lin8(p) >= 0x18) buf = Lin32(p + 16);
+                if (!Transfer(d, lba, count, buf, fn == 0x43)) { LinW16(p + 2, 0); DiskStatus(dl, 0x04); return; }
                 DiskStatus(dl, 0); return;
             }
             case 0x44: case 0x47: DiskStatus(dl, 0); return;
             case 0x48:
             {
                 uint p = SegB(I386.SEG_DS) + SI;
-                if (Phys16(p) < 0x1a) { Fail(0x01); return; }
-                PhysW16(p, 0x1a); PhysW16(p + 2, 0x02);
-                PhysW32(p + 4, (uint)d.Cylinders); PhysW32(p + 8, (uint)d.Heads); PhysW32(p + 12, (uint)d.Sectors);
-                PhysW32(p + 16, (uint)d.TotalSectors); PhysW32(p + 20, (uint)(d.TotalSectors >> 32)); PhysW16(p + 24, 512);
+                if (Lin16(p) < 0x1a) { Fail(0x01); return; }
+                LinW16(p, 0x1a); LinW16(p + 2, 0x02);
+                LinW32(p + 4, (uint)d.Cylinders); LinW32(p + 8, (uint)d.Heads); LinW32(p + 12, (uint)d.Sectors);
+                LinW32(p + 16, (uint)d.TotalSectors); LinW32(p + 20, (uint)(d.TotalSectors >> 32)); LinW16(p + 24, 512);
                 DiskStatus(dl, 0); return;
             }
         }
@@ -523,12 +523,13 @@ public sealed partial class PcMachine
         var tmp = new byte[count * 512];
         if (write)
         {
-            for (int i = 0; i < tmp.Length; i++) tmp[i] = Phys8(buf + (uint)i);
+            for (int i = 0; i < tmp.Length; i++) tmp[i] = Lin8(buf + (uint)i);
             return d.Write(lba, count, tmp);
         }
         if (!d.Read(lba, count, tmp)) return false;
-        if (buf + tmp.Length <= 0xa0000 || buf >= 0xc0000 && buf + tmp.Length <= Cpu.MemSize) Array.Copy(tmp, 0, Cpu.Mem, buf, tmp.Length);
-        else for (int i = 0; i < tmp.Length; i++) PhysW8(buf + (uint)i, tmp[i]);
+        bool paged = (Cpu.Cr0 & 0x80000000) != 0;
+        if (!paged && (buf + tmp.Length <= 0xa0000 || buf >= 0xc0000 && buf + tmp.Length <= Cpu.MemSize)) { Array.Copy(tmp, 0, Cpu.Mem, buf, tmp.Length); Cpu.MemTouched(); }
+        else for (int i = 0; i < tmp.Length; i++) LinW8(buf + (uint)i, tmp[i]);
         return true;
     }
 }
