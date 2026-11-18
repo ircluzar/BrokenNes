@@ -76,6 +76,22 @@ internal static class X86BootCli
         // --portlog: I/O accesses per port and direction (printed at the end, the busiest first)
         var portCount = new long[0x20000];
         if (args.Contains("--portlog")) m.PortLog = (p, w) => portCount[(p & 0xffff) | (w ? 0x10000 : 0)]++;
+        if (Arg(args, "--portseq") is string ps)   // --portseq LO-HI[:N]: the first N (default 600) byte accesses to ports LO..HI, with values, in order (consecutive repeats folded)
+        {
+            var pp = ps.Split(':'); var lh = pp[0].Split('-'); int lo = Convert.ToInt32(lh[0], 16), hi = Convert.ToInt32(lh[^1], 16), max = pp.Length > 1 ? int.Parse(pp[1]) : 600, seqN = 0;
+            string last = ""; int rep = 0;
+            m.PortTrace = (p, w, v) =>
+            {
+                if (p < lo || p > hi || seqN >= max) return;
+                string k = $"{(w ? "out" : "in ")} {p:X3} {v:X2}";
+                if (k == last) { rep++; return; }
+                if (rep > 0) Console.WriteLine($"portseq   (x{rep + 1})");
+                rep = 0; last = k; seqN++;
+                Console.WriteLine($"portseq {k} @{m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8}");
+            };
+        }
+        var portWho = new Dictionary<string, long>(); int whoPort = Arg(args, "--portwho") is string pw ? Convert.ToInt32(pw, 16) : -1;   // --portwho HEXPORT: where the accesses come from
+        if (whoPort >= 0) { var prev = m.PortLog; m.PortLog = (p, w) => { prev?.Invoke(p, w); if ((p & 0xffff) == whoPort) { string k = $"{m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8}"; portWho[k] = portWho.GetValueOrDefault(k) + 1; } }; }
         if (excKeep > 0 && args.Contains("--bioslog"))   // BIOS services called from V86 mode (under Windows), with the registers before and after
             m.BiosLog = (n, before) =>
             {
@@ -196,7 +212,7 @@ internal static class X86BootCli
             bool wait = u.StartsWith('@') && int.TryParse(u[1..], out _);
             int ns = wait ? RunUntil(m, null, int.Parse(u[1..])) : RunUntil(m, u, stepMax, true); n += ns;   // (the screen only: the teletype log keeps earlier screens' text)
             bool ok = wait || Screen(m).Contains(u);
-            Console.WriteLine($"x86boot: step {si} \"{u}\" {(ok ? "found" : "NOT found")} after {ns} frames (total {n}, {sw.Elapsed.TotalSeconds:F0} s){(m.Stopped != null ? ", STOPPED: " + m.Stopped : "")}");
+            Console.WriteLine($"x86boot: step {si} \"{u}\" {(ok ? "found" : "NOT found")} after {ns} frames (total {n}, {sw.Elapsed.TotalSeconds:F0} s, heap {GC.GetTotalMemory(false) >> 20} MB){(m.Stopped != null ? ", STOPPED: " + m.Stopped : "")}");
             if (shot != null) X86Shots.SavePng(m.Vga, Path.ChangeExtension(shot, null) + $"_step{si}.png");
             si++;
             if (!ok) break;
@@ -236,6 +252,7 @@ internal static class X86BootCli
                 Console.WriteLine($"  {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} SS {m.Cpu.SegSel[2]:X4} ESP {m.Cpu.R[4]:X8} EAX {m.Cpu.R[0]:X8} EBX {m.Cpu.R[3]:X8} ECX {m.Cpu.R[1]:X8} EDX {m.Cpu.R[2]:X8} ESI {m.Cpu.R[6]:X8} EDI {m.Cpu.R[7]:X8} DS {m.Cpu.SegSel[3]:X4} ES {m.Cpu.SegSel[0]:X4} FL {m.Cpu.Flags:X} | {bytes} | stk {stk}");
                 m.Cpu.Step(1);
             }
+        foreach (var kv in portWho.OrderByDescending(x => x.Value).Take(20)) Console.WriteLine($"portwho {kv.Key} {kv.Value}");
         if (args.Contains("--portlog"))
             Console.WriteLine("ports: " + string.Join(" ", Enumerable.Range(0, 0x20000).Where(i => portCount[i] > 0).OrderByDescending(i => portCount[i]).Take(40)
                 .Select(i => $"{((i & 0x10000) != 0 ? "out" : "in")}{i & 0xffff:X}={portCount[i]}")));
@@ -281,6 +298,7 @@ internal static class X86BootCli
         if (args.Contains("--jitstat")) Console.WriteLine($"jit: compiled {m.Cpu.JitCompiled} reused {m.Cpu.JitReused} runs {m.Cpu.JitRuns} invalid {m.Cpu.JitInvalid} cycle {m.Cpu.Cycle} compiled-instrs {m.Cpu.JitInstrsTotal} ({100.0 * m.Cpu.JitInstrsTotal / Math.Max(1, m.Cpu.Cycle):F1}%) (set X86_JITSTAT for the per-block counts)");
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.JitTop(25)) Console.WriteLine("  blk " + l);
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.InterpTop(40)) Console.WriteLine("  interp " + l);
+        if (args.Contains("--irqstat")) Console.WriteLine($"batches {m.Batches} halted {m.HaltBatches} cycle {m.Cpu.Cycle} idle-clock {m.Clock - m.Cpu.Cycle}");
         if (args.Contains("--irqstat")) Console.WriteLine("irqs: " + string.Join(" ", Enumerable.Range(0, 256).Where(i => m.IrqCount[i] > 0).Select(i => $"{i:X2}h={m.IrqCount[i]}")) + $"; PIC imr {m.Pic.MasterImr:X2}/{m.Pic.SlaveImr:X2}; CR0 {m.Cpu.Cr0:X}; CS:EIP {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8}; IF {(m.Cpu.Flags >> 9) & 1}; halt {m.Cpu.Halt}");
         Console.WriteLine("---- screen ----");
         Console.WriteLine(Screen(m).TrimEnd());
@@ -354,6 +372,7 @@ internal static class X86BootCli
                 string tok = text[(ci + 1)..ce].ToLowerInvariant(); ci = ce;
                 if (tok.StartsWith("m:")) { var mv = tok[2..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), mv.Length > 2 ? int.Parse(mv[2]) : 0); m.RunFrame(); m.RunFrame(); continue; }   // {m:dx,dy[,buttons]}: the PS/2 mouse
                 if (tok.StartsWith("click:")) { var mv = tok[6..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), 0); m.RunFrame(); m.RunFrame(); m.Kbc.MouseInput(0, 0, 1); m.RunFrame(); m.RunFrame(); m.Kbc.MouseInput(0, 0, 0); m.RunFrame(); m.RunFrame(); continue; }   // {click:dx,dy}: move then left click
+                if (tok.StartsWith("save:")) { File.WriteAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5), m.SaveState()); continue; }   // {save:PATH}: a savestate right here (the run goes on)
                 if (tok.StartsWith("wait:")) { int wn = int.Parse(tok[5..]); for (int q = 0; q < wn; q++) m.RunFrame(); continue; }
                 var parts = tok.Split('+'); var mods = new List<byte[]>();
                 foreach (var p in parts[..^1]) mods.Add(p switch { "ctrl" => new byte[] { 0x1d }, "alt" => new byte[] { 0x38 }, "shift" => new byte[] { 0x2a }, "win" => new byte[] { 0xe0, 0x5b }, _ => throw new ArgumentException("key mod " + p) });

@@ -99,6 +99,10 @@ public sealed partial class PcMachine : IX86Bus
     public void MemWrite32(uint a, uint v) { VramWait(); RawWrite32(a, v); }
     private readonly int _vramNs;
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    // An ISA bus cycle to the timer (8254 behind the PIIX4 on the Windows 98 board): about 1 us, as on a real 430TX. Without it a PIT read cost one
+    // instruction, so Windows 98's VMM delay loop (latch + read counter 0 until ECX ticks pass, C00528C9) spun ~2 million times a second of
+    // emulated time and the boot ran at a third of real time. Only the PCI board (the other machines keep their timing byte for byte).
+    private void IsaWait() { if (Pci != null) _idle += Math.Max(1, InstructionsPerSecond / 1_000_000); }
     private void VramWait() { if (_vramNs != 0) _idle += Math.Max(1, _vramNs * InstructionsPerSecond / 1_000_000_000); }
     private byte RawRead8(uint a) => a < 0xc0000 ? Vga.MemRead(a) : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
     private void RawWrite8(uint a, byte v) { if (a < 0xc0000) Vga.MemWrite(a, v); else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
@@ -127,7 +131,16 @@ public sealed partial class PcMachine : IX86Bus
     /// <summary>Debug tools: called with (port, isWrite) on every I/O access (null unless a tool sets it).</summary>
     public Action<int, bool>? PortLog;
 
+    /// <summary>Debug tools: (port, isWrite, value) for byte accesses (null unless a tool sets it).</summary>
+    public Action<int, bool, int>? PortTrace;
+
     public byte In8(int port)
+    {
+        if (PortTrace == null) return In8Core(port);
+        byte r = In8Core(port); PortTrace(port, false, r); return r;
+    }
+
+    private byte In8Core(int port)
     {
         PortLog?.Invoke(port, false);
         if (Pci != null && Pci.In(port, 1, out uint pv)) return (byte)pv;
@@ -137,7 +150,7 @@ public sealed partial class PcMachine : IX86Bus
         switch (port)
         {
             case 0x20: case 0x21: case 0xa0: case 0xa1: return Pic.In(port);
-            case 0x40: case 0x41: case 0x42: case 0x43: return Pit.In(port);
+            case 0x40: case 0x41: case 0x42: case 0x43: IsaWait(); return Pit.In(port);
             case 0x60: { byte v = Kbc.In(0x60); return v; }
             case 0x64: return Kbc.In(0x64);
             case 0x61:
@@ -159,6 +172,7 @@ public sealed partial class PcMachine : IX86Bus
     public void Out8(int port, byte v)
     {
         PortLog?.Invoke(port, true);
+        PortTrace?.Invoke(port, true, v);
         if (Pci != null && (Pci.Out(port, 1, v) || PmTrap(port))) return;
         if (Ata != null && Ata.Out(port, false, v)) return;
         if (Card != null && Card.Out(port, false, v)) return;
@@ -166,8 +180,8 @@ public sealed partial class PcMachine : IX86Bus
         switch (port)
         {
             case 0x20: case 0x21: case 0xa0: case 0xa1: Pic.Out(port, v); return;
-            case 0x40: case 0x41: Pit.Out(port, v); return;
-            case 0x42: case 0x43: Speaker.CatchUp(); Pit.Out(port, v); return;   // channel 2 is the speaker's tone
+            case 0x40: case 0x41: IsaWait(); Pit.Out(port, v); return;
+            case 0x42: case 0x43: IsaWait(); Speaker.CatchUp(); Pit.Out(port, v); return;   // channel 2 is the speaker's tone
             case 0x60: case 0x64: Kbc.Out(port, v); if (Kbc.ResetRequested) CpuResetRequest(); return;
             case 0x61: Speaker.CatchUp(); _port61 = v; Pit.SetGate(2, v & 1); return;
             case 0x70: case 0x71: Cmos.Out(port, v); return;
@@ -312,8 +326,11 @@ public sealed partial class PcMachine : IX86Bus
         return Stopped == null;
     }
 
+    /// <summary>Diagnostics: batches run (instructions per batch = cycles / batches).</summary>
+    public long Batches, HaltBatches;
     private bool RunBatch()
     {
+        Batches++;
         Card?.Advance();
         Pit.UpdateIrq();
         Kbc.Pump();
@@ -321,6 +338,7 @@ public sealed partial class PcMachine : IX86Bus
         {
             if (Cpu.Halt)
             {
+                HaltBatches++;
                 if (Cpu.Intr && (Cpu.Flags & I386.IF) != 0) { Cpu.Step(1); return true; }
                 // sleep until the next timer interrupt, but no further than the end of this frame's batch
                 long nextPit = Pit.NextIrq0();

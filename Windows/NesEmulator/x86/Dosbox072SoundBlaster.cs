@@ -133,8 +133,15 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
         Reset();
     }
 
+    // The SB16's ASP / CSP answers (NOT in 0.72; added for Windows 98, whose SB16.VXD probes the ASP with 04h / 0Eh / 0Fh and failed with Code 10
+    // when 0Fh always read FFh and 0Eh was dropped). Written for BrokenNes after the behaviour later DOSBox versions settled on: a register file
+    // (05h = 01h, 09h = F8h at reset), 04h sets "init in progress" when (mode & F1h) == F1h, and register 83h then reads inverted on each 0Fh.
+    private readonly byte[] asp_regs = new byte[256];
+    private bool asp_init;
+
     public void Reset()
     {
+        Array.Clear(asp_regs); asp_regs[5] = 0x01; asp_regs[9] = 0xf8; asp_init = false;
         // the SBLASTER constructor's part after the channel install
         ClearCallback();
         hw_base = 0x220; hw_irq = type == SBT_16 ? 5 : 7; hw_dma8 = 1; hw_dma16 = 5;
@@ -496,6 +503,7 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
         bool sb2above = type > SBT_1, sb16 = type == SBT_16;
         switch (dsp_cmd)
         {
+            case 0x04 when type == SBT_16: asp_init = (dsp_in[0] & 0xf1) == 0xf1; break;   // ASP set mode register (not 0.72)
             case 0x04: DSP_FlushData(); DSP_AddData(0xff); break;
             case 0x10:
                 DSP_ChangeMode(MODE_DAC);
@@ -602,6 +610,11 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
             case 0xe8: DSP_FlushData(); DSP_AddData(dsp_test_register); break;
             case 0xf2: SB_RaiseIRQ(false); break;
             case 0xf8: DSP_FlushData(); DSP_AddData(0); break;
+            case 0x0e when type == SBT_16: asp_regs[dsp_in[0]] = dsp_in[1]; break;   // ASP set register (not 0.72)
+            case 0x0f when type == SBT_16:                                            // ASP get register (not 0.72)
+                if (asp_init && dsp_in[0] == 0x83) asp_regs[0x83] = (byte)~asp_regs[0x83];
+                DSP_AddData(asp_regs[dsp_in[0]]); break;
+            case 0xf3 when type == SBT_16: SB_RaiseIRQ(true); break;                  // trigger the 16-bit IRQ (not 0.72)
             case 0x0f: DSP_AddData(0xff); break;
             default: break;   // unimplemented / unhandled commands are dropped
         }
@@ -616,6 +629,7 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
         {
             dsp_cmd = val;
             dsp_cmd_len = DSP_cmd_len[val];
+            if (type == SBT_16 && val == 0x04) dsp_cmd_len = 1;   // the SB16's 04h (ASP set mode) takes a byte
             dsp_in_pos = 0;
             if (dsp_cmd_len == 0) DSP_DoCommand();
         }
@@ -866,7 +880,7 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
 
     public void Save(BinaryWriter w)
     {
-        w.Write(type == SBT_16 ? 0x1601 : 1);   // the SB16 has its own version tag: an SB Pro state never loads into it (or back)
+        w.Write(type == SBT_16 ? 0x1602 : 1);   // the SB16 has its own version tag: an SB Pro state never loads into it (or back)
         _mix.Save(w);
         w.Write(freq); w.Write(dma_stereo); w.Write(dma_sign); w.Write(dma_autoinit); w.Write(dma_mode); w.Write(dma_rate); w.Write(dma_mul); w.Write(dma_total);
         w.Write(dma_left); w.Write(dma_min); w.Write(dma_remain_size); w.Write(dma_b8[0]); w.Write(dma_b8[1]); w.Write(dma_chan);
@@ -882,11 +896,13 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
         int cbch = -1;
         for (int i = 0; i < 8; i++) if (_m.Dma[i].Callback == DmaCb) cbch = i;
         w.Write(cb_kind); w.Write(cbch);
+        if (type == SBT_16) { w.Write(asp_regs); w.Write(asp_init); }
     }
 
     public void Load(BinaryReader r)
     {
-        if (r.ReadInt32() != (type == SBT_16 ? 0x1601 : 1)) throw new InvalidDataException("Sound Blaster state version");
+        int sv = r.ReadInt32();
+        if (type == SBT_16 ? sv is not (0x1601 or 0x1602) : sv != 1) throw new InvalidDataException("Sound Blaster state version");
         _mix.Load(r);
         freq = r.ReadInt32(); dma_stereo = r.ReadBoolean(); dma_sign = r.ReadBoolean(); dma_autoinit = r.ReadBoolean(); dma_mode = r.ReadInt32(); dma_rate = r.ReadInt32(); dma_mul = r.ReadInt32(); dma_total = r.ReadInt32();
         dma_left = r.ReadInt32(); dma_min = r.ReadInt32(); dma_remain_size = r.ReadInt32(); dma_b8[0] = r.ReadByte(); dma_b8[1] = r.ReadByte(); dma_chan = r.ReadInt32();
@@ -900,6 +916,7 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
         adpcm_reference = r.ReadByte(); adpcm_stepsize = r.ReadInt32(); adpcm_haveref = r.ReadBoolean();
         hw_base = r.ReadInt32(); hw_irq = r.ReadInt32(); hw_dma8 = r.ReadInt32(); hw_dma16 = r.ReadInt32(); e2_value = r.ReadInt32(); e2_count = r.ReadInt32(); read_data_last = r.ReadByte();
         cb_kind = r.ReadInt32(); int cbch = r.ReadInt32();
+        if (sv == 0x1602) { r.Read(asp_regs, 0, 256); asp_init = r.ReadBoolean(); } else if (type == SBT_16) { Array.Clear(asp_regs); asp_regs[5] = 0x01; asp_regs[9] = 0xf8; asp_init = false; }
         foreach (var c in _m.Dma.Channels) if (c.Callback == DmaCb) c.Callback = null;
         if (cbch >= 0 && cb_kind != 0) _m.Dma[cbch].SetCallbackSilently(DmaCb);
     }
