@@ -59,6 +59,7 @@ internal static class X86BootCli
         var video = Arg(args, "--video") is string vs ? (vs.ToLowerInvariant() is "s3" or "s3trio64" ? PcVideo.S3Trio64 : PcVideo.Vga) : preset?.Video ?? PcVideo.Vga;
         var m = cfg == PcConfig.Default ? new PcMachine(PcMachine.DefaultMemory, model, video) : new PcMachine(cfg, model, video);
         if (Arg(args, "--ips") is string ips) m.InstructionsPerSecond = long.Parse(ips);
+        if (Arg(args, "--apu") is string apu && !PcSound.Apply(m, apu)) { Console.WriteLine($"x86boot: no sound card {apu}"); return 1; }
         if (Arg(args, "--hdd") is string h) m.Hdd[0] = new DiskImage(File.ReadAllBytes(h), false);
         if (Arg(args, "--hdd2") is string h2) m.Hdd[1] = new DiskImage(File.ReadAllBytes(h2), false);
         if (Arg(args, "--cd") is string cdp) m.Cd = new CdImage(File.ReadAllBytes(cdp));
@@ -351,6 +352,8 @@ internal static class X86BootCli
             if (ch == '{' && ci + 1 < text.Length && text[ci + 1] != '{' && text.IndexOf('}', ci) is int ce and > 0)
             {
                 string tok = text[(ci + 1)..ce].ToLowerInvariant(); ci = ce;
+                if (tok.StartsWith("m:")) { var mv = tok[2..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), mv.Length > 2 ? int.Parse(mv[2]) : 0); m.RunFrame(); m.RunFrame(); continue; }   // {m:dx,dy[,buttons]}: the PS/2 mouse
+                if (tok.StartsWith("click:")) { var mv = tok[6..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), 0); m.RunFrame(); m.RunFrame(); m.Kbc.MouseInput(0, 0, 1); m.RunFrame(); m.RunFrame(); m.Kbc.MouseInput(0, 0, 0); m.RunFrame(); m.RunFrame(); continue; }   // {click:dx,dy}: move then left click
                 if (tok.StartsWith("wait:")) { int wn = int.Parse(tok[5..]); for (int q = 0; q < wn; q++) m.RunFrame(); continue; }
                 var parts = tok.Split('+'); var mods = new List<byte[]>();
                 foreach (var p in parts[..^1]) mods.Add(p switch { "ctrl" => new byte[] { 0x1d }, "alt" => new byte[] { 0x38 }, "shift" => new byte[] { 0x2a }, "win" => new byte[] { 0xe0, 0x5b }, _ => throw new ArgumentException("key mod " + p) });

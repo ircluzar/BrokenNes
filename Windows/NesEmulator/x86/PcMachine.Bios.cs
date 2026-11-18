@@ -164,6 +164,7 @@ public sealed partial class PcMachine
         ushort equip = 0x0020;                                  // 80x25 colour
         int nfl = (Floppy[0] != null ? 1 : 0) + (Floppy[1] != null ? 1 : 0);
         if (nfl > 0) equip |= (ushort)(1 | ((nfl - 1) << 6));
+        if (Kbc.HasMouse) equip |= 0x0004;                     // pointing device (the PS/2 mouse)
         if (Cpu.Model.Fpu) equip |= 0x0002;                     // math coprocessor installed (Windows 98 Setup checks INT 11h)
         PhysW16(0x410, equip);
         PhysW16(0x413, 640);
@@ -393,6 +394,44 @@ public sealed partial class PcMachine
 
     // ================= INT 15h: system =================
 
+    // INT 15h C2xxh: the PS/2 pointing device services (Windows 98's MSMOUSE.VXD finds the mouse through them: without them the "PS/2 Compatible
+    // Mouse Port" sat at Code 24). Status in AH: 0 ok, 1 invalid function, 3 interface error, 4 resend, 5 no handler. The far-call packet handler
+    // (C207h) is kept but not called: DOS mouse drivers that need it are not supported yet.
+    private uint _ps2Handler;
+    private void Int15Mouse()
+    {
+        if (!Kbc.HasMouse) { AH = 0x86; SetCF(true); return; }
+        bool Ack(System.Collections.Generic.List<byte> r) => r.Count > 0 && r[0] == 0xfa;
+        switch (AL)
+        {
+            case 0x00:   // enable (BH 1) / disable (BH 0)
+                if (BH == 1 && _ps2Handler == 0) { AH = 5; SetCF(true); return; }
+                if (!Ack(Kbc.MouseDirect(BH == 1 ? (byte)0xf4 : (byte)0xf5))) { AH = 3; SetCF(true); return; }
+                Kbc.MousePort(BH == 1); AH = 0; Ok(); return;
+            case 0x01:   // reset: BH = device id, BL = AAh
+            {
+                var r = Kbc.MouseDirect(0xff);
+                if (!Ack(r) || r.Count < 3) { AH = 3; SetCF(true); return; }
+                BL = r[1]; BH = r[2]; AH = 0; Ok(); return;
+            }
+            case 0x02:   // sample rate code BH 0-6: 10 20 40 60 80 100 200
+            {
+                if (BH > 6) { AH = 2; SetCF(true); return; }
+                int[] rates = { 10, 20, 40, 60, 80, 100, 200 };
+                Kbc.MouseDirect(0xf3, rates[BH]); AH = 0; Ok(); return;
+            }
+            case 0x03: if (BH > 3) { AH = 2; SetCF(true); return; } Kbc.MouseDirect(0xe8, (int)BH); AH = 0; Ok(); return;
+            case 0x04: { var r = Kbc.MouseDirect(0xf2); BH = r.Count > 1 ? r[1] : 0u; AH = 0; Ok(); return; }
+            case 0x05: if (BH is < 1 or > 8) { AH = 2; SetCF(true); return; } Kbc.MouseDirect(0xf5); Kbc.MouseDirect(0xf6); AH = 0; Ok(); return;
+            case 0x06:
+                if (BH == 0) { var r = Kbc.MouseDirect(0xe9); BL = r.Count > 1 ? r[1] : 0u; CL = r.Count > 2 ? r[2] : 0u; DL = r.Count > 3 ? r[3] : 0u; AH = 0; Ok(); return; }
+                if (BH is 1 or 2) { Kbc.MouseDirect(BH == 1 ? (byte)0xe6 : (byte)0xe7); AH = 0; Ok(); return; }
+                AH = 1; SetCF(true); return;
+            case 0x07: _ps2Handler = ((C.SegSel[I386.SEG_ES] & 0xffff) << 16) | BX; AH = 0; Ok(); return;
+        }
+        AH = 1; SetCF(true);
+    }
+
     private void Int15()
     {
         uint ah = AH;
@@ -422,6 +461,7 @@ public sealed partial class PcMachine
             case 0x88: AX = (uint)Math.Min(MemKb - 1024, 0xfc00); Ok(); return;
             case 0x90: case 0x91: AH = 0; Ok(); return;
             case 0xc0: SetEs(RomSeg); BX = ConfigTable; AH = 0; Ok(); return;
+            case 0xc2: Int15Mouse(); return;
             case 0xe8:
                 if (AL == 0x01)
                 {

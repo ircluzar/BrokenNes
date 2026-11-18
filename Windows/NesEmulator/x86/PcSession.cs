@@ -123,6 +123,11 @@ public sealed class PcSession : IConsoleSession
     /// scan code (set 1) of the key, <paramref name="extended"/> for the E0-prefixed keys (right Ctrl / Alt, the arrows and the editing block, keypad Enter and /),
     /// <paramref name="down"/> false for the release (the break code: make | 80h). Pause is its own sequence (E1 1D 45 E1 9D C5, make only). Repeats are passed as
     /// repeated makes, as a real keyboard's typematic does.</summary>
+    /// <summary>True when the PC has a PS/2 mouse (the Windows 98 machine).</summary>
+    public bool HasMouse => _m.Kbc.HasMouse;
+    /// <summary>The host's mouse: relative motion since the last call (x right, y down) and the buttons (bit 0 left, 1 right, 2 middle).</summary>
+    public void HostMouse(int dx, int dy, int buttons) => _m.Kbc.MouseInput(dx, dy, buttons);
+
     public void HostKey(int scan, bool extended, bool down)
     {
         if (scan <= 0 || scan > 0x7f) return;
