@@ -499,6 +499,8 @@ public sealed partial class PcMachine : IX86Bus
         Cpu.LoadState(r);
         // a state saved before the INT 10h mode-set replay: its ROM gets the new stub (the old one was OUT E0h / IRET)
         if (Cpu.Mem.Length > Rom + 0x10000 - 1 && Cpu.Mem[Rom + StubBase + 0x40] == 0xe6 && Cpu.Mem[Rom + StubBase + 0x42] == 0xcf) InstallInt10Replay();
+        // a state with the first replay code (no font op): the newer code, unless the CPU is inside it right now
+        else if (Cpu.Mem.Length > Rom + 0x10000 - 1 && Cpu.Mem[Rom + Int10Replay + 14] == 0x89 && !(Cpu.SegSel[1] == RomSeg && Cpu.Ip >= Int10Replay && Cpu.Ip < Int10Replay + 0x90)) InstallInt10Replay();
         _idle = r.ReadInt64(); _port61 = r.ReadByte(); _lastFrame = r.ReadInt64(); InstructionsPerSecond = r.ReadInt64();
         Pic.Load(r); Pit.Load(r); Kbc.Load(r); Cmos.Load(r); Vga.Load(r);
         if (version >= 2) Opl.Load(r); else { Opl.Reset(); Opl.Resync(); }

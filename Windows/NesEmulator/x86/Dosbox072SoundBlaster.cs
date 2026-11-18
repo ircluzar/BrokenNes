@@ -615,6 +615,8 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
                 if (asp_init && dsp_in[0] == 0x83) asp_regs[0x83] = (byte)~asp_regs[0x83];
                 DSP_AddData(asp_regs[dsp_in[0]]); break;
             case 0xf3 when type == SBT_16: SB_RaiseIRQ(true); break;                  // trigger the 16-bit IRQ (not 0.72)
+            case 0xf9 when type == SBT_16:                                            // read the DSP's internal RAM (not 0.72; SB16.VXD reads 0Eh and waits)
+                DSP_AddData(dsp_in[0] switch { 0x0e => 0xff, 0x0f => 0x07, 0x37 => 0x38, _ => 0x00 }); break;                  // trigger the 16-bit IRQ (not 0.72)
             case 0x0f: DSP_AddData(0xff); break;
             default: break;   // unimplemented / unhandled commands are dropped
         }
@@ -629,7 +631,7 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
         {
             dsp_cmd = val;
             dsp_cmd_len = DSP_cmd_len[val];
-            if (type == SBT_16 && val == 0x04) dsp_cmd_len = 1;   // the SB16's 04h (ASP set mode) takes a byte
+            if (type == SBT_16 && val is 0x04 or 0xf9) dsp_cmd_len = 1;   // the SB16's 04h (ASP set mode) and F9h (read DSP RAM) take a byte   // the SB16's 04h (ASP set mode) takes a byte
             dsp_in_pos = 0;
             if (dsp_cmd_len == 0) DSP_DoCommand();
         }

@@ -211,25 +211,18 @@ public sealed partial class PcMachine
         var m = Cpu.Mem;
         uint s = Rom + StubBase + 0x10 * 4;
         m[s + 2] = 0xeb; m[s + 3] = (byte)(Int10Replay - (StubBase + 0x10 * 4 + 4));   // OUT E0h,AL / JMP replay
+        // push ds, si, dx, ax / ds = cs / si = table; L: lodsw (port; 0 = end; FFFFh = load the ROM 8x16 font into plane 2 the way a VGA BIOS does,
+        // through A000h with the planar registers, so a V86 monitor's per-VM copy gets it; bit 15 = IN instead of OUT) / lodsb (value) / OUT or IN
         byte[] code =
         {
-            0x1e, 0x56, 0x52, 0x50,             // push ds, si, dx, ax
-            0x0e, 0x1f,                         // push cs / pop ds
-            0xbe, 0x00, 0xd0,   // mov si, table
-            0xad,                               // L: lodsw (port; 0 = end; bit 15 = IN instead of OUT)
-            0x85, 0xc0,                         // test ax, ax
-            0x74, 0x12,                         // jz done
-            0x89, 0xc2,                         // mov dx, ax
-            0x81, 0xe2, 0xff, 0x7f,             // and dx, 7fffh
-            0xa9, 0x00, 0x80,                   // test ax, 8000h
-            0xac,                               // lodsb (value)
-            0x75, 0x03,                         // jnz in
-            0xee,                               // out dx, al
-            0xeb, 0xec,                         // jmp L
-            0xec,                               // in: in al, dx
-            0xeb, 0xe9,                         // jmp L
-            0x58, 0x5a, 0x5e, 0x1f,             // done: pop ax, dx, si, ds
-            0xcf,                               // iret
+            0x1e, 0x56, 0x52, 0x50, 0x0e, 0x1f, 0xbe, 0x00, 0xd0, 0xad, 0x85, 0xc0, 0x74, 0x1c, 0x3d, 0xff, 0xff, 0x75, 0x05, 0xe8, 0x19, 0x00, 0xeb, 0xf1,
+            0x89, 0xc2, 0x81, 0xe2, 0xff, 0x7f, 0xa9, 0x00, 0x80, 0xac, 0x75, 0x03, 0xee, 0xeb, 0xe2, 0xec, 0xeb, 0xdf, 0x58, 0x5a, 0x5e, 0x1f, 0xcf,
+            // font: push si, es, di, cx, bx; SR2=04 SR4=07 GR4=02 GR5=00 GR6=04; copy 256 x 16 bytes F000:A000 -> A000:0000 (32-byte stride); SR2=03 SR4=02
+            // GR4=00 GR5=10 GR6=0E; pop; ret
+            0x56, 0x06, 0x57, 0x51, 0x53, 0xba, 0xc4, 0x03, 0xb8, 0x02, 0x04, 0xef, 0xb8, 0x04, 0x07, 0xef, 0xba, 0xce, 0x03, 0xb8, 0x04, 0x02, 0xef,
+            0xb8, 0x05, 0x00, 0xef, 0xb8, 0x06, 0x04, 0xef, 0xb8, 0x00, 0xa0, 0x8e, 0xc0, 0x31, 0xff, 0xbe, 0x00, 0xa0, 0xbb, 0x00, 0x01, 0xb9, 0x10,
+            0x00, 0xf3, 0xa4, 0x83, 0xc7, 0x10, 0x4b, 0x75, 0xf5, 0xba, 0xc4, 0x03, 0xb8, 0x02, 0x03, 0xef, 0xb8, 0x04, 0x02, 0xef, 0xba, 0xce, 0x03,
+            0xb8, 0x04, 0x00, 0xef, 0xb8, 0x05, 0x10, 0xef, 0xb8, 0x06, 0x0e, 0xef, 0x5b, 0x59, 0x5f, 0x07, 0x5e, 0xc3,
         };
         Array.Copy(code, 0, m, Rom + Int10Replay, code.Length);
         m[Rom + Int10Table] = 0; m[Rom + Int10Table + 1] = 0;
@@ -423,19 +416,26 @@ public sealed partial class PcMachine
         byte[]? srx = v.S3 != null ? (byte[])v.S3.SrExt.Clone() : null;
         byte[]? ram = memSet ? (byte[])v.Ram.Clone() : null;
         int mode = (int)AL, fn = (int)AH;
+        // a mode set replays EVERY standard register and the whole DAC: the VDD's copy for this VM is not the card's (the GUI's) state, so a diff
+        // against the card left registers the C# set to the card's old value unwritten (a full-screen DOS box got AR 07h = 00h: grey text drawn black)
+        bool all = fn == 0x00 || AX == 0x4f02;
         _v86Video = true;
         try { Int10Core(); }
         finally { _v86Video = false; }
         // the replay table: register writes that move the VDD's (or, passed through, the card's) copy to the new state
         var m = Cpu.Mem; uint o = Rom + Int10Table, end = Rom + Int10Replay - 4;
         void E(int port, int val) { if (o >= end) return; m[o] = (byte)port; m[o + 1] = (byte)(port >> 8); m[o + 2] = (byte)val; o += 3; }
-        bool srD = false; for (int i = 0; i < 5; i++) srD |= sr[i] != v.Sr[i];
-        if (srD) { E(0x3c4, 0); E(0x3c5, 1); for (int i = 1; i < 5; i++) if (sr[i] != v.Sr[i]) { E(0x3c4, i); E(0x3c5, v.Sr[i]); } }
-        if (msr != v.Msr) E(0x3c2, v.Msr);
+        // a text mode set (or a ROM 8x16 font load) puts the font into plane 2 first: the C# load into the card is undone below, so the VDD's copy
+        // for this VM must get it through A000h (a full-screen DOS box showed garbage glyphs). Only with the replay code that knows the op.
+        bool fontOp = m[Rom + Int10Replay + 14] == 0x3d && ((fn == 0x00 && (mode & 0x7f) is <= 3 or 7) || (fn == 0x11 && (mode & 0x0f) == 4));
+        if (fontOp) { m[o] = 0xff; m[o + 1] = 0xff; o += 2; }
+        bool srD = all; for (int i = 0; i < 5; i++) srD |= sr[i] != v.Sr[i];
+        if (srD) { E(0x3c4, 0); E(0x3c5, 1); for (int i = 1; i < 5; i++) if (all || sr[i] != v.Sr[i]) { E(0x3c4, i); E(0x3c5, v.Sr[i]); } }
+        if (all || msr != v.Msr) E(0x3c2, v.Msr);
         if (srD) { E(0x3c4, 0); E(0x3c5, v.Sr[0]); }
-        bool crLow = false; for (int i = 0; i < 8; i++) crLow |= cr[i] != v.Cr[i];
+        bool crLow = all; for (int i = 0; i < 8; i++) crLow |= cr[i] != v.Cr[i];
         if (crLow) { E(0x3d4, 0x11); E(0x3d5, v.Cr[0x11] & 0x7f); }
-        for (int i = 0; i < 25; i++) if (cr[i] != v.Cr[i] || (crLow && i == 0x11)) { E(0x3d4, i); E(0x3d5, v.Cr[i]); }
+        for (int i = 0; i < 25; i++) if (all || cr[i] != v.Cr[i] || (crLow && i == 0x11)) { E(0x3d4, i); E(0x3d5, v.Cr[i]); }
         // the S3 extensions a VBE mode set programs (CR30-6F behind the CR38/39 locks, SR09-1F behind SR08)
         bool crx = false; for (int i = 0x30; i < 0x70; i++) crx |= cr[i] != v.Cr[i];
         if (crx)
@@ -449,11 +449,11 @@ public sealed partial class PcMachine
             bool sd = false; for (int i = 9; i < 0x20; i++) sd |= srx[i] != v.S3!.SrExt[i];
             if (sd) { E(0x3c4, 8); E(0x3c5, 6); for (int i = 9; i < 0x20; i++) if (srx[i] != v.S3!.SrExt[i]) { E(0x3c4, i); E(0x3c5, v.S3.SrExt[i]); } E(0x3c4, 8); E(0x3c5, v.S3.SrExt[8]); }
         }
-        for (int i = 0; i < 9; i++) if (gr[i] != v.Gr[i]) { E(0x3ce, i); E(0x3cf, v.Gr[i]); }
-        bool arD = false; for (int i = 0; i < 21; i++) arD |= ar[i] != v.Ar[i];
-        if (arD) { E(0x3da | 0x8000, 0); for (int i = 0; i < 21; i++) if (ar[i] != v.Ar[i]) { E(0x3c0, i); E(0x3c0, v.Ar[i]); } E(0x3c0, 0x20); }
+        for (int i = 0; i < 9; i++) if (all || gr[i] != v.Gr[i]) { E(0x3ce, i); E(0x3cf, v.Gr[i]); }
+        bool arD = all; for (int i = 0; i < 21; i++) arD |= ar[i] != v.Ar[i];
+        if (arD) { E(0x3da | 0x8000, 0); for (int i = 0; i < 21; i++) if (all || ar[i] != v.Ar[i]) { E(0x3c0, i); E(0x3c0, v.Ar[i]); } E(0x3c0, 0x20); }
         for (int i = 0; i < 256; i++)
-            if (pal[i * 3] != v.Palette[i * 3] || pal[i * 3 + 1] != v.Palette[i * 3 + 1] || pal[i * 3 + 2] != v.Palette[i * 3 + 2])
+            if (all || pal[i * 3] != v.Palette[i * 3] || pal[i * 3 + 1] != v.Palette[i * 3 + 1] || pal[i * 3 + 2] != v.Palette[i * 3 + 2])
             { E(0x3c8, i); E(0x3c9, v.Palette[i * 3]); E(0x3c9, v.Palette[i * 3 + 1]); E(0x3c9, v.Palette[i * 3 + 2]); }
         m[o] = 0; m[o + 1] = 0;
         // put the card back: the replay (through the VDD) is now the only way the change reaches it
