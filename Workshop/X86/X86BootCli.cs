@@ -69,6 +69,15 @@ internal static class X86BootCli
         m.PowerOn();
         // --loadstate: carry on from a --savestate of the same machine (its disks come from the state; the CD stays the one given)
         if (Arg(args, "--loadstate") is string ls) m.LoadState(File.ReadAllBytes(ls));
+        // --net: plug the network card into the built-in NAT (DHCP, DNS, the HTTPS bridge); off by default
+        PcNat? nat = null;
+        if (Arg(args, "--niclog") is string nl && m.Nic != null)
+        {
+            var nw = new StreamWriter(nl); int nn = 0;
+            m.Nic.Trace = (o, w, v, wd) => { if (nn++ < 200000) nw.WriteLine($"{m.Clock} {(w ? "OUT" : "IN ")} {o:X2} {(wd ? v.ToString("X4") : v.ToString("X2"))}"); };
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => nw.Flush();
+        }
+        if (args.Contains("--net") && m.Nic != null) { nat = new PcNat { Log = l => Console.WriteLine("net: " + l) }; m.Nic.Link = nat; }
         // --exclog N: the last N CPU exceptions other than page faults (printed at the end), with a count per vector
         var excRing = new Queue<string>(); var excCount = new long[32]; int excKeep = int.Parse(Arg(args, "--exclog") ?? "0");
         string biosIn = "";
@@ -189,8 +198,8 @@ internal static class X86BootCli
         int stepMax = int.Parse(Arg(args, "--stepframes") ?? "20000"), si = 0;
         foreach (var st in Args(args, "--step"))
         {
-            int i = st.IndexOf("=>"); string u = st[..i], keys = st[(i + 2)..].Replace("\\n", "\n").Replace("\\e", "\x1b").Replace("\\t", "\t")
-                .Replace("\\u", "\x01").Replace("\\d", "\x02").Replace("\\l", "\x03").Replace("\\r", "\x04");
+            int i = st.IndexOf("=>"); string u = st[..i], keys = st[(i + 2)..].Replace("\\n", "\n").Replace("\\e", "\x1b").Replace("\\t", "\t").Replace("\\c", "\x07")
+                .Replace("\\a", "\x05").Replace("\\f", "\x06").Replace("\\u", "\x01").Replace("\\d", "\x02").Replace("\\l", "\x03").Replace("\\r", "\x04");
             // "@N=>KEYS": graphics screens have no text to match, so wait N frames then type
             bool wait = u.StartsWith('@') && int.TryParse(u[1..], out _);
             int ns = wait ? RunUntil(m, null, int.Parse(u[1..])) : RunUntil(m, u, stepMax, true); n += ns;   // (the screen only: the teletype log keeps earlier screens' text)
@@ -277,6 +286,7 @@ internal static class X86BootCli
             var parts = la.Split(':'); uint a0 = Convert.ToUInt32(parts[0], 16); int np = parts.Length > 1 ? int.Parse(parts[1]) : 1;
             Console.WriteLine($"linmap {a0:X8}: " + string.Join(" ", Enumerable.Range(0, np).Select(k => { uint p = LinPhys(m, a0 + (uint)k * 4096); return p == 0xffffffff ? "--" : (p >> 12).ToString("X"); })) + $" | {LinBytes(m, a0, 16)}");
         }
+        if (m.Nic != null) Console.WriteLine($"nic: sent {m.Nic.FramesSent} frames, received {m.Nic.FramesReceived}; BAR0 {m.Pci!.NicFn!.Read32(0x10):X8} cmd {m.Pci.NicFn.Cfg[4]:X2} line {m.Pci.NicFn.Cfg[0x3c]} PIRQB {m.Pci.Isa.Cfg[0x61]:X2}");
         if (args.Contains("--jitstat")) Console.WriteLine($"jit: compiled {m.Cpu.JitCompiled} reused {m.Cpu.JitReused} runs {m.Cpu.JitRuns} invalid {m.Cpu.JitInvalid} cycle {m.Cpu.Cycle} compiled-instrs {m.Cpu.JitInstrsTotal} ({100.0 * m.Cpu.JitInstrsTotal / Math.Max(1, m.Cpu.Cycle):F1}%) (set X86_JITSTAT for the per-block counts)");
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.JitTop(25)) Console.WriteLine("  blk " + l);
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.InterpTop(40)) Console.WriteLine("  interp " + l);
@@ -344,8 +354,27 @@ internal static class X86BootCli
     /// <summary>Types text a few keys per frame (make then break codes), so DOS's line editor sees every key.</summary>
     public static void TypeText(PcMachine m, string text)
     {
+        bool alt = false, fkey = false, ctrl = false;
         foreach (char ch in text)
         {
+            if (ch == '\x07') { ctrl = true; continue; }   // \c: the next key with Ctrl held
+            if (ctrl && (ch == '\x1b' || Keys.ContainsKey(char.ToLowerInvariant(ch))))
+            {
+                ctrl = false; byte cc = ch == '\x1b' ? (byte)1 : Keys[char.ToLowerInvariant(ch)].code;
+                m.Kbc.KeyBytes(0x1d); m.RunFrame(); m.Kbc.KeyBytes(cc, (byte)(cc | 0x80)); m.RunFrame(); m.Kbc.KeyBytes(0x9d);
+                m.RunFrame(); m.RunFrame();
+                continue;
+            }
+            if (ch == '\x05') { alt = true; continue; }    // \a: the next key with Alt held
+            if (ch == '\x06') { fkey = true; continue; }   // \fN: function key N (1-9)
+            if (fkey) { fkey = false; byte fc = (byte)(0x3b + ch - '1'); m.Kbc.KeyBytes(fc, (byte)(fc | 0x80)); m.RunFrame(); m.RunFrame(); continue; }
+            if (alt && Keys.TryGetValue(char.ToLowerInvariant(ch), out var ak))
+            {
+                alt = false;
+                m.Kbc.KeyBytes(0x38); m.RunFrame(); m.Kbc.KeyBytes(ak.code, (byte)(ak.code | 0x80)); m.RunFrame(); m.Kbc.KeyBytes(0xb8);
+                m.RunFrame(); m.RunFrame();
+                continue;
+            }
             if (ch is >= '\x01' and <= '\x04')   // arrow keys (\u \d \l \r in --step): E0-prefixed set-1 codes
             {
                 byte c = ch switch { '\x01' => 0x48, '\x02' => 0x50, '\x03' => 0x4b, _ => 0x4d };
