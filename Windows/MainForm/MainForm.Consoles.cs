@@ -729,6 +729,7 @@ namespace BrokenNes.Windows
                 uint ptr = FramePointer(s);         // the WideMess pointer port (spec 10): the mouse / touch / pen, or a replay's (MainForm.WmsPointer.cs)
                 BugBeforeSessionFrame(s, p1, p2);   // the bug capture (D6): returns at once when it is off
                 TfBeforeSessionFrame(s, p1, p2, ptr); // Timeflow (T1): returns at once unless the user switched recording on
+                DrainPcMouse(s);                    // the x86 PC: the captured host mouse's motion and buttons
                 DrainPcKeys(s);                     // the x86 PC: the real keyboard's keys typed since the last frame
                 s.SetPad(0, p1); s.SetPad(1, p2);
                 ApplyPointer(s, ptr);

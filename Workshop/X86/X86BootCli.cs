@@ -59,6 +59,7 @@ internal static class X86BootCli
         var video = Arg(args, "--video") is string vs ? (vs.ToLowerInvariant() is "s3" or "s3trio64" ? PcVideo.S3Trio64 : PcVideo.Vga) : preset?.Video ?? PcVideo.Vga;
         var m = cfg == PcConfig.Default ? new PcMachine(PcMachine.DefaultMemory, model, video) : new PcMachine(cfg, model, video);
         if (Arg(args, "--ips") is string ips) m.InstructionsPerSecond = long.Parse(ips);
+        if (Arg(args, "--apu") is string apu && !PcSound.Apply(m, apu)) { Console.WriteLine($"x86boot: no sound card {apu}"); return 1; }
         if (Arg(args, "--hdd") is string h) m.Hdd[0] = new DiskImage(File.ReadAllBytes(h), false);
         if (Arg(args, "--hdd2") is string h2) m.Hdd[1] = new DiskImage(File.ReadAllBytes(h2), false);
         if (Arg(args, "--cd") is string cdp) m.Cd = new CdImage(File.ReadAllBytes(cdp));
@@ -198,8 +199,8 @@ internal static class X86BootCli
         int stepMax = int.Parse(Arg(args, "--stepframes") ?? "20000"), si = 0;
         foreach (var st in Args(args, "--step"))
         {
-            int i = st.IndexOf("=>"); string u = st[..i], keys = st[(i + 2)..].Replace("\\n", "\n").Replace("\\e", "\x1b").Replace("\\t", "\t").Replace("\\c", "\x07")
-                .Replace("\\a", "\x05").Replace("\\f", "\x06").Replace("\\u", "\x01").Replace("\\d", "\x02").Replace("\\l", "\x03").Replace("\\r", "\x04").Replace("\\w", "\x0e");
+            int i = st.IndexOf("=>"); string u = st[..i], keys = st[(i + 2)..].Replace("\\n", "\n").Replace("\\e", "\x1b").Replace("\\t", "\t")
+                .Replace("\\u", "\x01").Replace("\\d", "\x02").Replace("\\l", "\x03").Replace("\\r", "\x04").Replace("\\w", "\x05");
             // "@N=>KEYS": graphics screens have no text to match, so wait N frames then type
             bool wait = u.StartsWith('@') && int.TryParse(u[1..], out _);
             int ns = wait ? RunUntil(m, null, int.Parse(u[1..])) : RunUntil(m, u, stepMax, true); n += ns;   // (the screen only: the teletype log keeps earlier screens' text)
@@ -354,28 +355,28 @@ internal static class X86BootCli
     /// <summary>Types text a few keys per frame (make then break codes), so DOS's line editor sees every key.</summary>
     public static void TypeText(PcMachine m, string text)
     {
-        bool alt = false, fkey = false, ctrl = false;
-        foreach (char ch in text)
+        for (int ci = 0; ci < text.Length; ci++)
         {
-            if (ch == '\x07') { ctrl = true; continue; }   // \c: the next key with Ctrl held
-            if (ctrl && (ch == '\x1b' || Keys.ContainsKey(char.ToLowerInvariant(ch))))
+            char ch = text[ci];
+            // {combo} tokens: {win}, {win+r}, {alt+f4}, {ctrl+esc}, {tab}, {f1}, {enter}, {del}, {home}, {pgdn}, {wait:N} (N frames), {{ = a literal '{'
+            if (ch == '{' && ci + 1 < text.Length && text[ci + 1] != '{' && text.IndexOf('}', ci) is int ce and > 0)
             {
-                ctrl = false; byte cc = ch == '\x1b' ? (byte)1 : Keys[char.ToLowerInvariant(ch)].code;
-                m.Kbc.KeyBytes(0x1d); m.RunFrame(); m.Kbc.KeyBytes(cc, (byte)(cc | 0x80)); m.RunFrame(); m.Kbc.KeyBytes(0x9d);
-                m.RunFrame(); m.RunFrame();
+                string tok = text[(ci + 1)..ce].ToLowerInvariant(); ci = ce;
+                if (tok.StartsWith("m:")) { var mv = tok[2..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), mv.Length > 2 ? int.Parse(mv[2]) : 0); m.RunFrame(); m.RunFrame(); continue; }   // {m:dx,dy[,buttons]}: the PS/2 mouse
+                if (tok.StartsWith("click:")) { var mv = tok[6..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), 0); m.RunFrame(); m.RunFrame(); m.Kbc.MouseInput(0, 0, 1); m.RunFrame(); m.RunFrame(); m.Kbc.MouseInput(0, 0, 0); m.RunFrame(); m.RunFrame(); continue; }   // {click:dx,dy}: move then left click
+                if (tok.StartsWith("wait:")) { int wn = int.Parse(tok[5..]); for (int q = 0; q < wn; q++) m.RunFrame(); continue; }
+                var parts = tok.Split('+'); var mods = new List<byte[]>();
+                foreach (var p in parts[..^1]) mods.Add(p switch { "ctrl" => new byte[] { 0x1d }, "alt" => new byte[] { 0x38 }, "shift" => new byte[] { 0x2a }, "win" => new byte[] { 0xe0, 0x5b }, _ => throw new ArgumentException("key mod " + p) });
+                byte[] key = TokenKey(parts[^1]);
+                foreach (var md in mods) { m.Kbc.KeyBytes(md); m.RunFrame(); }
+                m.Kbc.KeyBytes(key); m.RunFrame();
+                var brk = (byte[])key.Clone(); brk[^1] |= 0x80; m.Kbc.KeyBytes(brk); m.RunFrame();
+                for (int q = mods.Count - 1; q >= 0; q--) { var mb = (byte[])mods[q].Clone(); mb[^1] |= 0x80; m.Kbc.KeyBytes(mb); m.RunFrame(); }
+                m.RunFrame();
                 continue;
             }
-            if (ch == '\x05') { alt = true; continue; }    // \a: the next key with Alt held
-            if (ch == '\x06') { fkey = true; continue; }   // \fN: function key N (1-9)
-            if (fkey) { fkey = false; byte fc = (byte)(0x3b + ch - '1'); m.Kbc.KeyBytes(fc, (byte)(fc | 0x80)); m.RunFrame(); m.RunFrame(); continue; }
-            if (alt && Keys.TryGetValue(char.ToLowerInvariant(ch), out var ak))
-            {
-                alt = false;
-                m.Kbc.KeyBytes(0x38); m.RunFrame(); m.Kbc.KeyBytes(ak.code, (byte)(ak.code | 0x80)); m.RunFrame(); m.Kbc.KeyBytes(0xb8);
-                m.RunFrame(); m.RunFrame();
-                continue;
-            }
-            if (ch == '\x0e') { m.Kbc.KeyBytes(0xe0, 0x5b); m.Kbc.KeyBytes(0xe0, 0xdb); m.RunFrame(); m.RunFrame(); continue; }   // \w in --step: the Windows key
+            if (ch == '{') ci++;
+            if (ch == '\x05') { m.Kbc.KeyBytes(0xe0, 0x5b); m.Kbc.KeyBytes(0xe0, 0xdb); m.RunFrame(); m.RunFrame(); continue; }   // \w in --step: the Windows key
             if (ch is >= '\x01' and <= '\x04')   // arrow keys (\u \d \l \r in --step): E0-prefixed set-1 codes
             {
                 byte c = ch switch { '\x01' => 0x48, '\x02' => 0x50, '\x03' => 0x4b, _ => 0x4d };
@@ -389,6 +390,22 @@ internal static class X86BootCli
             if (k.shift) m.Kbc.KeyBytes(0xaa);
             m.RunFrame(); m.RunFrame();
         }
+    }
+
+    private static byte[] TokenKey(string k)
+    {
+        if (k.Length > 1 && k[0] == 'f' && int.TryParse(k[1..], out int fn)) return new[] { (byte)(fn <= 10 ? 0x3a + fn : 0x57 + fn - 11) };
+        return k switch
+        {
+            "win" => new byte[] { 0xe0, 0x5b }, "menu" => new byte[] { 0xe0, 0x5d }, "esc" => new byte[] { 0x01 }, "tab" => new byte[] { 0x0f },
+            "enter" => new byte[] { 0x1c }, "space" => new byte[] { 0x39 }, "bs" => new byte[] { 0x0e }, "alt" => new byte[] { 0x38 },
+            "ctrl" => new byte[] { 0x1d }, "shift" => new byte[] { 0x2a },
+            "up" => new byte[] { 0xe0, 0x48 }, "down" => new byte[] { 0xe0, 0x50 }, "left" => new byte[] { 0xe0, 0x4b }, "right" => new byte[] { 0xe0, 0x4d },
+            "home" => new byte[] { 0xe0, 0x47 }, "end" => new byte[] { 0xe0, 0x4f }, "pgup" => new byte[] { 0xe0, 0x49 }, "pgdn" => new byte[] { 0xe0, 0x51 },
+            "del" => new byte[] { 0xe0, 0x53 }, "ins" => new byte[] { 0xe0, 0x52 }, "kpmul" => new byte[] { 0x37 },
+            _ when k.Length == 1 && Keys.TryGetValue(k[0], out var kk) => new[] { kk.code },
+            _ => throw new ArgumentException("key token " + k),
+        };
     }
 
     /// <summary>A linear address through the page tables (when paging is on), for the tools: 0xffffffff when not present.</summary>

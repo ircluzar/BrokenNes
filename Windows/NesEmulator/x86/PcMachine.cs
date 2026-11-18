@@ -74,7 +74,7 @@ public sealed partial class PcMachine : IX86Bus
             Cpu.Ferr = () => Pic.Pulse(13);         // FERR# -> IRQ 13 (CR0.NE clear: DOS / Windows 9x style FPU errors)
         }
         Pit = new Pit8254(() => PitNow, () => Pic.Pulse(0));
-        Kbc = new Kbc8042(Pic);
+        Kbc = new Kbc8042(Pic, config.Bus == PcBus.Pci430TX);   // the Windows 98 board has the PS/2 mouse
         Cmos = new Cmos(() => PitNow, MemKb);
         Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64);
         S3 = Vga.S3;
@@ -446,7 +446,7 @@ public sealed partial class PcMachine : IX86Bus
                 if (Config.Bus != PcBus.Isa) SavePci(w);
             }
             if (Nic != null) { w.Write(0x3043494e); Nic.Save(w); }   // "NIC0", after the config block
-
+            if (Kbc.HasMouse) { w.Write(0x4d325350); Kbc.SaveMouse(w); }   // "PS2M"
         }
         return ms.ToArray();
     }
@@ -500,12 +500,13 @@ public sealed partial class PcMachine : IX86Bus
         // the picture chip saved is restored when the same chip draws now; another one (or a state without one) starts it cold: a clean re-key, never a guess
         string? picId = null; byte[]? picBlob = null;
         string? svgaId = null; byte[]? svgaBlob = null;
-        PcConfig? saved = null;
+        PcConfig? saved = null; bool mouse = false;
         bool nicLoaded = false;
         while (r.BaseStream.Position + 4 <= r.BaseStream.Length)
         {
             int magic = r.ReadInt32();
             if (magic == 0x50434956) { picId = r.ReadString(); picBlob = r.ReadBytes(r.ReadInt32()); }
+            else if (magic == 0x4d325350 && Kbc.HasMouse) { Kbc.LoadMouse(r); mouse = true; }
             else if (magic == 0x41475653) { svgaId = r.ReadString(); svgaBlob = r.ReadBytes(r.ReadInt32()); }
             else if (magic == 0x47464350)
             {
@@ -520,6 +521,7 @@ public sealed partial class PcMachine : IX86Bus
             else throw new InvalidDataException($"unknown block {magic:X8} in an x86 state");
         }
         if (Nic != null && !nicLoaded) Nic.Reset();   // a state from before the card: it sits there as after a cold boot, unconfigured
+        if (!mouse) Kbc.ResetMouse();
         if (saved == null && ConfigInState) throw new InvalidDataException($"this x86 state is for the classic machine (486, BIOS disks), this machine is {Config}");
         WireAta();
         // the video card must be the one the state was saved on: a mismatch is an error, never a guess

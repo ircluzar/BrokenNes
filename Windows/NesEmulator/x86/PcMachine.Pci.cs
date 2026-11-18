@@ -526,6 +526,9 @@ public sealed partial class PcMachine
         Node("PNP0100", 8, 2, 0, d => { Io(d, 0x40, 4); Irq(d, 0); });
         Node("PNP0B00", 8, 3, 0, d => { Io(d, 0x70, 2); Irq(d, 8); });
         Node("PNP0303", 9, 0, 0, d => { Io(d, 0x60, 1); Io(d, 0x64, 1); Irq(d, 1); });
+        if (Kbc.HasMouse) Node("PNP0F13", 9, 2, 0, d => Irq(d, 12));   // the PS/2 mouse on the 8042
+        // the SB16 (Windows 98's SB16AWE.INF knows the legacy SB16 as *PNPB003; there is no SB Pro driver in Windows 98): 220h, 388h, IRQ 5, DMA 1 + 5
+        if (Card?.Id == "SB16_D072") Node("PNPB003", 4, 1, 0, d => { Io(d, 0x220, 16); Io(d, 0x388, 4); Irq(d, 5); d.AddRange(new byte[] { 0x2a, 0x02, 0x08 }); d.AddRange(new byte[] { 0x2a, 0x20, 0x16 }); });
         Node("PNP0800", 4, 1, 0, d => Io(d, 0x61, 1));
         if (Cpu.Model.Fpu) Node("PNP0C04", 0x0b, 0x80, 0, d => { Io(d, 0xf0, 16); Irq(d, 13); });
         Node("PNP0A03", 6, 4, 0, d => Io(d, 0xcf8, 8));

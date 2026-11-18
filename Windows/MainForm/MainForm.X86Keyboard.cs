@@ -46,6 +46,7 @@ namespace BrokenNes.Windows
             int vk = (int)m.WParam & 0xff; long lp = m.LParam.ToInt64();
             bool down = m.Msg is WM_KEYDOWN or WM_SYSKEYDOWN;
             bool alt = (lp & (1L << 29)) != 0;
+            PcMouseReleaseChord(vk, down);                                       // Ctrl+Alt lets a captured mouse go (the keys still reach the PC)
             if (vk == (int)Keys.Return && alt) return false;                   // Alt+Enter: full screen (MainForm_KeyDown)
             int scan = (int)((lp >> 16) & 0xff); bool ext = (lp & (1L << 24)) != 0;
             if (scan == 0)
