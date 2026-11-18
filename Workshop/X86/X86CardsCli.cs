@@ -173,6 +173,47 @@ internal static class X86CardsCli
 
     // ================= Sound Blaster 16 =================
 
+    /// <summary>Windows 98 SB16.VXD's own transfer: 41h 22050, B6h 30h (16-bit stereo signed, auto-init) with a 2756-word block over a 5512-word
+    /// channel-5 ring. Each IRQ must come every block/(rate*2) s (2756 words = 1378 stereo frames = 62.5 ms) and a 441 Hz left-channel sine must
+    /// come out at 441 Hz (output pitch = right speed). Guards the "2x speed" report of 2026-11-18, which turned out to be DING.WAV, not TADA.WAV.</summary>
+    private static void Sb16StereoPitch(string id)
+    {
+        var m = Make(id);
+        m.Out8(0x226, 1); Idle(m, 0.00001); m.Out8(0x226, 0); DspRead(m);
+        const int rate = 22050, block = 2756, ring = block * 2, hz = 441;
+        for (int i = 0; i < ring / 2; i++)   // frame i: left sine, right silence
+        {
+            short v = (short)(12000 * Math.Sin(2 * Math.PI * hz * i / rate));
+            uint a = (uint)(0x20000 + i * 4);
+            m.PhysW8(a, (byte)v); m.PhysW8(a + 1, (byte)(v >> 8)); m.PhysW8(a + 2, 0); m.PhysW8(a + 3, 0);
+        }
+        m.Out8(0xd4, 0x05); m.Out8(0xd8, 0); m.Out8(0xd6, 0x59);
+        m.Out8(0xc4, 0x00); m.Out8(0xc4, 0x00); m.Out8(0x8b, 0x02);
+        m.Out8(0xc6, (byte)((ring - 1) & 0xff)); m.Out8(0xc6, (byte)((ring - 1) >> 8));
+        m.Out8(0xd4, 0x01);
+        Dsp(m, 0x41, rate >> 8, rate & 0xff);
+        Take(m);
+        Dsp(m, 0xb6, 0x30, (block - 1) & 0xff, (block - 1) >> 8);
+        const double secs = 2.0, step = 0.002;
+        int irqs = 0; var times = new List<double>(); var outL = new List<short>();
+        for (double t = 0; t < secs; t += step)
+        {
+            Idle(m, step);
+            m.Out8(0x224, 0x82);
+            if ((m.In8(0x225) & 0x02) != 0) { irqs++; times.Add(t + step); m.In8(0x22f); }
+            outL.AddRange(Take(m));
+        }
+        Dsp(m, 0xd5);
+        double period = times.Count > 2 ? (times[^1] - times[0]) / (times.Count - 1) : 0, want = (double)block / (rate * 2);
+        // pitch from rising zero crossings of the left channel (Take gives the left of the 44.1 kHz stereo output)
+        var s = outL.Skip(4410).ToArray();   // skip the first 0.1 s (start-up)
+        int rises = 0; bool low = false;   // with hysteresis: the ring's wrap is not a whole number of periods
+        foreach (var v in s) { if (v < -2000) low = true; else if (low && v > 2000) { rises++; low = false; } }
+        double pitch = s.Length > 0 ? rises / (s.Length / 44100.0) : 0;
+        bool ok = Math.Abs(period - want) < 0.004 && Math.Abs(pitch - hz) < hz * 0.03 && Math.Abs(outL.Count / 44100.0 - secs) < 0.05;
+        Cell(id, "stereo 16-bit pitch", outL.ToArray(), extra: $"{irqs} IRQs, every {period * 1000:F1} ms (want {want * 1000:F1}), {hz} Hz sine out at {pitch:F1} Hz, {outL.Count} samples in {secs} s", ok: ok);
+    }
+
     private static void Sb16()
     {
         const string id = "SB16_D072";
@@ -219,6 +260,7 @@ internal static class X86CardsCli
         long i3 = m3.Card!.IrqsRaised;
         Idle(m3, 0.3);
         Cell(id, "state mid-DMA", Take(m3), extra: m3.Card.IrqsRaised > i3 ? "IRQ after load" : "no IRQ after load", ok: m3.Card.IrqsRaised > i3);
+        Sb16StereoPitch(id);
         // an SB Pro state must not load into the SB16
         var pro = Make("SB_D072");
         bool refused = false;
