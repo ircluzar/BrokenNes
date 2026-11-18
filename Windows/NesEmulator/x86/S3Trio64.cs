@@ -412,12 +412,14 @@ public sealed class S3Trio64
         WritePix(x, y, Mix(mix, src, d) & PixMask);
     }
 
+    private static readonly bool S3Log = Environment.GetEnvironmentVariable("X86_S3LOG") == "1";
     private int PixSel => (_pixCtl >> 6) & 3;   // 0: foreground mix only, 2: CPU data mono, 3: display memory mono
 
     private void Start()
     {
         _waitCpu = false;
         int op = (_cmd >> 13) & 7;
+        if (S3Log) Console.WriteLine($"s3 cmd {_cmd:X4} cur {_curX},{_curY} dst {_destX},{_destY} w {_majPcnt} h {_minPcnt} pix {_pixCtl:X3} fm {_fgMix:X2} bm {_bkMix:X2} fg {_fgColor:X} bg {_bkColor:X} rd {_rdMask:X} wr {_wrtMask:X} mm {_multiMisc:X3} sc {_scLeft},{_scTop}-{_scRight},{_scBottom}");
         bool cpuData = (_cmd & 0x100) != 0;
         switch (op)
         {
@@ -488,18 +490,21 @@ public sealed class S3Trio64
     /// <summary>CPU data for a waiting rectangle / BitBLT: colour pixels, or mono bits (bit 12 of the command: bytes swapped).</summary>
     public void PixelData(uint v, int bits)
     {
+        if (S3Log) Console.WriteLine($"s3 data {v:X8}/{bits}{(_waitCpu ? "" : " (not waiting)")}");
         if (!_waitCpu) return;
         int bus = ((_cmd >> 9) & 3) switch { 0 => 8, 1 => 16, _ => 32 };
         if (bits < bus) bus = bits;
+        // a write wider than the bus is several bus transfers, the low part first (a 16-bit-bus glyph sends two rows per dword)
         bool swap = (_cmd & 0x1000) != 0 && bus >= 16;
-        if (swap) v = bus == 16 ? (uint)(((v & 0xff) << 8) | ((v >> 8) & 0xff)) : (v & 0x00ff00ff) << 8 | (v >> 8) & 0x00ff00ff;
+        if (swap) v = bits == 16 ? (uint)(((v & 0xff) << 8) | ((v >> 8) & 0xff)) : (v & 0x00ff00ff) << 8 | (v >> 8) & 0x00ff00ff;
         int dx = (_cmd & 0x20) != 0 ? 1 : -1, dy = (_cmd & 0x80) != 0 ? 1 : -1;
         if (PixSel == 2)
         {
-            // a 32-bit write is two 16-bit transfers, the low word first (each MSB first); a line's end pads out only its own transfer
-            for (int half = 0; half < (bus == 32 ? 2 : 1) && _waitCpu; half++)
+            // mono: each 8/16-bit transfer MSB first (a 32-bit bus is two 16-bit transfers); a line's end pads out only its own transfer
+            int w = bus == 8 ? 8 : 16;
+            for (int part = 0; part < bits / w && _waitCpu; part++)
             {
-                int w = bus == 32 ? 16 : bus; uint hv = bus == 32 ? (half == 0 ? v & 0xffff : v >> 16) : v;
+                uint hv = (v >> (part * w)) & ((1u << w) - 1);
                 for (int b = w - 1; b >= 0 && _waitCpu; b--)
                 {
                     bool fg = ((hv >> b) & 1) != 0;
@@ -510,13 +515,16 @@ public sealed class S3Trio64
         }
         else
         {
-            int bpp = BytesPerPixel * 8;
-            for (int k = 0; k + bpp <= Math.Max(bus, bpp) && _waitCpu; k += bpp)
-            {
-                uint c = bpp == 32 ? v : (v >> k) & ((1u << bpp) - 1);
-                Plot(_px + _cntX * dx, _py + _cntY * dy, true, c, c);
-                if (Advance(dy)) break;
-            }
+            // colour: each bus transfer holds whole pixels; a line's end pads out only its own transfer
+            int bpp = BytesPerPixel * 8, w = Math.Max(bus, bpp);
+            for (int part = 0; part < Math.Max(1, bits / w) && _waitCpu; part++)
+                for (int k = 0; k + bpp <= w && _waitCpu; k += bpp)
+                {
+                    int sh = part * w + k;
+                    uint c = bpp == 32 ? v : (v >> sh) & ((1u << bpp) - 1);
+                    Plot(_px + _cntX * dx, _py + _cntY * dy, true, c, c);
+                    if (Advance(dy)) break;
+                }
         }
     }
 

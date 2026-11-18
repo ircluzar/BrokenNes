@@ -199,7 +199,7 @@ internal static class X86BootCli
         foreach (var st in Args(args, "--step"))
         {
             int i = st.IndexOf("=>"); string u = st[..i], keys = st[(i + 2)..].Replace("\\n", "\n").Replace("\\e", "\x1b").Replace("\\t", "\t").Replace("\\c", "\x07")
-                .Replace("\\a", "\x05").Replace("\\f", "\x06").Replace("\\u", "\x01").Replace("\\d", "\x02").Replace("\\l", "\x03").Replace("\\r", "\x04");
+                .Replace("\\a", "\x05").Replace("\\f", "\x06").Replace("\\u", "\x01").Replace("\\d", "\x02").Replace("\\l", "\x03").Replace("\\r", "\x04").Replace("\\w", "\x0e");
             // "@N=>KEYS": graphics screens have no text to match, so wait N frames then type
             bool wait = u.StartsWith('@') && int.TryParse(u[1..], out _);
             int ns = wait ? RunUntil(m, null, int.Parse(u[1..])) : RunUntil(m, u, stepMax, true); n += ns;   // (the screen only: the teletype log keeps earlier screens' text)
@@ -375,6 +375,7 @@ internal static class X86BootCli
                 m.RunFrame(); m.RunFrame();
                 continue;
             }
+            if (ch == '\x0e') { m.Kbc.KeyBytes(0xe0, 0x5b); m.Kbc.KeyBytes(0xe0, 0xdb); m.RunFrame(); m.RunFrame(); continue; }   // \w in --step: the Windows key
             if (ch is >= '\x01' and <= '\x04')   // arrow keys (\u \d \l \r in --step): E0-prefixed set-1 codes
             {
                 byte c = ch switch { '\x01' => 0x48, '\x02' => 0x50, '\x03' => 0x4b, _ => 0x4d };
