@@ -111,6 +111,7 @@ public sealed partial class PcMachine
     private void RegisterTraps()
     {
         _special[Int08Stub] = I_INT08; _special[Int09Stub] = I_INT09; _special[Int09Stub + 3] = I_INT09A; _special[Int16Stub + 1] = I_INT16; _special[Int19Stub] = I_INT19; _special[0xfff0] = I_RESET;
+        _special[Int13Pio] = 0x13;   // (only reached on an IDE machine whose POST put the PIO code there)
     }
 
     private void Post()
@@ -133,6 +134,7 @@ public sealed partial class PcMachine
         Code(Int19Stub, I_INT19, 0xe6, 0xe0, 0xcf);
         Code(IretStub, -1, 0xcf);
         InstallInt10Replay();
+        if (Ata != null) InstallInt13Pio();
         // reset vector: OUT E0h = a full reset (POST, then boot) like a real BIOS. A jump to FFFF:0000 used to go straight to INT 19h, which kept the
         // old OS's hooked vectors and hung Windows 98 Setup's restart ("Waiting for system shutdown").
         Code(0xfff0, I_RESET, 0xe6, 0xe0, 0xeb, 0xfc);
@@ -149,6 +151,7 @@ public sealed partial class PcMachine
         for (int n = 0; n < 256; n++) Vec(n, IretStub);
         foreach (int n in new[] { 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x17, 0x18, 0x1a }) Vec(n, StubBase + (uint)n * 4);
         Vec(0x08, Int08Stub); Vec(0x09, Int09Stub); Vec(0x16, Int16Stub); Vec(0x19, Int19Stub);
+        if (Ata != null) Vec(0x13, Int13Pio);
         for (int n = 0x0a; n <= 0x0f; n++) Vec(n, IrqMasterStub);
         for (int n = 0x70; n <= 0x77; n++) Vec(n, IrqSlaveStub);
         Vec(0x1e, DisketteTable);
@@ -448,12 +451,69 @@ public sealed partial class PcMachine
 
     private DiskImage? Disk(int dl) => dl switch { 0 => _cdEmu ?? Floppy[0], 1 => Floppy[1], 0x80 => Hdd[0], 0x81 => Hdd[1], _ => null };
 
+    // Windows 98's ESDI_506.PDR (the protected-mode IDE driver) traps the controller's ports and checks an INT 13h per drive against them:
+    // a BIOS that reaches the disk without the ports never calls its trap ("ESDI trap handler not called" in IOS.LOG), one that touches
+    // them without the real command gets "ESDI sector mismatch", and either way the drives stay in MS-DOS compatibility mode (the primary
+    // channel shows Code 10). So on an IDE machine INT 13h enters at F000:E880, and from a V86 VM a hard disk read / write / verify is done
+    // the way a real BIOS does it: C# only fills the task file at F000:DF00 (LBA addressing) and the code after the trap issues the command
+    // and moves the data with REP INSW / OUTSW. Everything else (and anything outside V86 mode) is still the C# service.
+    private const uint Int13Pio = 0xe880, Int13Task = 0xdf00;
+    private static readonly byte[] Int13PioCode =
+    {
+        0xe6, 0xe0, 0x1e, 0x06, 0x60, 0x0e, 0x1f, 0xbe, 0x00, 0xdf, 0xac, 0x84, 0xc0, 0x74, 0x4f, 0x88, 0xc3, 0xba, 0xf1, 0x01, 0xb9, 0x06, 0x00, 0xac,
+        0xee, 0x42, 0xe2, 0xfb, 0xac, 0xee, 0xad, 0x89, 0xc5, 0xad, 0x89, 0xc7, 0xad, 0x8e, 0xc0, 0xba, 0xf7, 0x01, 0xec, 0xa8, 0x80, 0x75, 0xfb, 0x80,
+        0xfb, 0x03, 0x74, 0x2a, 0xa8, 0x08, 0x74, 0x26, 0xba, 0xf0, 0x01, 0xb9, 0x00, 0x01, 0x80, 0xfb, 0x01, 0x75, 0x04, 0xf3, 0x6d, 0xeb, 0x0c, 0x1e,
+        0x06, 0x1f, 0x89, 0xfe, 0xf3, 0x6f, 0x1f, 0x81, 0xc7, 0x00, 0x02, 0x4d, 0x75, 0xd1, 0xba, 0xf7, 0x01, 0xec, 0xa8, 0x80, 0x75, 0xfb, 0x61, 0x07,
+        0x1f, 0xcf,
+        // push ds, es / pusha / ds = cs / si = task / lodsb mode: 0 = nothing; regs 1F1-1F6, command, sector count, buffer off:seg; per sector:
+        // wait BSY clear, DRQ, REP INSW (mode 1) or OUTSW (2), mode 3 = no data; wait BSY clear; popa / pop es, ds / iret
+    };
+
+    private void InstallInt13Pio() { Array.Copy(Int13PioCode, 0, Cpu.Mem, Rom + Int13Pio, Int13PioCode.Length); _special[Int13Pio] = 0x13; }
+
+    /// <summary>True when the read / write / verify was handed to the PIO code (V86 mode, IDE hard disk): the task file is filled, nothing is moved here.</summary>
+    private bool Int13PioSetup(int dl, uint fn)
+    {
+        var m = Cpu.Mem; uint t = Rom + Int13Task;
+        m[t] = 0;
+        if (Ata == null || (C.Flags & I386.VM) == 0 || dl is not (0x80 or 0x81) || Hdd[dl - 0x80] is not { } d) return false;
+        if (SegB(I386.SEG_CS) + C.Ip != Rom + Int13Pio) return false;   // (entered through the old stub)
+        long lba; int count; uint seg, off;
+        if (fn is 0x02 or 0x03 or 0x04)
+        {
+            count = (int)AL;
+            int cyl = (int)(CH | ((CL & 0xc0) << 2)), sec = (int)(CL & 0x3f), head = (int)DH;
+            if (sec == 0 || sec > d.Sectors || head >= d.Heads || count == 0) return false;
+            lba = ((long)cyl * d.Heads + head) * d.Sectors + sec - 1;
+            seg = C.SegSel[I386.SEG_ES]; off = BX;
+        }
+        else if (fn is 0x42 or 0x43 or 0x44)
+        {
+            uint p = SegB(I386.SEG_DS) + SI;
+            count = Lin16(p + 2); off = Lin16(p + 4); seg = Lin16(p + 6);
+            lba = Lin32(p + 8) | ((long)Lin32(p + 12) << 32);
+            if (Lin32(p + 4) == 0xffffffff || count is 0 or > 127) return false;
+        }
+        else return false;
+        if (count > 255 || lba + count > d.TotalSectors || lba >= 1 << 28 || off + count * 512 > 0x10000 && fn != 0x04 && fn != 0x44) return false;
+        bool write = fn is 0x03 or 0x43, verify = fn is 0x04 or 0x44;
+        m[t] = (byte)(verify ? 3 : write ? 2 : 1);
+        m[t + 1] = 0; m[t + 2] = (byte)count; m[t + 3] = (byte)lba; m[t + 4] = (byte)(lba >> 8); m[t + 5] = (byte)(lba >> 16);
+        m[t + 6] = (byte)(0xe0 | (dl == 0x81 ? 0x10 : 0) | ((lba >> 24) & 15));
+        m[t + 7] = (byte)(verify ? 0x40 : write ? 0x30 : 0x20);
+        m[t + 8] = (byte)count; m[t + 9] = 0; m[t + 10] = (byte)off; m[t + 11] = (byte)(off >> 8); m[t + 12] = (byte)seg; m[t + 13] = (byte)(seg >> 8);
+        if (fn is 0x02 or 0x03 or 0x04) AL = (uint)count;
+        DiskStatus(dl, 0);
+        return true;
+    }
+
     private void DiskStatus(int dl, uint st) { LinW8(dl >= 0x80 ? 0x474u : 0x441u, (byte)st); AH = st; SetCF(st != 0); }
 
     private void Int13()
     {
         int dl = (int)DL;
         uint fn = AH;
+        if (Int13PioSetup(dl, fn)) return;
         if (Ata != null && Int13Ide(dl, fn)) return;
         var d = Disk(dl);
         if (fn == 0x01) { AH = Lin8(dl >= 0x80 ? 0x474u : 0x441u); SetCF(AH != 0); return; }
