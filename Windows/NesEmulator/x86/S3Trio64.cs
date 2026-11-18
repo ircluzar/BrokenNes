@@ -97,10 +97,10 @@ public sealed class S3Trio64
         cr[i] = v;
         switch (i)
         {
-            case 0x35: Bank = (Bank & ~0xf) | (v & 0xf); break;
-            case 0x51: Bank = (Bank & 0xf) | ((v & 0x0c) << 2); break;
-            case 0x6a: Bank = v & 0x3f; break;
-            case 0x59: case 0x5a: LfbBase = (uint)(cr[0x59] << 24 | cr[0x5a] << 16) & 0xFFC00000u; W32(0x10, LfbBase & 0xFC000000u); break;
+            // CR6A (when non-zero) overrides the old CR35 / CR51 bank fields; a zero CR6A leaves them in charge
+            case 0x35: case 0x51: case 0x6a:
+                Bank = (cr[0x6a] & 0x3f) != 0 ? cr[0x6a] & 0x3f : (cr[0x35] & 0xf) | ((cr[0x51] & 0x0c) << 2); break;
+            case 0x58: case 0x59: case 0x5a: LfbBase = (uint)(cr[0x59] << 24 | cr[0x5a] << 16) & ~(uint)(LfbSize - 1); if (i != 0x58) W32(0x10, LfbBase & 0xFC000000u); break;
         }
         return true;
     }
@@ -109,6 +109,9 @@ public sealed class S3Trio64
 
     public bool Enhanced => (_v.Cr[0x31] & 0x08) != 0;
     public bool LinearOn => (_v.Cr[0x58] & 0x10) != 0;
+    /// <summary>CR58 bits 1-0: the linear window's size. The 64 KB one (at A0000) is still banked.</summary>
+    public int LfbSize => (_v.Cr[0x58] & 3) switch { 0 => 0x10000, 1 => 0x100000, 2 => 0x200000, _ => 0x400000 };
+    private bool Window64K => LinearOn && LfbSize == 0x10000;
     public bool OldMmio => (_v.Cr[0x53] & 0x10) != 0;
     public int BytesPerPixel => (_v.Cr[0x67] >> 4) switch { 0x3 or 0x5 => 2, 0xd => 4, _ => 1 };
 
@@ -121,8 +124,8 @@ public sealed class S3Trio64
             if (off < 0x8000) PixelData(v, 8); else EngineOut8((int)(addr & 0xffff), v);
             return true;
         }
-        if (!Enhanced) return false;
-        if (LinearOn) return true;
+        if (!Enhanced && !Window64K) return false;
+        if (LinearOn && !Window64K) return true;
         if (off >= 0x10000) return true;
         uint a = (uint)(Bank << 16) + off;
         if (a < VramBytes) _v.Ram[a] = v;
@@ -134,8 +137,8 @@ public sealed class S3Trio64
         uint off = addr - 0xa0000;
         v = 0xff;
         if (OldMmio && off < 0x10000) { if (off >= 0x8000) v = (byte)EngineIn((int)(addr & 0xfffe), (addr & 1) != 0); return true; }
-        if (!Enhanced) return false;
-        if (LinearOn || off >= 0x10000) return true;
+        if (!Enhanced && !Window64K) return false;
+        if ((LinearOn && !Window64K) || off >= 0x10000) return true;
         uint a = (uint)(Bank << 16) + off;
         if (a < VramBytes) v = _v.Ram[a];
         return true;
@@ -154,7 +157,7 @@ public sealed class S3Trio64
         return true;
     }
 
-    public bool InLfb(uint a) => LinearOn && a - LfbBase < VramBytes;
+    public bool InLfb(uint a) => LinearOn && !Window64K && a - LfbBase < Math.Min(VramBytes, LfbSize);
     public byte LfbRead8(uint a) => _v.Ram[a - LfbBase];
     public void LfbWrite8(uint a, byte v) => _v.Ram[a - LfbBase] = v;
     public uint LfbRead32(uint a) { uint o = a - LfbBase; return o <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)o) : LfbRead8(a); }
@@ -493,11 +496,16 @@ public sealed class S3Trio64
         int dx = (_cmd & 0x20) != 0 ? 1 : -1, dy = (_cmd & 0x80) != 0 ? 1 : -1;
         if (PixSel == 2)
         {
-            for (int b = bus - 1; b >= 0 && _waitCpu; b--)
+            // a 32-bit write is two 16-bit transfers, the low word first (each MSB first); a line's end pads out only its own transfer
+            for (int half = 0; half < (bus == 32 ? 2 : 1) && _waitCpu; half++)
             {
-                bool fg = ((v >> b) & 1) != 0;
-                Plot(_px + _cntX * dx, _py + _cntY * dy, fg, 0, 0);
-                if (Advance(dy)) break;                   // end of line: the rest of this write is padding
+                int w = bus == 32 ? 16 : bus; uint hv = bus == 32 ? (half == 0 ? v & 0xffff : v >> 16) : v;
+                for (int b = w - 1; b >= 0 && _waitCpu; b--)
+                {
+                    bool fg = ((hv >> b) & 1) != 0;
+                    Plot(_px + _cntX * dx, _py + _cntY * dy, fg, 0, 0);
+                    if (Advance(dy)) break;
+                }
             }
         }
         else

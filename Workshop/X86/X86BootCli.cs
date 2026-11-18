@@ -244,6 +244,8 @@ internal static class X86BootCli
             string H(byte[] b) => string.Join(" ", b.Select(x => x.ToString("X2")));
             Console.WriteLine($"vga SR {H(v.Sr)}\nvga GR {H(v.Gr[..9])}\nvga AR {H(v.Ar)}\nvga CR {H(v.Cr[..0x19])}\nvga DAC0-15 {H(v.Palette[..48])}");
             Console.WriteLine($"vga ram non-zero bytes {v.Ram.Count(b => b != 0)} of {v.Ram.Length}; S3 {(m.S3 != null ? "yes" : "no")}; CR30-6F {H(v.Cr[0x30..0x70])}");
+            { int cb = ((v.Cr[0x4c] & 0x0f) << 8 | v.Cr[0x4d]) * 1024; for (int l = 0; l < 4; l++) Console.WriteLine($"vga cursor@{cb:X} line {l}: {H(v.Ram[(cb + l * 16)..(cb + l * 16 + 16)])}"); }
+            { var nz = new List<string>(); int run = -1; for (int k = 0x4b000; k < v.Ram.Length; k += 256) { bool any = false; for (int q = 0; q < 256; q++) if (v.Ram[k + q] != 0) { any = true; break; } if (any && run < 0) run = k; if (!any && run >= 0) { nz.Add($"{run:X}-{k:X}"); run = -1; } } Console.WriteLine("vga offscreen non-zero: " + string.Join(" ", nz.Take(30))); }
             Console.WriteLine($"system RAM A0000-BFFFF non-zero bytes {m.Cpu.Mem.AsSpan(0xa0000, 0x20000).ToArray().Count(b => b != 0)} (should stay 0: the VGA owns it)");
         }
         if (Arg(args, "--sample") is string smp)
@@ -264,6 +266,7 @@ internal static class X86BootCli
                 Console.WriteLine($"physgrep @{a:X8}: {string.Join(" ", pmem.AsSpan(Math.Max(0, a - 24), 24 + pb.Length + 24).ToArray().Select(b => b.ToString("X2")))}");
             }
         }
+        foreach (var va in Args(args, "--vramdump")) { var pp = va.Split(':'); int a0 = Convert.ToInt32(pp[0], 16), ln = int.Parse(pp[1]); for (int k = 0; k < ln; k += 32) Console.WriteLine($"vram {a0 + k:X6}: " + string.Join(" ", m.Vga.Ram.Skip(a0 + k).Take(32).Select(b => b.ToString("X2")))); }
         foreach (var da in Args(args, "--dump"))   // --dump HEXLIN:LEN: bytes at a linear address (through the page tables)
         {
             var parts = da.Split(':'); uint a0 = Convert.ToUInt32(parts[0], 16); int len = parts.Length > 1 ? int.Parse(parts[1]) : 64;
