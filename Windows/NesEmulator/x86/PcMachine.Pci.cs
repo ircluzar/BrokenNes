@@ -391,7 +391,7 @@ public sealed partial class PcMachine
                 Done(0); return;
             case 0x05:
                 Done(0);
-                if ((C.Flags & I386.IF) != 0) { C.Halt = true; C.EndBatch(); }   // idle: sleep till the next interrupt, then the RETF / IRET
+                if ((C.Flags & I386.IF) != 0 && (C.Flags & I386.VM) == 0) { C.Halt = true; C.EndBatch(); }   // idle: sleep till the next interrupt, then the RETF / IRET
                 return;
             case 0x06: Done(0); return;
             case 0x07:
