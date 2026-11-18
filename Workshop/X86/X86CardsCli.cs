@@ -9,6 +9,7 @@ namespace BrokenNes.Workshop.X86;
 /// <summary>
 /// <c>--x86cards [--wav dir]</c>: every x86 sound card is driven through its ports from C# on a bare PcMachine (no DOS program, no CPU run: machine time passes
 /// with <see cref="PcMachine.IdleFor"/>) and must make sound (AC rms above a floor):
+/// SB16_D072 DSP 4.05, mixer 80h/81h, a 16-bit auto-init DMA sine (B6h) on channel 5 that must raise IRQ 5 with 82h bit 1, acked by 22Fh;
 /// SB_D072 DSP reset / version, direct DAC (10h), an 8-bit single-cycle DMA sine (14h) that must also raise the IRQ (and its FM at 228h);
 /// GUS_D074 a DMA upload + poke read-back, a looping voice with a volume ramp; TANDY_D072 each tone channel and the noise; COVOX a square on 378h;
 /// SPEAKER a PIT channel 2 tone (and no AdLib at 388h). Each card is also saved mid-sound and loaded into a fresh machine, which must keep sounding.
@@ -75,7 +76,7 @@ internal static class X86CardsCli
         _wavDir = BrokenNes.Workshop.Sega.M68kTestCli.Arg(args, "--wav");
         _flagged = 0;
         Console.WriteLine("card        cell                       rms  verdict");
-        foreach (var (name, test) in new (string, Action)[] { ("SB_D072", Sb), ("GUS_D074", Gus), ("TANDY_D072", Tandy), ("COVOX", Covox), ("SPEAKER", Speaker) })
+        foreach (var (name, test) in new (string, Action)[] { ("SB_D072", Sb), ("SB16_D072", Sb16), ("GUS_D074", Gus), ("TANDY_D072", Tandy), ("COVOX", Covox), ("SPEAKER", Speaker) })
         {
             try { test(); }
             catch (Exception e) { _flagged++; Console.WriteLine($"{name,-11} CRASH {e.GetType().Name}: {e.Message}\n{e.StackTrace}"); }
@@ -93,6 +94,7 @@ internal static class X86CardsCli
         string? fd = PcDisks.FindFreeDos();
         if (fd == null || !File.Exists(fd)) { Console.WriteLine("dos env: no FreeDOS disk here, not run"); return; }
         foreach (var (id, want, not) in new[] { ("SB_D072", "SET BLASTER=A220 I7 D1 T4", "ULTRASND"), ("SB_D072_D072", "SET BLASTER=A220 I7 D1 T4", "ULTRASND"),
+                     ("SB16_D072", "SET BLASTER=A220 I5 D1 H5 T6", "ULTRASND"),
                      ("GUS_D074", "SET ULTRASND=240,3,3,5,5", "BLASTER"), ("ADLIB", "", "BLASTER"), ("COVOX", "", "ULTRASND") })
         {
             var s = new PcSession(new byte[] { 0xc3 }, "T.COM", id);   // a .COM that just returns (RET)
@@ -167,6 +169,62 @@ internal static class X86CardsCli
         var after = Take(m3);
         Idle(m3, 0.6); Take(m3);
         Cell(id, "state mid-DMA", after, extra: m3.Card.IrqsRaised > i3 ? "IRQ after load" : "no IRQ after load", ok: m3.Card.IrqsRaised > i3);
+    }
+
+    // ================= Sound Blaster 16 =================
+
+    private static void Sb16()
+    {
+        const string id = "SB16_D072";
+        var m = Make(id);
+        bool idOk = m.Card!.Id == id;
+        m.Out8(0x226, 1); Idle(m, 0.00001); m.Out8(0x226, 0);
+        byte aa = DspRead(m);
+        Dsp(m, 0xe1); byte maj = DspRead(m), min = DspRead(m);
+        m.Out8(0x224, 0x80); byte irqSel = m.In8(0x225);
+        m.Out8(0x224, 0x81); byte dmaSel = m.In8(0x225);
+        bool resetOk = idOk && aa == 0xaa && maj == 4 && min == 5 && irqSel == 0x02 && dmaSel == 0x22;
+        Console.WriteLine($"{id,-11} {"DSP reset / version",-22}          {(resetOk ? "ok" : "FAIL")}  (reset {aa:X2}, version {maj}.{min:D2}, mixer 80h={irqSel:X2} 81h={dmaSel:X2})");
+        if (!resetOk) _flagged++;
+        Take(m);
+        // 16-bit auto-init DMA on channel 5 (second 8237): 2000 signed words of a 440 Hz sine at 22050 Hz, at physical 20000h
+        const int len = 2000, rate = 22050;
+        for (int i = 0; i < len; i++) { short v = (short)(12000 * Math.Sin(2 * Math.PI * 440 * i / rate)); m.PhysW8((uint)(0x20000 + i * 2), (byte)v); m.PhysW8((uint)(0x20000 + i * 2 + 1), (byte)(v >> 8)); }
+        m.Out8(0xd4, 0x05); m.Out8(0xd8, 0); m.Out8(0xd6, 0x59);                 // mask 5, clear flip-flop, mode: single, auto-init, read, channel 5
+        m.Out8(0xc4, 0x00); m.Out8(0xc4, 0x00); m.Out8(0x8b, 0x02);              // word address 0 in the 128 KB page 2
+        m.Out8(0xc6, (byte)((len - 1) & 0xff)); m.Out8(0xc6, (byte)((len - 1) >> 8));
+        m.Out8(0xd4, 0x01);                                                      // unmask 5
+        Dsp(m, 0x41, rate >> 8, rate & 0xff);
+        long irq0 = m.Card.IrqsRaised;
+        Dsp(m, 0xb6, 0x10, (len - 1) & 0xff, (len - 1) >> 8);                   // 16-bit, auto-init, FIFO; mono signed
+        Idle(m, 0.3);
+        m.Out8(0x224, 0x82); byte st = m.In8(0x225);
+        bool irq = m.Card.IrqsRaised > irq0 && (m.Pic.MasterIrr & 0x20) != 0 && (st & 0x02) != 0;
+        m.In8(0x22f);
+        m.Out8(0x224, 0x82); byte st2 = m.In8(0x225);
+        bool ack = (st2 & 0x02) == 0;
+        long n1 = m.Card.IrqsRaised;
+        Idle(m, 0.3);
+        bool auto = m.Card.IrqsRaised > n1;   // auto-init keeps raising
+        Cell(id, "16-bit DMA (B6h)", Take(m), extra: $"{(irq ? "IRQ 5 + 82h bit 1" : "NO IRQ 5 / 82h=" + st.ToString("X2"))}, {(ack ? "22Fh acks" : "22Fh did NOT ack")}, {(auto ? "auto-init repeats" : "auto-init STOPPED")}", ok: irq && ack && auto);
+        Dsp(m, 0xd9);                         // exit auto-init 16-bit: ends with the current block
+        Idle(m, 0.3); long n2 = m.Card.IrqsRaised; Idle(m, 0.3);
+        bool stopped = m.Card.IrqsRaised == n2;
+        Console.WriteLine($"{id,-11} {"exit auto-init (D9h)",-22}          {(stopped ? "ok" : "FAIL")}");
+        if (!stopped) _flagged++;
+        // state: save mid-transfer, load into a fresh machine
+        Dsp(m, 0xb6, 0x10, (len - 1) & 0xff, (len - 1) >> 8);
+        Idle(m, 0.05); Take(m);
+        var m3 = Reload(m, id);
+        long i3 = m3.Card!.IrqsRaised;
+        Idle(m3, 0.3);
+        Cell(id, "state mid-DMA", Take(m3), extra: m3.Card.IrqsRaised > i3 ? "IRQ after load" : "no IRQ after load", ok: m3.Card.IrqsRaised > i3);
+        // an SB Pro state must not load into the SB16
+        var pro = Make("SB_D072");
+        bool refused = false;
+        try { var ms = new MemoryStream(); pro.Card!.Save(new BinaryWriter(ms)); ms.Position = 0; new Dosbox072SoundBlaster(Make(id), sb16: true).Load(new BinaryReader(ms)); } catch (InvalidDataException) { refused = true; }
+        Console.WriteLine($"{id,-11} {"SB Pro state refused",-22}          {(refused ? "ok" : "FAIL")}");
+        if (!refused) _flagged++;
     }
 
     // ================= GUS =================

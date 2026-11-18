@@ -10,8 +10,16 @@
 // DSP rate, the 0.72 mixer at its default 22050 Hz (DosboxMixer, PcCards.cs), held onto the console's 44.1 kHz. DOS programs find it through
 // SET BLASTER=A220 I7 D1 T4. Its FM: the board's AdLib (Opl2, ymfm) answers 388h/389h and the card's 220h-223h / 228h-229h; DOSBox 0.72 put an OPL3
 // there for an SB Pro 2 (oplmode auto) - the OPL here is an OPL2 (deliberate: the card's FM is the console's AdLib).
-// Not ported: MIDI (0x38 is dropped: no MIDI device), CMS / Game Blaster, SB16-only commands answer as on an SB Pro (DSP_SB16_ONLY), the mixer's
-// volumes act on the DSP channel only (FM volume regs are stored, the AdLib's own level is kept).
+// The SB16 variant (constructor sb16: true, APU id "SB16_D072"): DOSBox 0.72's sbtype sb16 - DSP 4.05, base 220h, IRQ 5, DMA 1, HDMA 5 (the 0.72 defaults),
+// SET BLASTER=A220 I5 D1 H5 T6. Ported for it: 41h/42h sample rate, B0h-CFh generic 8/16-bit DMA (DSP_PrepareDMA_New: 16-bit on the second 8237's
+// channel, DSP_DMA_16_ALIASED over the 8-bit channel when hdma is off or the second controller is closed), D5h/D6h, D9h, the CT1745 registers 30h-3Ah
+// (5-bit volumes, val>>3) and 3Bh-47h kept as plain storage, the 16-bit IRQ (82h bit 1, acked by a read of 22Fh), the speaker flag not gating output.
+// Its quirks are 0.72's: the speaker command does not touch the output (the channel is always on), so DMA is never "silent"; sign and stereo come from the
+// mode byte, the length is in samples (words on a 16-bit channel); 80h silence and the ADC stay the 8-bit ones; the command length table stays the SB Pro
+// one (0.72 comments the "for SB16. but breaks sbpro" row out); no ASP / CSP, no 16-bit ADC, no MPU-401.
+// The SB Pro 2 (the default, "SB_D072") is unchanged in behaviour and state format.
+// Not ported: MIDI (0x38 is dropped: no MIDI device), CMS / Game Blaster, the mixer's volumes act on the DSP channel only (FM volume regs are stored,
+// the AdLib's own level is kept); on the SB Pro the SB16-only commands are dropped as there (DSP_SB16_ONLY).
 //
 // Faithful port: the flaws are KEPT, not fixed. Characteristic quirks of 0.72:
 //  - Direct DAC (10h) is not timed: every write in a 1 ms mixer tick is collected (each stored twice) and stretched over the tick (AddStretched),
@@ -36,7 +44,7 @@ namespace NesEmulator.X86;
 
 public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
 {
-    public string Id => "SB_D072";
+    public string Id => type == SBT_16 ? "SB16_D072" : "SB_D072";
 
     private const int DMA_BUFSIZE = 1024, DSP_BUFSIZE = 64, DSP_DACSIZE = 512, SB_SH = 14, SB_SH_MASK = (1 << SB_SH) - 1;
     private const int DSP_S_RESET = 0, DSP_S_NORMAL = 1;
@@ -59,7 +67,7 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
     private bool speaker, midi;
     private byte time_constant;
     private int mode;
-    private readonly int type = SBT_PRO2;
+    private readonly int type;
     private bool irq_pending_8bit, irq_pending_16bit;
     private byte dsp_state, dsp_cmd, dsp_cmd_len, dsp_cmd_in_pos;
     private readonly byte[] dsp_in = new byte[DSP_BUFSIZE];
@@ -114,9 +122,11 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
 
     private const string copyright_string = "COPYRIGHT (C) CREATIVE TECHNOLOGY LTD, 1992.";
 
-    public Dosbox072SoundBlaster(PcMachine m)
+    /// <param name="sb16">false: DOSBox 0.72 sbtype sbpro2 (DSP 3.02, IRQ 7); true: sbtype sb16 (DSP 4.05, IRQ 5, HDMA 5).</param>
+    public Dosbox072SoundBlaster(PcMachine m, bool sb16 = false)
     {
         _m = m;
+        type = sb16 ? SBT_16 : SBT_PRO2;
         _mix = new DosboxMixer(() => m.PitNow, 22050) { };
         _mix.OnEvent = OnEvent;
         _chan = _mix.AddChannel(SBLASTER_CallBack, 22050);
@@ -127,7 +137,7 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
     {
         // the SBLASTER constructor's part after the channel install
         ClearCallback();
-        hw_base = 0x220; hw_irq = 7; hw_dma8 = 1; hw_dma16 = 5;
+        hw_base = 0x220; hw_irq = type == SBT_16 ? 5 : 7; hw_dma8 = 1; hw_dma16 = 5;
         mixer_enabled = true; mixer_stereo = false;
         dsp_state = DSP_S_NORMAL;
         dsp_cmd = 0; dsp_out_used = dsp_out_pos = 0; read_data_last = 0; mode = MODE_NONE;
@@ -136,7 +146,7 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
         DSP_Reset();
         CTMIXER_Reset();
         speaker = false;
-        _chan.Enable(false);
+        _chan.Enable(type == SBT_16);   // "On SB16 the speaker flag does not affect actual speaker state."
         midi = false;
     }
 
@@ -403,6 +413,27 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
         DSP_DoDMATransfer(m, freq / (mixer_stereo ? 2 : 1), mixer_stereo);
     }
 
+    // GetDMAChannel: none for 0xff, nor on a closed second controller
+    private Dma8237.Channel? GetDMAChannel(int n) => n is < 0 or > 7 ? null : n >= 4 && !_m.Dma.SecondOpen ? null : _m.Dma[n];
+
+    private void DSP_PrepareDMA_New(int m, int length, bool autoinit, bool stereo)
+    {
+        int f = freq;
+        dma_total = length;   // equal length if data format and dma channel are both 16-bit or 8-bit
+        dma_autoinit = autoinit;
+        if (m == DSP_DMA_16)
+        {
+            if (hw_dma16 != 0xff)
+            {
+                dma_chan = hw_dma16;
+                if (GetDMAChannel(hw_dma16) == null) { dma_chan = hw_dma8; m = DSP_DMA_16_ALIASED; dma_total <<= 1; }
+            }
+            else { dma_chan = hw_dma8; m = DSP_DMA_16_ALIASED; dma_total <<= 1; }   // UNDOCUMENTED: length in 16-bit samples, double the 8-bit DMA length
+        }
+        else dma_chan = hw_dma8;
+        DSP_DoDMATransfer(m, f, stereo);
+    }
+
     private void DSP_AddData(byte val)
     {
         if (dsp_out_used < DSP_BUFSIZE)
@@ -513,7 +544,10 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
                 break;
             case >= 0xb0 and <= 0xcf:
                 if (!sb16) break;
-                break;   // (SB16 generic DMA: not on this card)
+                // Generic 8/16 bit DMA ("DSP_SetSpeaker(true); //SB16 always has speaker enabled" is commented out in 0.72)
+                dma_sign = (dsp_in[0] & 0x10) > 0;
+                DSP_PrepareDMA_New((dsp_cmd & 0x10) != 0 ? DSP_DMA_16 : DSP_DMA_8, 1 + dsp_in[1] + (dsp_in[2] << 8), (dsp_cmd & 0x4) > 0, (dsp_in[0] & 0x20) > 0);
+                break;
             case 0xd5:
                 if (!sb16) break;
                 goto case 0xd0;
@@ -670,7 +704,17 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
             case 0x26: SETPROVOL(mixer_fm, val); CTMIXER_UpdateVolumes(); break;
             case 0x28: SETPROVOL(mixer_cda, val); break;
             case 0x2e: SETPROVOL(mixer_lin, val); break;
-            case >= 0x30 and <= 0x3a: break;   // SB16 only
+            case 0x30: if (type == SBT_16) { mixer_master[0] = (byte)(val >> 3); CTMIXER_UpdateVolumes(); } break;
+            case 0x31: if (type == SBT_16) { mixer_master[1] = (byte)(val >> 3); CTMIXER_UpdateVolumes(); } break;
+            case 0x32: if (type == SBT_16) { mixer_dac[0] = (byte)(val >> 3); CTMIXER_UpdateVolumes(); } break;
+            case 0x33: if (type == SBT_16) { mixer_dac[1] = (byte)(val >> 3); CTMIXER_UpdateVolumes(); } break;
+            case 0x34: if (type == SBT_16) { mixer_fm[0] = (byte)(val >> 3); CTMIXER_UpdateVolumes(); } break;
+            case 0x35: if (type == SBT_16) { mixer_fm[1] = (byte)(val >> 3); CTMIXER_UpdateVolumes(); } break;
+            case 0x36: if (type == SBT_16) mixer_cda[0] = (byte)(val >> 3); break;
+            case 0x37: if (type == SBT_16) mixer_cda[1] = (byte)(val >> 3); break;
+            case 0x38: if (type == SBT_16) mixer_lin[0] = (byte)(val >> 3); break;
+            case 0x39: if (type == SBT_16) mixer_lin[1] = (byte)(val >> 3); break;
+            case 0x3a: if (type == SBT_16) mixer_mic = (byte)(val >> 3); break;
             case 0x80:
                 hw_irq = 0xff;
                 if ((val & 0x1) != 0) hw_irq = 2;
@@ -688,7 +732,7 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
                 else if ((val & 0x80) != 0) hw_dma16 = 7;
                 break;
             default:
-                if ((type == SBT_PRO1 || type == SBT_PRO2) && mixer_index == 0x0c) mixer_unhandled[mixer_index] = val;
+                if (((type == SBT_PRO1 || type == SBT_PRO2) && mixer_index == 0x0c) || (type == SBT_16 && mixer_index >= 0x3b && mixer_index <= 0x47)) mixer_unhandled[mixer_index] = val;
                 break;
         }
     }
@@ -708,7 +752,17 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
             case 0x26: return MAKEPROVOL(mixer_fm);
             case 0x28: return MAKEPROVOL(mixer_cda);
             case 0x2e: return MAKEPROVOL(mixer_lin);
-            case >= 0x30 and <= 0x3a: return 0xa;
+            case 0x30: return type == SBT_16 ? (byte)(mixer_master[0] << 3) : (byte)0xa;
+            case 0x31: return type == SBT_16 ? (byte)(mixer_master[1] << 3) : (byte)0xa;
+            case 0x32: return type == SBT_16 ? (byte)(mixer_dac[0] << 3) : (byte)0xa;
+            case 0x33: return type == SBT_16 ? (byte)(mixer_dac[1] << 3) : (byte)0xa;
+            case 0x34: return type == SBT_16 ? (byte)(mixer_fm[0] << 3) : (byte)0xa;
+            case 0x35: return type == SBT_16 ? (byte)(mixer_fm[1] << 3) : (byte)0xa;
+            case 0x36: return type == SBT_16 ? (byte)(mixer_cda[0] << 3) : (byte)0xa;
+            case 0x37: return type == SBT_16 ? (byte)(mixer_cda[1] << 3) : (byte)0xa;
+            case 0x38: return type == SBT_16 ? (byte)(mixer_lin[0] << 3) : (byte)0xa;
+            case 0x39: return type == SBT_16 ? (byte)(mixer_lin[1] << 3) : (byte)0xa;
+            case 0x3a: return type == SBT_16 ? (byte)(mixer_mic << 3) : (byte)0xa;
             case 0x80:
                 switch (hw_irq) { case 2: return 0x1; case 5: return 0x2; case 7: return 0x4; case 10: return 0x8; }
                 goto case 0x81;   // the original falls through into the DMA select
@@ -721,7 +775,7 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
             }
             case 0x82: return (byte)((irq_pending_8bit ? 0x1 : 0) | (irq_pending_16bit ? 0x2 : 0));
             default:
-                if ((type == SBT_PRO1 || type == SBT_PRO2) && mixer_index == 0x0c) return mixer_unhandled[mixer_index];
+                if (((type == SBT_PRO1 || type == SBT_PRO2) && mixer_index == 0x0c) || (type == SBT_16 && mixer_index >= 0x3b && mixer_index <= 0x47)) return mixer_unhandled[mixer_index];
                 return 0xa;
         }
     }
@@ -812,7 +866,7 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
 
     public void Save(BinaryWriter w)
     {
-        w.Write(1);
+        w.Write(type == SBT_16 ? 0x1601 : 1);   // the SB16 has its own version tag: an SB Pro state never loads into it (or back)
         _mix.Save(w);
         w.Write(freq); w.Write(dma_stereo); w.Write(dma_sign); w.Write(dma_autoinit); w.Write(dma_mode); w.Write(dma_rate); w.Write(dma_mul); w.Write(dma_total);
         w.Write(dma_left); w.Write(dma_min); w.Write(dma_remain_size); w.Write(dma_b8[0]); w.Write(dma_b8[1]); w.Write(dma_chan);
@@ -832,7 +886,7 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
 
     public void Load(BinaryReader r)
     {
-        if (r.ReadInt32() != 1) throw new InvalidDataException("Sound Blaster state version");
+        if (r.ReadInt32() != (type == SBT_16 ? 0x1601 : 1)) throw new InvalidDataException("Sound Blaster state version");
         _mix.Load(r);
         freq = r.ReadInt32(); dma_stereo = r.ReadBoolean(); dma_sign = r.ReadBoolean(); dma_autoinit = r.ReadBoolean(); dma_mode = r.ReadInt32(); dma_rate = r.ReadInt32(); dma_mul = r.ReadInt32(); dma_total = r.ReadInt32();
         dma_left = r.ReadInt32(); dma_min = r.ReadInt32(); dma_remain_size = r.ReadInt32(); dma_b8[0] = r.ReadByte(); dma_b8[1] = r.ReadByte(); dma_chan = r.ReadInt32();
