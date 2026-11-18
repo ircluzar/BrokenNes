@@ -25,7 +25,7 @@ public sealed partial class PcMachine
         else if (mode == 0x13) { Vga.SetRegs(Vga.Mode13); cols = 40; rows = 25; pageSize = 0; }
         else if (mode is 0x12 or 0x11) { Vga.SetRegs(Vga.Mode12); cols = 80; rows = 30; pageSize = 0; mode = 0x12; }
         else return;                                             // not offered: the mode stays as it was
-        Vga.S3?.LeaveEnhanced();
+        if (!_v86Video) Vga.S3?.LeaveEnhanced();
         if (mode == 0x13) Vga.LoadDefaultDac256(); else { Array.Clear(Vga.Palette); Vga.LoadEgaDac(); }
         if (!noClear)
         {
@@ -78,8 +78,8 @@ public sealed partial class PcMachine
         {
             int i = CellIndex(page, col, row) * 4;
             if (i + 1 >= Vga.RamSize) return;
-            Vga.Ram[i] = ch;
-            if (withAttr) Vga.Ram[i + 1] = attr;
+            TxtW(i, ch);
+            if (withAttr) TxtW(i + 1, attr);
             if (Vga.Picture != null) { Vga.Picture.NoteWrite(0xb8000u + (uint)(i >> 1), ch); if (withAttr) Vga.Picture.NoteWrite(0xb8001u + (uint)(i >> 1), attr); }   // the BIOS's write, as a bus write
             return;
         }
@@ -101,7 +101,7 @@ public sealed partial class PcMachine
     {
         if (!TextMode) return (0, 0);
         int i = CellIndex(page, col, row) * 4;
-        return (Vga.Ram[i], Vga.Ram[i + 1]);
+        return (TxtR(i), TxtR(i + 1));
     }
 
     private void PutPixel(int x, int y, byte c, bool xor)
@@ -155,9 +155,9 @@ public sealed partial class PcMachine
                     if (src >= top && src <= bottom)
                     {
                         int si = CellIndex(page, c, src) * 4;
-                        Vga.Ram[di] = Vga.Ram[si]; Vga.Ram[di + 1] = Vga.Ram[si + 1];
+                        TxtW(di, TxtR(si)); TxtW(di + 1, TxtR(si + 1));
                     }
-                    else { Vga.Ram[di] = 0x20; Vga.Ram[di + 1] = attr; }
+                    else { TxtW(di, 0x20); TxtW(di + 1, attr); }
                 }
             }
             return;
@@ -254,7 +254,7 @@ public sealed partial class PcMachine
         m[o] = 0; m[o + 1] = 0;
     }
 
-    private void Int10()
+    private void Int10Core()
     {
         Cpu.Mem[Rom + Int10Table] = 0; Cpu.Mem[Rom + Int10Table + 1] = 0;
         int page = (int)BH;
@@ -262,7 +262,6 @@ public sealed partial class PcMachine
         {
             case 0x00:
                 SetMode((int)AL); AL = (uint)(VMode == 0x13 ? 0x20 : 0x30);
-                if ((C.Flags & I386.VM) != 0) QueueModeReplay();
                 break;
             case 0x01:
             {
@@ -402,5 +401,51 @@ public sealed partial class PcMachine
                 CX = 16; DL = (uint)(Rows - 1);
                 break;
         }
+    }
+
+    // ---- INT 10h from a V86 VM (a DOS box or the system VM under Windows) ----
+    // A real video BIOS reaches the card only through OUTs and the VM's own B8000 mapping, and Windows 98's VDD virtualizes both
+    // (a background VM's mode set must not touch the screen Windows is drawing). So in V86 mode the C# service runs, its register
+    // changes become replayed OUTs (the VDD sees them), and the card's registers (and video memory, for mode/font sets) are put back.
+    private bool _v86Video;
+    private byte TxtR(int i) => _v86Video ? Lin8(0xb8000u + (uint)((i >> 2) * 2 + (i & 1))) : Vga.Ram[i];
+    private void TxtW(int i, byte v) { if (_v86Video) LinW8(0xb8000u + (uint)((i >> 2) * 2 + (i & 1)), v); else Vga.Ram[i] = v; }
+
+    private void Int10()
+    {
+        if ((C.Flags & I386.VM) == 0) { Int10Core(); return; }
+        var v = Vga;
+        byte[] sr = (byte[])v.Sr.Clone(), gr = (byte[])v.Gr.Clone(), cr = (byte[])v.Cr.Clone(), ar = (byte[])v.Ar.Clone(), pal = (byte[])v.Palette.Clone();
+        byte msr = v.Msr, sri = v.SrIndex, gri = v.GrIndex, cri = v.CrIndex, ari = v.ArIndex, aff = v.ArFlipFlop;
+        bool memSet = AH == 0x00 || AH == 0x11;
+        byte[]? ram = memSet ? (byte[])v.Ram.Clone() : null;
+        int mode = (int)AL, fn = (int)AH;
+        _v86Video = true;
+        try { Int10Core(); }
+        finally { _v86Video = false; }
+        // the replay table: register writes that move the VDD's (or, passed through, the card's) copy to the new state
+        var m = Cpu.Mem; uint o = Rom + Int10Table, end = Rom + Int10Replay - 4;
+        void E(int port, int val) { if (o >= end) return; m[o] = (byte)port; m[o + 1] = (byte)(port >> 8); m[o + 2] = (byte)val; o += 3; }
+        bool srD = false; for (int i = 0; i < 5; i++) srD |= sr[i] != v.Sr[i];
+        if (srD) { E(0x3c4, 0); E(0x3c5, 1); for (int i = 1; i < 5; i++) if (sr[i] != v.Sr[i]) { E(0x3c4, i); E(0x3c5, v.Sr[i]); } }
+        if (msr != v.Msr) E(0x3c2, v.Msr);
+        if (srD) { E(0x3c4, 0); E(0x3c5, v.Sr[0]); }
+        bool crLow = false; for (int i = 0; i < 8; i++) crLow |= cr[i] != v.Cr[i];
+        if (crLow) { E(0x3d4, 0x11); E(0x3d5, v.Cr[0x11] & 0x7f); }
+        for (int i = 0; i < 25; i++) if (cr[i] != v.Cr[i] || (crLow && i == 0x11)) { E(0x3d4, i); E(0x3d5, v.Cr[i]); }
+        for (int i = 0; i < 9; i++) if (gr[i] != v.Gr[i]) { E(0x3ce, i); E(0x3cf, v.Gr[i]); }
+        bool arD = false; for (int i = 0; i < 21; i++) arD |= ar[i] != v.Ar[i];
+        if (arD) { E(0x3da | 0x8000, 0); for (int i = 0; i < 21; i++) if (ar[i] != v.Ar[i]) { E(0x3c0, i); E(0x3c0, v.Ar[i]); } E(0x3c0, 0x20); }
+        for (int i = 0; i < 256; i++)
+            if (pal[i * 3] != v.Palette[i * 3] || pal[i * 3 + 1] != v.Palette[i * 3 + 1] || pal[i * 3 + 2] != v.Palette[i * 3 + 2])
+            { E(0x3c8, i); E(0x3c9, v.Palette[i * 3]); E(0x3c9, v.Palette[i * 3 + 1]); E(0x3c9, v.Palette[i * 3 + 2]); }
+        m[o] = 0; m[o + 1] = 0;
+        // put the card back: the replay (through the VDD) is now the only way the change reaches it
+        Array.Copy(sr, v.Sr, sr.Length); Array.Copy(gr, v.Gr, gr.Length); Array.Copy(cr, v.Cr, cr.Length); Array.Copy(ar, v.Ar, ar.Length); Array.Copy(pal, v.Palette, pal.Length);
+        v.Msr = msr; v.SrIndex = sri; v.GrIndex = gri; v.CrIndex = cri; v.ArIndex = ari; v.ArFlipFlop = aff;
+        if (ram != null) Array.Copy(ram, v.Ram, ram.Length);
+        // a text mode set clears the VM's own text buffer (its B8000, wherever the VDD maps it)
+        if (fn == 0x00 && (mode & 0x80) == 0 && (mode & 0x7f) is <= 3 or 7)
+            for (uint i = 0; i < 0x4000; i += 2) { LinW8(0xb8000 + i, 0x20); LinW8(0xb8001 + i, 0x07); }
     }
 }

@@ -363,7 +363,9 @@ public sealed partial class PcMachine
     private void WaitForKey()
     {
         C.NextIp = C.Ip;
-        C.Halt = true;
+        // In V86 mode (a DOS VM under Windows) a native halt hides the wait from the VMM: the VM never traps, so Windows
+        // cannot switch away from it (setup froze on a hidden VM's INT 16h). Spin instead; the timer preempts it.
+        if ((C.Flags & I386.VM) == 0) C.Halt = true;
         C.EndBatch();
     }
 
