@@ -37,6 +37,8 @@ public sealed class PcSession : IConsoleSession
         if (!preset.IsClassic) model = preset.Cpu;
         _model = model != null && !model.Legacy ? model : null;
         _m = preset.IsClassic ? new PcMachine(PcMachine.DefaultMemory, _model) : new PcMachine(preset.Config, _model, preset.Video);
+        // the network card's cable: the built-in NAT (DHCP, DNS, the HTTPS bridge) only when asked for (BROKENNES_X86_NET=1); unplugged by default
+        if (_m.Nic != null && Environment.GetEnvironmentVariable("BROKENNES_X86_NET") == "1") _m.Nic.Link = _nat = new PcNat();
         Title = fileName.Length > 0 ? Path.GetFileNameWithoutExtension(fileName) : "x86 disk";
         if (PcDisks.IsDosProgram(image, fileName))
         {
@@ -290,5 +292,6 @@ public sealed class PcSession : IConsoleSession
         catch (Exception e) when (e is not InvalidDataException) { _m.LoadState(before); throw new InvalidDataException("the x86 state is damaged: " + e.Message); }
     }
 
-    public void Dispose() { }
+    private PcNat? _nat;
+    public void Dispose() { _nat?.Dispose(); }
 }

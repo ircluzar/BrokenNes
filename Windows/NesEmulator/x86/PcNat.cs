@@ -417,7 +417,7 @@ public sealed class PcNat : INetLink, IDisposable
             }
             if (host.EndsWith(":80")) host = host[..^3];
             if (host.Length == 0) { host = $"{_k.rip >> 24}.{(_k.rip >> 16) & 255}.{(_k.rip >> 8) & 255}.{_k.rip & 255}"; }
-            _n.Log?.Invoke($"http: {method} http://{host}{path}");
+            _n.Log?.Invoke($"http: {method} http://{host}{path} [{headers.FirstOrDefault(h => h.Item1.Equals("User-Agent", StringComparison.OrdinalIgnoreCase)).Item2}]");
             Task.Run(async () =>
             {
                 byte[] resp;
@@ -438,13 +438,22 @@ public sealed class PcNat : INetLink, IDisposable
         private static readonly HashSet<string> DropOut = new(StringComparer.OrdinalIgnoreCase)
         { "Connection", "Keep-Alive", "Transfer-Encoding", "Content-Length", "Content-Encoding", "Strict-Transport-Security", "Content-Security-Policy", "Alt-Svc", "Upgrade" };
 
+        // (an older browser's identity: sites then send their classic HTML pages, e.g. Google's homepage with its PNG logo and a plain form)
+        public const string UpstreamUserAgent = "Mozilla/5.0 (Windows NT 6.1; rv:40.0) Gecko/20100101 Firefox/40.0";
+
         private static async Task<byte[]> Fetch(string method, string host, string path, List<(string, string)> headers, byte[] body)
         {
             HttpResponseMessage? r = null; Exception? last = null;
             foreach (var scheme in new[] { "https", "http" })
             {
                 var m = new HttpRequestMessage(new HttpMethod(method), $"{scheme}://{host}{path}");
-                foreach (var (k, v) in headers) if (!Hop.Contains(k)) m.Headers.TryAddWithoutValidation(k, v.Replace("http://", "https://"));
+                foreach (var (k, v) in headers)
+                {
+                    if (Hop.Contains(k)) continue;
+                    // sites refuse 1990s browsers outright ("update your browser"): upstream, the bridge speaks as a current browser
+                    if (k.Equals("User-Agent", StringComparison.OrdinalIgnoreCase) && UpstreamUserAgent != null) { m.Headers.TryAddWithoutValidation(k, UpstreamUserAgent); continue; }
+                    m.Headers.TryAddWithoutValidation(k, v.Replace("http://", "https://"));
+                }
                 if (body.Length > 0 || method is "POST" or "PUT")
                 {
                     m.Content = new ByteArrayContent(body);
@@ -459,6 +468,15 @@ public sealed class PcNat : INetLink, IDisposable
             string ctype = r.Content.Headers.ContentType?.ToString() ?? "";
             if (ctype.StartsWith("text/") || ctype.Contains("javascript") || ctype.Contains("json") || ctype.Contains("xml"))
                 data = Downgrade(data);
+            // a 1990s browser (MSIE 3-6) cannot run today's scripts: every page would open with "script error" boxes, so its pages come without them
+            var ua = headers.FirstOrDefault(h => h.Item1.Equals("User-Agent", StringComparison.OrdinalIgnoreCase)).Item2 ?? "";
+            if (ctype.StartsWith("text/html") && System.Text.RegularExpressions.Regex.IsMatch(ua, @"MSIE [3-6]\."))
+            {
+                var t = Encoding.Latin1.GetString(data);
+                t = System.Text.RegularExpressions.Regex.Replace(t, @"(?is)<script\b.*?</script\s*>", "");
+                t = System.Text.RegularExpressions.Regex.Replace(t, @"(?i)\son(load|click|submit|mouse\w+|focus|blur|change|key\w+)\s*=\s*(""[^""]*""|'[^']*')", "");
+                data = Encoding.Latin1.GetBytes(t);
+            }
             var sb = new StringBuilder();
             sb.Append($"HTTP/1.0 {(int)r.StatusCode} {r.ReasonPhrase}\r\n");
             foreach (var h in r.Headers.Concat(r.Content.Headers))
@@ -474,6 +492,8 @@ public sealed class PcNat : INetLink, IDisposable
             }
             sb.Append($"Content-Length: {data.Length}\r\nConnection: close\r\n\r\n");
             var head = Encoding.Latin1.GetBytes(sb.ToString());
+            if (Environment.GetEnvironmentVariable("X86_NETDUMP") is string dump)   // debug: what the bridge sent the guest
+                try { System.IO.File.WriteAllBytes(System.IO.Path.Combine(dump, $"bridge_{DateTime.UtcNow.Ticks}.txt"), head.Concat(data).ToArray()); } catch { }
             var res = new byte[head.Length + data.Length];
             head.CopyTo(res, 0); data.CopyTo(res, head.Length);
             return res;
