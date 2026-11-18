@@ -59,6 +59,7 @@ internal static class X86BootCli
         var video = Arg(args, "--video") is string vs ? (vs.ToLowerInvariant() is "s3" or "s3trio64" ? PcVideo.S3Trio64 : PcVideo.Vga) : preset?.Video ?? PcVideo.Vga;
         var m = cfg == PcConfig.Default ? new PcMachine(PcMachine.DefaultMemory, model, video) : new PcMachine(cfg, model, video);
         if (Arg(args, "--ips") is string ips) m.InstructionsPerSecond = long.Parse(ips);
+        if (Arg(args, "--wav") != null) _wav = new System.IO.MemoryStream();
         if (Arg(args, "--apu") is string apu && !PcSound.Apply(m, apu)) { Console.WriteLine($"x86boot: no sound card {apu}"); return 1; }
         if (Arg(args, "--hdd") is string h) m.Hdd[0] = new DiskImage(File.ReadAllBytes(h), false);
         if (Arg(args, "--hdd2") is string h2) m.Hdd[1] = new DiskImage(File.ReadAllBytes(h2), false);
@@ -180,7 +181,7 @@ internal static class X86BootCli
             for (; n < frames && changes < 400; n++)
             {
                 uint p0 = LinPhys(m, wa);
-                if (!have && (p0 == 0xffffffff || (m.Cpu.Cr0 & 0x80000000) == 0)) { if (!m.RunFrame()) break; continue; }
+                if (!have && (p0 == 0xffffffff || (m.Cpu.Cr0 & 0x80000000) == 0)) { if (!Frame(m)) break; continue; }
                 // the frame in slices
                 long end = m.Clock + m.InstructionsPerSecond / 70;
                 while (m.Clock < end && m.Stopped == null)
@@ -314,6 +315,7 @@ internal static class X86BootCli
         Console.WriteLine(Screen(m).TrimEnd());
         Console.WriteLine("----------------");
         if (shot != null) X86Shots.SavePng(m.Vga, shot);
+        if (Arg(args, "--wav") is string wavp) WriteWav(wavp);
         if (Arg(args, "--savestate") is string ss) File.WriteAllBytes(ss, m.SaveState());
         if (excKeep > 0)
         {
@@ -331,12 +333,35 @@ internal static class X86BootCli
         return found && m.Stopped == null ? 0 : 1;
     }
 
+    /// <summary>--wav FILE: the sound card's output (44.1 kHz stereo 16-bit) is collected after every frame and written at the end.</summary>
+    private static System.IO.MemoryStream? _wav;
+    private static readonly short[] _wavBuf = new short[44100];
+    private static bool Frame(PcMachine m)
+    {
+        bool r = m.RunFrame();
+        if (_wav != null && m.Card is { } c)
+        {
+            c.Advance();
+            int n = Math.Min(c.Pending, _wavBuf.Length) & ~1;
+            if (n > 0) { Array.Clear(_wavBuf, 0, n); int got = c.MixInto(_wavBuf, n); for (int i = 0; i < got; i++) { _wav.WriteByte((byte)_wavBuf[i]); _wav.WriteByte((byte)(_wavBuf[i] >> 8)); } }
+        }
+        return r;
+    }
+    private static void WriteWav(string path)
+    {
+        var d = _wav!.ToArray(); using var w = new BinaryWriter(File.Create(path));
+        w.Write("RIFF"u8); w.Write(36 + d.Length); w.Write("WAVEfmt "u8); w.Write(16); w.Write((short)1); w.Write((short)2); w.Write(44100); w.Write(44100 * 4); w.Write((short)4); w.Write((short)16);
+        w.Write("data"u8); w.Write(d.Length); w.Write(d);
+        int peak = 0; for (int i = 0; i + 1 < d.Length; i += 2) peak = Math.Max(peak, Math.Abs((int)(short)(d[i] | d[i + 1] << 8)));
+        Console.WriteLine($"x86boot: wav {path}: {d.Length / 4} samples, peak {peak}");
+    }
+
     public static int RunUntil(PcMachine m, string? until, int frames, bool screenOnly = false)
     {
         int n = 0;
         for (; n < frames; n++)
         {
-            if (!m.RunFrame()) break;
+            if (!Frame(m)) break;
             if (until != null && n % 10 == 0 && (Screen(m).Contains(until) || (!screenOnly && m.Teletype.ToString().Contains(until)))) break;
         }
         return n;
@@ -380,34 +405,34 @@ internal static class X86BootCli
             if (ch == '{' && ci + 1 < text.Length && text[ci + 1] != '{' && text.IndexOf('}', ci) is int ce and > 0)
             {
                 string tok = text[(ci + 1)..ce].ToLowerInvariant(); ci = ce;
-                if (tok.StartsWith("m:")) { var mv = tok[2..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), mv.Length > 2 ? int.Parse(mv[2]) : 0); m.RunFrame(); m.RunFrame(); continue; }   // {m:dx,dy[,buttons]}: the PS/2 mouse
-                if (tok.StartsWith("click:")) { var mv = tok[6..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), 0); m.RunFrame(); m.RunFrame(); m.Kbc.MouseInput(0, 0, 1); m.RunFrame(); m.RunFrame(); m.Kbc.MouseInput(0, 0, 0); m.RunFrame(); m.RunFrame(); continue; }   // {click:dx,dy}: move then left click
+                if (tok.StartsWith("m:")) { var mv = tok[2..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), mv.Length > 2 ? int.Parse(mv[2]) : 0); Frame(m); Frame(m); continue; }   // {m:dx,dy[,buttons]}: the PS/2 mouse
+                if (tok.StartsWith("click:")) { var mv = tok[6..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), 0); Frame(m); Frame(m); m.Kbc.MouseInput(0, 0, 1); Frame(m); Frame(m); m.Kbc.MouseInput(0, 0, 0); Frame(m); Frame(m); continue; }   // {click:dx,dy}: move then left click
                 if (tok.StartsWith("save:")) { File.WriteAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5), m.SaveState()); continue; }   // {save:PATH}: a savestate right here (the run goes on)
-                if (tok.StartsWith("wait:")) { int wn = int.Parse(tok[5..]); for (int q = 0; q < wn; q++) m.RunFrame(); continue; }
+                if (tok.StartsWith("wait:")) { int wn = int.Parse(tok[5..]); for (int q = 0; q < wn; q++) Frame(m); continue; }
                 var parts = tok.Split('+'); var mods = new List<byte[]>();
                 foreach (var p in parts[..^1]) mods.Add(p switch { "ctrl" => new byte[] { 0x1d }, "alt" => new byte[] { 0x38 }, "shift" => new byte[] { 0x2a }, "win" => new byte[] { 0xe0, 0x5b }, _ => throw new ArgumentException("key mod " + p) });
                 byte[] key = TokenKey(parts[^1]);
-                foreach (var md in mods) { m.Kbc.KeyBytes(md); m.RunFrame(); }
-                m.Kbc.KeyBytes(key); m.RunFrame();
-                var brk = (byte[])key.Clone(); brk[^1] |= 0x80; m.Kbc.KeyBytes(brk); m.RunFrame();
-                for (int q = mods.Count - 1; q >= 0; q--) { var mb = (byte[])mods[q].Clone(); mb[^1] |= 0x80; m.Kbc.KeyBytes(mb); m.RunFrame(); }
-                m.RunFrame();
+                foreach (var md in mods) { m.Kbc.KeyBytes(md); Frame(m); }
+                m.Kbc.KeyBytes(key); Frame(m);
+                var brk = (byte[])key.Clone(); brk[^1] |= 0x80; m.Kbc.KeyBytes(brk); Frame(m);
+                for (int q = mods.Count - 1; q >= 0; q--) { var mb = (byte[])mods[q].Clone(); mb[^1] |= 0x80; m.Kbc.KeyBytes(mb); Frame(m); }
+                Frame(m);
                 continue;
             }
             if (ch == '{') ci++;
-            if (ch == '\x05') { m.Kbc.KeyBytes(0xe0, 0x5b); m.Kbc.KeyBytes(0xe0, 0xdb); m.RunFrame(); m.RunFrame(); continue; }   // \w in --step: the Windows key
+            if (ch == '\x05') { m.Kbc.KeyBytes(0xe0, 0x5b); m.Kbc.KeyBytes(0xe0, 0xdb); Frame(m); Frame(m); continue; }   // \w in --step: the Windows key
             if (ch is >= '\x01' and <= '\x04')   // arrow keys (\u \d \l \r in --step): E0-prefixed set-1 codes
             {
                 byte c = ch switch { '\x01' => 0x48, '\x02' => 0x50, '\x03' => 0x4b, _ => 0x4d };
                 m.Kbc.KeyBytes(0xe0, c); m.Kbc.KeyBytes(0xe0, (byte)(c | 0x80));
-                m.RunFrame(); m.RunFrame();
+                Frame(m); Frame(m);
                 continue;
             }
             if (!Keys.TryGetValue(ch, out var k)) continue;
             if (k.shift) m.Kbc.KeyBytes(0x2a);
             m.Kbc.KeyBytes(k.code, (byte)(k.code | 0x80));
             if (k.shift) m.Kbc.KeyBytes(0xaa);
-            m.RunFrame(); m.RunFrame();
+            Frame(m); Frame(m);
         }
     }
 
