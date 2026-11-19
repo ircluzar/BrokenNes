@@ -24,6 +24,7 @@ marks the milestone and writes the raw state FILE. So retries (`back`) never lea
   python -I run.py probe --ch 1-2 [HOLD] [--vals Up,Right,A]  what each button does here (maps, menus): settle time, RAM changes, a picture each
   python -I run.py explore --ch 1-2 [HOLD] --vals Up,Down,Left,Right,A --key mapx,mapy --want 'mode != 0' [--apply]
                                                      breadth-first search over button presses (maps, menus) to a state where --want holds
+  python -I run.py search ... --want 'air == 0' --all   REACH: every distinct spot the jump family lands on (x, y, frames)
   python -I run.py discover --ch 1-2 [N]            find RAM variables (x, y/air, speed, timers) by input experiments from here
   python -I run.py tree --ch 1-2                     checkpoints as a branch tree (which ones are on the current line)
   python -I run.py finish --ch 1-2 [--note TEXT]     replay -> seg/<ch>.bnm + state/<ch>.raw.state + thumb
@@ -116,6 +117,7 @@ def main():
     ap.add_argument("--settle", type=int, default=0, help="search: the want must still be true this many frames later (no jump-apex false hits)")
     ap.add_argument("--patience", type=int, default=0, help="advance: when stuck, wait 30 frames and retry up to N times (auto-scrollers)")
     ap.add_argument("--stop-when", dest="stopwhen", help="step: also stop early when this expression is true")
+    ap.add_argument("--all", action="store_true", help="search: list every distinct landing spot (reach map) instead of the fastest")
     ap.add_argument("--key", help="explore: the RAM names that tell states apart (default: all)")
     ap.add_argument("--grid", action="store_true", help="step/look/peek: also print the text grid of the screen")
     ap.add_argument("--cell", type=int, default=8, help="grid: cell size in pixels (8 default; 16 = a quarter of the text)")
@@ -588,6 +590,16 @@ def search(b, r, cfg, pkg, ch, a):
         print(f"search: no try reached the goal without dying: {died} died, {len(missed)} alive but never met --want. Back where you were.")
         for env, ram in missed[:3]: print("  alive:", env, " ".join(f"{k}={v}" for k, v in (ram or {}).items()))
         return
+    if getattr(a, "all", False):   # layer 4 (reach): every distinct place the tries land, not just the fastest
+        spots = {}
+        for t, env, _, ram in results:
+            ram = ram or {}
+            key = tuple((k, int(v) // 16) for k, v in ram.items() if k in ("x", "y"))
+            if key not in spots or t < spots[key][0]: spots[key] = (t, env, ram)
+        print(f"reach: {len(spots)} distinct landing spots ({len(results)} live tries, {died} died):")
+        for key, (t, env, ram) in sorted(spots.items(), key=lambda kv: [-v for _, v in kv[0]]):
+            print(f"  {' '.join(f'{k}={ram[k]}' for k, _ in key)}  in {t} frames  {env}")
+        if not a.apply: return
     for t, env, _, ram in results[:3]:
         print(f"{t} frames  {env}  then " + " ".join(f"{k}={v}" for k, v in (ram or {}).items()))
     if a.apply:
