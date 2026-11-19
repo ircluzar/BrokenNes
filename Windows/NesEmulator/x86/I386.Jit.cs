@@ -59,6 +59,8 @@ public sealed partial class I386
     private static readonly int JitMaxInstr = int.TryParse(Environment.GetEnvironmentVariable("X86_JITMAX"), out int jm) ? jm : 128;
     /// <summary>X86_NOKEEPSEGS: reload the segments after every out-of-line instruction (A/B of DcKeepsSegs).</summary>
     private static readonly bool NoKeepSegs = Environment.GetEnvironmentVariable("X86_NOKEEPSEGS") != null;
+    /// <summary>X86_NOHELPEROPS: flag ops and stack ops out of line again (A/B).</summary>
+    private static readonly bool NoHelperOps = Environment.GetEnvironmentVariable("X86_NOHELPEROPS") != null;
     private static readonly int JitHot = int.TryParse(Environment.GetEnvironmentVariable("X86_JITHOT"), out int jh) ? jh : 32;
     private JitCode? _jitCur;   // the block running now
     private readonly JitEntry?[] _je = new JitEntry?[1 << JitBits];
@@ -73,8 +75,11 @@ public sealed partial class I386
     public IEnumerable<string> JitTop(int n) => _jitAll.OrderByDescending(b => b.Instrs).Take(n)
         .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} ns/instr {b.Ticks * 1e9 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, b.Instrs):F2} | {Convert.ToHexString(b.Bytes)}");
     private readonly long[] _interpOps = new long[65536];
+    public readonly Dictionary<uint, long> InterpAt = new();
+    /// <summary>JITSTAT: why an interpreted address is not compiled: its entry's state.</summary>
+    public string JitWhy(uint pa) { var en = _je[JitIndex(pa)]; return en == null ? "no entry" : en.Start != pa ? $"slot holds {en.Start:X8}" : $"c16 {en.C16} pg {en.Pg} visits {en.Visits} failed {en.Failed} pending {en.Pending} code {(en.Code != null)}"; }
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void JitCountInterp(uint pa) { if (pa + 2 < MemSize) { int k = Mem[pa] << 8 | Mem[pa + 1]; if (++_interpOps[k] == 100000 && JitWatch == k) Console.Error.WriteLine($"jw: op {k:X4} at {pa:X8}"); } }
+    private void JitCountInterp(uint pa) { InterpAt[pa] = InterpAt.GetValueOrDefault(pa) + 1; if (pa + 2 < MemSize) { int k = Mem[pa] << 8 | Mem[pa + 1]; if (++_interpOps[k] == 100000 && JitWatch == k) Console.Error.WriteLine($"jw: op {k:X4} at {pa:X8}"); } }
     private readonly long[] _oolOps = new long[65536];
     /// <summary>The out-of-line instructions inside compiled blocks (JInterp), by first two bytes.</summary>
     public IEnumerable<string> OutOfLineTop(int n) => Enumerable.Range(0, 65536).Where(i => _oolOps[i] > 0).OrderByDescending(i => _oolOps[i]).Take(n)
@@ -220,6 +225,14 @@ public sealed partial class I386
             default: Flags |= DF; return true;
         }
     }
+    /// <summary>PUSHF / PUSHA / POPA / PUSH Sreg through the interpreter's own code (after JPrep: the operand size); false = a fault.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool JStk(int op) => op switch
+    {
+        0x9c => PushF(), 0x60 => Pusha(), 0x61 => Popa(),
+        0x06 => PushSeg(SEG_ES), 0x0e => PushSeg(SEG_CS), 0x16 => PushSeg(SEG_SS), 0x1e => PushSeg(SEG_DS),
+        0x1a0 => PushSeg(SEG_FS), _ => PushSeg(SEG_GS),
+    };
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JMovSeg(int seg, uint v) => LoadSegChecked(seg, v);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegSel(int seg) => SegSel[seg];
     /// <summary>A REP / REPNE string instruction (after JPrep), the interpreter's own loop (it charges the iterations to Cycle). False = a fault.</summary>
@@ -361,7 +374,7 @@ public sealed partial class I386
         var d = new Dictionary<string, MethodInfo>();
         foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
-                     "JXlat", "JFlagOp", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
+                     "JXlat", "JFlagOp", "JStk", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
         return d;
     });
@@ -999,6 +1012,15 @@ public sealed partial class I386
             {
                 case DK_MOVGE:
                     ReadE(); Stl(t); StReg(bits, e.Reg, () => Ld(t));
+                    break;
+                case DK_STKOP:
+                    Prep();
+                    Ld0(); I4(op); Call("JStk"); FailIfFalse();
+                    if (op != 0x61)
+                    {   // the store went to SS base + the new ESP (PUSHA: eight of them)
+                        Ld0(); I4(SEG_SS); Call("JSegBase"); LdReg(32, 4); Ld(spm); Op(OpCodes.And); Op(OpCodes.Add); Stl(la);
+                        SmcCheck(la, (e.O16 ? 2 : 4) * (op == 0x60 ? 8 : 1));
+                    }
                     break;
                 case DK_FLAGOP:
                     if (op == 0xfa) Prep();   // (CLI may fault)

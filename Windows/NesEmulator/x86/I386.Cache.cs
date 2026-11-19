@@ -26,7 +26,7 @@ public sealed partial class I386
     private const byte DK_SLOW = 0, DK_MOVEG = 1, DK_MOVGE = 2, DK_ALUEG = 3, DK_ALUGE = 4, DK_ALUAI = 5, DK_GRP1 = 6, DK_GRP2 = 7,
         DK_TESTEG = 8, DK_G3TEST = 9, DK_GRP3 = 10, DK_MOVEI = 11, DK_LEA = 12, DK_MOVRI = 13, DK_INC = 14, DK_DEC = 15, DK_PUSH = 16,
         DK_POP = 17, DK_JCC = 18, DK_JMP = 19, DK_CALL = 20, DK_RET = 21,
-        DK_INTERP = 22, DK_MOVX = 23, DK_CBW = 24, DK_SETCC = 25, DK_IMUL = 26, DK_GRP5 = 27, DK_LEAVE = 28, DK_STOS = 29, DK_MOVSR = 30, DK_SRMOV = 31, DK_STR = 32, DK_REPSTR = 33, DK_FPU = 34, DK_XCHG = 35, DK_FLAGOP = 36;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
+        DK_INTERP = 22, DK_MOVX = 23, DK_CBW = 24, DK_SETCC = 25, DK_IMUL = 26, DK_GRP5 = 27, DK_LEAVE = 28, DK_STOS = 29, DK_MOVSR = 30, DK_SRMOV = 31, DK_STR = 32, DK_REPSTR = 33, DK_FPU = 34, DK_XCHG = 35, DK_FLAGOP = 36, DK_STKOP = 37;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
 
     /// <summary>Decode the instruction at <paramref name="paddr"/> (in a fast-fetch code page) into <paramref name="e"/>; Kind 0 if it is not
     /// one of the cached forms.</summary>
@@ -291,6 +291,7 @@ public sealed partial class I386
                 if (b is 0xb6 or 0xb7 or 0xbe or 0xbf) { kind = DK_MOVX; bits = (b & 1) == 0 ? 8 : 16; op = b >= 0xbe ? 1 : 0; modrm = true; break; }   // MOVZX / MOVSX: Bits = the source's
                 if ((b & 0xf0) == 0x90) { kind = DK_SETCC; bits = 8; op = (int)b; modrm = true; break; }
                 if (b == 0xaf) { kind = DK_IMUL; modrm = true; op = 0; break; }   // IMUL r, rm
+                if (b is 0xa0 or 0xa8 && !NoHelperOps) { kind = DK_STKOP; op = 0x100 | (int)b; break; }   // PUSH FS / GS
                 return;
             case 0x69: kind = DK_IMUL; modrm = true; immBits = v; op = 1; break;   // IMUL r, rm, imm
             case 0x6b: kind = DK_IMUL; modrm = true; immBits = 8; immSext8 = true; op = 1; break;
@@ -309,7 +310,8 @@ public sealed partial class I386
             case 0xa8: case 0xa9:                                        // TEST AL / eAX, imm: TEST Eb/Ev, imm on register 0 (the F6 / F7 /0 form)
                 kind = DK_G3TEST; bits = b == 0xa8 ? 8 : v; immBits = bits; e.Mod = 3; e.Reg = 0; e.Rm = 0; e.Base = 8; e.Index = 8; e.Seg = -1; break;
             case 0x90: kind = DK_JMP; immBits = 0; break;
-            case 0xf5: case 0xf8: case 0xf9: case 0xfa: case 0xfc: case 0xfd: kind = DK_FLAGOP; op = (int)b; break;   // CMC CLC STC CLI CLD STD (STI: out of line, it opens the interrupt window)
+            case 0x9c: case 0x60: case 0x61: case 0x06: case 0x0e: case 0x16: case 0x1e: if (NoHelperOps) return; kind = DK_STKOP; op = (int)b; break;   // PUSHF PUSHA POPA PUSH Sreg: the interpreter's own code through JStk
+            case 0xf5: case 0xf8: case 0xf9: case 0xfa: case 0xfc: case 0xfd: if (NoHelperOps) return; kind = DK_FLAGOP; op = (int)b; break;   // CMC CLC STC CLI CLD STD (STI: out of line, it opens the interrupt window)
             case >= 0x91 and <= 0x97: kind = DK_XCHG; op = (int)(b & 7); e.Mod = 3; e.Reg = 0; e.Rm = (byte)(b & 7); e.Base = 8; e.Index = 8; e.Seg = -1; break;   // XCHG eAX, r
             case 0x86: kind = DK_XCHG; bits = 8; modrm = true; break;   // XCHG r, r only (a memory operand: the ordinary path, it is locked)
             case 0x87: kind = DK_XCHG; modrm = true; break;                // NOP: a jump to the next instruction (F3 90 PAUSE: the REP path above returns)
