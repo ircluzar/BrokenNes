@@ -60,7 +60,7 @@ internal static class RomTestCli
                     case "--ppu": ppu = args[++i]; break;
                     case "--apu": apu = args[++i]; break;
                     case "--frames": frames = int.Parse(args[++i]); break;
-                    case "--input": inputScript = args[++i]; break;
+                    case "--input": inputScript = InputArg(args[++i]); break;
                     case "--input-latch": { var lm = args[++i].ToLowerInvariant(); if (lm == "line240") latch240 = true; else if (lm == "line241") { latch240 = true; latch241 = true; } else if (lm != "frame") throw new FormatException($"--input-latch expects frame|line240|line241, got '{lm}'"); break; }
                     case "--out": outPath = args[++i]; break;
                     case "--json": json = true; break;
@@ -278,6 +278,11 @@ internal static class RomTestCli
         "off" or "false" or "0" or "no" => false,
         _ => throw new FormatException($"expected on|off, got '{v}'"),
     };
+
+    /// <summary>"--input @FILE": the script is read from FILE (a 40-minute script is ~55k characters, over Windows' 32767-character
+    /// command line). Anything else is the script itself.</summary>
+    internal static string? InputArg(string? v) =>
+        v is { Length: > 1 } && v[0] == '@' && File.Exists(v[1..]) ? File.ReadAllText(v[1..]).Trim() : v;
 
     internal static List<InputStep> ParseInputScript(string? script)
     {

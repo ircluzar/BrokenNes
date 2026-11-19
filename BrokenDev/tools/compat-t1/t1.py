@@ -118,6 +118,16 @@ def direct_cmd(cmd):
 
 
 def run(cmd, timeout, env=None, cwd=None):
+    """one launch; a timeout is tried once more with 3x the time before it counts (a loaded fleet PC ran BreakThru's 1200-frame
+    boot probe past 120 s and the 3-minute deep run graded it Broken "boot hung" while it plays fine)"""
+    r = run_once(cmd, timeout, env, cwd)
+    if r[4] and os.environ.get("BNT1_TIMEOUT_RETRY", "1") != "0":
+        r2 = run_once(cmd, timeout * 3, env, cwd)
+        return r2[:3] + (r[3] + r2[3], r2[4])
+    return r
+
+
+def run_once(cmd, timeout, env=None, cwd=None):
     t = time.time()
     cmd = direct_cmd(cmd)
     n = len(subprocess.list2cmdline(cmd))
@@ -211,11 +221,67 @@ def colours(img):
 
 
 # ------------------------------------------------------------------------------------------------ input scripts
-def generic_script(start, minutes):
+SCRIPT_INLINE = 4000   # longer scripts go through a file: "--input @FILE" (Workshop) / BNT1_INPUT_FILE (the reference luas).
+                       # Every 40-minute deep run (2026-11-18, 2585 titles) failed with "command line 55k characters" before this.
+
+
+def script_file(script, out_dir):
+    """the script as a file in out_dir when it is too long for a command line / environment variable, else None"""
+    if not script or len(script) <= SCRIPT_INLINE:
+        return None
+    os.makedirs(out_dir, exist_ok=True)
+    fn = os.path.join(out_dir, "input.txt")
+    with open(fn, "w", encoding="ascii") as f:
+        f.write(script)
+    return fn
+
+
+def input_args(script, out_dir):
+    fn = script_file(script, out_dir)
+    return ["--input", "@" + fn] if fn else ["--input", script]
+
+
+def script_env(script, out_dir):
+    fn = script_file(script, out_dir)
+    return dict(BNT1_INPUT="", BNT1_INPUT_FILE=fn) if fn else dict(BNT1_INPUT=script or "", BNT1_INPUT_FILE="")
+
+
+T2_PREFIX_MIN = float(os.environ.get("BNT1_T2PREFIX_MIN", "10"))   # deep runs (>= 10 minutes) replay the title's Haiku T2 movie first, then the generic script
+
+
+def t2_movie_steps(path):
+    """a T2 .bnm (BrokenNes movie, power-on start) -> ([(frame, "Right+A"), ...], last frame); None when unusable"""
+    try:
+        lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+    except OSError:
+        return None
+    hdr = dict(l.split(" ", 1) for l in lines if l and not l.startswith(("#", "i ", "k ")) and " " in l)
+    if hdr.get("start", "power-on").strip() != "power-on":
+        return None    # a movie from a savestate cannot be replayed from power-on
+    steps = []
+    for l in lines:
+        if l.startswith("i "):
+            parts = l.split()
+            if len(parts) >= 3:
+                steps.append((int(parts[1]), "" if parts[2] == "-" else parts[2]))
+    try:
+        frames = int(hdr.get("frames", "0"))
+    except ValueError:
+        frames = 0
+    if not steps or frames < 60:
+        return None
+    return steps, frames
+
+
+def generic_script(start, minutes, prefix=None):
     """Start twice (some titles need a second press after a fade, or a menu confirm), then a walk-right/jump/fire loop with a
     little of everything (menus react to A/Start/Down). Frame numbers are absolute; a step holds its buttons until the next."""
-    s = [(start, "Start"), (start + 8, ""), (start + 240, "Start"), (start + 248, ""), (start + 420, "A"), (start + 428, "")]
-    f = start + 480
+    if prefix:   # the T2 movie up to its end, then the play loop straight away (no Start presses: they would pause the game)
+        s = [st for st in prefix if st[0] < start] + [(start, "")]
+        f = start + 30
+    else:
+        s = [(start, "Start"), (start + 8, ""), (start + 240, "Start"), (start + 248, ""), (start + 420, "A"), (start + 428, "")]
+        f = start + 480
     end = f + int(minutes * 3600)
     loop = [(120, "Right"), (20, "Right+A"), (50, "Right"), (16, "Right+B"), (40, "Right"), (24, "A"), (30, ""),
             (60, "Left"), (12, "B"), (30, "Down"), (30, "Up"), (20, "Right+A"), (8, "")]
@@ -229,6 +295,29 @@ def generic_script(start, minutes):
     return ",".join(f"{a}:{b}" for a, b in s), end
 
 
+def plan_script(rec, title, minutes, res):
+    """-> (start, script, end frame, checkpoints). A deep run of a title with a Haiku T2 movie replays the movie from power-on and
+    then plays the generic loop from the movie's end (res["input"] = "t2+generic-v1 ..."); otherwise the generic script from
+    the title screen. With a movie, checkpoints also fall inside it (every 600 frames), and "start" is the movie's end, so the
+    grade's early window (start + 470) demands that the movie itself plays the same on both emulators."""
+    mv = rec.get("t2movie") or ((rec.get("extra") or {}).get("t2") or {}).get("tas")
+    got = t2_movie_steps(mv) if (mv and minutes >= T2_PREFIX_MIN and os.environ.get("BNT1_T2PREFIX", "1") != "0") else None
+    if got:
+        steps, mframes = got
+        start = mframes
+        script, end = generic_script(start, minutes, prefix=steps)
+        cps = sorted(set(list(range(60, start, 600)) + [start, start + 120, start + 300, start + 470]
+                         + list(range(start + 480 + 1200, end, 1200)) + [end]))
+        res["input"] = "t2+generic-v1 movie %d frames, %d changes" % (mframes, len(steps))
+        res["t2movie"] = os.path.basename(mv)
+        return start, script, end, cps
+    start = (title if title is not None else 600) + 30
+    script, end = generic_script(start, minutes)
+    cps = sorted(set([max(1, start - 30), start + 120, start + 300, start + 470] + list(range(start + 480 + 1200, end, 1200)) + [end]))
+    res["input"] = "generic-v1 start@%d" % start
+    return start, script, end, cps
+
+
 # ------------------------------------------------------------------------------------------------ the NES runner
 def nes_romtest(rom, frames, png_at, out_dir, script=None, latch=None):
     os.makedirs(out_dir, exist_ok=True)
@@ -236,7 +325,7 @@ def nes_romtest(rom, frames, png_at, out_dir, script=None, latch=None):
     cmd = [WORKSHOP, "--romtest", "--rom", rom, "--cpu", "FIX", "--ppu", "FIX", "--apu", "FIX", "--frames", str(frames),
            "--power-on-ram", "zeros", "--png-at", ",".join(map(str, sorted(set(png_at)))), "--png-dir", out_dir, "--json", "--out", rep]
     if script:
-        cmd += ["--input", script]
+        cmd += input_args(script, out_dir)
     if latch:
         cmd += ["--input-latch", latch]
     with Slot():
@@ -261,7 +350,7 @@ def nes_romtest(rom, frames, png_at, out_dir, script=None, latch=None):
 def nes_record(rom, frames, script, out, png_at, png_dir):
     """The scripted run on BrokenNes: --movie record writes the .bnm and the checkpoint pictures in one run."""
     os.makedirs(png_dir, exist_ok=True)
-    cmd = [WORKSHOP, "--movie", "record", "--rom", rom, "--frames", str(frames), "--input", script, "--cores", "FIX/FIX/FIX",
+    cmd = [WORKSHOP, "--movie", "record", "--rom", rom, "--frames", str(frames)] + input_args(script, png_dir) + ["--cores", "FIX/FIX/FIX",
            "--power-on", "zeros", "--build", T1_VERSION, "--png-at", ",".join(map(str, sorted(set(png_at)))), "--png-dir", png_dir, "--out", out]
     with Slot():
         code, o, e, secs, to = run(cmd, timeout=max(180, frames // 30))
@@ -293,7 +382,7 @@ def mesen_run(rom, script, shots, out_dir, frames, console="nes"):
     for d in ("Saves", "SaveStates", "RecentGames"):   # every game boots clean (no battery save from an earlier run)
         shutil.rmtree(os.path.join(home, d), ignore_errors=True)
     os.makedirs(out_dir, exist_ok=True)
-    env = dict(os.environ, BNT1_MAP=MESEN_MAP.get(console, ""), BNT1_HW="1" if REF_LAG == -1 else "", BNT1_INPUT=script or "", BNT1_SHOTS=",".join(str(max(0, f - REF_LAG)) for f in shots), BNT1_WIN=str(WIN), BNT1_OUT=out_dir)
+    env = dict(os.environ, BNT1_MAP=MESEN_MAP.get(console, ""), BNT1_HW="1" if REF_LAG == -1 else "", **script_env(script, out_dir), BNT1_SHOTS=",".join(str(max(0, f - REF_LAG)) for f in shots), BNT1_WIN=str(WIN), BNT1_OUT=out_dir)
     secs_limit = frames // 20 + 60   # a loaded machine can drop Mesen's test runner to ~60 fps
     cmd = [exe, rom, "--luaScriptsToLoad", os.path.join(HERE, "mesen_t1.lua"), "--testRunner", f"--timeout={secs_limit}"]
     with Slot():
@@ -327,7 +416,7 @@ def bizhawk_run(rom, script, shots, out_dir, frames):
     with open(os.path.join(home, "config.ini"), "w", encoding="utf-8") as f:
         f.write(cfg)
     os.makedirs(out_dir, exist_ok=True)
-    env = dict(os.environ, BNT1_INPUT=script or "", BNT1_SHOTS=",".join(str(max(0, f - REF_LAG)) for f in shots), BNT1_WIN=str(WIN), BNT1_OUT=out_dir)
+    env = dict(os.environ, **script_env(script, out_dir), BNT1_SHOTS=",".join(str(max(0, f - REF_LAG)) for f in shots), BNT1_WIN=str(WIN), BNT1_OUT=out_dir)
     secs_limit = frames // 15 + 90
     cmd = [BIZHAWK, "--config=" + os.path.join(home, "config.ini"), "--chromeless", "--lua=" + os.path.join(HERE, "bizhawk_t1.lua"), rom]
     with Slot():
@@ -409,12 +498,9 @@ def check_nes(rec, minutes, keep_dir):
         return grade_result(res, "Broken", ["crash"], f"romtest exit {p1['code']}: {(crash or p1['err'] or '').strip()[:200]}")
     title, how = find_title(p1["pngs"])
     res["title"] = dict(frame=title, how=how)
-    start = (title if title is not None else 600) + 30
-    script, end = generic_script(start, minutes)
-    cps = sorted(set([max(1, start - 30), start + 120, start + 300, start + 470] + list(range(start + 480 + 1200, end, 1200)) + [end]))
+    start, script, end, cps = plan_script(rec, title, minutes, res)
     res["frames"] = end
     res["start"] = start
-    res["input"] = "generic-v1 start@%d" % start
     # pass 2: the script on BrokenNes (movie + checkpoint pictures), then the same script on the reference
     os.makedirs(keep_dir, exist_ok=True)
     bnm = os.path.join(keep_dir, "t1.bnm")
@@ -459,7 +545,7 @@ def con_run(rom, console, frames, png_at, out_dir, script=None):
     cmd = [WORKSHOP, "--console-run", "--rom", rom, "--console", console, "--frames", str(frames),
            "--png-at", ",".join(map(str, sorted(set(png_at)))), "--out", out_dir, "--tag", "t"]
     if script:
-        cmd += ["--input", script]
+        cmd += input_args(script, out_dir)
     with Slot():
         code, out, err, secs, to = run(cmd, timeout=max(180, frames // 20))
     pngs = {}
@@ -497,10 +583,8 @@ def check_console(rec, console, minutes, keep_dir):
         return grade_result(res, "Broken", ["crash"], f"console-run exit {p1['code']}: {txt[-200:]}")
     title, how = find_title(p1["pngs"])
     res["title"] = dict(frame=title, how=how)
-    start = (title if title is not None else 600) + 30
-    script, end = generic_script(start, minutes)
-    cps = sorted(set([max(1, start - 30), start + 120, start + 300, start + 470] + list(range(start + 480 + 1200, end, 1200)) + [end]))
-    res.update(frames=end, start=start, input="generic-v1 start@%d" % start, tas=None)
+    start, script, end, cps = plan_script(rec, title, minutes, res)
+    res.update(frames=end, start=start, tas=None)
     os.makedirs(keep_dir, exist_ok=True)
     p2 = con_run(rom, console, end + 1, cps, os.path.join(work, "bn"), script)
     p2["ok"] = p2["code"] == 0 and not p2["timeout"]
@@ -800,6 +884,10 @@ def cmd_export(a):
         name = unpack_rom(src, os.path.join(a.out, "roms", sha), (rec.get("dump") or {}).get("fileSha1"))
         rec = dict(rec, path=os.path.join("roms", sha, name))
         rec.pop("file", None)
+        t2 = ((rec.get("extra") or {}).get("t2") or {}).get("tas")
+        if t2 and os.path.exists(t2):
+            shutil.copy2(t2, os.path.join(a.out, "roms", sha, "t2.bnm"))
+            rec["t2movie"] = os.path.join("roms", sha, "t2.bnm")
         recs.append(rec)
     with open(os.path.join(a.out, "shard.json"), "w", encoding="utf-8") as f:
         json.dump(dict(console=a.console, records=recs), f)
@@ -821,6 +909,8 @@ def cmd_work(a):
         if os.path.exists(os.path.join(kd, "result.json")):
             continue
         rec = dict(rec, path=os.path.join(base, rec["path"]))
+        if rec.get("t2movie"):
+            rec["t2movie"] = os.path.join(base, rec["t2movie"])
         t = time.time()
         try:
             res = check_any(rec, sh["console"], a.minutes, kd)
@@ -843,6 +933,12 @@ def deep_add(console, rec, res, src, counts):
     sha = rec["sha1"]
     kd = os.path.join(os.path.dirname(keep_dir_for(console, sha)), "t1deep")
     os.makedirs(kd, exist_ok=True)
+    # one deep run per folder: the 3/10/20-minute runs' pictures used to pile up here, so a review saw another run's frames
+    # beside this result (Jurassic Park: "blank at every checkpoint" next to a 20-minute run's gameplay pictures)
+    if any(f.startswith(("bn_", "ref_")) for f in os.listdir(src)):
+        for fn in os.listdir(kd):
+            if fn.startswith(("bn_", "ref_")) and fn.endswith(".png") or fn == "t1.bnm":
+                os.remove(os.path.join(kd, fn))
     for fn in os.listdir(src):
         if fn != "result.json":
             shutil.copy2(os.path.join(src, fn), os.path.join(kd, fn))
