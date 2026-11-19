@@ -230,7 +230,7 @@ public sealed class Fdc82077
                 var m = Media(d);
                 byte st3 = (byte)(d | (h << 2) | 0x08 /* two-sided */ | 0x20 /* ready */);
                 if (_pcn[d] == 0) st3 |= 0x10;                   // track 0
-                if (m != null && m.Data.Length == 0) st3 |= 0x40;
+                if (m != null && m.Length == 0) st3 |= 0x40;
                 Result(st3); return;
             }
             case 0x07:                                           // RECALIBRATE
