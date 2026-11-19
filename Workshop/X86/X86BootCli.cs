@@ -81,6 +81,14 @@ internal static class X86BootCli
             AppDomain.CurrentDomain.ProcessExit += (_, _) => nw.Flush();
         }
         if (args.Contains("--net") && m.Nic != null) { nat = new PcNat { Log = l => Console.WriteLine("net: " + l) }; m.Nic.Link = nat; }
+        // X86-02 LAN: --mac N|AA:BB:.. (the card's PROM address: give each PC its own, then cold boot), --lan host:PORT | join:HOST:PORT
+        if (Arg(args, "--mac") is string macs && m.Nic != null) { m.Nic.Mac = PcMac.Parse(macs); m.Nic.Reset(); }
+        PcLanUdp? lanLink = null;
+        if (Arg(args, "--lan") is string lans && m.Nic != null)
+        {
+            lanLink = PcLanUdp.FromSpec(lans); Console.WriteLine("lan: " + lanLink.Description);
+            m.Nic.Link = m.Nic.Link != null ? new PcLinkPair(lanLink, m.Nic.Link) : lanLink;
+        }
         // --exclog N: the last N CPU exceptions other than page faults (printed at the end), with a count per vector
         var excRing = new Queue<string>(); var excCount = new long[32]; int excKeep = int.Parse(Arg(args, "--exclog") ?? "0");
         string biosIn = "";

@@ -39,6 +39,13 @@ public sealed class PcSession : IConsoleSession
         _m = preset.IsClassic ? new PcMachine(PcMachine.DefaultMemory, _model) : new PcMachine(preset.Config, _model, preset.Video);
         // the network card's cable: the built-in NAT (DHCP, DNS, the HTTPS bridge) only when asked for (BROKENNES_X86_NET=1); unplugged by default
         if (_m.Nic != null && Environment.GetEnvironmentVariable("BROKENNES_X86_NET") == "1") _m.Nic.Link = _nat = new PcNat();
+        // the LAN (X86-02): BROKENNES_X86_LAN=host:PORT / join:HOST:PORT puts the card on a hub shared with other BrokenNes PCs (IPX games); with the NAT too, the cable goes to both
+        if (_m.Nic != null && Environment.GetEnvironmentVariable("BROKENNES_X86_MAC") is { Length: > 0 } mac) { _m.Nic.Mac = PcMac.Parse(mac); _m.Nic.Reset(); }
+        if (_m.Nic != null && Environment.GetEnvironmentVariable("BROKENNES_X86_LAN") is { Length: > 0 } lan)
+        {
+            _lan = PcLanUdp.FromSpec(lan);
+            _m.Nic.Link = _m.Nic.Link != null ? new PcLinkPair(_lan, _m.Nic.Link) : _lan;
+        }
         Title = fileName.Length > 0 ? Path.GetFileNameWithoutExtension(fileName) : "x86 disk";
         if (PcDisks.IsDosProgram(image, fileName))
         {
@@ -299,5 +306,6 @@ public sealed class PcSession : IConsoleSession
     }
 
     private PcNat? _nat;
-    public void Dispose() { _nat?.Dispose(); }
+    private PcLanUdp? _lan;
+    public void Dispose() { _nat?.Dispose(); _lan?.Dispose(); }
 }
