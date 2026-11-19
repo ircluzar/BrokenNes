@@ -241,6 +241,9 @@ def run_cmd(a, pkg, ch):
     elif a.cmd == "log":
         print(json.dumps(r["log"]))
     elif a.cmd == "close":
+        for h in r.get("helpers", []):
+            try: attach(h["port"]).stop()
+            except Exception: pass
         try: b.call("close_session", session=r["session"])
         finally: b.stop()
         print("closed")
@@ -655,6 +658,42 @@ def names(expr, cfg):
     return re.sub(r"(?<![\w$])([A-Za-z_]\w*)", lambda t: "(" + m[t.group(1)] + ")" if t.group(1) in m else t.group(0), expr)
 
 
+def helpers(r, pkg, ch, n):
+    """Helper daemons for parallel tries (one emulator process each; one daemon runs its calls one at a time)."""
+    hs = r.setdefault("helpers", [])
+    alive = []
+    for h in hs:
+        try: attach(h["port"]).call("status", session=h["session"]); alive.append(h)
+        except Exception: pass
+    while len(alive) < n:
+        hb = start_bridge(); s_ = hb.call("open_rom", path=r["rom"], call_stack=False)["session"]
+        alive.append({"port": hb.port, "session": s_})
+    r["helpers"] = alive; store(pkg, ch, r)
+    return alive
+
+
+def try_parallel(b, r, pkg, ch, plans, kw, state_file):
+    """Runs try_plans over the session + helpers in parallel; returns [(first index, result)]."""
+    import threading
+    n = int(os.environ.get("AUTOTAS_PAR", 3))
+    workers = [(b, r["session"])]
+    if n > 0 and len(plans) >= 24:
+        for h in helpers(r, pkg, ch, n):
+            hb = attach(h["port"]); hb.call("load_state", session=h["session"], path=state_file); workers.append((hb, h["session"]))
+    size = max(1, -(-len(plans) // len(workers)))
+    jobs = [(i, plans[i:i + size]) for i in range(0, len(plans), size)]
+    outs, errs = [None] * len(jobs), []
+    def go(k):
+        wb, ws = workers[k % len(workers)]; i0, pl = jobs[k]
+        try: outs[k] = (i0, wb.call("try_plans", session=ws, plans=pl, **{x: y for x, y in kw.items() if y is not None}))
+        except Exception as e: errs.append(e)
+    th = [threading.Thread(target=go, args=(k,)) for k in range(len(jobs))]
+    for t in th: t.start()
+    for t in th: t.join()
+    if errs: raise errs[0]
+    return outs
+
+
 def search(b, r, cfg, pkg, ch, a):
     """Tries every timing in a small grid from HERE and keeps the fastest that reaches --want without dying.
 
@@ -689,15 +728,15 @@ def search(b, r, cfg, pkg, ch, a):
             bt, k = tok.rsplit(":", 1); k = int(k.format(**env))
             if k > 0: st.append([btns(bt), k])
         return st
-    try:   # fast path: the MCP try_plans tool runs the whole grid in-process (one call per 400 tries)
-        for c0 in range(0, len(combos), 400):
-            chunk = combos[c0:c0 + 400]
-            plans = [" ".join(("+".join(bt) or "none") + f":{k}" for bt, k in plan_steps(env)) or "none:0" for env in chunk]
-            out = b.call("try_plans", session=r["session"], plans=plans, then=btns(a.then), within=a.within, want=a.want,
-                         dead=cfg.get("dead"), settle=getattr(a, "settle", 0) or 0, survive=(max(a.survive, 75) if getattr(a, "stoppable", False) else a.survive) if cfg.get("dead") else 0, ram=cfg["ram"],
-                         survive_with=[] if getattr(a, "stoppable", False) else None)
+    try:   # fast path: the MCP try_plans tool runs the whole grid in-process, split over helper daemons (separate processes) in parallel
+        kw = dict(then=btns(a.then), within=a.within, want=a.want, dead=cfg.get("dead"), settle=getattr(a, "settle", 0) or 0,
+                  survive=(max(a.survive, 60) if getattr(a, "stoppable", False) else a.survive) if cfg.get("dead") else 0, ram=cfg["ram"],
+                  survive_with=[] if getattr(a, "stoppable", False) else None)
+        plans = [" ".join(("+".join(bt) or "none") + f":{k}" for bt, k in plan_steps(env)) or "none:0" for env in combos]
+        outs = try_parallel(b, r, pkg, ch, plans, kw, tmp)
+        for i0, out in outs:
             for res in out["results"]:
-                env = chunk[res["i"]]; v = res["verdict"]; st = plan_steps(env)
+                env = combos[i0 + res["i"]]; v = res["verdict"]; st = plan_steps(env)
                 if v == "ok":
                     tot = int(res["frames"]); pf = sum(k for _, k in st)   # frames = the plan + the wait for want
                     results.append((tot, env, st + [[btns(a.then), tot - pf]], res.get("ram")))
@@ -829,6 +868,11 @@ def advance(b, r, cfg, pkg, ch, a):
             a4 = argparse.Namespace(**vars(a2)); a4.vals = ad.get("up_vals", ad["vals"])
             a4.want = ad["up_want"].replace("{X}", str(int(cur[ad["start"]]) + 16)).replace("{Y}", str(int(cur["y"]) - 24))
             print("  (trying a step up to a higher platform)"); search(b, r, cfg, pkg, ch, a4)
+        if r["frames"] == before and ad.get("up_want"):   # come to a stop first, then a high jump onto something ABOVE (small platforms)
+            a5 = argparse.Namespace(**vars(a2)); a5.args = [ad.get("stop_pattern", "none:{s} Right+B:{a} Right+B+A:{j}")]
+            a5.vals = ad.get("stop_vals", "s=0..90:30,a=0..16:8,j=16..28:4"); a5.then = ad.get("then", "none"); a5.within = 90; a5.settle = 4; a5.stoppable = True
+            a5.want = ad["up_want"].replace("{X}", str(int(cur[ad["start"]]) + 16)).replace("{Y}", str(int(cur["y"]) - 16))
+            print("  (trying: stop, then a high jump onto a platform above)"); search(b, r, cfg, pkg, ch, a5)
         if r["frames"] == before and stride > int(ad.get("min_stride", 32)):
             stride //= 2; print(f"  (no hop of that size: trying stride {stride})"); continue
         pat = int(getattr(a, "patience", 0) or ad.get("patience", 0))
