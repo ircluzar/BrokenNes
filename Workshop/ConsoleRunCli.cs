@@ -56,7 +56,7 @@ internal static class ConsoleRunCli
         var pngAt = Opt("png-at", frames.ToString()).Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToHashSet();
         string outDir = Opt("out", "."), tag = Opt("tag", Path.GetFileNameWithoutExtension(inner));
         Directory.CreateDirectory(outDir);
-        var script = ParseInput(Opt("input", ""));
+        var script = ParseInput(RomTestCli.InputArg(Opt("input", "")) ?? "");
         // --gb-look green|grey|pocket|color, --gb-invert-bg, --gb-invert-obj: the Game Boy look (before the session is built:
         // Color decides the Game Boy model).
         NesEmulator.Mix.GbLook.Palette = NesEmulator.Mix.GbLook.FromKey(Opt("gb-look", "green"));
