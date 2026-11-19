@@ -112,7 +112,7 @@ internal static class X86SpeedCli
         double render = (m.RenderTicks - r0) / (double)Stopwatch.Frequency;
         bool ok = work == "idle" || m.Teletype.ToString().Contains("ALLDONE");
         string? outTxt = null;
-        try { var d = new FatImage(m.Hdd[0]!.Data).ReadFile(@"\OUT.TXT"); if (d != null) outTxt = System.Text.Encoding.ASCII.GetString(d); } catch { }
+        try { var d = new FatImage(m.Hdd[0]!.ToArray()).ReadFile(@"\OUT.TXT"); if (d != null) outTxt = System.Text.Encoding.ASCII.GetString(d); } catch { }
         string cpuName = model?.Id ?? "LEGACY";
         Console.WriteLine($"x86speed: cpu={cpuName} video={(video == PcVideo.S3Trio64 ? "S3" : "VGA")} machine={cfg.ToString().Replace(" ", "")} work={work} ips={ipsv} " +
             $"ok={(ok ? 1 : 0)} frames={frames} machine_s={machine:F2} wall_s={wall:F2} pct={100 * machine / Math.Max(1e-9, wall):F0} cpu_s={cpuT:F2} pct_cpu={100 * machine / Math.Max(1e-9, cpuT):F0} " +

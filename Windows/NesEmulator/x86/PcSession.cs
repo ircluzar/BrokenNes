@@ -54,7 +54,7 @@ public sealed class PcSession : IConsoleSession
         _m.InstructionsPerSecond = _model?.Ips ?? IpsOf(cpu); _cpuId = cpu;
         _m.Speaker.Enabled = true;
         _m.Opl.Enabled = true;
-        InsertDisk((byte[])image.Clone());
+        InsertDisk(image);   // the base: never written (DiskImage is copy-on-write), so no copy
         if (!PcSound.Apply(_m, apu)) throw new ArgumentException($"the x86 PC has no sound card '{apu}'");
         ApuId = apu.ToUpperInvariant();
         _m.Vga.Picture = VgaPictures.Create(_m.Vga, ppu);
@@ -67,9 +67,10 @@ public sealed class PcSession : IConsoleSession
     /// <summary>The sound card and engine heard (an x86 APU id: ADLIB, ADLIB_D072, ...).</summary>
     public string ApuId { get; private set; } = "ADLIB";
 
+    /// <summary>Puts the disk in the drive: always on the opened image as its read-only base (a savestate carries only the diff from it), reading as <paramref name="data"/>.</summary>
     private void InsertDisk(byte[] data)
     {
-        var d = new DiskImage(data, _floppy);
+        var d = DiskImage.FromFull(_original, data, _floppy);
         if (_floppy) _m.Floppy[0] = d; else _m.Hdd[0] = d;
         _exported = null;
     }
@@ -182,7 +183,7 @@ public sealed class PcSession : IConsoleSession
     public byte[] ExportSave()
     {
         var d = Disk;
-        if (_exported == null || d.Dirty) { _exported = (byte[])d.Data.Clone(); d.Dirty = false; }
+        if (_exported == null || d.Dirty) { _exported = d.ToArray(); d.Dirty = false; }
         return _exported;
     }
 
@@ -190,7 +191,7 @@ public sealed class PcSession : IConsoleSession
     public void ImportSave(byte[] data)
     {
         if (data.Length != _original.Length) return;
-        InsertDisk((byte[])data.Clone());
+        InsertDisk(data);
         if (_powered) { _m.PowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); }
     }
 
@@ -198,12 +199,14 @@ public sealed class PcSession : IConsoleSession
     public void PutFile(string dosPath, byte[] data)
     {
         if (_powered) throw new InvalidOperationException("files go on the x86 disk before the first frame");
-        new FatImage(Disk.Data).WriteFile(dosPath, data);
+        var full = Disk.ToArray();
+        new FatImage(full).WriteFile(dosPath, data);
+        Disk.SetContent(full);
         _exported = null;
     }
 
     /// <summary>A file on the disk as it is now (what the program wrote: a save, a status file), or null when there is none.</summary>
-    public byte[]? ReadFile(string dosPath) => new FatImage(Disk.Data).ReadFile(dosPath);
+    public byte[]? ReadFile(string dosPath) => new FatImage(Disk.ToArray()).ReadFile(dosPath);
 
     /// <summary>CPU harvest: "I386_D074" = DOSBox 0.74's default speed. Its core_simple (and core_normal) count one "cycle" per instruction whatever the
     /// instruction, exactly as this core does, so cycles=3000 (the 0.74 default) is 3,000 instructions a millisecond: delay-loop music and games run
