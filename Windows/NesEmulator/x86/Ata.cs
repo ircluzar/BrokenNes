@@ -20,7 +20,10 @@ public sealed class AtaChannel
     /// <summary>The two devices: a hard disk (DiskImage) or a CD-ROM (CdImage), or nothing. Set by the board.</summary>
     public readonly DiskImage?[] Disk = new DiskImage?[2];
     public readonly CdImage?[] Cd = new CdImage?[2];
-    public readonly bool[] CdPresent = new bool[2];   // an ATAPI drive is wired even without a disc in it
+    public readonly bool[] CdPresent = new bool[2];
+    private readonly bool[] _mediaChanged = new bool[2];
+    /// <summary>A disc went in or out while the machine runs: the drive answers its next command with UNIT ATTENTION (not saved: a state reload keeps the disc it is given).</summary>
+    public void MediaChanged(int d) => _mediaChanged[d] = true;   // an ATAPI drive is wired even without a disc in it
 
     // task file (one copy: the ATA registers are shared by both devices; per-device CHS translation below)
     private byte _feature, _count, _sector, _cylLo, _cylHi, _drvHead = 0xa0, _status, _error, _devCtl;
@@ -508,6 +511,7 @@ public sealed class AtaChannel
         var o = _atapiData;
         int alloc16 = p[7] << 8 | p[8];
         bool needsDisc = p[0] is 0x00 or 0x25 or 0x28 or 0xa8 or 0x43 or 0xbe or 0xb9 or 0x2b or 0x45 or 0x47 or 0xa5;
+        if (_mediaChanged[Dev] && p[0] is not (0x03 or 0x12 or 0x4a or 0xbd)) { _mediaChanged[Dev] = false; AtapiFail(6, 0x28); return; }   // UNIT ATTENTION: medium may have changed
         if (needsDisc && cd == null) { AtapiFail(2, 0x3a); return; }   // NOT READY, medium not present
         switch (p[0])
         {

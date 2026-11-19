@@ -62,6 +62,8 @@ public sealed class PcSession : IConsoleSession
         _m.Speaker.Enabled = true;
         _m.Opl.Enabled = true;
         InsertDisk((byte[])image.Clone());
+        // the CD drive's disc (X86-02): BROKENNES_X86_CD = an .iso, .cue or .bin (IDE machines; read from the file, never written)
+        if (Environment.GetEnvironmentVariable("BROKENNES_X86_CD") is { Length: > 0 } cdPath && File.Exists(cdPath)) InsertCd(CdImage.Open(cdPath));
         if (!PcSound.Apply(_m, apu)) throw new ArgumentException($"the x86 PC has no sound card '{apu}'");
         ApuId = apu.ToUpperInvariant();
         _m.Vga.Picture = VgaPictures.Create(_m.Vga, ppu);
@@ -73,6 +75,9 @@ public sealed class PcSession : IConsoleSession
 
     /// <summary>The sound card and engine heard (an x86 APU id: ADLIB, ADLIB_D072, ...).</summary>
     public string ApuId { get; private set; } = "ADLIB";
+
+    /// <summary>Puts a disc in the CD drive (null: empty). Takes effect for the guest at once (the drive reports a new medium on its next command).</summary>
+    public void InsertCd(CdImage? cd) { _m.Cd = cd; if (_m.Ata != null) { _m.Ata.Secondary.Cd[0] = cd; _m.Ata.Secondary.MediaChanged(0); } }
 
     private void InsertDisk(byte[] data)
     {
