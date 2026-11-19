@@ -1544,6 +1544,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		};
 	}
 	public void SetState(object state) {
+		ClearBands();   // Butchering bands' per-line overrides are not state: the loaded machine starts without the old timeline's (fuzz undo-mismatch)
 		if (state is PpuSharedState s) {
 			vram = (byte[])s.vram.Clone(); paletteRAM=(byte[])s.palette.Clone(); oam=(byte[])s.oam.Clone();
 			// Legacy compatibility: if a frame is present and matches expected length, copy it; otherwise leave empty
