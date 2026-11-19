@@ -59,6 +59,7 @@ internal abstract class Session
     public virtual ToolOut Layers(List<string> layers, int scale) => throw No("layers");
     public virtual ToolOut Tiles(string? source, int bpp, int palette, long start, int count, int scale) => throw No("the tile viewer");
     public virtual ToolOut Sprites(bool draw, int scale) => throw No("the sprite list");
+    public virtual JsonObject Tilemap(string? layer, bool view) => throw No("the tile map");
     // sound
     public virtual JsonObject RecordSound(double seconds, bool wav) => throw No("recording sound");
     // states

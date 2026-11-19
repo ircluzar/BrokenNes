@@ -303,6 +303,10 @@ internal static partial class Tools
             Schema(S(), ("draw", P("boolean", "return the picture with boxes (default true)"), false), ("scale", P("integer", "1 (default) to 4"), false)),
             a => On(a, s => s.Sprites(a.Bool("draw", true), a.Int("scale", 1))), ro: true);
 
+        Add("tilemap", "The background tile map from video memory as TEXT (headless; NES nametables, SNES / WideMess bg1-bg4, Game Boy background/window): tile ids (hex) per cell, the scroll, and by default only the visible screen (view:false = the whole map). For agents reading a level without pictures.",
+            Schema(S(), ("layer", P("string", "NES: nametables; SNES: bg1 (default) .. bg4; GB: background (default) or window"), false), ("view", P("boolean", "only the cells on screen (default true)"), false)),
+            a => On(a, s => s.Tilemap(a.Str("layer"), a.Bool("view", true))), ro: true);
+
         // ------------------------------------------------------------------------------------------------ sound
         Add("record_sound", "Runs N seconds (headless) and records the sound: peak, RMS, per-second levels, frames with sound, and a .wav file.",
             Schema(S(), ("seconds", P("number", "seconds (default 2, at most 120)"), false), ("wav", P("boolean", "write the .wav (default true)"), false)),
