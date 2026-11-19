@@ -31,6 +31,10 @@ public sealed class PcNat : INetLink, IDisposable
     private readonly ConcurrentQueue<Action> _posted = new();     // host results, run on the emulation thread
     private readonly Dictionary<(ushort gport, uint rip, ushort rport), TcpConn> _tcp = new();
     private byte[] _guestMac = { 0x52, 0x54, 0x00, 0x12, 0x34, 0x56 };
+    /// <summary>The cable also goes to a LAN of other emulated PCs (PcLan.cs): each PC gets its own address from DHCP (10.0.2.20 + its MAC's last byte),
+    /// and the NAT answers ARP / ping only for its own hosts (10.0.2.1-9), so the PCs reach each other directly.</summary>
+    public bool LanShared;
+    private byte _guestHost = GuestHost;
     private static readonly HttpClient Http = MakeClient();
     private ushort _ipId;
     /// <summary>Log lines (DHCP, DNS, bridged URLs) for the tools; never contains anything but what the guest asked for.</summary>
@@ -83,7 +87,7 @@ public sealed class PcNat : INetLink, IDisposable
     {
         if (f.Length < 42 || U16(f, 20) != 1) return;     // requests only
         uint target = U32(f, 38);
-        if ((target & 0xffffff00) != Ip(0) || (target & 0xff) == GuestHost || (target & 0xff) == 0) return;
+        if ((target & 0xffffff00) != Ip(0) || (target & 0xff) == _guestHost || (target & 0xff) == 0 || LanShared && (target & 0xff) >= 10) return;
         var a = new byte[28];
         P16(a, 0, 1); P16(a, 2, 0x0800); a[4] = 6; a[5] = 4; P16(a, 6, 2);
         Array.Copy(GatewayMac, 0, a, 8, 6); P32(a, 14, target);
@@ -131,7 +135,7 @@ public sealed class PcNat : INetLink, IDisposable
 
     private void Icmp(uint src, uint dst, byte[] d)
     {
-        if (d.Length < 8 || d[0] != 8 || (dst & 0xffffff00) != Ip(0)) return;   // echo requests to our own addresses
+        if (d.Length < 8 || d[0] != 8 || (dst & 0xffffff00) != Ip(0) || LanShared && (dst & 0xff) >= 10) return;   // echo requests to our own addresses
         var r = (byte[])d.Clone(); r[0] = 0; r[2] = r[3] = 0;
         P16(r, 2, Checksum(r, 0, r.Length));
         SendIp(dst, src, 1, r);
@@ -164,11 +168,12 @@ public sealed class PcNat : INetLink, IDisposable
         int type = 0;
         for (int i = 240; i < b.Length && b[i] != 255;) { if (b[i] == 0) { i++; continue; } if (b[i] == 53) type = b[i + 2]; i += 2 + b[i + 1]; }
         if (type is not (1 or 3)) return;                 // DISCOVER -> OFFER, REQUEST -> ACK
+        if (LanShared) _guestHost = (byte)(20 + _guestMac[5] % 200);   // (the sender of this frame)
         var r = new byte[300];
         r[0] = 2; r[1] = 1; r[2] = 6;
         Array.Copy(b, 4, r, 4, 4);                         // xid
         Array.Copy(b, 10, r, 10, 2);                       // flags
-        P32(r, 16, Ip(GuestHost)); P32(r, 20, Ip(GatewayHost));
+        P32(r, 16, Ip(_guestHost)); P32(r, 20, Ip(GatewayHost));
         Array.Copy(b, 28, r, 28, 16);                      // chaddr
         P32(r, 236, 0x63825363);
         int o = 240;
@@ -182,7 +187,7 @@ public sealed class PcNat : INetLink, IDisposable
         Opt(6, IpB(DnsHost));
         Opt(15, Encoding.ASCII.GetBytes("brokennes"));
         r[o++] = 255;
-        Log?.Invoke($"dhcp: {(type == 1 ? "offer" : "ack")} 10.0.2.15");
+        Log?.Invoke($"dhcp: {(type == 1 ? "offer" : "ack")} 10.0.2.{_guestHost} to {BitConverter.ToString(_guestMac)} (chaddr {BitConverter.ToString(b, 28, 6)})");
         SendUdp(Ip(GatewayHost), 67, 0xffffffff, 68, r);
     }
 

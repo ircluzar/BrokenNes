@@ -15,6 +15,13 @@ marks the milestone and writes the raw state FILE. So retries (`back`) never lea
   python -I run.py search --ch 1-2 "Right+B:{a} Right+B+A:{j}" --vals a=0..12:2,j=8..30:2 --want EXPR --then Right+B [--apply]
                                                      tries a timing grid from here, keeps the fastest no-death try reaching EXPR
   python -I run.py log  --ch 1-2                     the input log so far
+  python -I run.py grid --ch 1-2                     TEXT view of the screen (framebuffer cells + OAM objects + VRAM tile ids), no frames run
+  python -I run.py peek --ch 1-2 "Right+B:20 Right+B+A:15 none:20" [--grid]
+                                                     plays a plan, prints RAM after each token (+ grid at the end), then puts
+                                                     everything back: nothing enters the log (a look into the future)
+  python -I run.py rewind --ch 1-2 N                 back N frames on the current line (nearest checkpoint + replay); the log is cut
+  python -I run.py seek --ch 1-2 F                   to frame F of the current line (F <= now)
+  python -I run.py tree --ch 1-2                     checkpoints as a branch tree (which ones are on the current line)
   python -I run.py finish --ch 1-2 [--note TEXT]     replay -> seg/<ch>.bnm + state/<ch>.raw.state + thumb
   python -I run.py close --ch 1-2                    drop the session (no output)
 Every command needs --pkg (or env AUTOTAS_PKG). Goal "level": the chapter ends on the first on-map frame
@@ -26,7 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lib.bridge import Bridge, BRIDGE
 from lib import game as gamelib
 
-MCP_EXE = os.environ.get("AUTOTAS_MCP_EXE", r"C:\BrokenNes-work\autotas_mcp\BrokenNes.Mcp.exe")
+MCP_EXE = os.environ.get("AUTOTAS_MCP_EXE", r"C:\BrokenNes-work\enh_autotas_mcp\BrokenNes.Mcp.exe")
 
 
 def wdir(pkg, ch): return os.path.join(pkg, "work", ch)
@@ -105,6 +112,8 @@ def main():
     ap.add_argument("--settle", type=int, default=0, help="search: the want must still be true this many frames later (no jump-apex false hits)")
     ap.add_argument("--patience", type=int, default=0, help="advance: when stuck, wait 30 frames and retry up to N times (auto-scrollers)")
     ap.add_argument("--stop-when", dest="stopwhen", help="step: also stop early when this expression is true")
+    ap.add_argument("--grid", action="store_true", help="step/look/peek: also print the text grid of the screen")
+    ap.add_argument("--cell", type=int, default=8, help="grid: cell size in pixels (8 default; 16 = a quarter of the text)")
     a = ap.parse_intermixed_args(); pkg, ch = a.pkg, a.ch
     if not pkg: sys.exit("--pkg needed")
 
@@ -119,6 +128,7 @@ def main():
         if a.frm: b.call("load_state", session=sess, path=a.frm)
         r = {"game": a.game, "rom": a.rom, "from": a.frm, "goal": a.goal, "until": a.until, "port": b.port, "session": sess,
              "frames": 0, "log": [], "subs": {}, "armed": False}
+        st0 = os.path.join(wdir(pkg, ch), "_start.state"); b.call("save_state", session=sess, path=st0); r["start_state"] = st0
         r["lives0"] = b.call("play_step", session=sess, frames=0, scale=0, ram=["l=" + cfg["lives"]])["ram"]["l"]
         r["table0"] = table(b, sess, cfg.get("progress_table") or {"addr": 0, "len": 0})
         store(pkg, ch, r)
@@ -172,9 +182,20 @@ def run_cmd(a, pkg, ch):
         if ev == "GOAL": r["goal_frame"] = r["frames"]
         store(pkg, ch, r)
         show(res, ev, r, f"\n  look: {shot(b, r, pkg, ch)}" if a.shot or ev else "")
+        if a.grid: print(gridtext(b, r, cfg, pkg, ch, a.cell))
     elif a.cmd == "look":
         res = b.call("play_step", session=r["session"], frames=0, scale=0, ram=cfg["ram"])
         show(res, None, r, f"\n  look: {shot(b, r, pkg, ch)}")
+        if a.grid: print(gridtext(b, r, cfg, pkg, ch, a.cell))
+    elif a.cmd == "grid":
+        print(gridtext(b, r, cfg, pkg, ch, a.cell))
+    elif a.cmd == "peek":
+        peek(b, r, cfg, pkg, ch, a)
+    elif a.cmd in ("rewind", "seek"):
+        target = r["frames"] - int(a.args[0]) if a.cmd == "rewind" else int(a.args[0])
+        seek(b, r, cfg, pkg, ch, target)
+    elif a.cmd == "tree":
+        tree(r)
     elif a.cmd == "save":
         name = a.args[0]; p = os.path.join(wdir(pkg, ch), name + ".state")
         b.call("save_state", session=r["session"], path=p)
@@ -202,6 +223,99 @@ def run_cmd(a, pkg, ch):
         finish(b, r, cfg, pkg, ch, a.note)
     else:
         sys.exit("unknown command " + a.cmd)
+
+
+def gridtext(b, r, cfg, pkg, ch, cell=8):
+    """Layer 0: the text view of the screen. Framebuffer cells ('.' backdrop, a symbol per colour), OAM objects (letters,
+    '@' = the player when runner.json has "player_screen"), and the VRAM tile ids under the shapes (legend)."""
+    from lib import view
+    p = os.path.join(wdir(pkg, ch), "_grid.png"); b.screenshot(r["session"], p, scale=1)
+    try: sp = b.call("sprites", session=r["session"], draw=False)["sprites"]
+    except Exception: sp = None
+    player = None
+    if cfg.get("player_screen"):
+        e = cfg["player_screen"]
+        rr = b.call("play_step", session=r["session"], frames=0, scale=0, ram=["sx=" + names(e[0], cfg), ("sy=" + names(e[1], cfg)) if len(e) > 1 else "sy=0-1"])["ram"]
+        player = (int(rr["sx"]), int(rr["sy"]) if int(rr["sy"]) >= 0 else None)
+    lf = os.path.join(wdir(pkg, ch), "_legend.json")
+    try: leg = json.load(open(lf))
+    except Exception: leg = {}
+    g, info = view.grid(p, sp, cell=cell, player=player, legend_in=leg.get("colours"))
+    leg["colours"] = info["legend"]
+    out = [g, view.legend_text(info)]
+    try:   # VRAM: which tile ids make the shapes (stable names for solid things, doors, hazards)
+        tm = b.call("tilemap", session=r["session"])
+        ids = view.tile_ids(tm, info, p)
+        if ids: out.append(" VRAM tiles under each symbol (most common first): " + ids)
+    except Exception: pass
+    json.dump(leg, open(lf, "w"))
+    return "\n".join(out)
+
+
+def seek(b, r, cfg, pkg, ch, target):
+    """Time machine on the current line: load the latest checkpoint at or before frame `target` whose inputs are a prefix of
+    the log, replay the log up to `target`, cut the log there."""
+    if target < 0 or target > r["frames"]: sys.exit(f"seek: frame {target} is not on the current line (0..{r['frames']})")
+    best = None
+    for name, s in r["subs"].items():
+        ins = s.get("inputs")
+        if ins is None or s["frames"] > target or ins != r["log"][:len(ins)]: continue
+        if best is None or s["frames"] > best[1]["frames"]: best = (name, s)
+    if best:
+        b.call("load_state", session=r["session"], path=best[1]["path"]); at = best[1]["frames"]; done = len(best[1]["inputs"]); r["armed"] = best[1]["armed"]
+    else:
+        if not r.get("start_state") or not os.path.exists(r["start_state"]): sys.exit("seek: no checkpoint on this line before that frame (save one first)")
+        b.call("load_state", session=r["session"], path=r["start_state"]); at = 0; done = 0; r["armed"] = False
+    newlog = [x[:] for x in r["log"][:done]]
+    for bt, n in r["log"][done:]:
+        if at >= target: break
+        k = min(n, target - at)
+        b.call("play_step", session=r["session"], buttons=bt, frames=k, scale=0); newlog.append([bt, k]); at += k
+    r["log"] = newlog; r["frames"] = at; r.pop("goal_frame", None)
+    store(pkg, ch, r)
+    res = b.call("play_step", session=r["session"], frames=0, scale=0, ram=cfg["ram"])
+    show(res, f"at frame {at} (from {'checkpoint ' + best[0] if best else 'the start'})", r)
+
+
+def tree(r):
+    """Checkpoints as a tree: a checkpoint is the child of the latest earlier one whose inputs are a prefix of its own."""
+    subs = sorted(((n, s) for n, s in r["subs"].items() if "inputs" in s), key=lambda t: t[1]["frames"])
+    par = {}
+    for n, s in subs:
+        p = None
+        for m, t in subs:
+            if t["frames"] < s["frames"] and t["inputs"] == s["inputs"][:len(t["inputs"])]:
+                if p is None or t["frames"] > r["subs"][p]["frames"]: p = m
+        par[n] = p
+    def on_line(s): return s["inputs"] == r["log"][:len(s["inputs"])]
+    def walk(p, depth):
+        for n, s in subs:
+            if par[n] == p:
+                print("  " * depth + f"{n} @{s['frames']}" + ("  *" if on_line(s) else ""))
+                walk(n, depth + 1)
+    print(f"now: frame {r['frames']}  (* = on the current line)")
+    walk(None, 0)
+
+
+def peek(b, r, cfg, pkg, ch, a):
+    """Plays a plan from here and reports, then restores the machine: nothing is logged. Plan tokens: Buttons:frames."""
+    tmp = os.path.join(wdir(pkg, ch), "_peek.state")
+    b.call("save_state", session=r["session"], path=tmp)
+    dead = [f'died={cfg["dead"]}'] if cfg.get("dead") else []
+    t = 0
+    try:
+        for tok in a.args[0].split():
+            bt, n = tok.rsplit(":", 1)
+            res = b.call("play_step", session=r["session"], buttons=btns(bt), frames=int(n), scale=0, milestones=dead or None, ram=cfg["ram"])
+            t += int(res.get("framesRun", 0) or 0)
+            ram = res.get("ram") or {}
+            print(f"  +{t:4d} {tok:<16} " + " ".join(f"{k}={v}" for k, v in ram.items()) + ("  >>> DIES" if res.get("stoppedBy") == "milestone" else ""))
+            if res.get("stoppedBy") == "milestone": break
+        if a.grid: print(gridtext(b, r, cfg, pkg, ch, a.cell))
+        if a.shot: print("  look (future): " + shot(b, r, pkg, ch, "peek.png"))
+    finally:
+        b.call("load_state", session=r["session"], path=tmp)
+    print("(peek: machine put back, nothing logged)")
 
 
 def names(expr, cfg):
@@ -301,7 +415,11 @@ def advance(b, r, cfg, pkg, ch, a):
             ran = int(res.get("framesRun", 0) or 0)
             if ran: r["log"].append([[], ran]); r["frames"] += ran
         store(pkg, ch, r)
+    import time
+    t0 = time.time(); cap = float(os.environ.get("AUTOTAS_ADVANCE_SECONDS", 420))
     for i in range(n):
+        if time.time() - t0 > cap:   # return before the agent's 10-minute tool timeout (a backgrounded advance loses the player)
+            print(f"advance: time cap ({int(cap)} s) after {i} hops - run advance again to continue"); return
         cur = b.call("play_step", session=r["session"], frames=0, scale=0, ram=cfg["ram"])["ram"]
         target = int(cur[ad["start"]]) + stride
         a2 = argparse.Namespace(**vars(a)); a2.args = [ad["pattern"]]; a2.vals = ad["vals"]; a2.want = ad["want"].replace("{X}", str(target))

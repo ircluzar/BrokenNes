@@ -97,7 +97,7 @@ if ($Skip -notcontains 'fuzz' -and $FuzzMinutes -gt 0 -and $Consoles.Count -gt 0
         if ($done -match '^DONE (\d+)') { $trials += [int]$Matches[1] } else { $findings += "${c}: the fuzzer did not finish"; $real++ }
         for ($i = 0; $i -lt $lines.Count; $i++) {
             if ($lines[$i] -notmatch '^NEW (.+)$') { continue }
-            $k = $Matches[1]; if ($k -like 'info |*' -or $k -like '*load-save-not-idempotent*' -or $k -like 'create | NotSupportedException*') { continue }   # informational: savestate replay notes, the deliberate audio-filter reset
+            $k = $Matches[1]; if ($k -like 'info |*' -or $k -like 'create | NotSupportedException*') { continue }   # informational: savestate replay notes
             $ctx = if ($i + 1 -lt $lines.Count) { $lines[$i + 1] } else { '' }
             $sd2 = if ($ctx -match 'seed (\d+)') { $Matches[1] } else { '?' }
             $findings += ("{0}: {1}  [{2}]  repro: bfuzz {0} 1 out {3}  (minimise: REPRO={3} ...)" -f $c, $k, ($ctx -replace '^seed \d+ ', '').Substring(0, [Math]::Min(90, ($ctx -replace '^seed \d+ ', '').Length)), $sd2)

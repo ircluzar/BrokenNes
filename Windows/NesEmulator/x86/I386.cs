@@ -164,6 +164,13 @@ public sealed partial class I386
     private uint _memEpoch;
     /// <summary>Memory was written by something other than the CPU's own stores (the BIOS, DMA, a disk load, a tool): compiled blocks check their bytes.</summary>
     public void MemTouched() => _memEpoch++;
+    /// <summary>RAM [a, a+n) was written from outside the CPU (bus-master DMA): only the pages holding compiled code lines in that range move to a new generation
+    /// (cheaper than <see cref="MemTouched"/>, which makes every compiled block compare its bytes once).</summary>
+    public void RamWritten(uint a, int n)
+    {
+        if (n <= 0) return;
+        for (uint l = a >> 6, e = (uint)((a + n - 1) >> 6); l <= e; l++) if (_codeMark[l] != 0) { CodeWrite(l << 6, 64); }
+    }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void CodeWr1(uint a) { if (Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_codeMark), (nint)(a >> 6)) != 0) CodeWrite(a, 1); }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -780,7 +787,7 @@ public sealed partial class I386
             if (seg == SEG_SS) return Throw(EX_GP, 0);
             return SetSeg(seg, sel);
         }
-        if (!ReadDesc(sel, out _, out uint w2, false)) return false;
+        if (!ReadDesc(sel, out uint w1, out uint w2)) return false;   // both words once: SetSegDesc uses them (no second descriptor read)
         bool s = ((w2 >> 12) & 1) != 0, code = ((w2 >> 11) & 1) != 0, rw = ((w2 >> 9) & 1) != 0, conf = ((w2 >> 10) & 1) != 0;
         int dpl = (int)((w2 >> 13) & 3), rpl = (int)(sel & 3);
         if (seg == SEG_SS)
@@ -792,7 +799,7 @@ public sealed partial class I386
             if (code && !rw) return Throw(EX_GP, sel & ~3u);
             if ((!code || !conf) && dpl < Math.Max(Cpl, rpl)) return Throw(EX_GP, sel & ~3u);
         }
-        return SetSeg(seg, sel);
+        return SetSegDesc(seg, sel, w1, w2);
     }
 
     private bool SetSeg(int seg, uint sel)
@@ -806,6 +813,12 @@ public sealed partial class I386
             return true;
         }
         if (!ReadDesc(sel, out uint w1, out uint w2)) return false;
+        return SetSegDesc(seg, sel, w1, w2);
+    }
+
+    /// <summary>The protected-mode part of <see cref="SetSeg"/> with the descriptor already read.</summary>
+    private bool SetSegDesc(int seg, uint sel, uint w1, uint w2)
+    {
         bool s = ((w2 >> 12) & 1) != 0;
         bool p = ((w2 >> 15) & 1) != 0;
         if ((sel & ~3u) != 0)

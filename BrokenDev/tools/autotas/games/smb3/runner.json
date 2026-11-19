@@ -41,5 +41,8 @@
   "wait_vals": "w=10..90:20,a=0..16:8,j=8..24:8",
   "up_want": "x >= {X} && air == 0 && y <= {Y}",
   "ready": "mode != 0 && time <= 300 && time > 0"
- }
+ },
+ "player_screen": [
+  "([$0090]-[$00FD])&255"
+ ]
 }

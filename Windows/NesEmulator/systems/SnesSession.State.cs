@@ -171,7 +171,8 @@ public sealed partial class SnesSession
     private void AfterStateLoad()
     {
         mid = null;
-        if (down != null) { SetPicture(ppuId); return; }   // the translator's caches and the line capture describe the old picture; the bridge's frame appears with the next RunFrame
+        if (down != null) { SetPicture(ppuId); return; }
+        if (s9x != null) { SetPicture(ppuId); return; }   // the harvest renderers (S9X, BS63, TYL) keep line state of their own: a fresh one draws the loaded machine (fuzz undo-mismatch picture-only, BS63)   // the translator's caches and the line capture describe the old picture; the bridge's frame appears with the next RunFrame
         PublishNativePicture();
     }
 }

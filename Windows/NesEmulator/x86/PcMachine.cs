@@ -51,6 +51,7 @@ public sealed partial class PcMachine : IX86Bus
     public readonly Rtl8029? Nic;
     /// <summary>The 82077AA floppy controller (the PCI 430TX board only; the other boards serve floppies through the BIOS alone).</summary>
     public readonly Fdc82077? Fdc;
+    private bool BmPort(int port, out int off) { off = 0; if (Ata == null || Pci == null || !Pci.Functions.TryGetValue(PciBus.IdeDevFn, out var f)) return false; int b = f.Bar4Base; if (b < 0 || port < b || port >= b + 16) return false; off = port - b; return true; }
     private bool NicPort(int port, out int off) { off = 0; if (Nic == null) return false; int b = Pci!.NicFn!.IoBase; if (b < 0 || port < b || port >= b + Rtl8029.IoSize) return false; off = port - b; return true; }
     /// <summary>The IDE controller (null on a BIOS-only machine: the default).</summary>
     public readonly AtaController? Ata;
@@ -157,6 +158,7 @@ public sealed partial class PcMachine : IX86Bus
     {
         PortLog?.Invoke(port, false);
         if (Pci != null && Pci.In(port, 1, out uint pv)) return (byte)pv;
+        if (BmPort(port, out int bo)) return (bo < 8 ? Ata!.Primary : Ata!.Secondary).BmRead(bo & 7);
         if (NicPort(port, out int no)) return (byte)Nic!.In(no, false);
         if (Ata != null && Ata.In(port, false, out int av)) return (byte)av;
         if (Fdc != null && Fdc82077.IsPort(port)) return Fdc.In(port);
@@ -189,6 +191,7 @@ public sealed partial class PcMachine : IX86Bus
         PortLog?.Invoke(port, true);
         PortTrace?.Invoke(port, true, v);
         if (Pci != null && (Pci.Out(port, 1, v) || PmTrap(port))) return;
+        if (BmPort(port, out int bo)) { (bo < 8 ? Ata!.Primary : Ata!.Secondary).BmWrite(bo & 7, v); return; }
         if (NicPort(port, out int no)) { Nic!.Out(no, v, false); return; }
         if (Ata != null && Ata.Out(port, false, v)) return;
         if (Fdc != null && Fdc82077.IsPort(port)) { Fdc.Out(port, v); return; }
@@ -290,6 +293,17 @@ public sealed partial class PcMachine : IX86Bus
     public byte Phys8(uint a) => a is >= 0xa0000 and < 0xc0000 ? Vga.MemRead(a) : a < Cpu.MemSize ? Cpu.Mem[a] : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
     public ushort Phys16(uint a) => (ushort)(Phys8(a) | (Phys8(a + 1) << 8));
     public uint Phys32(uint a) => (uint)(Phys16(a) | (Phys16(a + 2) << 16));
+    /// <summary>Bus-master DMA into guest physical memory: RAM in one copy (the JIT told once), anything else byte by byte.</summary>
+    private void DmaToMem(uint a, byte[] src, int off, int n)
+    {
+        if (a >= 0x100000 && (long)a + n <= Cpu.MemSize || (long)a + n <= 0xa0000) { Array.Copy(src, off, Cpu.Mem, a, n); Cpu.RamWritten(a, n); return; }
+        for (int i = 0; i < n; i++) PhysW8(a + (uint)i, src[off + i]);
+    }
+    private void DmaFromMem(uint a, byte[] dst, int off, int n)
+    {
+        if (a >= 0x100000 && (long)a + n <= Cpu.MemSize || (long)a + n <= 0xa0000) { Array.Copy(Cpu.Mem, a, dst, off, n); return; }
+        for (int i = 0; i < n; i++) dst[off + i] = Phys8(a + (uint)i);
+    }
     public void PhysW8(uint a, byte v) { if (a is >= 0xa0000 and < 0xc0000) Vga.MemWrite(a, v); else if (a < Cpu.MemSize) { Cpu.Mem[a] = v; Cpu.MemTouched(); } else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
     public void PhysW16(uint a, ushort v) { PhysW8(a, (byte)v); PhysW8(a + 1, (byte)(v >> 8)); }
     public void PhysW32(uint a, uint v) { PhysW16(a, (ushort)v); PhysW16(a + 2, (ushort)(v >> 16)); }
@@ -415,6 +429,8 @@ public sealed partial class PcMachine : IX86Bus
         if (Ata == null) return;
         Ata.Primary.Disk[0] = Hdd[0]; Ata.Primary.Disk[1] = Hdd[1];
         Ata.Secondary.CdPresent[0] = true; Ata.Secondary.Cd[0] = Cd;
+        Ata.Primary.Clock = Ata.Secondary.Clock = () => PitNow;
+        foreach (var ch in new[] { Ata.Primary, Ata.Secondary }) { ch.DmaToMem = DmaToMem; ch.DmaFromMem = DmaFromMem; }
     }
 
     /// <summary>A save state carries the config block when the machine is not the classic one (memory is already in the CPU's state).</summary>
@@ -472,6 +488,8 @@ public sealed partial class PcMachine : IX86Bus
             if (Nic != null) { w.Write(0x3043494e); Nic.Save(w); }   // "NIC0", after the config block
             if (Kbc.HasMouse) { w.Write(0x4d325350); Kbc.SaveMouse(w); }   // "PS2M"
             if (Fdc != null) { w.Write(0x30434446); Fdc.Save(w); }   // "FDC0"
+            if (Ata != null && (Ata.Primary.BmActive || Ata.Secondary.BmActive)) { w.Write(0x4d424449); Ata.Primary.SaveBm(w); Ata.Secondary.SaveBm(w); }   // "IDBM": bus-master DMA
+            if (Ata != null && Ata.Secondary.AudioActive) { w.Write(0x41444443); Ata.Secondary.SaveAudio(w); }   // "CDDA": CD audio playing or paused
             // "DSKD": the four drives (A:, B:, C:, D:) as base hash + overlay of changed sectors (DiskImage.SaveDiff)
             w.Write(0x444b5344);
             foreach (var d in new[] { Floppy[0], Floppy[1], Hdd[0], Hdd[1] })
@@ -536,7 +554,7 @@ public sealed partial class PcMachine : IX86Bus
         string? picId = null; byte[]? picBlob = null;
         string? svgaId = null; byte[]? svgaBlob = null;
         PcConfig? saved = null; bool mouse = false;
-        bool nicLoaded = false, fdcLoaded = false;
+        bool nicLoaded = false, fdcLoaded = false, cdda = false, idbm = false;
         while (r.BaseStream.Position + 4 <= r.BaseStream.Length)
         {
             int magic = r.ReadInt32();
@@ -554,6 +572,8 @@ public sealed partial class PcMachine : IX86Bus
             }
             else if (magic == 0x3043494e && Nic != null) { Nic.Load(r); nicLoaded = true; }
             else if (magic == 0x30434446 && Fdc != null) { Fdc.Load(r); fdcLoaded = true; }
+            else if (magic == 0x4d424449 && Ata != null) { Ata.Primary.LoadBm(r); Ata.Secondary.LoadBm(r); idbm = true; }
+            else if (magic == 0x41444443 && Ata != null) { Ata.Secondary.LoadAudio(r); cdda = true; }
             else if (magic == 0x444b5344)
             {
                 var bases = new List<byte[]?>();
@@ -563,6 +583,8 @@ public sealed partial class PcMachine : IX86Bus
             }
             else throw new InvalidDataException($"unknown block {magic:X8} in an x86 state");
         }
+        if (!cdda) Ata?.Secondary.ClearAudio();
+        if (!idbm) { Ata?.Primary.ClearBm(); Ata?.Secondary.ClearBm(); }
         if (Nic != null && !nicLoaded) Nic.Reset();   // a state from before the card: it sits there as after a cold boot, unconfigured
         if (!mouse) Kbc.ResetMouse();
         if (Fdc != null && !fdcLoaded) Fdc.PowerOn();   // a state from before the controller: it starts as after a cold boot

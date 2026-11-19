@@ -32,6 +32,9 @@ public sealed class PciFunction
     public uint Read32(int reg) { reg &= 0xfc; return (uint)(Cfg[reg] | Cfg[reg + 1] << 8 | Cfg[reg + 2] << 16 | Cfg[reg + 3] << 24); }
     /// <summary>Size of the I/O window behind BAR0 (0: no BAR). The low bits read back as zero (bit 0 = I/O space), so sizing works.</summary>
     public int IoBarSize;
+    /// <summary>Size of the I/O window behind BAR4 (the PIIX4 IDE's bus-master registers; 0: none).</summary>
+    public int Bar4Size;
+    public int Bar4Base => (Cfg[4] & 1) != 0 && Bar4Size != 0 && (Read32(0x20) & 0xfffc) != 0 ? (int)(Read32(0x20) & 0xfffc & ~(uint)(Bar4Size - 1)) : -1;
     public int IoBase => (Cfg[4] & 1) != 0 && IoBarSize != 0 ? (int)(Read32(0x10) & 0xfffc & ~(uint)(IoBarSize - 1)) : -1;
     public void WriteByte(int reg, byte v)
     {
@@ -40,6 +43,12 @@ public sealed class PciFunction
             Cfg[reg] = v;
             uint b = (Read32(0x10) & ~(uint)(IoBarSize - 1) & 0xffff) | 1;
             for (int i = 0; i < 4; i++) Cfg[0x10 + i] = (byte)(b >> (8 * i));
+        }
+        else if (reg is >= 0x20 and <= 0x23 && Bar4Size != 0)
+        {
+            Cfg[reg] = v;
+            uint b = (Read32(0x20) & ~(uint)(Bar4Size - 1) & 0xffff) | 1;
+            for (int i = 0; i < 4; i++) Cfg[0x20 + i] = (byte)(b >> (8 * i));
         }
         else if (reg == 0x04) Cfg[4] = (byte)(v & 0x07);
         else if (reg is 0x05 or 0x0c or 0x0d or 0x3c || reg >= 0x40) Cfg[reg] = v;
@@ -67,7 +76,8 @@ public sealed class PciBus
         for (int i = 0; i < 4; i++) isa.Cfg[0x60 + i] = 0x80;     // PIRQA-D routing: disabled until POST routes them
         if (_m.Ata != null)
         {
-            var ide = Functions[IdeDevFn] = new PciFunction("PIIX4 IDE", 0x8086, 0x7111, 0x010180, 0x01);
+            var ide = Functions[IdeDevFn] = new PciFunction("PIIX4 IDE", 0x8086, 0x7111, 0x010180, 0x01) { Bar4Size = 16 };
+            ide.Cfg[0x20] = 1;                                    // BAR4: the bus-master registers (I/O), placed by POST
             ide.Cfg[4] = 0x01;                                    // I/O decode on, legacy ports (no bus master DMA yet)
             ide.Cfg[0x41] = 0x80; ide.Cfg[0x43] = 0x80;           // IDETIM: both channels' decode enabled
         }
@@ -177,7 +187,7 @@ public sealed partial class PcMachine
     // ROM offsets in F000h (the classic machine leaves 0000-9FFF empty)
     private const uint Bios32Dir = 0x9000, PirTable = 0x9020, PnpHeader = 0x9100,
         Bios32Entry = 0x9200, Pci32Entry = 0x9210, ApmEntry = 0x9220, PnpRealEntry = 0x9230, PnpPmEntry = 0x9240;
-    private const int SvgaIrq = 11, NicIrq = 10, NicIoBase = 0xe000;
+    private const int SvgaIrq = 11, NicIrq = 10, NicIoBase = 0xe000, IdeBmBase = 0xe040;
     private bool _apmConnected;
     private byte _apmInterface;               // 0 none, 1 real, 2 16-bit PM, 3 32-bit PM
 
@@ -214,7 +224,12 @@ public sealed partial class PcMachine
             pci.ConfigWrite(0, PciBus.VgaDevFn, 0x3c, SvgaIrq, 1);
             pci.Elcr2 = 1 << (SvgaIrq - 8);
         }
-        if (pci.Functions.TryGetValue(PciBus.IdeDevFn, out var ide)) ide.Cfg[0x3c] = 14;
+        if (pci.Functions.TryGetValue(PciBus.IdeDevFn, out var ide))
+        {
+            ide.Cfg[0x3c] = 14;
+            pci.ConfigWrite(0, PciBus.IdeDevFn, 0x20, IdeBmBase | 1, 4);   // bus-master DMA registers at E040h
+            pci.ConfigWrite(0, PciBus.IdeDevFn, 0x04, 0x05, 1);            // I/O + bus master
+        }
         // the network card: I/O at E000h (32 ports), INTA# -> PIRQB -> IRQ 10 (level-triggered)
         if (pci.Functions.TryGetValue(PciBus.NicDevFn, out var nic))
         {

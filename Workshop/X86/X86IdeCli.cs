@@ -22,6 +22,8 @@ internal static class X86IdeCli
         Classic();
         AtaDisk();
         Atapi();
+        BinCue();
+        BusMaster();
         CdBootNoEmulation();
         CdBootFloppyEmulation();
         StateBlock();
@@ -178,6 +180,125 @@ internal static class X86IdeCli
         var noDisc = Ide(); noDisc.PowerOn();
         noDisc.Out8(B + 6, 0xa0);
         Check(noDisc.In8(B + 4) == 0x14, "empty CD drive still answers ATAPI");
+    }
+
+    // X86-02: a mixed-mode BIN/CUE (MODE1/2352 data + two AUDIO tracks, two files, a PREGAP), the multi-track TOC, cooked + raw reads, CD audio play / pause /
+    // sub-channel, the output, and a save state taken mid-play reloading to the same position.
+    private static void BinCue()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "bn_x86_bincue_" + Environment.ProcessId); Directory.CreateDirectory(dir);
+        var iso = Iso(0, NoEmulBoot());
+        int dataSec = iso.Length / 2048;
+        var bin1 = new byte[dataSec * 2352];
+        for (int i = 0; i < dataSec; i++) { int o = i * 2352; for (int k = 1; k < 11; k++) bin1[o + k] = 0xff; bin1[o + 15] = 1; Array.Copy(iso, i * 2048, bin1, o + 16, 2048); }
+        const int audSec = 300;   // 4 s per audio track
+        var bin2 = new byte[2 * audSec * 2352];
+        for (int i = 0; i < bin2.Length / 4; i++) { short v = (short)(i / 588 < audSec ? 8000 : -8000); bin2[4 * i] = (byte)v; bin2[4 * i + 1] = (byte)(v >> 8); bin2[4 * i + 2] = (byte)v; bin2[4 * i + 3] = (byte)(v >> 8); }
+        File.WriteAllBytes(Path.Combine(dir, "d.bin"), bin1); File.WriteAllBytes(Path.Combine(dir, "a.bin"), bin2);
+        File.WriteAllText(Path.Combine(dir, "t.cue"), "FILE \"d.bin\" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\nFILE \"a.bin\" BINARY\n  TRACK 02 AUDIO\n    PREGAP 00:02:00\n    INDEX 01 00:00:00\n  TRACK 03 AUDIO\n    INDEX 00 00:03:00\n    INDEX 01 00:04:00\n");
+        var cd = CdImage.Open(Path.Combine(dir, "t.cue"));
+        Check(cd.Tracks.Count == 3 && cd.Tracks[1].Start == dataSec + 150 && cd.Tracks[2].Start == dataSec + 150 + audSec && cd.LeadOut == dataSec + 150 + 2 * audSec, $"CUE layout: {cd}");
+        Check(cd.Tracks[2].Pregap == 75 && cd.Tracks[1].Pregap == 150, "CUE pregaps (PREGAP and INDEX 00)");
+        var m = Ide(); m.Cd = cd; m.Floppy[0] = new DiskImage(FloppyBoot(), true); m.PowerOn();
+        const int B = 0x170;
+        m.Out8(B + 6, 0xa0);
+        byte[]? Packet(byte[] cdb, int expect)
+        {
+            m.Out8(B + 6, 0xa0); m.Out8(B + 1, 0); m.Out8(B + 4, 0x00); m.Out8(B + 5, 0x80); m.Out8(B + 7, 0xa0);
+            if (!WaitDrq(m, B) || m.In8(B + 2) != 1) return null;
+            var p = new byte[12]; cdb.CopyTo(p, 0);
+            for (int i = 0; i < 12; i += 2) m.Out16(B, (ushort)(p[i] | p[i + 1] << 8));
+            var got = new System.Collections.Generic.List<byte>();
+            while (WaitDrq(m, B)) { int n = m.In8(B + 4) | m.In8(B + 5) << 8; got.AddRange(ReadWords(m, B, n)); }
+            if ((m.In8(B + 7) & 1) != 0) return null;
+            return got.Count == expect ? got.ToArray() : null;
+        }
+        var toc = Packet(new byte[] { 0x43, 0, 0, 0, 0, 0, 0, 0, 0xff }, 4 + 8 * 4);
+        Check(toc != null && toc[2] == 1 && toc[3] == 3 && toc[5] == 0x14 && toc[13] == 0x10 && toc[14] == 2 && toc[30] == 0xaa, "READ TOC: 1 data + 2 audio tracks + lead-out");
+        var tocm = Packet(new byte[] { 0x43, 2, 0, 0, 0, 0, 0, 0, 0xff }, 36);
+        Check(tocm != null && tocm[9] == 0 && tocm[10] == 2 && tocm[11] == 0, "READ TOC MSF: track 1 at 00:02:00");
+        var rd = Packet(new byte[] { 0x28, 0, 0, 0, 0, 16, 0, 0, 4 }, 4 * 2048);
+        Check(rd != null && rd.SequenceEqual(iso.Skip(16 * 2048).Take(4 * 2048)), "READ(10) cooked data out of MODE1/2352");
+        Check(Packet(new byte[] { 0x28, 0, 0, 0, (byte)(dataSec + 160 >> 8), (byte)(dataSec + 160), 0, 0, 1 }, 0) == null, "READ(10) of an audio sector fails");
+        var sense = Packet(new byte[] { 0x03, 0, 0, 0, 18 }, 18);
+        Check(sense != null && sense[2] == 5 && sense[12] == 0x64, "REQUEST SENSE: illegal mode for this track");
+        long a2 = cd.Tracks[1].Start;
+        var raw = Packet(new byte[] { 0xbe, 0, (byte)(a2 >> 24), (byte)(a2 >> 16), (byte)(a2 >> 8), (byte)a2, 0, 0, 2, 0xf8 }, 2 * 2352);
+        Check(raw != null && raw.SequenceEqual(bin2.Take(2 * 2352)), "READ CD: raw audio sectors");
+        // play track 2 from its start to the end of track 3
+        long s0 = a2 + 150, e0 = cd.LeadOut + 150;
+        Check(Packet(new byte[] { 0x47, 0, 0, (byte)(s0 / 4500), (byte)(s0 / 75 % 60), (byte)(s0 % 75), (byte)(e0 / 4500), (byte)(e0 / 75 % 60), (byte)(e0 % 75) }, 0) != null, "PLAY AUDIO MSF accepted");
+        byte[]? Sub() => Packet(new byte[] { 0x42, 0, 0x40, 1, 0, 0, 0, 0, 16 }, 16);
+        var sub = Sub();
+        Check(sub != null && sub[1] == 0x11 && sub[6] == 2, "READ SUB-CHANNEL: playing track 2");
+        long Pos(byte[] q) => q[8] << 24 | q[9] << 16 | q[10] << 8 | q[11];
+        long t0 = m.Clock; m.RunClock(m.InstructionsPerSecond); 
+        sub = Sub(); long p1 = sub == null ? -1 : Pos(sub);
+        Check(Math.Abs(p1 - (a2 + 75)) <= 2, $"one second of play advances 75 sectors (at {p1 - a2})");
+        var st = m.SaveState();
+        var buf = new short[2 * 4410]; Array.Clear(buf); m.Ata!.Secondary.MixCdAudio(buf, buf.Length);
+        Check(buf.Skip(buf.Length - 100).All(v => v == 8000), "CD audio reaches the mix (track 2 tone)");
+        m.RunClock(m.InstructionsPerSecond / 2); var after = Sub();
+        var n = Ide(); n.Cd = cd; n.Floppy[0] = new DiskImage(FloppyBoot(), true); n.LoadState(st); n.RunClock(m.InstructionsPerSecond / 2);
+        // n has no Packet helper bound: compare through the same port protocol
+        var mm = m; m = n; var after2 = Sub(); m = mm;
+        Check(after != null && after2 != null && after.SequenceEqual(after2), "save mid-play + reload: same play position half a second later");
+        Check(Packet(new byte[] { 0x4b, 0, 0, 0, 0, 0, 0, 0, 0 }, 0) != null && Sub() is { } ps && ps[1] == 0x12, "PAUSE: sub-channel paused");
+        long pp = Pos(Sub()!); m.RunClock(m.InstructionsPerSecond / 4);
+        Check(Pos(Sub()!) == pp, "paused position holds");
+        Check(Packet(new byte[] { 0x4b, 0, 0, 0, 0, 0, 0, 0, 1 }, 0) != null && Sub()![1] == 0x11, "RESUME");
+        Check(Packet(new byte[] { 0x4e }, 0) != null && Sub()![1] == 0x15, "STOP PLAY");
+        // a bare ISO through CdImage.Open and a single-file BIN/CUE with INDEX 00
+        File.WriteAllBytes(Path.Combine(dir, "x.iso"), iso);
+        var ci = CdImage.Open(Path.Combine(dir, "x.iso"));
+        Check(ci.Tracks.Count == 1 && ci.LeadOut == dataSec && ci.ReadData(16, 1).SequenceEqual(iso.Skip(16 * 2048).Take(2048)), "Open(.iso)");
+        File.WriteAllBytes(Path.Combine(dir, "one.bin"), bin1.Concat(bin2).ToArray());
+        File.WriteAllText(Path.Combine(dir, "one.cue"), $"FILE \"one.bin\" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n  TRACK 02 AUDIO\n    INDEX 00 {dataSec / 75 / 60:00}:{dataSec / 75 % 60:00}:{dataSec % 75:00}\n    INDEX 01 {(dataSec + 150) / 75 / 60:00}:{(dataSec + 150) / 75 % 60:00}:{(dataSec + 150) % 75:00}\n");
+        var c1 = CdImage.Open(Path.Combine(dir, "one.cue"));
+        var rawb = new byte[2352]; c1.ReadRaw(c1.Tracks[1].Start, rawb, 0);
+        Check(c1.Tracks[1].Start == dataSec + 150 && c1.LeadOut == dataSec + 2 * audSec && rawb.SequenceEqual(bin2.Skip(150 * 2352).Take(2352)), $"single-file CUE with INDEX 00: {c1}");
+        try { Directory.Delete(dir, true); } catch { }
+    }
+
+    // X86-02: PIIX4 bus-master DMA on the PCI board: READ DMA / WRITE DMA through a two-entry PRD table, and an ATAPI READ(10) with the DMA feature bit.
+    private static void BusMaster()
+    {
+        var m = new PcMachine(PcConfig.Win98 with { MemoryMB = 16 });
+        var img = Pattern(16 * 63 * 4);
+        m.Hdd[0] = new DiskImage(img, false);
+        var iso = Iso(0, NoEmulBoot()); m.Cd = new CdImage(iso);
+        m.PowerOn();
+        uint bar = m.Pci!.ConfigRead(0, PciBus.IdeDevFn, 0x20);
+        int bm = (int)(bar & 0xfffc);
+        Check((bar & 1) == 1 && bm != 0 && (m.Pci.ConfigRead(0, PciBus.IdeDevFn, 4) & 4) != 0, $"POST puts the bus-master BAR4 at {bm:X4} and enables bus mastering");
+        void Prd(uint at, params (uint addr, int n, bool eot)[] e) { for (int i = 0; i < e.Length; i++) { m.PhysW32(at + (uint)(8 * i), e[i].addr); m.PhysW32(at + (uint)(8 * i) + 4, (uint)(e[i].n & 0xffff) | (e[i].eot ? 0x80000000u : 0)); } }
+        Prd(0x10000, (0x200000, 3 * 512, false), (0x300000, 5 * 512, true));
+        const int B = 0x1f0;
+        m.Out32(bm + 4, 0x10000); m.Out8(bm + 2, 0x06);
+        m.Out8(B + 6, 0xe0); m.Out8(B + 2, 8); m.Out8(B + 3, 10); m.Out8(B + 4, 0); m.Out8(B + 5, 0); m.Out8(B + 7, 0xc8);
+        m.Out8(bm, 0x09);   // start, to memory
+        bool ok = true; for (int i = 0; i < 8 * 512; i++) if (m.Phys8((uint)(i < 1536 ? 0x200000 + i : 0x300000 + i - 1536)) != img[10 * 512 + i]) { ok = false; break; }
+        Check(ok, "READ DMA: 8 sectors scattered over two PRD entries");
+        Check((m.In8(bm + 2) & 7) == 4 && (m.In8(B + 7) & 0x89) == 0, "READ DMA: bus-master interrupt bit, idle status");
+        m.Out8(bm, 0); m.Out8(bm + 2, 0x04);
+        for (int i = 0; i < 512; i++) m.PhysW8(0x400000 + (uint)i, (byte)(255 - i));
+        Prd(0x10100, (0x400000, 512, true)); m.Out32(bm + 4, 0x10100);
+        m.Out8(B + 6, 0xe0); m.Out8(B + 2, 1); m.Out8(B + 3, 50); m.Out8(B + 4, 0); m.Out8(B + 5, 0); m.Out8(B + 7, 0xca);
+        m.Out8(bm, 0x01);
+        var wb = new byte[512]; m.Hdd[0]!.Read(50, 1, wb);
+        Check(wb.Select((v, i) => v == (byte)(255 - i)).All(x => x) && m.Hdd[0]!.Dirty, "WRITE DMA lands on the disk");
+        m.Out8(bm, 0); m.Out8(bm + 2, 0x04);
+        // ATAPI READ(10) 3 sectors with the DMA feature bit, engine started before the packet
+        const int S = 0x170;
+        Prd(0x10200, (0x500000, 3 * 2048, true)); m.Out32(bm + 8 + 4, 0x10200); m.Out8(bm + 8, 0x09);
+        m.Out8(S + 6, 0xa0); m.Out8(S + 1, 1); m.Out8(S + 4, 0); m.Out8(S + 5, 0x80); m.Out8(S + 7, 0xa0);
+        WaitDrq(m, S);
+        var p = new byte[] { 0x28, 0, 0, 0, 0, 20, 0, 0, 3, 0, 0, 0 };
+        for (int i = 0; i < 12; i += 2) m.Out16(S, (ushort)(p[i] | p[i + 1] << 8));
+        ok = true; for (int i = 0; i < 3 * 2048; i++) if (m.Phys8(0x500000 + (uint)i) != iso[20 * 2048 + i]) { ok = false; break; }
+        Check(ok && (m.In8(bm + 10) & 4) != 0 && (m.In8(S + 7) & 0x89) == 0, "ATAPI READ(10) by DMA");
+        var st = m.SaveState(); var n = new PcMachine(PcConfig.Win98 with { MemoryMB = 16 }); n.Hdd[0] = m.Hdd[0]; n.Cd = m.Cd; n.LoadState(st);
+        Check(n.In8(bm + 10) == m.In8(bm + 10) && n.In32(bm + 12) == 0x10200, "bus-master registers survive a state");
     }
 
     private static void CdBootNoEmulation()

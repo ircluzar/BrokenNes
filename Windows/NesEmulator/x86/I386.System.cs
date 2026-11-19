@@ -319,7 +319,7 @@ public sealed partial class I386
                 R[4] = newsp;
                 if (!SetSeg(SEG_SS, newss)) return false;
                 uint sm = SsMask(), sp = R[4];
-                var mm = new OptAddr[6];
+                Span<OptAddr> mm = stackalloc OptAddr[6];
                 for (int i = 0; i < 5; i++) if (!Translate(ref mm[i], 2, SEG_SS, (sp - n * (uint)(i + 1)) & sm, sz, 0)) return false;
                 if (pusherr && !Translate(ref mm[5], 2, SEG_SS, (sp - n * 6) & sm, sz, 0)) return false;
                 Store(bits, ref mm[0], oldss); Store(bits, ref mm[1], oldsp);
@@ -345,7 +345,7 @@ public sealed partial class I386
                 R[4] = newsp;
                 if (!SetSeg(SEG_SS, newss)) { Flags = oldflags; R[4] = oldsp; return false; }
                 uint sm = SsMask(), sp = R[4];
-                var mm = new OptAddr[10];
+                Span<OptAddr> mm = stackalloc OptAddr[10];
                 for (int i = 0; i < 9; i++) Try1(Translate(ref mm[i], 2, SEG_SS, (sp - 4 * (uint)(i + 1)) & sm, 4, 0), "v86 isr");
                 if (pusherr && !Translate(ref mm[9], 2, SEG_SS, (sp - 40) & sm, 4, 0)) return false;
                 Store32(ref mm[0], SegSel[SEG_GS]); Store32(ref mm[1], SegSel[SEG_FS]);
