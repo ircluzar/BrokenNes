@@ -206,6 +206,20 @@ public sealed partial class I386
     }
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JLeave() => Leave();
     /// <summary>MOV Sw, Ew (after JPrep): the interpreter's checked segment load. False = a fault (raised).</summary>
+    /// <summary>CMC / CLC / STC / CLI / CLD / STD, exactly as the interpreter (CLI with IOPL &lt; CPL: #GP, false).</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool JFlagOp(int op)
+    {
+        switch (op)
+        {
+            case 0xf5: { int cf = GetCF(); _ccMask &= ~CF; Flags = SetBit(Flags, cf == 0, CF); return true; }
+            case 0xf8: _ccMask &= ~CF; Flags &= ~CF; return true;
+            case 0xf9: _ccMask &= ~CF; Flags |= CF; return true;
+            case 0xfa: if (GetIOPL() < Cpl) return Throw(EX_GP, 0); Flags &= ~IF; return true;
+            case 0xfc: Flags &= ~DF; return true;
+            default: Flags |= DF; return true;
+        }
+    }
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JMovSeg(int seg, uint v) => LoadSegChecked(seg, v);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegSel(int seg) => SegSel[seg];
     /// <summary>A REP / REPNE string instruction (after JPrep), the interpreter's own loop (it charges the iterations to Cycle). False = a fault.</summary>
@@ -347,7 +361,7 @@ public sealed partial class I386
         var d = new Dictionary<string, MethodInfo>();
         foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
-                     "JXlat", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
+                     "JXlat", "JFlagOp", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
         return d;
     });
@@ -985,6 +999,11 @@ public sealed partial class I386
             {
                 case DK_MOVGE:
                     ReadE(); Stl(t); StReg(bits, e.Reg, () => Ld(t));
+                    break;
+                case DK_FLAGOP:
+                    if (op == 0xfa) Prep();   // (CLI may fault)
+                    Ld0(); I4(op); Call("JFlagOp");
+                    if (op == 0xfa) FailIfFalse(); else Op(OpCodes.Pop);
                     break;
                 case DK_XCHG:   // register with register (Mod 3): no memory, no flags
                     LdReg(bits, e.Rm); Stl(t);
