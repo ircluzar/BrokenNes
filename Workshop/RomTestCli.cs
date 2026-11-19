@@ -283,6 +283,8 @@ internal static class RomTestCli
     {
         var steps = new List<InputStep>();
         if (string.IsNullOrWhiteSpace(script)) return steps;
+        // "@file": the script is read from that file (a 10-minute script is longer than a Windows command line may be)
+        if (script.StartsWith('@')) script = File.ReadAllText(script[1..]).Trim();
 
         foreach (var rawStep in script.Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
