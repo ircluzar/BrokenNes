@@ -1148,11 +1148,17 @@ internal sealed partial class HeadlessSession : Session
         string note;
         try { sprites = DebugPictures.Sprites(M, out note); }
         catch (ArgumentException e) { throw new ToolError(e.Message); }
+        if (nes?.DebugBus?.ppu is IPpuViewProbe probe)   // the 8x16 mode is PPUCTRL bit 5: the FIX PPU shows it
+        {
+            bool tall = (probe.ProbeCtrl & 0x20) != 0;
+            foreach (var p in sprites) p.Height = tall ? 16 : 8;
+            note = tall ? "8x16 sprites (PPUCTRL bit 5)" : "8x8 sprites (PPUCTRL bit 5 clear)";
+        }
         var list = new JsonArray();
         foreach (var p in sprites)
         {
             if (nes != null)
-                list.Add(new JsonObject { ["index"] = p.Index, ["x"] = p.X, ["y"] = p.Y, ["tile"] = Num.Hex(p.Tile), ["palette"] = p.Palette, ["behind"] = p.Behind, ["flipX"] = p.FlipX, ["flipY"] = p.FlipY });
+                list.Add(new JsonObject { ["index"] = p.Index, ["x"] = p.X, ["y"] = p.Y, ["w"] = p.Width, ["h"] = p.Height, ["tile"] = Num.Hex(p.Tile), ["palette"] = p.Palette, ["behind"] = p.Behind, ["flipX"] = p.FlipX, ["flipY"] = p.FlipY });
             else if (cs is GbSession)
                 list.Add(new JsonObject { ["index"] = p.Index, ["x"] = p.X, ["y"] = p.Y, ["tile"] = Num.Hex(p.Tile), ["flags"] = Num.Hex(p.Flags), ["behind"] = p.Behind, ["flipY"] = p.FlipY, ["flipX"] = p.FlipX, ["dmgPalette"] = p.DmgPalette, ["cgbPalette"] = p.CgbPalette, ["vramBank"] = p.VramBank });
             else
@@ -1170,6 +1176,122 @@ internal sealed partial class HeadlessSession : Session
             o.Pngs.Add(Png.FromArgb(px, w, h, scale));
         }
         return o;
+    }
+
+    public override JsonObject Tilemap(string? layer, bool view)
+    {
+        var m = M ?? throw new ToolError($"the tile map covers the NES, SNES, WideMess and Game Boy; not the {Consoles.DisplayName(console)} yet");
+        string fam = DebugPictures.Family(m.Console);
+        var layers = DebugPictures.MapLayers(fam);
+        if (layers.Length == 0) throw new ToolError($"the tile map covers the NES, SNES, WideMess and Game Boy; not the {Consoles.DisplayName(console)} yet");
+        string l = string.IsNullOrWhiteSpace(layer) ? layers[0] : layer.Trim().ToLowerInvariant();
+        DebugPictures.MapView v;
+        try { v = DebugPictures.Map(m, (object?)nes ?? cs, l); }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException) { throw new ToolError(e.Message); }
+        int cell = v.CellSize;
+        bool vis = view && v.ViewW > 0;
+        int regX = v.ViewX, regY = v.ViewY;
+        string scrollFrom = "registers";
+        double regScore = 0, picScore = 0;
+        if (vis)
+        {
+            // The registers' scroll between frames can be a split's (a status bar's), not the playfield's: find the scroll
+            // where the map's pixels match the last picture best (a few rows of the playfield against every offset).
+            var (px, w, h) = Picture();
+            var (bx, by, bs, rs) = MatchScroll(px, w, h, v);
+            regScore = rs; picScore = bs;
+            if (bx != (((v.ViewX % v.Width) + v.Width) % v.Width) || by != (((v.ViewY % v.Height) + v.Height) % v.Height)) { v.ViewX = bx; v.ViewY = by; scrollFrom = "picture match"; regScore = Math.Max(0, rs + 1); }
+        }
+        int c0 = vis ? v.ViewX / cell : 0, r0 = vis ? v.ViewY / cell : 0;
+        int cols = vis ? (v.ViewX % cell == 0 ? v.ViewW / cell : v.ViewW / cell + 1) : v.CellsX;
+        int rows = vis ? (v.ViewY % cell == 0 ? v.ViewH / cell : v.ViewH / cell + 1) : v.CellsY;
+        var rowsOut = new JsonArray(); var pals = new JsonArray();
+        for (int r = 0; r < rows; r++)
+        {
+            var sb = new System.Text.StringBuilder(); var pb = new System.Text.StringBuilder();
+            for (int c = 0; c < cols; c++)
+            {
+                var (tile, pal, _) = v.Cell((c0 + c) % v.CellsX, (r0 + r) % v.CellsY);
+                if (c > 0) sb.Append(' ');
+                sb.Append(tile.ToString(tile > 0xFF ? "X3" : "X2")); pb.Append((char)('0' + (pal & 7)));
+            }
+            rowsOut.Add(sb.ToString()); pals.Add(pb.ToString());
+        }
+        return new JsonObject
+        {
+            ["what"] = v.What, ["layer"] = l, ["layers"] = J.Strs(layers), ["cell"] = cell, ["mapCols"] = v.CellsX, ["mapRows"] = v.CellsY,
+            ["scrollX"] = v.ViewX, ["scrollY"] = v.ViewY, ["scrollFrom"] = scrollFrom, ["registerScroll"] = $"{regX},{regY}", ["match"] = Math.Round(Math.Max(picScore, regScore), 3), ["view"] = vis, ["firstCol"] = c0, ["firstRow"] = r0,
+            ["fineX"] = vis ? v.ViewX % cell : 0, ["fineY"] = vis ? v.ViewY % cell : 0, ["cols"] = cols, ["rows"] = rows,
+            ["tiles"] = rowsOut, ["palettes"] = pals, ["frame"] = Frames,
+            ["how"] = "tiles[r] = the tile ids of row r (hex, space-separated) starting at map cell (firstCol, firstRow), wrapping at the map's edges; palettes[r] = one digit per cell; the screen's top-left pixel is (fineX, fineY) inside the first cell",
+        };
+    }
+
+    /// <summary>The (x, y) offset into the map that best matches four content-rich rows of the picture, its score, and the score at the registers' scroll.</summary>
+    private static (int x, int y, double score, double regScore) MatchScroll(uint[] px, int w, int h, DebugPictures.MapView v)
+    {
+        // a split screen (a status bar) scrolls apart from the playfield: each of 6 bands finds its own best offset, and the offset
+        // that fits the most bands wins (the playfield is bigger than the bar)
+        int W = v.Width, H = v.Height;
+        if (w <= 0 || h <= 0 || W <= 0 || H <= 0) return (v.ViewX, v.ViewY, 0, 0);
+        const int N = 64, B = 6;
+        int[] xs = Enumerable.Range(0, N).Select(i => i * w / N).ToArray();
+        static bool Near(uint a, uint b) { if (a == b) return true; int d = Math.Abs((int)(a >> 16 & 255) - (int)(b >> 16 & 255)) + Math.Abs((int)(a >> 8 & 255) - (int)(b >> 8 & 255)) + Math.Abs((int)(a & 255) - (int)(b & 255)); return d < 72; }
+        var bands = new List<int[]>();
+        for (int k = 0; k < B; k++)
+        {
+            int y0 = k * h / B, y1 = (k + 1) * h / B;
+            bands.Add(Enumerable.Range(y0, y1 - y0).Select(y => (y, n: xs.Select(x => px[y * w + x]).Distinct().Count())).OrderByDescending(t => t.n).Take(2).Select(t => t.y).ToArray());
+        }
+        // the backdrop (sky) matches everywhere: only samples where the picture or the map shows something else count
+        uint back = Enumerable.Range(0, h / 2).SelectMany(y => xs.Select(x => px[y * 2 * w + x])).GroupBy(c => c).OrderByDescending(g => g.Count()).First().Key;
+        // shapes, not colours (the debug palette and the renderer's differ): backdrop or not, on both sides
+        uint mback = Enumerable.Range(0, H / 4).SelectMany(y => Enumerable.Range(0, W / 4).Select(x => v.Pixels[y * 4 * W + x * 4])).GroupBy(c => c).OrderByDescending(g => g.Count()).First().Key;
+        double Score(int[] rows, int X, int Y)
+        {
+            int hit = 0, n = 0;
+            foreach (int ys in rows)
+            {
+                int my = (Y + ys) % H, srow = ys * w, mrow = my * W;
+                foreach (int x in xs)
+                {
+                    uint a = px[srow + x], b = v.Pixels[mrow + (X + x) % W];
+                    bool ab = a == back, bb = b == mback;
+                    if (ab && bb) continue;
+                    n++; if (ab == bb) hit++;
+                }
+            }
+            return n == 0 ? 0.5 : hit / (double)n;
+        }
+        var cands = new List<(int X, int Y)>();
+        foreach (var rows in bands)
+        {
+            int bx = 0, by = 0; double best = -1;
+            for (int Y = 0; Y < H; Y++)
+                for (int X = 0; X < W; X++)
+                {
+                    double sc = Score(rows, X, Y);
+                    if (sc > best) { best = sc; bx = X; by = Y; }
+                }
+            cands.Add((bx, by));
+        }
+        (int X, int Y) win = cands[0]; double winFit = -1, winScore = 0;
+        foreach (var c in cands.Distinct())
+        {
+            var per = bands.Select(r => Score(r, c.X, c.Y)).ToArray();
+            double fit = per.Count(p => p > 0.9) + per.Average() * 0.5;
+            if (fit > winFit) { winFit = fit; win = c; winScore = per.Average(); }
+        }
+        int rx = ((v.ViewX % W) + W) % W, ry = ((v.ViewY % H) + H) % H;
+        {   // the registers' other axis is usually right (a status bar split resets one axis): keep it when it fits about half as well.
+            // (the map is drawn with the CHR banks of the frame's end, which can be the bar's, so the shapes match only roughly)
+            double Avg(int X, int Y) => bands.Average(r => Score(r, X, Y));
+            if (Avg(win.X, ry) >= 0.5 * winScore) { win = (win.X, ry); winScore = Avg(win.X, ry); }
+            else if (Avg(rx, win.Y) >= 0.5 * winScore) { win = (rx, win.Y); winScore = Avg(rx, win.Y); }
+        }
+        var rper = bands.Select(r => Score(r, rx, ry)).ToArray();
+        double rfit = rper.Count(p => p > 0.9) + rper.Average() * 0.5;
+        return rfit >= winFit ? (rx, ry, rper.Average(), rper.Average()) : (win.X, win.Y, winScore, rper.Average() - 1);
     }
 
     // ================================================================================================ sound
