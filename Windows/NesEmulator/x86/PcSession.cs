@@ -33,6 +33,8 @@ public sealed class PcSession : IConsoleSession
     public PcSession(byte[] image, string fileName = "", string apu = "ADLIB", string cpu = "I386", string ppu = "VGA", CpuModel? model = null, string machine = PcMachinePreset.ClassicKey)
     {
         var preset = PcMachinePreset.Find(machine);
+        // X86-02: background (non-blocking) gen2 collections while a PC runs: the JIT's Reflection.Emit garbage made blocking collections the worst frames (A/B: p99 163 -> 124 ms). BROKENNES_X86_GCLAT=0 opts out.
+        if (Environment.GetEnvironmentVariable("BROKENNES_X86_GCLAT") != "0") System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
         MachineKey = preset.Key;
         if (!preset.IsClassic) model = preset.Cpu;
         _model = model != null && !model.Legacy ? model : null;
