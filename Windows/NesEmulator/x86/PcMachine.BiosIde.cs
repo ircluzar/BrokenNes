@@ -89,11 +89,11 @@ public sealed partial class PcMachine
     {
         var cd = Cd!;
         if (cd.Sectors < 18) return false;
-        var brvd = cd.Data.AsSpan(17 * 2048, 2048);
+        var brvd = cd.ReadData(17, 1).AsSpan();
         if (brvd[0] != 0 || Encoding.ASCII.GetString(brvd.Slice(1, 5)) != "CD001" || !Encoding.ASCII.GetString(brvd.Slice(7, 23)).StartsWith("EL TORITO SPECIFICATION")) return false;
         uint cat = BitConverter.ToUInt32(brvd.Slice(0x47, 4));
         if (cat >= cd.Sectors) return false;
-        var c = cd.Data.AsSpan((int)(cat * 2048), 64);
+        var c = cd.ReadData(cat, 1).AsSpan(0, 64);
         if (c[0] != 1 || c[0x1e] != 0x55 || c[0x1f] != 0xaa || c[32] != 0x88) return false;
         byte media = (byte)(c[33] & 0x0f);
         uint seg = BitConverter.ToUInt16(c.Slice(34, 2)); if (seg == 0) seg = 0x7c0;
@@ -103,16 +103,16 @@ public sealed partial class PcMachine
         if (media == 0)
         {
             int bytes = Math.Max(1, count) * 512;
-            if ((long)lba * 2048 + bytes > cd.Data.Length || (seg << 4) + bytes > 0x9fc00) return false;
-            Array.Copy(cd.Data, lba * 2048, Cpu.Mem, seg << 4, bytes);
+            if ((long)lba * 2048 + bytes > cd.Sectors * 2048 || (seg << 4) + bytes > 0x9fc00) return false;
+            Array.Copy(cd.ReadData(lba, (bytes + 2047) / 2048), 0, Cpu.Mem, seg << 4, bytes);
             _cdBoot = true;
             StartBoot(CdDrive, seg, 0);
             return true;
         }
         int size = media switch { 1 => 1228800, 2 => 1474560, 3 => 2949120, _ => 0 };
         if (size == 0) { Stopped = "El Torito hard disk emulation (media type 4) is not supported"; return false; }
-        if ((long)lba * 2048 + size > cd.Data.Length) return false;
-        _cdEmu = new DiskImage(cd.Data.AsSpan((int)(lba * 2048), size).ToArray(), true);
+        if ((long)lba * 2048 + size > cd.Sectors * 2048) return false;
+        _cdEmu = new DiskImage(cd.ReadData(lba, size / 2048), true);
         if ((Phys16(0x410) & 1) == 0) PhysW16(0x410, (ushort)(Phys16(0x410) | 1));   // the emulated A: is a floppy drive (equipment word)
         return TryBootDisk(0x00);
     }
@@ -147,7 +147,8 @@ public sealed partial class PcMachine
                 uint buf = (uint)(Lin16(p + 6) << 4) + Lin16(p + 4);
                 long lba = Lin32(p + 8) | ((long)Lin32(p + 12) << 32);
                 if (lba < 0 || lba + count > cd.Sectors) { LinW16(p + 2, 0); AH = 0x04; SetCF(true); return true; }
-                for (int i = 0; i < count * 2048; i++) LinW8(buf + (uint)i, cd.Data[lba * 2048 + i]);
+                var data = cd.ReadData(lba, count);
+                for (int i = 0; i < count * 2048; i++) LinW8(buf + (uint)i, data[i]);
                 AH = 0; Ok(); return true;
             }
             case 0x48:

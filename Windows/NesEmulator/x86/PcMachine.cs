@@ -414,6 +414,7 @@ public sealed partial class PcMachine : IX86Bus
         if (Ata == null) return;
         Ata.Primary.Disk[0] = Hdd[0]; Ata.Primary.Disk[1] = Hdd[1];
         Ata.Secondary.CdPresent[0] = true; Ata.Secondary.Cd[0] = Cd;
+        Ata.Primary.Clock = Ata.Secondary.Clock = () => PitNow;
     }
 
     /// <summary>A save state carries the config block when the machine is not the classic one (memory is already in the CPU's state).</summary>
@@ -474,6 +475,7 @@ public sealed partial class PcMachine : IX86Bus
             if (Nic != null) { w.Write(0x3043494e); Nic.Save(w); }   // "NIC0", after the config block
             if (Kbc.HasMouse) { w.Write(0x4d325350); Kbc.SaveMouse(w); }   // "PS2M"
             if (Fdc != null) { w.Write(0x30434446); Fdc.Save(w); }   // "FDC0"
+            if (Ata != null && Ata.Secondary.AudioActive) { w.Write(0x41444443); Ata.Secondary.SaveAudio(w); }   // "CDDA": CD audio playing or paused
         }
         return ms.ToArray();
     }
@@ -530,7 +532,7 @@ public sealed partial class PcMachine : IX86Bus
         string? picId = null; byte[]? picBlob = null;
         string? svgaId = null; byte[]? svgaBlob = null;
         PcConfig? saved = null; bool mouse = false;
-        bool nicLoaded = false, fdcLoaded = false;
+        bool nicLoaded = false, fdcLoaded = false, cdda = false;
         while (r.BaseStream.Position + 4 <= r.BaseStream.Length)
         {
             int magic = r.ReadInt32();
@@ -548,8 +550,10 @@ public sealed partial class PcMachine : IX86Bus
             }
             else if (magic == 0x3043494e && Nic != null) { Nic.Load(r); nicLoaded = true; }
             else if (magic == 0x30434446 && Fdc != null) { Fdc.Load(r); fdcLoaded = true; }
+            else if (magic == 0x41444443 && Ata != null) { Ata.Secondary.LoadAudio(r); cdda = true; }
             else throw new InvalidDataException($"unknown block {magic:X8} in an x86 state");
         }
+        if (!cdda) Ata?.Secondary.ClearAudio();
         if (Nic != null && !nicLoaded) Nic.Reset();   // a state from before the card: it sits there as after a cold boot, unconfigured
         if (!mouse) Kbc.ResetMouse();
         if (Fdc != null && !fdcLoaded) Fdc.PowerOn();   // a state from before the controller: it starts as after a cold boot

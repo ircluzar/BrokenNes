@@ -60,10 +60,11 @@ internal static class X86BootCli
         var m = cfg == PcConfig.Default ? new PcMachine(PcMachine.DefaultMemory, model, video) : new PcMachine(cfg, model, video);
         if (Arg(args, "--ips") is string ips) m.InstructionsPerSecond = long.Parse(ips);
         if (Arg(args, "--wav") != null) _wav = new System.IO.MemoryStream();
+        if (Arg(args, "--cdwav") != null) _cdWav = new System.IO.MemoryStream();
         if (Arg(args, "--apu") is string apu && !PcSound.Apply(m, apu)) { Console.WriteLine($"x86boot: no sound card {apu}"); return 1; }
         if (Arg(args, "--hdd") is string h) m.Hdd[0] = new DiskImage(File.ReadAllBytes(h), false);
         if (Arg(args, "--hdd2") is string h2) m.Hdd[1] = new DiskImage(File.ReadAllBytes(h2), false);
-        if (Arg(args, "--cd") is string cdp) m.Cd = new CdImage(File.ReadAllBytes(cdp));
+        if (Arg(args, "--cd") is string cdp) { m.Cd = CdImage.Open(cdp); Console.WriteLine(m.Cd); }
         if (Arg(args, "--floppy") is string f) m.Floppy[0] = new DiskImage(File.ReadAllBytes(f), true);
         int frames = int.Parse(Arg(args, "--frames") ?? "3000");
         string? until = Arg(args, "--until"), type = Arg(args, "--type"), shot = Arg(args, "--shot");
@@ -315,7 +316,8 @@ internal static class X86BootCli
         Console.WriteLine(Screen(m).TrimEnd());
         Console.WriteLine("----------------");
         if (shot != null) X86Shots.SavePng(m.Vga, shot);
-        if (Arg(args, "--wav") is string wavp) WriteWav(wavp);
+        if (Arg(args, "--wav") is string wavp) WriteWav(wavp, _wav!);
+        if (Arg(args, "--cdwav") is string cdwp) WriteWav(cdwp, _cdWav!);
         if (Arg(args, "--savestate") is string ss) File.WriteAllBytes(ss, m.SaveState());
         if (excKeep > 0)
         {
@@ -335,10 +337,19 @@ internal static class X86BootCli
 
     /// <summary>--wav FILE: the sound card's output (44.1 kHz stereo 16-bit) is collected after every frame and written at the end.</summary>
     private static System.IO.MemoryStream? _wav;
+    /// <summary>--cdwav FILE: the CD drive's audio output (CD-DA, 44.1 kHz stereo), collected after every frame.</summary>
+    private static System.IO.MemoryStream? _cdWav; private static long _cdLast = -1;
     private static readonly short[] _wavBuf = new short[44100];
     private static bool Frame(PcMachine m)
     {
         bool r = m.RunFrame();
+        if (_cdWav != null && m.Ata != null)
+        {
+            long now = (long)((Int128)m.PitNow * 44100 / Pit8254.Freq);
+            if (_cdLast < 0 || now - _cdLast > 44100) _cdLast = now;
+            int n = (int)Math.Min(now - _cdLast, _wavBuf.Length / 2) * 2; _cdLast += n / 2;
+            if (n > 0) { Array.Clear(_wavBuf, 0, n); m.Ata.Secondary.MixCdAudio(_wavBuf, n); for (int i = 0; i < n; i++) { _cdWav.WriteByte((byte)_wavBuf[i]); _cdWav.WriteByte((byte)(_wavBuf[i] >> 8)); } }
+        }
         if (_wav != null && m.Card is { } c)
         {
             c.Advance();
@@ -347,9 +358,9 @@ internal static class X86BootCli
         }
         return r;
     }
-    private static void WriteWav(string path)
+    private static void WriteWav(string path, System.IO.MemoryStream src)
     {
-        var d = _wav!.ToArray(); using var w = new BinaryWriter(File.Create(path));
+        var d = src.ToArray(); using var w = new BinaryWriter(File.Create(path));
         w.Write("RIFF"u8); w.Write(36 + d.Length); w.Write("WAVEfmt "u8); w.Write(16); w.Write((short)1); w.Write((short)2); w.Write(44100); w.Write(44100 * 4); w.Write((short)4); w.Write((short)16);
         w.Write("data"u8); w.Write(d.Length); w.Write(d);
         int peak = 0; for (int i = 0; i + 1 < d.Length; i += 2) peak = Math.Max(peak, Math.Abs((int)(short)(d[i] | d[i + 1] << 8)));

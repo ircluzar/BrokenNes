@@ -171,6 +171,7 @@ public sealed class PcSession : IConsoleSession
         int n = _m.Speaker.Read(buffer);
         _m.Opl.MixInto(buffer, n);
         _m.Card?.MixInto(buffer, n);
+        _m.Ata?.Secondary.MixCdAudio(buffer, n);
         return n;
     }
 

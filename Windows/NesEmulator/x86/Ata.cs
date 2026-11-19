@@ -10,14 +10,6 @@ using System.Text;
 
 namespace NesEmulator.X86;
 
-/// <summary>A CD-ROM image: an ISO 9660 file (2048-byte sectors).</summary>
-public sealed class CdImage
-{
-    public readonly byte[] Data;
-    public CdImage(byte[] data) { if (data.Length % 2048 != 0) throw new InvalidDataException("an ISO image is a whole number of 2048-byte sectors"); Data = data; }
-    public long Sectors => Data.Length / 2048;
-}
-
 public sealed class AtaChannel
 {
     private const byte BSY = 0x80, DRDY = 0x40, DSC = 0x10, DRQ = 0x08, ERR = 0x01;
@@ -62,6 +54,7 @@ public sealed class AtaChannel
         for (int d = 0; d < 2; d++) { _multiple[d] = 16; if (Disk[d] is { } k) { _lHeads[d] = k.Heads; _lSpt[d] = k.Sectors; } }
         Signature();
         SetIrq(false);
+        ClearAudio();
     }
 
     private void Signature()
@@ -366,6 +359,56 @@ public sealed class AtaChannel
         Interrupt();
     }
 
+    // ================= CD audio (PLAY AUDIO): the play position follows the machine clock, 588 stereo samples per sector =================
+
+    /// <summary>The machine clock in PIT ticks (set by the board); CD audio positions are derived from it, so they are deterministic.</summary>
+    public Func<long>? Clock;
+    private byte _aState;              // 0 none, 1 playing, 2 paused, 3 completed
+    private long _aLba, _aEnd, _aT0;   // playing: _aLba is the sector at sample _aT0; paused: the sector it stopped at
+    private long _mixIdx = long.MinValue;
+    private readonly byte[] _aSector = new byte[2352]; private long _aSectorLba = -1; private CdImage? _aSectorCd;
+    public const int AudioRate = 44100;
+
+    private long SampleNow() => Clock == null ? 0 : (long)((Int128)Clock() * AudioRate / Pit8254.Freq);
+
+    private long AudioLba() => _aState != 1 ? _aLba : Math.Min(_aEnd, _aLba + (SampleNow() - _aT0) / 588);
+
+    private void AudioUpdate() { if (_aState == 1 && AudioLba() >= _aEnd) { _aLba = _aEnd; _aState = 3; } }
+    private void AudioStop(byte state) { if (_aState is 1 or 2) _aLba = AudioLba(); _aState = state; }
+
+    /// <summary>True while CD audio plays (diagnostics).</summary>
+    public bool AudioPlaying { get { AudioUpdate(); return _aState == 1; } }
+
+    /// <summary>Adds the CD audio of the time up to now onto <paramref name="buffer"/> (44.1 kHz stereo interleaved, <paramref name="count"/> shorts, saturating).
+    /// It reads the play position the guest sees; nothing here is machine state.</summary>
+    public void MixCdAudio(short[] buffer, int count)
+    {
+        int frames = count / 2;
+        long now = SampleNow();
+        if (_mixIdx == long.MinValue || _mixIdx > now || _mixIdx < now - frames - AudioRate / 2) _mixIdx = now - frames;
+        var cd = Cd[0] ?? Cd[1];
+        if (cd != null && _aState is 1 or 3)
+        {
+            for (int i = 0; i < frames; i++)
+            {
+                long rel = _mixIdx + i - _aT0; if (rel < 0) continue;
+                long lba = _aLba + rel / 588; if (lba >= _aEnd) break;
+                if (lba != _aSectorLba || cd != _aSectorCd) { cd.ReadRaw(lba, _aSector, 0); _aSectorLba = lba; _aSectorCd = cd; }
+                int at = (int)(rel % 588) * 4;
+                short l = (short)(_aSector[at] | _aSector[at + 1] << 8), r = (short)(_aSector[at + 2] | _aSector[at + 3] << 8);
+                buffer[2 * i] = (short)Math.Clamp(buffer[2 * i] + l, -32768, 32767);
+                buffer[2 * i + 1] = (short)Math.Clamp(buffer[2 * i + 1] + r, -32768, 32767);
+            }
+        }
+        _mixIdx += frames;
+    }
+
+    /// <summary>The audio player's state (the board writes it as its own block only while it is not idle, so other states stay byte for byte).</summary>
+    public bool AudioActive => _aState != 0;
+    public void SaveAudio(BinaryWriter w) { w.Write(_aState); w.Write(_aLba); w.Write(_aEnd); w.Write(_aT0); }
+    public void LoadAudio(BinaryReader r) { _aState = r.ReadByte(); _aLba = r.ReadInt64(); _aEnd = r.ReadInt64(); _aT0 = r.ReadInt64(); _mixIdx = long.MinValue; }
+    public void ClearAudio() { _aState = 0; _aLba = _aEnd = _aT0 = 0; _mixIdx = long.MinValue; }
+
     private static void Be32(byte[] b, int o, long v) { b[o] = (byte)(v >> 24); b[o + 1] = (byte)(v >> 16); b[o + 2] = (byte)(v >> 8); b[o + 3] = (byte)v; }
     private static void Msf(byte[] b, int o, long lba) { lba += 150; b[o] = 0; b[o + 1] = (byte)(lba / 4500); b[o + 2] = (byte)(lba / 75 % 60); b[o + 3] = (byte)(lba % 75); }
 
@@ -375,7 +418,7 @@ public sealed class AtaChannel
         var cd = Cd[Dev];
         var o = _atapiData;
         int alloc16 = p[7] << 8 | p[8];
-        bool needsDisc = p[0] is 0x00 or 0x25 or 0x28 or 0xa8 or 0x43 or 0xbe or 0xb9 or 0x2b;
+        bool needsDisc = p[0] is 0x00 or 0x25 or 0x28 or 0xa8 or 0x43 or 0xbe or 0xb9 or 0x2b or 0x45 or 0x47 or 0xa5;
         if (needsDisc && cd == null) { AtapiFail(2, 0x3a); return; }   // NOT READY, medium not present
         switch (p[0])
         {
@@ -395,7 +438,11 @@ public sealed class AtaChannel
                 Encoding.ASCII.GetBytes("1.0 ").CopyTo(o, 32);
                 AtapiReply(36, p[4]); return;
             }
-            case 0x1b: case 0x1e: case 0x2b: case 0x55: case 0x4e: case 0xbb: case 0xa5: AtapiComplete(); return;   // START/STOP, PREVENT, SEEK, MODE SELECT, STOP PLAY, SET SPEED
+            case 0x1b:                                                          // START/STOP UNIT (a stop or an eject ends audio play)
+                if ((p[4] & 1) == 0) AudioStop(0);
+                AtapiComplete(); return;
+            case 0x1e: case 0x2b: case 0x55: case 0xbb: AtapiComplete(); return; // PREVENT, SEEK, MODE SELECT, SET SPEED
+            case 0x4e: AudioStop(0); AtapiComplete(); return;                   // STOP PLAY / SCAN
             case 0x25:                                                          // READ CAPACITY
                 Be32(o, 0, cd!.Sectors - 1); Be32(o, 4, 2048); AtapiReply(8, 8); return;
             case 0x28: case 0xa8:                                               // READ (10) / READ (12)
@@ -405,24 +452,93 @@ public sealed class AtaChannel
                 if (lba + n > cd!.Sectors) { AtapiFail(5, 0x21); return; }      // ILLEGAL REQUEST, LBA out of range
                 if (n == 0) { AtapiComplete(); return; }
                 if (n * 2048 > o.Length) { AtapiFail(5, 0x24); return; }
-                Array.Copy(cd.Data, lba * 2048, o, 0, n * 2048);
+                if (!cd.IsData(lba, n)) { AtapiFail(5, 0x64); return; }         // ILLEGAL MODE FOR THIS TRACK (an audio sector)
+                cd.ReadData(lba, n, o, 0);
                 AtapiReply(n * 2048, n * 2048); return;
             }
-            case 0x43:                                                          // READ TOC (format 0): one data track + lead-out
+            case 0xbe: case 0xb9:                                               // READ CD / READ CD MSF
+            {
+                long lba; int n;
+                if (p[0] == 0xbe) { lba = (uint)(p[2] << 24 | p[3] << 16 | p[4] << 8 | p[5]); n = p[6] << 16 | p[7] << 8 | p[8]; }
+                else { lba = (p[3] * 60 + p[4]) * 75 + p[5] - 150; n = (int)((p[6] * 60 + p[7]) * 75 + p[8] - 150 - lba); }
+                int expect = (p[1] >> 2) & 7, flags = p[9];
+                if (lba < 0 || n < 0 || lba + n > cd!.Sectors) { AtapiFail(5, 0x21); return; }
+                if (n == 0 || (flags & 0xf8) == 0) { AtapiComplete(); return; }
+                bool audio = cd.TrackAt(lba)!.Audio;
+                if (expect == 1 && !audio || expect >= 2 && audio) { AtapiFail(5, 0x64); return; }
+                bool raw = audio || (flags & 0xf8) == 0xf8;                    // audio, or sync + header + user data + EDC/ECC
+                int size = raw ? 2352 : 2048;
+                if ((long)n * size > o.Length) { AtapiFail(5, 0x24); return; }
+                if (!raw && !cd.IsData(lba, n)) { AtapiFail(5, 0x64); return; }
+                if (raw) for (int i = 0; i < n; i++) cd.ReadRaw(lba + i, o, i * 2352); else cd.ReadData(lba, n, o, 0);
+                AtapiReply(n * size, n * size); return;
+            }
+            case 0x45: case 0xa5: case 0x47:                                    // PLAY AUDIO (10) / (12) / MSF
+            {
+                long start, end;
+                if (p[0] == 0x47)
+                {
+                    start = p[3] == 0xff && p[4] == 0xff && p[5] == 0xff ? AudioLba() : (p[3] * 60 + p[4]) * 75 + p[5] - 150;
+                    end = (p[6] * 60 + p[7]) * 75 + p[8] - 150;
+                }
+                else
+                {
+                    uint l = (uint)(p[2] << 24 | p[3] << 16 | p[4] << 8 | p[5]);
+                    start = l == 0xffffffff ? AudioLba() : l;
+                    end = start + (p[0] == 0x45 ? p[7] << 8 | p[8] : (uint)(p[6] << 24 | p[7] << 16 | p[8] << 8 | p[9]));
+                }
+                if (end == start) { AtapiComplete(); return; }                  // a zero length: no play, no error
+                if (start < 0 || end > cd!.Sectors || end < start) { AtapiFail(5, 0x21); return; }
+                if (!cd.TrackAt(start)!.Audio) { AtapiFail(5, 0x64); return; }
+                _aState = 1; _aLba = start; _aEnd = end; _aT0 = SampleNow();
+                AtapiComplete(); return;
+            }
+            case 0x4b:                                                          // PAUSE / RESUME
+            {
+                AudioUpdate();
+                if (_aState is not (1 or 2)) { AtapiFail(5, 0x2c); return; }    // COMMAND SEQUENCE ERROR: nothing playing
+                if ((p[8] & 1) != 0) { if (_aState == 2) { _aState = 1; _aT0 = SampleNow(); } }
+                else if (_aState == 1) { _aLba = AudioLba(); _aState = 2; }
+                AtapiComplete(); return;
+            }
+            case 0x43:                                                          // READ TOC: format 0 (tracks), 1 (session), 2 (full TOC)
             {
                 bool msf = (p[1] & 2) != 0;
                 int format = p[9] >> 6 | (p[2] & 0x0f);
-                Array.Clear(o, 0, 32);
-                if (format == 1)                                                // session info
+                int first = cd!.Tracks[0].Number, last = cd.Tracks[^1].Number;
+                Array.Clear(o, 0, 1024);
+                void Addr(int at, long lba) { if (msf) Msf(o, at, lba); else Be32(o, at, lba); }
+                int len;
+                if (format == 1)                                                // session info: first track of the last session
                 {
-                    o[1] = 10; o[2] = 1; o[3] = 1; o[5] = 0x14; o[6] = 1;
-                    if (msf) Msf(o, 8, 0); else Be32(o, 8, 0);
-                    AtapiReply(12, alloc16); return;
+                    o[2] = 1; o[3] = 1; o[5] = cd.Tracks[0].Control; o[6] = (byte)first; Addr(8, cd.Tracks[0].Start); len = 12;
                 }
-                o[1] = 18; o[2] = 1; o[3] = 1;
-                o[5] = 0x14; o[6] = 1; if (msf) Msf(o, 8, 0); else Be32(o, 8, 0);
-                o[13] = 0x14; o[14] = 0xaa; if (msf) Msf(o, 16, cd!.Sectors); else Be32(o, 16, cd!.Sectors);
-                AtapiReply(20, alloc16); return;
+                else if (format == 2)                                           // raw TOC: A0, A1, A2 then the tracks, MSF always
+                {
+                    o[2] = 1; o[3] = 1; int k = 4;
+                    void Ent(byte ctl, byte point, int pm, int ps, int pf) { o[k] = 1; o[k + 1] = ctl; o[k + 3] = point; o[k + 8] = (byte)pm; o[k + 9] = (byte)ps; o[k + 10] = (byte)pf; k += 11; }
+                    long lo = cd.LeadOut + 150;
+                    Ent(cd.Tracks[0].Control, 0xa0, first, 0, 0);
+                    Ent(cd.Tracks[^1].Control, 0xa1, last, 0, 0);
+                    Ent(cd.Tracks[^1].Control, 0xa2, (int)(lo / 4500), (int)(lo / 75 % 60), (int)(lo % 75));
+                    foreach (var t in cd.Tracks) { long a = t.Start + 150; Ent(t.Control, (byte)t.Number, (int)(a / 4500), (int)(a / 75 % 60), (int)(a % 75)); }
+                    len = k;
+                }
+                else
+                {
+                    int from = p[6]; if (from == 0) from = 1;
+                    if (from > last && from != 0xaa) { AtapiFail(5, 0x24); return; }
+                    o[2] = (byte)first; o[3] = (byte)last; int k = 4;
+                    foreach (var t in cd.Tracks)
+                    {
+                        if (t.Number < from || from == 0xaa) continue;
+                        o[k + 1] = t.Control; o[k + 2] = (byte)t.Number; Addr(k + 4, t.Start); k += 8;
+                    }
+                    o[k + 1] = cd.Tracks[^1].Control; o[k + 2] = 0xaa; Addr(k + 4, cd.LeadOut); k += 8;
+                    len = k;
+                }
+                o[0] = (byte)((len - 2) >> 8); o[1] = (byte)(len - 2);
+                AtapiReply(len, alloc16); return;
             }
             case 0x5a: case 0x1a:                                               // MODE SENSE (10 / 6)
             {
@@ -432,14 +548,20 @@ public sealed class AtaChannel
                 int len;
                 if (page == 0x2a || page == 0x3f)                               // CD capabilities page
                 {
-                    o[h] = 0x2a; o[h + 1] = 0x12; o[h + 2] = 0x01; o[h + 4] = 0x71; o[h + 6] = 0x29; o[h + 8] = 0x10; o[h + 9] = 0x80;   // 4x... reads Mode 2, lock, eject
+                    o[h] = 0x2a; o[h + 1] = 0x12; o[h + 2] = 0x01; o[h + 4] = 0x71; o[h + 5] = 0x03; o[h + 6] = 0x29; o[h + 7] = 0x03; o[h + 8] = 0x10; o[h + 9] = 0x80;   // + audio play, CD-DA read
                     o[h + 10] = 0x01; o[h + 12] = 0x02; o[h + 14] = 0x10; o[h + 15] = 0x80;
                     len = h + 20;
                 }
-                else if (page == 0x01 || page == 0x0d || page == 0x0e) { o[h] = (byte)page; o[h + 1] = 6; len = h + 8; }
+                else if (page == 0x0e)                                          // CD audio control: immediate, both channels at full volume
+                {
+                    o[h] = 0x0e; o[h + 1] = 14; o[h + 2] = 0x04; o[h + 8] = 1; o[h + 9] = 0xff; o[h + 10] = 2; o[h + 11] = 0xff;
+                    len = h + 16;
+                }
+                else if (page == 0x01 || page == 0x0d) { o[h] = (byte)page; o[h + 1] = 6; len = h + 8; }
                 else { AtapiFail(5, 0x24); return; }
                 if (ten) { o[0] = (byte)((len - 2) >> 8); o[1] = (byte)(len - 2); } else o[0] = (byte)(len - 1);
-                o[ten ? 2 : 1] = 0x01;           // medium type: 120 mm data CD
+                bool hasAudio = cd != null && cd.Tracks.Exists(t => t.Audio), hasData = cd == null || cd.Tracks.Exists(t => !t.Audio);
+                o[ten ? 2 : 1] = (byte)(hasAudio && hasData ? 0x03 : hasAudio ? 0x02 : 0x01);   // medium type: 120 mm data / audio / mixed CD
                 AtapiReply(len, ten ? alloc16 : p[4]); return;
             }
             case 0x4a:                                                          // GET EVENT STATUS NOTIFICATION
@@ -448,9 +570,27 @@ public sealed class AtaChannel
             case 0xbd:                                                          // MECHANISM STATUS
                 Array.Clear(o, 0, 8); o[7] = 0; AtapiReply(8, alloc16); return;
             case 0x51:                                                          // READ DISC INFORMATION
-                Array.Clear(o, 0, 34); o[1] = 32; o[2] = 0x0e; o[3] = 1; o[4] = 1; o[5] = 1; o[6] = 1; AtapiReply(34, alloc16); return;
-            case 0x42:                                                          // READ SUB-CHANNEL: no audio playing
-                Array.Clear(o, 0, 16); o[1] = 0x15; AtapiReply((p[2] & 0x40) != 0 ? 16 : 4, alloc16); return;
+                Array.Clear(o, 0, 34); o[1] = 32; o[2] = 0x0e; o[3] = 1; o[4] = 1; o[5] = 1; o[6] = (byte)(cd?.Tracks[^1].Number ?? 1); AtapiReply(34, alloc16); return;
+            case 0x42:                                                          // READ SUB-CHANNEL
+            {
+                AudioUpdate();
+                Array.Clear(o, 0, 24);
+                o[1] = _aState switch { 1 => 0x11, 2 => 0x12, 3 => 0x13, _ => 0x15 };
+                if (_aState == 3) _aState = 0;                                  // "completed" is reported once
+                bool msf = (p[1] & 2) != 0;
+                int fmt = p[3];
+                if ((p[2] & 0x40) == 0) { AtapiReply(4, alloc16); return; }     // header only
+                o[3] = (byte)(fmt == 1 ? 12 : 20); o[4] = (byte)fmt;
+                if (fmt == 1 && cd != null)
+                {
+                    long lba = AudioLba(); var t = cd.TrackAt(lba) ?? cd.Tracks[^1];
+                    o[5] = t.Control; o[6] = (byte)t.Number; o[7] = (byte)(lba < t.Start ? 0 : 1);
+                    if (msf) { Msf(o, 8, lba); long rel = Math.Abs(lba - t.Start); o[12] = 0; o[13] = (byte)(rel / 4500); o[14] = (byte)(rel / 75 % 60); o[15] = (byte)(rel % 75); }
+                    else { Be32(o, 8, lba); Be32(o, 12, lba - t.Start); }
+                    AtapiReply(16, alloc16); return;
+                }
+                AtapiReply(24, alloc16); return;                                // MCN / ISRC: not valid
+            }
             default: AtapiFail(5, 0x20); return;                                // ILLEGAL REQUEST, invalid command
         }
     }
