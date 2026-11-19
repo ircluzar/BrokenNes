@@ -32,6 +32,20 @@ internal static partial class Tools
             a => On(a, s => Headless(s).PlayStep(a.List("buttons").ToArray(), a.List("buttons2").ToArray(), a.Int("frames", 15), a.Str("until"), a.Int("max_frames", 600),
                 a.Double("scale") ?? 0.5, a.List("ram"), a.Bool("ref_picture", false), HeadlessSession.Milestones(a.List("milestones"), a.Str("milestone_file")))), false);
 
+        add("try_plans",
+            "AutoTAS search in one call (headless): from now, tries each input plan ('Right+B:10 Right+B+A:14 none:20'), then holds `then` until `want` is true (within frames); " +
+            "dead ends a try; settle/survive reject apex hits and doomed spots. Returns each plan's verdict, frames and RAM; the machine is put back exactly.",
+            Schema(S(),
+                ("plans", P("string[]", "input plans: tokens Buttons:frames (buttons joined by +, none = no buttons)"), true),
+                ("then", P("string[]", "buttons held after the plan until want"), false),
+                ("within", P("integer", "frames to wait for want after the plan (default 120)"), false),
+                ("want", P("string", "the goal expression"), true),
+                ("dead", P("string", "a death expression: true = the try failed"), false),
+                ("settle", P("integer", "want must still hold this many frames later (default 0)"), false),
+                ("survive", P("integer", "the player must live this many more frames holding then (default 0)"), false),
+                ("ram", P("string[]", "named expressions read when want is met"), false)),
+            a => On(a, s => Headless(s).TryPlans(a.List("plans"), a.List("then").ToArray(), a.Int("within", 120), a.Str("want") ?? throw new ToolError("want is needed"), a.Str("dead"), a.Int("settle", 0), a.Int("survive", 0), a.List("ram"))), false);
+
         add("record",
             "Recording a headless session as a BrokenNes movie (.bnm) for the catalog: start (from where the session is; the movie still holds the input from power-on, so it replays " +
             "and exports to bk2 / fm2), mark (a checkpoint: a mark in the movie at this frame, optionally a named save state too), save (writes the movie so far, keeps recording), " +

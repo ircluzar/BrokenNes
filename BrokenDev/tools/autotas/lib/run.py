@@ -26,6 +26,8 @@ marks the milestone and writes the raw state FILE. So retries (`back`) never lea
                                                      breadth-first search over button presses (maps, menus) to a state where --want holds
   python -I run.py search ... --want 'air == 0' --all   REACH: every distinct spot the jump family lands on (x, y, frames)
   python -I run.py discover --ch 1-2 [N]            find RAM variables (x, y/air, speed, timers) by input experiments from here
+  python -I run.py do --ch 1-2 "Right+B@x>=400 Right+B+A:14 none@air==0"   MOVEMENT SCRIPT, for real (peek takes the same script)
+  python -I run.py map --ch 1-2 [WIDTH] [--cell 16]  the level map stitched from every grid seen so far
   python -I run.py tree --ch 1-2                     checkpoints as a branch tree (which ones are on the current line)
   python -I run.py finish --ch 1-2 [--note TEXT]     replay -> seg/<ch>.bnm + state/<ch>.raw.state + thumb
   python -I run.py close --ch 1-2                    drop the session (no output)
@@ -117,6 +119,7 @@ def main():
     ap.add_argument("--settle", type=int, default=0, help="search: the want must still be true this many frames later (no jump-apex false hits)")
     ap.add_argument("--patience", type=int, default=0, help="advance: when stuck, wait 30 frames and retry up to N times (auto-scrollers)")
     ap.add_argument("--stop-when", dest="stopwhen", help="step: also stop early when this expression is true")
+    ap.add_argument("--wait", default="auto", help="search: auto = on an auto-scroller, also try waiting 0-120 frames first; off = never")
     ap.add_argument("--all", action="store_true", help="search: list every distinct landing spot (reach map) instead of the fastest")
     ap.add_argument("--key", help="explore: the RAM names that tell states apart (default: all)")
     ap.add_argument("--grid", action="store_true", help="step/look/peek: also print the text grid of the screen")
@@ -205,6 +208,10 @@ def run_cmd(a, pkg, ch):
         seek(b, r, cfg, pkg, ch, target)
     elif a.cmd == "tree":
         tree(r)
+    elif a.cmd == "map":
+        print_map(r, pkg, ch, a.cell, int(a.args[0]) if a.args else 120)
+    elif a.cmd == "do":
+        do_script(b, r, cfg, pkg, ch, a)
     elif a.cmd == "discover":
         discover(b, r, cfg, pkg, ch, a)
     elif a.cmd == "explore":
@@ -256,6 +263,7 @@ def gridtext(b, r, cfg, pkg, ch, cell=8):
     try: leg = json.load(open(lf))
     except Exception: leg = {}
     g, info = view.grid(p, sp, cell=cell, player=player, legend_in=leg.get("colours"))
+    remember_columns(b, r, cfg, pkg, ch, info, player)
     leg["colours"] = info["legend"]
     out = [g, view.legend_text(info)]
     try:   # VRAM: which tile ids make the shapes (stable names for solid things, doors, hazards)
@@ -266,6 +274,68 @@ def gridtext(b, r, cfg, pkg, ch, cell=8):
     except Exception: pass
     json.dump(leg, open(lf, "w"))
     return "\n".join(out)
+
+
+def script_steps(text):
+    """Layer 2, movement scripts: tokens 'Buttons:N' (hold N frames) or 'Buttons@EXPR' (hold until EXPR, at most 300 frames)
+    or 'Buttons@EXPR~N' (at most N). EXPR uses the runner's RAM names: 'Right+B@x>=400', 'none@air==0', 'A@y<=40~30'."""
+    out = []
+    for tok in text.split():
+        if "@" in tok:
+            bt, ex = tok.split("@", 1); mx = 300
+            if "~" in ex: ex, m_ = ex.rsplit("~", 1); mx = int(m_)
+            out.append((btns(bt), mx, ex))
+        else:
+            bt, n = tok.rsplit(":", 1); out.append((btns(bt), int(n), None))
+    return out
+
+
+def do_script(b, r, cfg, pkg, ch, a):
+    """Plays a movement script FOR REAL (into the log), stopping at a death or goal event."""
+    for bt, n, ex in script_steps(a.args[0]):
+        res, ev = do_step(b, r, cfg, bt, n, names(ex, cfg) if ex else None)
+        ran = int(res.get("framesRun", 0) or 0)
+        if ran: r["log"].append([bt, ran]); r["frames"] += ran
+        if ev == "GOAL": r["goal_frame"] = r["frames"]
+        show(res, ev, r)
+        if ex and res.get("stoppedBy") not in ("condition",) and not ev: print(f"  (never met {ex} within {n} frames)")
+        if ev and ev != "entered level": break
+    store(pkg, ch, r)
+    if a.grid: print(gridtext(b, r, cfg, pkg, ch, a.cell))
+
+
+def remember_columns(b, r, cfg, pkg, ch, info, player):
+    """Layer 5: every grid seen is stitched into a level map by world position (world x of the screen's left edge =
+    the player's x minus the player's screen x). Sprites are left out (they move); `map` prints it with the trail."""
+    if not player or "x" not in dict(e.split("=", 1) for e in cfg["ram"]): return
+    x = int(b.call("play_step", session=r["session"], frames=0, scale=0, ram=["x=" + names("x", cfg)])["ram"]["x"])
+    cell = info["cell"]; left = x - int(player[0])
+    f = os.path.join(wdir(pkg, ch), "_map.json")
+    try: m = json.load(open(f))
+    except Exception: m = {}
+    cols = m.setdefault(str(cell), {})
+    rows = info["rows_text"]
+    for c in range(len(rows[0])):
+        wc = (left + c * cell + cell // 2) // cell
+        cols[str(wc)] = "".join("." if (ch_.isalpha() or ch_ in "@*") else ch_ for ch_ in (row[c] for row in rows))
+    m.setdefault("trail", []).append([x, r["frames"]]); m["trail"] = m["trail"][-400:]
+    json.dump(m, open(f, "w"))
+
+
+def print_map(r, pkg, ch, cell, width):
+    f = os.path.join(wdir(pkg, ch), "_map.json")
+    try: m = json.load(open(f))
+    except Exception: sys.exit("map: no grid seen yet (run grid / look --grid / step --grid as you go)")
+    cols = {int(k): v for k, v in m.get(str(cell), {}).items()}
+    if not cols: sys.exit(f"map: no grid at --cell {cell} seen yet")
+    lo, hi = min(cols), max(cols)
+    if width and hi - lo + 1 > width: lo = max(lo, hi - width + 1)
+    H = len(next(iter(cols.values())))
+    last = m["trail"][-1][0] // cell if m.get("trail") else None
+    print(f"level map from grids seen, columns {lo}..{hi} ({cell} px each, world x = column*{cell}); '?' = never seen, '|' = you now")
+    print("     " + "".join(str((c // 10) % 10) if c % 10 == 0 else " " for c in range(lo, hi + 1)))
+    for rr in range(H):
+        print(f"{rr:3d}  " + "".join("|" if c == last and cols.get(c, "?" * H)[rr] == "." else cols.get(c, "?" * H)[rr] for c in range(lo, hi + 1)))
 
 
 def autoscrolls(b, r):
@@ -351,14 +421,14 @@ def discover(b, r, cfg, pkg, ch, a):
     n = int(a.args[0]) if a.args else 24
     tmp = os.path.join(wdir(pkg, ch), "_discover.state")
     b.call("save_state", session=r["session"], path=tmp)
-    def run(plan):
+    def run(plan):  # noqa: the experiments
         b.call("load_state", session=r["session"], path=tmp); snaps = [workram(b, r["session"])]
         for bt, k in plan:
             b.call("play_step", session=r["session"], buttons=btns(bt), frames=k, scale=0); snaps.append(workram(b, r["session"]))
         return snaps
     try:
         right = run([("Right", n // 3)] * 3); left = run([("Left", n // 3)] * 3); idle = run([("none", n // 3)] * 3)
-        jump = run([("A", 6), ("A", 6), ("none", 12)]); stop = run([("Right", n), ("none", n)])
+        jump = run([("A", 4), ("A", 4), ("A", 4), ("none", 8), ("none", 8), ("none", 8), ("none", 8)]); stop = run([("Right", n), ("none", n)])
     finally:
         b.call("load_state", session=r["session"], path=tmp)
     def s8(v): return v - 256 if v > 127 else v
@@ -374,9 +444,15 @@ def discover(b, r, cfg, pkg, ch, a):
             if all(x > 0 for x in dr) and all(x <= 0 for x in dl) and max(dr) <= 32:   # Left may be blocked (a screen edge)
                 found["x"].append((sum(dr) - sum(dl), name, R))
             elif len(set(I)) == 1 and J[1:] != I[1:] and R[1:] == I[1:] and L[1:] == I[1:]:
-                dj = [s8((J[k + 1] - J[k]) & 255) for k in range(3)]
+                dj = [s8((J[k + 1] - J[k]) & 255) for k in range(len(J) - 1)]
                 if max(abs(x) for x in dj) <= 48:   # a body moves a little a frame; big jumps are random numbers / pointers
-                    found["y/air"].append((10 if set(J) <= {0, 1} or len(set(J[1:])) == 1 else sum(abs(x) for x in dj), name, J))
+                    sg = [x > 0 for x in dj if x != 0]
+                    flips = sum(1 for k in range(len(sg) - 1) if sg[k] != sg[k + 1])
+                    # a jump is an ARC: one way, then back (one sign flip, mostly back near the start) = y; few values = an in-air flag
+                    if flips == 1 and abs(s8((J[-1] - J[0]) & 255)) <= max(8, abs(sum(dj[:3])) // 2): score = 0
+                    elif len(set(J)) <= 3: score = 1
+                    else: score = 2 + flips
+                    found["y/air"].append((score, name, J))
             elif S[0] == I[0] and S[1] != S[0] and S[2] == S[0] and R[1] != R[0] and I[1:] == I[:1] * 3:
                 found["speed"].append((abs(s8((S[1] - S[0]) & 255)), name, S))
     for k, lst in found.items():
@@ -515,9 +591,9 @@ def peek(b, r, cfg, pkg, ch, a):
     dead = [f'died={cfg["dead"]}'] if cfg.get("dead") else []
     t = 0
     try:
-        for tok in a.args[0].split():
-            bt, n = tok.rsplit(":", 1)
-            res = b.call("play_step", session=r["session"], buttons=btns(bt), frames=int(n), scale=0, milestones=dead or None, ram=cfg["ram"])
+        for (bt_, n, ex), tok in zip(script_steps(a.args[0]), a.args[0].split()):
+            res = b.call("play_step", session=r["session"], buttons=bt_, frames=n, until=names(ex, cfg) if ex else None,
+                         max_frames=n if ex else None, scale=0, milestones=dead or None, ram=cfg["ram"])
             t += int(res.get("framesRun", 0) or 0)
             ram = res.get("ram") or {}
             print(f"  +{t:4d} {tok:<16} " + " ".join(f"{k}={v}" for k, v in ram.items()) + ("  >>> DIES" if res.get("stoppedBy") == "milestone" else ""))
@@ -553,15 +629,42 @@ def search(b, r, cfg, pkg, ch, a):
         if not part: continue
         k, rng = part.split("="); lo, rest = rng.split(".."); hi, st = (rest.split(":") + ["1"])[:2]
         vals[k] = list(range(int(lo), int(hi) + 1, int(st)))
+    if getattr(a, "wait", "auto") != "off" and not pat.split()[0].startswith("none:") and "w" not in vals and autoscrolls(b, r):
+        # an auto-scroller: what to land on may not have arrived yet, so every try may first wait (layer 4, wait-aware search)
+        pat = "none:{w} " + pat; vals["w"] = list(range(0, 121, 30)); print("  (auto-scroll: trying waits of 0-120 frames first)")
     keys = list(vals)
     import math
     n = math.prod(len(v) for v in vals.values()) if vals else 1
-    if n > 400: sys.exit(f"search: {n} combos is too many (~1.5 s each; a tool call times out at 10 min): use coarser steps, at most ~300")
+    if n > 2000: sys.exit(f"search: {n} combos is too many: use coarser steps (at most ~1500)")
     tmp = os.path.join(wdir(pkg, ch), "_search.state")
     b.call("save_state", session=r["session"], path=tmp)
     dead = [f'died={cfg["dead"]}'] if cfg.get("dead") else []
     results, died, missed = [], 0, []
-    for combo in itertools.product(*[vals[k] for k in keys]) if keys else [()]:
+    combos = [dict(zip(keys, c)) for c in (itertools.product(*[vals[k] for k in keys]) if keys else [()])]
+    def plan_steps(env):
+        st = []
+        for tok in pat.split():
+            bt, k = tok.rsplit(":", 1); k = int(k.format(**env))
+            if k > 0: st.append([btns(bt), k])
+        return st
+    try:   # fast path: the MCP try_plans tool runs the whole grid in-process (one call per 400 tries)
+        for c0 in range(0, len(combos), 400):
+            chunk = combos[c0:c0 + 400]
+            plans = [" ".join(("+".join(bt) or "none") + f":{k}" for bt, k in plan_steps(env)) or "none:0" for env in chunk]
+            out = b.call("try_plans", session=r["session"], plans=plans, then=btns(a.then), within=a.within, want=a.want,
+                         dead=cfg.get("dead"), settle=getattr(a, "settle", 0) or 0, survive=a.survive if cfg.get("dead") else 0, ram=cfg["ram"])
+            for res in out["results"]:
+                env = chunk[res["i"]]; v = res["verdict"]; st = plan_steps(env)
+                if v == "ok":
+                    tot = int(res["frames"]); pf = sum(k for _, k in st)   # frames = the plan + the wait for want
+                    results.append((tot, env, st + [[btns(a.then), tot - pf]], res.get("ram")))
+                elif v in ("died", "doomed"): died += 1
+                else: missed.append((env, None))
+        combos = []
+    except Exception as e:
+        if "try_plans" not in str(e) and "unknown tool" not in str(e).lower(): raise
+        results, died, missed = [], 0, []
+    for combo in [tuple(c.values()) for c in combos]:
         env = dict(zip(keys, combo))
         steps = []
         for tok in pat.split():

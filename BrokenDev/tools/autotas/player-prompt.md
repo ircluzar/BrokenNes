@@ -28,6 +28,10 @@ $R grid --cell 16            # SEE THE SCREEN AS TEXT (cheap, no picture): '.' e
 $R peek "Right+B:20 Right+B+A:15 none:20" --grid
                             # LOOK INTO THE FUTURE: plays the plan, prints RAM after each part (and >>> DIES), shows the
                             # grid at the end, then puts everything back (nothing recorded). Try 2-3 plans, then `step` the best.
+$R do "Right+B@x>=400 Right+B+A:14 none@air==0"
+                            # MOVEMENT SCRIPT for real: Buttons:N = hold N frames, Buttons@COND = hold until COND (RAM names,
+                            # max 300; @COND~N = max N). peek takes the same scripts. Prefer one `do` over many small steps.
+$R map 120 --cell 16        # the LEVEL MAP stitched from every grid you have looked at ('|' = you): plan routes on it
 $R rewind 60                # TIME MACHINE: go back 60 frames on your current line (no checkpoint needed)
 $R tree                     # your checkpoints as a branch tree
 $R probe 8                  # MAPS/MENUS: what each button does here (RAM changes, a picture each); nothing recorded
@@ -51,7 +55,8 @@ Buttons: Up Down Left Right A B Start Select. A held longer = higher jump. To ju
 - A level can end at a pipe (stand on it, hold Down ~40) or a card box, not just at the far right: look at the picture when advance is stuck at a wall.
 - On a map or menu: never guess presses; use `explore` (or `probe` to learn what the buttons do).
 - The grid's last line says AUTO-SCROLL when the screen moves by itself: then platforms beyond the screen edge are not there
-  yet; wait (step none) until they appear before searching for a landing.
+  yet; wait (step none) until they appear before searching for a landing. `search` and `advance` then also try waiting
+  0-120 frames before each jump by themselves; a gap that no jump crosses usually needs a WAIT (a platform arrives), not a better jump.
 - When stuck: `grid --cell 16` FIRST (what is ahead of '@': a wall, a gap, a pipe, a platform that moves?), then `peek` a plan or two,
   then commit it with `step` or a `search`. Use the picture (--shot) only when the grid is unclear.
 - Main loop: `advance 6` -> if stuck: look, `search` past the spot (or `back` to an earlier a<frame> checkpoint and search from there) -> `advance 6` again. At the level end: the card search, then `step none 600`.

@@ -1,3 +1,4 @@
+using NesEmulator.Systems;
 using System.Text.Json.Nodes;
 using NesEmulator.Debugging.Movies;
 
@@ -73,5 +74,78 @@ internal sealed partial class HeadlessSession
             if (v != 0) return m;
         }
         return null;
+    }
+
+    /// <summary>
+    /// AutoTAS search in one call: from the machine as it is now, tries each plan ("Right+B:10 Right+B+A:{..}" already filled in),
+    /// then holds <paramref name="then"/> until <paramref name="want"/> (at most <paramref name="within"/> frames), optionally checks the want
+    /// still holds <paramref name="settle"/> frames later and that the player lives <paramref name="survive"/> more frames. A frame where
+    /// <paramref name="dead"/> is true ends a try. The machine is put back exactly as it was afterwards. One call instead of ~5 per try.
+    /// </summary>
+    public JsonObject TryPlans(List<string> plans, string[] then, int within, string want, string? dead, int settle, int survive, List<string> ram)
+    {
+        if (plans.Count == 0) throw new ToolError("give at least one plan");
+        if (plans.Count > 2000) throw new ToolError("at most 2000 plans a call");
+        var d = Dbg;
+        EnsureBetweenFrames();
+        var baseState = SaveRaw();
+        long f0 = Interlocked.Read(ref framesStarted);
+        var thenPad = ParseButtons(then);
+        bool Eval(string e) { try { return d.Evaluate(e) != 0; } catch (Exception x) when (x is FormatException or ArgumentException) { throw new ToolError($"{e}: {x.Message}"); } }
+        bool hasDead = dead is { Length: > 0 };
+        // one frame with these pads; false = died
+        bool Frame(PadButtons p) { lock (padLock) held[0] = p; RunFrames(1); return !(hasDead && Eval(dead!)); }
+        var results = new JsonArray();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            for (int k = 0; k < plans.Count; k++)
+            {
+                LoadRaw(baseState); Interlocked.Exchange(ref framesStarted, f0);
+                int t = 0; string verdict = "ok";
+                foreach (var tok in plans[k].Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    int c = tok.LastIndexOf(':');
+                    string bt = c < 0 ? tok : tok[..c]; int n = c < 0 ? 1 : int.Parse(tok[(c + 1)..]);
+                    var pad = ParseButtons(bt is "none" or "-" or "" ? Array.Empty<string>() : bt.Split('+'));
+                    for (int i = 0; i < n && verdict == "ok"; i++) { if (!Frame(pad)) verdict = "died"; t++; }
+                    if (verdict != "ok") break;
+                }
+                int reach = -1;
+                if (verdict == "ok")
+                {
+                    for (int i = 0; i < within; i++)
+                    {
+                        if (!Frame(thenPad)) { verdict = "died"; break; }
+                        t++;
+                        if (Eval(want)) { reach = t; break; }
+                    }
+                    if (verdict == "ok" && reach < 0) verdict = "missed";
+                }
+                JsonObject? vals = null;
+                if (verdict == "ok")
+                {
+                    vals = new JsonObject();
+                    foreach (var w in ram) { int eq = w.IndexOf('='); string nm = eq > 0 ? w[..eq] : w, ex = eq > 0 ? w[(eq + 1)..] : w; try { vals[nm] = d.Evaluate(ex); } catch (Exception) { vals[nm] = null; } }
+                    if (settle > 0)
+                    {
+                        for (int i = 0; i < settle; i++) if (!Frame(thenPad)) { verdict = "died"; break; }
+                        if (verdict == "ok" && !Eval(want)) verdict = "unsettled";
+                    }
+                    if (verdict == "ok" && survive > 0)
+                        for (int i = 0; i < survive; i++) if (!Frame(thenPad)) { verdict = "doomed"; break; }
+                }
+                var o = new JsonObject { ["i"] = k, ["verdict"] = verdict };
+                if (verdict == "ok") { o["frames"] = reach; o["ram"] = vals; }
+                results.Add(o);
+            }
+        }
+        finally
+        {
+            lock (padLock) { held[0] = PadButtons.None; held[1] = PadButtons.None; }
+            LoadRaw(baseState); Interlocked.Exchange(ref framesStarted, f0);
+            FreshDebugState();
+        }
+        return new JsonObject { ["results"] = results, ["plans"] = plans.Count, ["ms"] = sw.ElapsedMilliseconds, ["how"] = "verdict ok (frames = plan + then until want), died, missed (never met want), unsettled, doomed (dies within survive); the machine is put back" };
     }
 }
