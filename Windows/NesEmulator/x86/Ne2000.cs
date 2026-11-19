@@ -28,8 +28,9 @@ public sealed class Rtl8029
     private const int MemSize = 0xc000;                  // PROM image at 0..1F, 32 KB of buffer at 4000h..BFFFh
     private const int MemStart = 0x4000;
 
-    /// <summary>The card's address: 52:54:00 (locally administered, the usual emulator OUI) + a fixed tail.</summary>
-    public readonly byte[] Mac = { 0x52, 0x54, 0x00, 0x12, 0x34, 0x56 };
+    /// <summary>The card's address: 52:54:00 (locally administered, the usual emulator OUI) + a fixed tail; another one per PC on a shared LAN (PcLan.cs).
+    /// It is the PROM: a change takes effect at the next reset (a cold boot), as on a real card.</summary>
+    public byte[] Mac = { 0x52, 0x54, 0x00, 0x12, 0x34, 0x56 };
     public INetLink? Link;
     /// <summary>Raises / lowers the card's interrupt line (INTA# through the PIIX4's router).</summary>
     public Action<bool> SetIrq = _ => { };
