@@ -21,6 +21,11 @@ marks the milestone and writes the raw state FILE. So retries (`back`) never lea
                                                      everything back: nothing enters the log (a look into the future)
   python -I run.py rewind --ch 1-2 N                 back N frames on the current line (nearest checkpoint + replay); the log is cut
   python -I run.py seek --ch 1-2 F                   to frame F of the current line (F <= now)
+  python -I run.py probe --ch 1-2 [HOLD] [--vals Up,Right,A]  what each button does here (maps, menus): settle time, RAM changes, a picture each
+  python -I run.py explore --ch 1-2 [HOLD] --vals Up,Down,Left,Right,A --key mapx,mapy --want 'mode != 0' [--apply]
+                                                     breadth-first search over button presses (maps, menus) to a state where --want holds
+  python -I run.py search ... --want 'air == 0' --all   REACH: every distinct spot the jump family lands on (x, y, frames)
+  python -I run.py discover --ch 1-2 [N]            find RAM variables (x, y/air, speed, timers) by input experiments from here
   python -I run.py tree --ch 1-2                     checkpoints as a branch tree (which ones are on the current line)
   python -I run.py finish --ch 1-2 [--note TEXT]     replay -> seg/<ch>.bnm + state/<ch>.raw.state + thumb
   python -I run.py close --ch 1-2                    drop the session (no output)
@@ -112,6 +117,8 @@ def main():
     ap.add_argument("--settle", type=int, default=0, help="search: the want must still be true this many frames later (no jump-apex false hits)")
     ap.add_argument("--patience", type=int, default=0, help="advance: when stuck, wait 30 frames and retry up to N times (auto-scrollers)")
     ap.add_argument("--stop-when", dest="stopwhen", help="step: also stop early when this expression is true")
+    ap.add_argument("--all", action="store_true", help="search: list every distinct landing spot (reach map) instead of the fastest")
+    ap.add_argument("--key", help="explore: the RAM names that tell states apart (default: all)")
     ap.add_argument("--grid", action="store_true", help="step/look/peek: also print the text grid of the screen")
     ap.add_argument("--cell", type=int, default=8, help="grid: cell size in pixels (8 default; 16 = a quarter of the text)")
     a = ap.parse_intermixed_args(); pkg, ch = a.pkg, a.ch
@@ -131,6 +138,8 @@ def main():
         st0 = os.path.join(wdir(pkg, ch), "_start.state"); b.call("save_state", session=sess, path=st0); r["start_state"] = st0
         r["lives0"] = b.call("play_step", session=sess, frames=0, scale=0, ram=["l=" + cfg["lives"]])["ram"]["l"]
         r["table0"] = table(b, sess, cfg.get("progress_table") or {"addr": 0, "len": 0})
+        if a.goal == "level" and cfg.get("in_level"):   # starting inside a level: already armed (else the first step stops after 1 frame)
+            r["armed"] = bool(b.call("play_step", session=sess, frames=0, scale=0, ram=["k=" + cfg["in_level"]])["ram"]["k"])
         store(pkg, ch, r)
         res = b.call("play_step", session=sess, frames=0, scale=0, ram=cfg["ram"])
         show(res, "ready (session open, nothing recorded yet)", r, f"\n  look: {shot(b, r, pkg, ch)}")
@@ -196,6 +205,12 @@ def run_cmd(a, pkg, ch):
         seek(b, r, cfg, pkg, ch, target)
     elif a.cmd == "tree":
         tree(r)
+    elif a.cmd == "discover":
+        discover(b, r, cfg, pkg, ch, a)
+    elif a.cmd == "explore":
+        explore(b, r, cfg, pkg, ch, a)
+    elif a.cmd == "probe":
+        probe(b, r, cfg, pkg, ch, a)
     elif a.cmd == "save":
         name = a.args[0]; p = os.path.join(wdir(pkg, ch), name + ".state")
         b.call("save_state", session=r["session"], path=p)
@@ -247,9 +262,205 @@ def gridtext(b, r, cfg, pkg, ch, cell=8):
         tm = b.call("tilemap", session=r["session"])
         ids = view.tile_ids(tm, info, p)
         if ids: out.append(" VRAM tiles under each symbol (most common first): " + ids)
+        out.append(scroll_note(b, r, tm, player))
     except Exception: pass
     json.dump(leg, open(lf, "w"))
     return "\n".join(out)
+
+
+def autoscrolls(b, r):
+    try:
+        tm = b.call("tilemap", session=r["session"])
+        return "AUTO-SCROLL" in scroll_note(b, r, tm, None)
+    except Exception: return False
+
+
+def scroll_note(b, r, tm, player):
+    """Does the screen move by itself? Runs 16 frames with no input, reads the scroll again, puts the machine back.
+    An auto-scroller says so (and how far the player is from the screen edge that pushes)."""
+    import tempfile
+    tmp = os.path.join(tempfile.gettempdir(), f"_scroll_{os.getpid()}.state")
+    b.call("save_state", session=r["session"], path=tmp)
+    try:
+        b.call("play_step", session=r["session"], frames=16, scale=0)
+        t2 = b.call("tilemap", session=r["session"])
+    finally:
+        b.call("load_state", session=r["session"], path=tmp)
+    W, H = int(tm["mapCols"]) * int(tm["cell"]), int(tm["mapRows"]) * int(tm["cell"])
+    dx = (int(t2["scrollX"]) - int(tm["scrollX"]) + W // 2) % W - W // 2
+    dy = (int(t2["scrollY"]) - int(tm["scrollY"]) + H // 2) % H - H // 2
+    if dx == 0 and dy == 0: return " scroll: the screen stands still with no input (it follows the player, or a fixed room)"
+    note = f" scroll: AUTO-SCROLL - the screen moves {dx:+d},{dy:+d} px per 16 frames with no input: things past the screen edge arrive later (wait for them), the trailing edge pushes/crushes you"
+    if player and dx > 0: note += f"; you are {player[0]} px from the left edge"
+    return note
+
+
+def probe(b, r, cfg, pkg, ch, a):
+    """What does each button do HERE? (maps, menus, cutscenes). For each button: hold it H frames, then no input until the
+    picture stops changing (max 240); prints the frames to settle, the RAM names that changed, and a picture per button.
+    Nothing is logged. probe [H] [--vals Up,Down,...]"""
+    hold = int(a.args[0]) if a.args else 8
+    buttons = (a.vals or "Up,Down,Left,Right,A,B,Start,Select").split(",")
+    tmp = os.path.join(wdir(pkg, ch), "_probe.state")
+    b.call("save_state", session=r["session"], path=tmp)
+    base = b.call("play_step", session=r["session"], frames=0, scale=0, ram=cfg["ram"])["ram"]
+    def phash():
+        t = b.raw("screenshot", session=r["session"], scale=1)
+        j = t.get("text") if isinstance(t.get("text"), dict) else {}
+        for im in t.get("images") or []:
+            try: os.remove(im)
+            except OSError: pass
+        return j.get("hash")
+    h0 = phash()
+    try:
+        for bt in buttons:
+            b.call("load_state", session=r["session"], path=tmp)
+            b.call("play_step", session=r["session"], buttons=btns(bt), frames=hold, scale=0)
+            # settle on the RAM names (pictures animate forever on many maps): 3 equal reads 8 frames apart
+            prev, still, n = None, 0, hold
+            while n < hold + 240 and still < 3:
+                ram = b.call("play_step", session=r["session"], frames=8, scale=0, ram=cfg["ram"])["ram"]; n += 8
+                still = still + 1 if ram == prev else 0; prev = ram
+            last = phash()
+            ch_ = " ".join(f"{k}:{base[k]}->{v}" for k, v in ram.items() if base.get(k) != v)
+            p = shot(b, r, pkg, ch, f"probe_{bt}.png")
+            print(f"{bt:>7}: settled {n} frames after the press began; RAM {ch_ or 'same'}  ({p})")
+    finally:
+        b.call("load_state", session=r["session"], path=tmp)
+    print("(probe: machine put back, nothing logged; to act: step <button> <hold> then step none <settle>)")
+
+
+def workram(b, sess):
+    """The console's work RAM (the 'Work' domains, up to 64 KB), read whole: {domain: bytes}."""
+    out = {}
+    for d in b.call("list_domains", session=sess)["domains"]:
+        if d.get("kind") == "Work" and not d.get("unavailable") and d["size"] <= 65536:
+            buf = []
+            for off in range(0, d["size"], 4096):
+                m = b.call("read_memory", session=sess, domain=d["id"], address=off, length=min(4096, d["size"] - off))
+                buf += m["bytes"] if isinstance(m.get("bytes"), list) else list(bytes.fromhex(m["hex"].replace(" ", "")))
+            out[d["id"]] = buf
+    return out
+
+
+def discover(b, r, cfg, pkg, ch, a):
+    """Layer 3, variable discovery (any game, any console): plays short input experiments from HERE (then puts the machine
+    back) and ranks work-RAM bytes by how they answer: position X (up while Right is held, down with Left), position Y /
+    in-air (moves with A), speed (grows while Right is held, back to 0 when released), timers (count every frame, no
+    matter the input). Prints candidates as runner.json expressions to check against the picture (grid '@')."""
+    n = int(a.args[0]) if a.args else 24
+    tmp = os.path.join(wdir(pkg, ch), "_discover.state")
+    b.call("save_state", session=r["session"], path=tmp)
+    def run(plan):
+        b.call("load_state", session=r["session"], path=tmp); snaps = [workram(b, r["session"])]
+        for bt, k in plan:
+            b.call("play_step", session=r["session"], buttons=btns(bt), frames=k, scale=0); snaps.append(workram(b, r["session"]))
+        return snaps
+    try:
+        right = run([("Right", n // 3)] * 3); left = run([("Left", n // 3)] * 3); idle = run([("none", n // 3)] * 3)
+        jump = run([("A", 6), ("A", 6), ("none", 12)]); stop = run([("Right", n), ("none", n)])
+    finally:
+        b.call("load_state", session=r["session"], path=tmp)
+    def s8(v): return v - 256 if v > 127 else v
+    found = {"x": [], "y/air": [], "speed": [], "timer": []}
+    for dom, base in right[0].items():
+        for i in range(len(base)):
+            R = [sn[dom][i] for sn in right]; L = [sn[dom][i] for sn in left]; I = [sn[dom][i] for sn in idle]
+            J = [sn[dom][i] for sn in jump]; S = [sn[dom][i] for sn in stop]
+            dr = [s8((R[k + 1] - R[k]) & 255) for k in range(3)]; dl = [s8((L[k + 1] - L[k]) & 255) for k in range(3)]
+            name = f"[{dom}:${i:04X}]" if dom != "RAM" else f"[${i:04X}]"
+            if I[0] != I[-1] and len(set(I)) == 4 and R[1:] == I[1:] and L[1:] == I[1:] and J[:2] == I[:2]:   # the same with any input
+                found["timer"].append((1, name, I)); continue
+            if all(x > 0 for x in dr) and all(x <= 0 for x in dl) and max(dr) <= 32:   # Left may be blocked (a screen edge)
+                found["x"].append((sum(dr) - sum(dl), name, R))
+            elif len(set(I)) == 1 and J[1:] != I[1:] and R[1:] == I[1:] and L[1:] == I[1:]:
+                dj = [s8((J[k + 1] - J[k]) & 255) for k in range(3)]
+                if max(abs(x) for x in dj) <= 48:   # a body moves a little a frame; big jumps are random numbers / pointers
+                    found["y/air"].append((10 if set(J) <= {0, 1} or len(set(J[1:])) == 1 else sum(abs(x) for x in dj), name, J))
+            elif S[0] == I[0] and S[1] != S[0] and S[2] == S[0] and R[1] != R[0] and I[1:] == I[:1] * 3:
+                found["speed"].append((abs(s8((S[1] - S[0]) & 255)), name, S))
+    for k, lst in found.items():
+        lst.sort(key=lambda t: t[0] if k == "y/air" else -t[0])   # y/air: flags and smooth arcs first
+        print(f"{k:6}: " + ("  ".join(f"{nm} {vals}" for _, nm, vals in lst[:8]) or "none found here (try where the player can move freely)"))
+    print("(discover: machine put back; an x high byte is the byte that steps by 1 when the low byte wraps - pair them as hi*256+lo)")
+
+
+def explore(b, r, cfg, pkg, ch, a):
+    """Breadth-first search over discrete moves (maps, menus, grid puzzles): a move = hold a button H frames, then no input
+    until the --key RAM names stop changing. States are told apart by --key. Stops at the first state where --want is true
+    (or lists every state reached). --apply plays the found path into the log.
+    explore [H] --vals Up,Down,Left,Right --key mapx,mapy --want 'mode != 0' [--within 40 states] [--apply]"""
+    hold = int(a.args[0]) if a.args else 8
+    moves = (a.vals or "Up,Down,Left,Right").split(",")
+    keys = (a.key or ",".join(e.split("=", 1)[0] for e in cfg["ram"])).split(",")
+    m = dict(e.split("=", 1) for e in cfg["ram"])
+    kram = [f"{k}={m[k]}" if k in m else f"{k}={k}" for k in keys]
+    want = names(a.want, cfg) if a.want else None
+    limit = a.within if a.within != 120 else 40
+    d = os.path.join(wdir(pkg, ch), "_explore"); os.makedirs(d, exist_ok=True)
+    def settle():
+        prev, still, n = None, 0, 0
+        while n < 400 and still < int(os.environ.get("AUTOTAS_SETTLE", 6)):   # 6 equal reads 8 apart: a walk between map nodes changes nothing for ~30 frames
+            v = b.call("play_step", session=r["session"], frames=8, scale=0, ram=kram)["ram"]; n += 8
+            still = still + 1 if v == prev else 0; prev = v
+        return n, tuple(prev.values())
+    def wanted():
+        return bool(want) and bool(b.call("play_step", session=r["session"], frames=0, scale=0, ram=["w=" + want])["ram"]["w"])
+    root = os.path.join(d, "s0.state"); b.call("save_state", session=r["session"], path=root)
+    k0 = tuple(b.call("play_step", session=r["session"], frames=0, scale=0, ram=kram)["ram"].values())
+    seen = {k0: (root, [])}; queue = [k0]; found = None
+    try:
+        while queue and not found and len(seen) <= limit:
+            k = queue.pop(0); st, path = seen[k]
+            for mv in moves:
+                b.call("load_state", session=r["session"], path=st)
+                b.call("play_step", session=r["session"], buttons=btns(mv), frames=hold, scale=0)
+                n, k2 = settle(); p2 = path + [[btns(mv), hold], [[], n]]
+                if wanted(): found = (k2, p2, mv); break
+                if k2 not in seen:
+                    f = os.path.join(d, f"s{len(seen)}.state"); b.call("save_state", session=r["session"], path=f)
+                    seen[k2] = (f, p2); queue.append(k2)
+    finally:
+        b.call("load_state", session=r["session"], path=root)
+    def show_path(p): return " ".join(f"{'+'.join(x[0]) or 'none'}:{x[1]}" for x in p)
+    if not found:
+        print(f"explore: {len(seen)} states reached ({', '.join(keys)}), none meets --want" if want else f"explore: {len(seen)} states reached:")
+        for kk, (f, p) in list(seen.items())[:40]: print(f"  {dict(zip(keys, kk))}  via {show_path(p) or '(here)'}")
+        return
+    print(f"FOUND after {sum(x[1] for x in found[1])} frames: {show_path(found[1])}  -> {dict(zip(keys, found[0]))}")
+    if want:   # tighten: shorten each hold and wait while the path still reaches --want (a TAS wastes no frames)
+        path = [x[:] for x in found[1]]
+        def ok(pth):
+            b.call("load_state", session=r["session"], path=root)
+            for bt, n in pth:
+                if n > 0: b.call("play_step", session=r["session"], buttons=bt, frames=n, scale=0)
+            return wanted()
+        try:
+            for i in range(len(path)):
+                lo, hi = (1 if path[i][0] else 0), path[i][1]
+                if i == len(path) - 1:   # the last wait: just until want turns true
+                    b.call("load_state", session=r["session"], path=root)
+                    for bt, n in path[:-1]: b.call("play_step", session=r["session"], buttons=bt, frames=n, scale=0)
+                    res = b.call("play_step", session=r["session"], frames=hi, until=want, max_frames=hi, scale=0)
+                    path[i][1] = int(res.get("framesRun", hi) or hi); continue
+                while lo < hi:
+                    mid = (lo + hi) // 2; t = [x[:] for x in path]; t[i][1] = mid
+                    if ok(t): hi = mid
+                    else: lo = mid + 1
+                path[i][1] = hi
+        finally:
+            b.call("load_state", session=r["session"], path=root)
+        found = (found[0], [x for x in path if x[1] > 0], found[2])
+        print(f"tightened to {sum(x[1] for x in found[1])} frames: {show_path(found[1])}")
+    if a.apply:
+        for bt, n in found[1]:
+            res, ev = do_step(b, r, cfg, bt, n)
+            ran = int(res.get("framesRun", 0) or 0)
+            if ran: r["log"].append([bt, ran]); r["frames"] += ran
+            if ev and ev != "entered level": print(">>> " + ev); break
+        store(pkg, ch, r)
+        res = b.call("play_step", session=r["session"], frames=0, scale=0, ram=cfg["ram"])
+        show(res, "applied the path", r)
 
 
 def seek(b, r, cfg, pkg, ch, target):
@@ -386,6 +597,16 @@ def search(b, r, cfg, pkg, ch, a):
         print(f"search: no try reached the goal without dying: {died} died, {len(missed)} alive but never met --want. Back where you were.")
         for env, ram in missed[:3]: print("  alive:", env, " ".join(f"{k}={v}" for k, v in (ram or {}).items()))
         return
+    if getattr(a, "all", False):   # layer 4 (reach): every distinct place the tries land, not just the fastest
+        spots = {}
+        for t, env, _, ram in results:
+            ram = ram or {}
+            key = tuple((k, int(v) // 16) for k, v in ram.items() if k in ("x", "y"))
+            if key not in spots or t < spots[key][0]: spots[key] = (t, env, ram)
+        print(f"reach: {len(spots)} distinct landing spots ({len(results)} live tries, {died} died):")
+        for key, (t, env, ram) in sorted(spots.items(), key=lambda kv: [-v for _, v in kv[0]]):
+            print(f"  {' '.join(f'{k}={ram[k]}' for k, _ in key)}  in {t} frames  {env}")
+        if not a.apply: return
     for t, env, _, ram in results[:3]:
         print(f"{t} frames  {env}  then " + " ".join(f"{k}={v}" for k, v in (ram or {}).items()))
     if a.apply:
@@ -463,6 +684,8 @@ def advance(b, r, cfg, pkg, ch, a):
         if r["frames"] == before and stride > int(ad.get("min_stride", 32)):
             stride //= 2; print(f"  (no hop of that size: trying stride {stride})"); continue
         pat = int(getattr(a, "patience", 0) or ad.get("patience", 0))
+        if r["frames"] == before and pat == 0 and autoscrolls(b, r):   # an auto-scroller: the next platform may not be there yet
+            pat = 12; print("  (the screen scrolls by itself: waiting for what comes next)")
         if r["frames"] == before and pat > 0:   # auto-scrollers: the next platform is not on screen yet, so stand still a bit and retry
             hopped = False
             for k in range(pat):
