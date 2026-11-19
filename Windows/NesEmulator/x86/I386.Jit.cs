@@ -143,6 +143,7 @@ public sealed partial class I386
         {
             JitDeclines++;
             for (int s = 0; s < 6; s++) if (!JSegOk(s)) JitDeclineSeg[s]++;
+            if (JitDeclines % 2000000 == 1) Console.Error.WriteLine($"jitdecl: blk {code.Start:X8} k {k} vm {(Flags >> 17) & 1} cpl {Cpl} c16 {Code16} " + string.Join(" ", Enumerable.Range(0, 6).Select(s => $"{s}:{SegSel[s]:X4}/{SegFlags[s]:X4}/{SegLimit[s]:X}")));
         }
         return rc;
     }
@@ -180,7 +181,13 @@ public sealed partial class I386
         if (bits == 8) Store8Slow(ref r, v); else if (bits == 16) Store16Slow(ref r, v); else Store32Slow(ref r, v);
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool JSegOk(int seg) => ((Cr0 & 1) == 0 || SegLimit[seg] != 0 || (SegSel[seg] & ~3u) != 0) && (SegFlags[seg] & 0xc) != 0x4 && SegLimit[seg] >= 3 && ((SegFlags[seg] & 0x10) == 0 || (SegFlags[seg] & 0x1a) == 0x12);   // (expand-down: the interpreter's limit check)
+    private bool JSegOk(int seg) => ((Cr0 & 1) == 0 || SegLimit[seg] != 0 || (SegSel[seg] & ~3u) != 0) && !(ExpandDown(seg) && (NoExpandDown || SegLimit[seg] == 0xffffffff)) && JSegSpan(seg) >= 3 && ((SegFlags[seg] & 0x10) == 0 || (SegFlags[seg] & 0x1a) == 0x12);
+    // expand-down data segments (Win98's flat Win32 DS / ES / SS is one: 0167h, limit EE60h, B = 1): valid offsets are limit + 1 .. FFFFh / FFFFFFFFh.
+    // The compiled limit check is (off - lo) <= span - (size - 1): lo = 0, span = limit for the usual kind; lo = limit + 1, span = top - lo here
+    private bool ExpandDown(int seg) => (Cr0 & 1) != 0 && (Flags & VM) == 0 && (SegFlags[seg] & 0x1c) == 0x14;
+    [MethodImpl(MethodImplOptions.NoInlining)] private uint JSegLo(int seg) => ExpandDown(seg) ? SegLimit[seg] + 1 : 0;
+    [MethodImpl(MethodImplOptions.NoInlining)] private uint JSegSpan(int seg) => ExpandDown(seg) ? ((SegFlags[seg] & 0x4000) != 0 ? 0xffffffffu : 0xffffu) - (SegLimit[seg] + 1) : SegLimit[seg];
+    private static readonly bool NoExpandDown = Environment.GetEnvironmentVariable("X86_NOEXPANDDOWN") != null;
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegLim(int seg) => SegLimit[seg];
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegBase(int seg) => SegBase[seg];
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JCond(uint c) => Cond(c);
@@ -374,7 +381,7 @@ public sealed partial class I386
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JCodeSame", "JCall", "JRet",
+        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
                      "JXlat", "JFlagOp", "JStk", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
@@ -608,6 +615,7 @@ public sealed partial class I386
         var ea = il.DeclareLocal(typeof(uint));
         var sb = new LocalBuilder?[6];
         var sl = new LocalBuilder?[6];
+        var slo = new LocalBuilder?[6];   // (expand-down: the lowest valid offset; 0 for the usual kind)
         var lfOff = il.DeclareLocal(typeof(uint)); var lfSeg = il.DeclareLocal(typeof(int)); var limFail = il.DefineLabel();
         int n = ins.Length;
         var index = new Dictionary<uint, int>();
@@ -783,7 +791,9 @@ public sealed partial class I386
             sb[s] = il.DeclareLocal(typeof(uint));
             Ld0(); I4(s); Call("JSegBase"); il.Emit(OpCodes.Stloc, sb[s]!);
             sl[s] = il.DeclareLocal(typeof(uint));
-            Ld0(); I4(s); Call("JSegLim"); il.Emit(OpCodes.Stloc, sl[s]!);
+            Ld0(); I4(s); Call("JSegSpan"); il.Emit(OpCodes.Stloc, sl[s]!);
+            slo[s] = il.DeclareLocal(typeof(uint));
+            Ld0(); I4(s); Call("JSegLo"); il.Emit(OpCodes.Stloc, slo[s]!);
         }
         int segMask = 0;
         foreach (int s in usedSegs) segMask |= 1 << s;
@@ -856,7 +866,7 @@ public sealed partial class I386
         {
             // one compare inline; the fault exit is shared by the whole region (a per-site exit made the bench region ~2.5x slower)
             var okL = il.DefineLabel();
-            Ld(off); Ld(sl[seg]!); U4((uint)(size - 1)); Op(OpCodes.Sub); il.Emit(OpCodes.Ble_Un, okL);
+            Ld(off); Ld(slo[seg]!); Op(OpCodes.Sub); Ld(sl[seg]!); U4((uint)(size - 1)); Op(OpCodes.Sub); il.Emit(OpCodes.Ble_Un, okL);
             U4(pas[k] - start); Stl(lfOff); I4(seg); Stl(lfSeg); il.Emit(OpCodes.Br, limFail);
             il.MarkLabel(okL);
         }
@@ -908,7 +918,7 @@ public sealed partial class I386
                 Ld0(); Bool(c16); Bool(pg); U4(pa); I4(segMask); Bool(e.Mod != 0); Call("JStill"); il.Emit(OpCodes.Brfalse, leaveG);
                 if (e.Rm == 0 || NoKeepSegs)   // (DcKeepsSegs: segments, SS size and CPL stay as they were: nothing to reload)
                 {
-                    foreach (int s in usedSegs) { Ld0(); I4(s); Call("JSegBase"); Stl(sb[s]!); Ld0(); I4(s); Call("JSegLim"); Stl(sl[s]!); }
+                    foreach (int s in usedSegs) { Ld0(); I4(s); Call("JSegBase"); Stl(sb[s]!); Ld0(); I4(s); Call("JSegSpan"); Stl(sl[s]!); Ld0(); I4(s); Call("JSegLo"); Stl(slo[s]!); }
                     Ld0(); Call("JSpm"); Stl(spm);
                     if (pg) LdPerm();   // (an out-of-line instruction may have changed the CPL)
                 }
@@ -1320,7 +1330,7 @@ public sealed partial class I386
                         Ld0(); I4(e.Reg); Call("JSegOk"); il.Emit(OpCodes.Brtrue, usable);
                         StDec(); LeaveAfter(k, () => IpAt(pe));
                         il.MarkLabel(usable);
-                        Ld0(); I4(e.Reg); Call("JSegBase"); Stl(sb[e.Reg]!); Ld0(); I4(e.Reg); Call("JSegLim"); Stl(sl[e.Reg]!);
+                        Ld0(); I4(e.Reg); Call("JSegBase"); Stl(sb[e.Reg]!); Ld0(); I4(e.Reg); Call("JSegSpan"); Stl(sl[e.Reg]!); Ld0(); I4(e.Reg); Call("JSegLo"); Stl(slo[e.Reg]!);
                         if (segOkL[e.Reg] != null) { I4(1); Stl(segOkL[e.Reg]!); }   // (usable now, whatever it was at entry)
                     }
                     break;
