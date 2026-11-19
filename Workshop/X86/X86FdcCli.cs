@@ -159,7 +159,7 @@ internal static class X86FdcCli
         WaitIrq(); rr = Results();
         Check(Hex(rr) == "04-00-00-0A-01-06-02", "WRITE DATA result: " + Hex(rr));
         lba = (10 * 2 + 1) * 18 + 4;
-        Check(img.AsSpan((int)lba * 512, 512).SequenceEqual(pat) && d.Dirty, "written sector landed in the image");
+        Check(_m.Floppy[0]!.ToArray().AsSpan((int)lba * 512, 512).SequenceEqual(pat) && d.Dirty, "written sector landed in the image");
 
         // READ ID on head 1
         Cmd(0x4a, 0x04); WaitIrq(); rr = Results();
@@ -171,9 +171,9 @@ internal static class X86FdcCli
         Cmd(0x4d, 0x04, 2, 18, 0x54, 0xe5); WaitIrq(); rr = Results();
         Check(rr.Length == 7 && (rr[0] & 0xc0) == 0, "FORMAT TRACK: " + Hex(rr));
         lba = (10 * 2 + 1) * 18;
-        bool allE5 = true; for (int i = 0; i < 18 * 512; i++) allE5 &= img[lba * 512 + i] == 0xe5;
+        var fmt = _m.Floppy[0]!.ToArray(); bool allE5 = true; for (int i = 0; i < 18 * 512; i++) allE5 &= fmt[lba * 512 + i] == 0xe5;
         Check(allE5, "formatted track is E5h");
-        Array.Copy(orig, lba * 512, img, lba * 512, 18 * 512);
+        _m.Floppy[0]!.Write(lba, 18, orig.AsSpan((int)lba * 512, 18 * 512));   // (the base image is never written: copy-on-write)
 
         // a wrong data rate: no address mark
         Out(0x3f7, 2);

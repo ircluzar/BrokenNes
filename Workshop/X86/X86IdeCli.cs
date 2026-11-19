@@ -85,7 +85,7 @@ internal static class X86IdeCli
             for (int i = 0; i < 4 * 512; i += 4) m.Out32(B, 0xA5000000u | (uint)(blk * 4096 + i));
         }
         Check((m.In8(B + 7) & 0x89) == 0, "status idle after write");
-        Check(BitConverter.ToUInt32(img, 100 * 512 + 4 * 512 + 8) == (0xA5000000u | 4096 + 8), "write landed in the image");
+        Check(BitConverter.ToUInt32(m.Hdd[0]!.ToArray(), 100 * 512 + 4 * 512 + 8) == (0xA5000000u | 4096 + 8), "write landed in the image");
         Check(m.Hdd[0]!.Dirty, "disk marked dirty");
         // out of range -> IDNF error
         m.Out8(B + 2, 1); m.Out8(B + 3, 0); m.Out8(B + 4, 0); m.Out8(B + 5, 0xff); m.Out8(B + 6, 0xef); m.Out8(B + 7, 0x20);
