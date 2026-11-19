@@ -82,7 +82,7 @@ internal sealed partial class HeadlessSession
     /// still holds <paramref name="settle"/> frames later and that the player lives <paramref name="survive"/> more frames. A frame where
     /// <paramref name="dead"/> is true ends a try. The machine is put back exactly as it was afterwards. One call instead of ~5 per try.
     /// </summary>
-    public JsonObject TryPlans(List<string> plans, string[] then, int within, string want, string? dead, int settle, int survive, List<string> ram)
+    public JsonObject TryPlans(List<string> plans, string[] then, int within, string want, string? dead, int settle, int survive, List<string> ram, string[]? surviveWith = null)
     {
         if (plans.Count == 0) throw new ToolError("give at least one plan");
         if (plans.Count > 2000) throw new ToolError("at most 2000 plans a call");
@@ -91,6 +91,7 @@ internal sealed partial class HeadlessSession
         var baseState = SaveRaw();
         long f0 = Interlocked.Read(ref framesStarted);
         var thenPad = ParseButtons(then);
+        var survivePad = surviveWith == null ? thenPad : ParseButtons(surviveWith);
         bool Eval(string e) { try { return d.Evaluate(e) != 0; } catch (Exception x) when (x is FormatException or ArgumentException) { throw new ToolError($"{e}: {x.Message}"); } }
         bool hasDead = dead is { Length: > 0 };
         // one frame with these pads; false = died
@@ -133,7 +134,7 @@ internal sealed partial class HeadlessSession
                         if (verdict == "ok" && !Eval(want)) verdict = "unsettled";
                     }
                     if (verdict == "ok" && survive > 0)
-                        for (int i = 0; i < survive; i++) if (!Frame(thenPad)) { verdict = "doomed"; break; }
+                        for (int i = 0; i < survive; i++) if (!Frame(survivePad)) { verdict = "doomed"; break; }
                 }
                 var o = new JsonObject { ["i"] = k, ["verdict"] = verdict };
                 if (verdict == "ok") { o["frames"] = reach; o["ram"] = vals; }

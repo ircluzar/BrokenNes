@@ -28,6 +28,7 @@ marks the milestone and writes the raw state FILE. So retries (`back`) never lea
   python -I run.py discover --ch 1-2 [N]            find RAM variables (x, y/air, speed, timers) by input experiments from here
   python -I run.py do --ch 1-2 "Right+B@x>=400 Right+B+A:14 none@air==0"   MOVEMENT SCRIPT, for real (peek takes the same script)
   python -I run.py map --ch 1-2 [WIDTH] [--cell 16]  the level map stitched from every grid seen so far
+  python -I run.py gap --ch 1-2 [FAMILY] [--want EXPR]  GAP SOLVER: long waits (0-400) before jumps, from here and 3 earlier checkpoints
   python -I run.py tree --ch 1-2                     checkpoints as a branch tree (which ones are on the current line)
   python -I run.py finish --ch 1-2 [--note TEXT]     replay -> seg/<ch>.bnm + state/<ch>.raw.state + thumb
   python -I run.py close --ch 1-2                    drop the session (no output)
@@ -119,6 +120,7 @@ def main():
     ap.add_argument("--settle", type=int, default=0, help="search: the want must still be true this many frames later (no jump-apex false hits)")
     ap.add_argument("--patience", type=int, default=0, help="advance: when stuck, wait 30 frames and retry up to N times (auto-scrollers)")
     ap.add_argument("--stop-when", dest="stopwhen", help="step: also stop early when this expression is true")
+    ap.add_argument("--stoppable", action="store_true", help="search: the landing must be safe to stand still on for --survive frames")
     ap.add_argument("--wait", default="auto", help="search: auto = on an auto-scroller, also try waiting 0-120 frames first; off = never")
     ap.add_argument("--all", action="store_true", help="search: list every distinct landing spot (reach map) instead of the fastest")
     ap.add_argument("--key", help="explore: the RAM names that tell states apart (default: all)")
@@ -134,7 +136,7 @@ def main():
             except Exception: pass
         g = gamelib.load(a.game); cfg = json.load(open(os.path.join(g.dir, "runner.json"), encoding="utf-8"))
         b = start_bridge(a.pc)
-        sess = b.call("open_rom", path=a.rom)["session"]
+        sess = b.call("open_rom", path=a.rom, call_stack=False)["session"]
         if a.frm: b.call("load_state", session=sess, path=a.frm)
         r = {"game": a.game, "rom": a.rom, "from": a.frm, "goal": a.goal, "until": a.until, "port": b.port, "session": sess,
              "frames": 0, "log": [], "subs": {}, "armed": False}
@@ -175,7 +177,7 @@ def run_cmd(a, pkg, ch):
         sname = a.args[0]; sub = r["subs"][sname]
         try: attach(r["port"]).stop()   # the old daemon of this chapter, if still running
         except Exception: pass
-        b = start_bridge(a.pc); sess = b.call("open_rom", path=r["rom"])["session"]
+        b = start_bridge(a.pc); sess = b.call("open_rom", path=r["rom"], call_stack=False)["session"]
         b.call("load_state", session=sess, path=sub["path"])
         r.update(port=b.port, session=sess, log=[x[:] for x in sub["inputs"]] if "inputs" in sub else r["log"][:sub["log"]], frames=sub["frames"], armed=sub["armed"])
         r.pop("goal_frame", None); r.pop("finished", None)
@@ -208,6 +210,8 @@ def run_cmd(a, pkg, ch):
         seek(b, r, cfg, pkg, ch, target)
     elif a.cmd == "tree":
         tree(r)
+    elif a.cmd == "gap":
+        gap(b, r, cfg, pkg, ch, a)
     elif a.cmd == "map":
         print_map(r, pkg, ch, a.cell, int(a.args[0]) if a.args else 120)
     elif a.cmd == "do":
@@ -461,6 +465,44 @@ def discover(b, r, cfg, pkg, ch, a):
     print("(discover: machine put back; an x high byte is the byte that steps by 1 when the low byte wraps - pair them as hi*256+lo)")
 
 
+def gap(b, r, cfg, pkg, ch, a):
+    """Gap solver: when every jump from here dies, maybe something has to ARRIVE first (a lift, an auto-scroll platform, an
+    enemy to bounce on) or the run-up must start earlier. From here and then from up to 3 earlier checkpoints on the line,
+    tries long waits (0-400 frames) before a small jump family, wanting --want (default: 32 px past the furthest x so far,
+    landed). The first success is applied (it goes into the log).  gap [--want EXPR] [--vals jump grid]"""
+    ad = cfg.get("advance") or {}
+    cur = b.call("play_step", session=r["session"], frames=0, scale=0, ram=cfg["ram"])["ram"]
+    sx = ad.get("start", "x")
+    want = a.want or f"{sx} >= {int(cur[sx]) + 32}" + (" && air == 0" if "air" in cur else "")
+    fam = a.args[0] if a.args else "Right+B:{a} Right+B+A:{j}"   # then: no input (land and STAY: narrow platforms)
+    vals = a.vals or "a=0..16:8,j=8..24:8"
+    line = sorted((s_ for s_ in r["subs"].items() if "inputs" in s_[1] and s_[1]["inputs"] == r["log"][:len(s_[1]["inputs"])]),
+                  key=lambda t: -t[1]["frames"])
+    starts = [None] + [n for n, _ in line[:3]]
+    import time
+    t0 = time.time()
+    for st in starts:
+        if time.time() - t0 > 360: print("gap: time cap"); break
+        if st: seek(b, r, cfg, pkg, ch, r["subs"][st]["frames"])
+        a2 = argparse.Namespace(**vars(a)); a2.args = ["none:{w} " + fam]; a2.vals = vals + ",w=0..400:25"; a2.want = want
+        a2.then = "none"; a2.within = 90; a2.apply = True; a2.wait = "off"; a2.all = False; a2.settle = 4; a2.stoppable = True
+        before = r["frames"]
+        print(f"gap: from {'here' if st is None else 'checkpoint ' + st} (frame {r['frames']}): waits 0-400 before the jump family")
+        search(b, r, cfg, pkg, ch, a2)
+        if r["frames"] != before: print("gap: SOLVED - the wait is in the log; save a checkpoint"); return
+        spd = ad.get("speed", "xspd")
+        if st and spd in cur:   # arrive at the stuck spot SLOWLY (a running landing slides off the edge), then wait + jump again
+            a4 = argparse.Namespace(**vars(a2)); a4.args = [fam + " none:{k}"]; a4.vals = vals + ",k=0..30:10"
+            a4.want = f"{sx} >= {int(cur[sx]) - 24} && {sx} <= {int(cur[sx]) + 8}" + (" && air == 0" if "air" in cur else "") + f" && {spd} <= 8"
+            print(f"gap: from {st}: a slow landing near {sx}={cur[sx]} first")
+            search(b, r, cfg, pkg, ch, a4)
+            if r["frames"] != before:
+                mid = r["frames"]; search(b, r, cfg, pkg, ch, a2)
+                if r["frames"] != mid: print("gap: SOLVED (slow landing, wait, jump) - save a checkpoint"); return
+                seek(b, r, cfg, pkg, ch, before)
+    print("gap: no wait + jump crossed it from here or the last 3 checkpoints (the log is at the oldest one tried: `resume`/`seek` as needed)")
+
+
 def explore(b, r, cfg, pkg, ch, a):
     """Breadth-first search over discrete moves (maps, menus, grid puzzles): a move = hold a button H frames, then no input
     until the --key RAM names stop changing. States are told apart by --key. Stops at the first state where --want is true
@@ -652,7 +694,8 @@ def search(b, r, cfg, pkg, ch, a):
             chunk = combos[c0:c0 + 400]
             plans = [" ".join(("+".join(bt) or "none") + f":{k}" for bt, k in plan_steps(env)) or "none:0" for env in chunk]
             out = b.call("try_plans", session=r["session"], plans=plans, then=btns(a.then), within=a.within, want=a.want,
-                         dead=cfg.get("dead"), settle=getattr(a, "settle", 0) or 0, survive=a.survive if cfg.get("dead") else 0, ram=cfg["ram"])
+                         dead=cfg.get("dead"), settle=getattr(a, "settle", 0) or 0, survive=(max(a.survive, 75) if getattr(a, "stoppable", False) else a.survive) if cfg.get("dead") else 0, ram=cfg["ram"],
+                         survive_with=[] if getattr(a, "stoppable", False) else None)
             for res in out["results"]:
                 env = chunk[res["i"]]; v = res["verdict"]; st = plan_steps(env)
                 if v == "ok":
@@ -753,6 +796,7 @@ def advance(b, r, cfg, pkg, ch, a):
             a2.want = f"({names(a2.want, cfg)}) || {fin}"
         if ad.get("end_expr"): a2.want = f"({names(a2.want, cfg)}) || ({names(ad['end_expr'], cfg)})"   # reaching the level end counts as a hop
         a2.then = ad.get("then", "none"); a2.within = int(ad.get("within", 90)); a2.apply = True
+        a2.stoppable = True   # a hop must land where standing still is safe (no running landing that slides off a ledge)
         a2.wait = "off"   # the plain hop first; waits only when it is stuck (patience below): a 5x bigger grid every hop timed agents out
         before = r["frames"]
         search(b, r, cfg, pkg, ch, a2)
@@ -796,13 +840,19 @@ def advance(b, r, cfg, pkg, ch, a):
                 res, ev = do_step(b, r, cfg, [], 30)
                 ran = int(res.get("framesRun", 0) or 0)
                 if ran: r["log"].append([[], ran]); r["frames"] += ran
-                if ev == "DIED": print(">>> DIED while waiting"); store(pkg, ch, r); return
+                if ev == "DIED":   # standing here is not safe (a sinking lift, the scroll edge): undo the waits, let the gap solver try
+                    print("  (waiting here dies: undone)"); seek(b, r, cfg, pkg, ch, before); break
                 mark = r["frames"]; search(b, r, cfg, pkg, ch, a2)
                 if r["frames"] != mark: hopped = True; print(f"  (waited {k + 1}x30 frames, then hopped)"); break
-            if not hopped:
-                print(f"advance: still stuck after waiting {pat}x30 frames (the waits stay in the log: back to a checkpoint)"); store(pkg, ch, r); return
+            if not hopped and r["frames"] != before:
+                print(f"  (waiting {pat}x30 frames did not help: undone)"); seek(b, r, cfg, pkg, ch, before)
         if before == -1: before = r["frames"] - 1
         if r["frames"] != before: stride = int(ad["stride"])
+        if r["frames"] == before and not r.get("goal_frame") and not getattr(a, "_gapped", False):
+            a._gapped = True; print("  (every hop dies: trying the gap solver - long waits, earlier starts)")
+            a3 = argparse.Namespace(**vars(a)); a3.args = []; a3.want = None; a3.vals = None
+            gap(b, r, cfg, pkg, ch, a3)
+            if r["frames"] != before: continue
         if r["frames"] == before or r.get("goal_frame"):
             print(f"advance: stopped after {i} hops (stuck before {ad['start']}={target}: look at the picture and solve this spot with search)")
             return
@@ -817,7 +867,7 @@ def finish(b, r, cfg, pkg, ch, note):
     """Replays the log from the start state in a fresh session, records it, marks the milestone + writes the state."""
     for d in ("seg", "state", "thumb", "notes"): os.makedirs(os.path.join(pkg, d), exist_ok=True)
     b.call("close_session", session=r["session"])
-    s = b.call("open_rom", path=r["rom"])["session"]
+    s = b.call("open_rom", path=r["rom"], call_stack=False)["session"]
     if r["from"]: b.call("load_state", session=s, path=r["from"])
     b.call("record", session=s, action="start", text=ch)
     if sum(n for _, n in r["log"]) != r["frames"]:

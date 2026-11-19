@@ -43,8 +43,10 @@ internal static partial class Tools
                 ("dead", P("string", "a death expression: true = the try failed"), false),
                 ("settle", P("integer", "want must still hold this many frames later (default 0)"), false),
                 ("survive", P("integer", "the player must live this many more frames holding then (default 0)"), false),
-                ("ram", P("string[]", "named expressions read when want is met"), false)),
-            a => On(a, s => Headless(s).TryPlans(a.List("plans"), a.List("then").ToArray(), a.Int("within", 120), a.Str("want") ?? throw new ToolError("want is needed"), a.Str("dead"), a.Int("settle", 0), a.Int("survive", 0), a.List("ram"))), false);
+                ("ram", P("string[]", "named expressions read when want is met"), false),
+                ("survive_with", P("string[]", "buttons held during the survive check (default: then); [] = stand still: a landing you can stop on"), false)),
+            a => On(a, s => Headless(s).TryPlans(a.List("plans"), a.List("then").ToArray(), a.Int("within", 120), a.Str("want") ?? throw new ToolError("want is needed"), a.Str("dead"), a.Int("settle", 0), a.Int("survive", 0), a.List("ram"),
+                a.Has("survive_with") ? a.List("survive_with").ToArray() : null)), false);
 
         add("record",
             "Recording a headless session as a BrokenNes movie (.bnm) for the catalog: start (from where the session is; the movie still holds the input from power-on, so it replays " +
