@@ -6,6 +6,11 @@
 --      BNT1_WIN    pictures from f-WIN..f+WIN are written (the two emulators' first frame can sit a frame or two apart)
 --      BNT1_OUT    folder: writes m_<frame>.raw ("<w> <h>\n" + w*h little-endian 0xRRGGBB words)
 local script = os.getenv("BNT1_INPUT") or ""
+-- BNT1_INPUT_FILE: the script in a file (a 40-minute script is ~55k characters; one environment variable holds 32767)
+do
+  local fn = os.getenv("BNT1_INPUT_FILE")
+  if fn and fn ~= "" then local fh = io.open(fn, "r"); if fh then script = fh:read("*a"):gsub("%s+$", ""); fh:close() end end
+end
 local outDir = os.getenv("BNT1_OUT")
 local win = tonumber(os.getenv("BNT1_WIN") or "2")
 if not outDir then emu.log("t1: BNT1_OUT missing"); emu.stop(3); return end

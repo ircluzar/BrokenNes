@@ -56,7 +56,7 @@ internal static class ConsoleRunCli
         var pngAt = Opt("png-at", frames.ToString()).Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToHashSet();
         string outDir = Opt("out", "."), tag = Opt("tag", Path.GetFileNameWithoutExtension(inner));
         Directory.CreateDirectory(outDir);
-        var script = ParseInput(Opt("input", ""));
+        var script = ParseInput(RomTestCli.InputArg(Opt("input", "")) ?? "");
         // --gb-look green|grey|pocket|color, --gb-invert-bg, --gb-invert-obj: the Game Boy look (before the session is built:
         // Color decides the Game Boy model).
         NesEmulator.Mix.GbLook.Palette = NesEmulator.Mix.GbLook.FromKey(Opt("gb-look", "green"));
@@ -157,6 +157,8 @@ internal static class ConsoleRunCli
     private static Dictionary<int, PadButtons> ParseInput(string spec)
     {
         var d = new Dictionary<int, PadButtons>();
+        // "@file": the script is read from that file (a 10-minute script is longer than a Windows command line may be)
+        if (spec.StartsWith('@')) spec = File.ReadAllText(spec[1..]).Trim();
         foreach (var part in spec.Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
             var kv = part.Split(':'); PadButtons b = 0;

@@ -198,3 +198,36 @@ whether step 70 or the Mesen copy causes it).
 The step offset and the post-death divergence are the round-3 ones (not DMC related). `dmc_polls`/`dmc_p2` still differ
 (the SNES sync takes 2 polls, the NES a random 1-48). **Verdict: m30 Playable, MMC3 Playable** (was Jank: the picture fault
 is fixed; the remaining gap is the boot step offset).
+
+## 2026-11-19 round 5: certification of the accepted ROMs on fork HEAD 2558274 (NEST-05)
+
+NES: m30 `2026-11-12_f3be261c_m30`, MMC3 `2026-11-13_036722e0_mmc3-lag2` (the user accepted 036722e0 on 2026-11-19).
+Core: universal `a3f71dff` (step 531, fork `nested-vrun-core` 2558274), NMI accurate + `Cpu.DmcIrq` from games.json,
+feedback brokennes (m30 104 entry points, MMC3 114, 3 rounds). Work folder `C:\BrokenNes-work\smb1_cert5`.
+ROMs: `T:\BrokenDev\Releases\Nested_SMB1\2026-11-19_2558274` (+ SHA256SUMS.sha256; personal builds, never in git).
+
+**Fix: nested-build.ps1 never applied games.json `settings`.** Since 0a6fe36e the path read `'..\projects<newline>ested-core\games.json'`
+(a `\n` was eaten when the line was written), so `Test-Path` failed silently and SMB1 built **without** `Cpu.DmcIrq`. On
+core a3f71dff such a build stops polling at SNES frame 269 (title) and feedback finds 0 entry points. Round 4's ROMs were
+not affected (built with the setting passed by hand). Fixed in 63a87a1d.
+
+| check | m30 | MMC3 |
+|---|---|---|
+| plays to the end, 5 scenarios (verify play 3000, recorded 4000, fuzz1-3 2700) | yes | yes |
+| SNES lag after the first poll | 1-2 frames per run | 2-3 frames per run |
+| picture (recorded polls 400/600, NES vs SNES) | PASS: playfield scrolls, status bar fixed | PASS |
+| BrokenNes SNES vs Mesen SNES (fuzz1, 2696 polls) | logic_ticks / lives / camera identical on every poll | **identical** (round 4's one-step MMC3 disagreement is gone) |
+| logic steps behind the NES | 6 constant | 12 constant |
+
+**The step offset, root cause found.** Both machines see the same NMIs (`runtime_nmi_counter` equal on every poll). The remake's
+boot load (`ppu_upload_pbz`: 8 KB of PBZ CHR into CHR RAM through $2007, 4 lag frames on the NES) takes ~10 frames on the SNES
+(BrokenNes profile: `IO__w2007` 9185 calls, ~500 master clocks each, plus VramQ draining with vblank upload 84-99% used).
+The remake catches missed NMIs up inside the load, but resets `logic_ticks` when the load ends (NES poll 9, SNES poll 15),
+so the slower load leaves a permanent gap. Shifting the inputs by the gap re-aligns `logic_ticks` but not `prng`,
+`area_off_start`, `game_timer_ctrl` (they count NMIs, not ticks), so NES frame-exact replays (the 166-case suite) cannot
+transfer to the SNES: each SNES run is a different but valid play of the same game. `VramQBufferSize=0x8000` (the queue is
+exactly full at 0x4000 for 8 KB) produces a ROM that never polls: not a usable lever.
+
+**Verdict: m30 Playable, MMC3 Playable — certified for play** (runs, scrolls, dies and continues correctly on BrokenNes and
+Mesen, same game state on both SNES emulators, near-invisible lag). **Not** certified for NES-replay parity: that needs the
+CHR-RAM $2007 / VramQ path fast enough to finish the boot load in the NES's 4 frames (core speed work, open).

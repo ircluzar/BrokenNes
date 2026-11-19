@@ -129,8 +129,7 @@ Write-Host "nested-build: nmi $(if ($Nmi) { $Nmi } else { 'fast' }) from $nmiFro
 if ($Nmi -eq 'accurate') { $settings['NmiMode.AtVblank'] = 'True'; $settings['NmiMode.AutoDetect'] = 'False' }
 # Per-game injector settings from games.json ('settings', keyed by the base profile), then -ExtraSettings (not $Settings: PowerShell would make it the same variable as $settings)
 if ($BaseProfile) {
-    $gj = Join-Path $PSScriptRoot '..\projects
-ested-core\games.json'
+    $gj = Join-Path $PSScriptRoot '..\projects\nested-core\games.json'
     if (Test-Path -LiteralPath $gj) {
         $g = (Get-Content -LiteralPath $gj -Raw | ConvertFrom-Json).games
         if ($g -and $g.PSObject.Properties[$BaseProfile] -and $g.$BaseProfile.PSObject.Properties['settings']) {

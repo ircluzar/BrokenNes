@@ -640,7 +640,7 @@ dw 0xaa55
             c.Eq("write ok", 0, m.Phys8(0x9008));
             c.Eq("read back ok", 0, m.Phys8(0x9009));
             c.Eq("read back data", m.Phys8(0x2000 + 77), m.Phys8(0x3000 + 77));
-            c.Eq("written into the image", unchecked((byte)(77 * 7 + 3)), m.Floppy[0]!.Data[100 * 512 + 77]);
+            c.Eq("written into the image", unchecked((byte)(77 * 7 + 3)), m.Floppy[0]!.ToArray()[100 * 512 + 77]);
             c.True("image dirty", m.Floppy[0]!.Dirty);
             c.Eq("no LBA calls on a floppy", 1, m.Phys8(0x900a));
             c.Eq("no hard disk", 1, m.Phys8(0x900b));
@@ -675,6 +675,38 @@ dw 0xaa55
             Frames(m2, 30);
             m.Teletype.Append(a == Hash(m2.Vga.Frame) && ca == m2.Clock ? "[same]" : $"[differ {a} {Hash(m2.Vga.Frame)} {ca} {m2.Clock}]");
         }, (m, c) => c.True("the loaded machine runs the same", m.Teletype.ToString().Contains("[same]"), m.Teletype.ToString())),
+
+        // ---- copy-on-write disks: a state carries base hash + changed sectors only; it reloads onto the same base (another copy of it), refuses another base, old full-disk states still load
+        new("diskdiff", Head + Done + "times 510-($-$$) db 0\ndw 0xaa55\n", m =>
+        {
+            Frames(m, 3);
+            var fd = m.Floppy[0]!; var orig = (byte[])fd.Base.Clone();
+            var sec = Enumerable.Range(0, 1024).Select(i => (byte)(i * 13 + 1)).ToArray();
+            fd.Write(200, 2, sec); fd.Write(5, 1, orig.AsSpan(5 * 512, 512));   // a real change, and a write of the base's own bytes (no diff)
+            var st = m.SaveState();
+            var t = m.Teletype;
+            t.Append($"[ov {fd.OverlaySectors}]");
+            if (st.Length < m.Cpu.Mem.Length + m.Vga.Ram.Length + 16 * 1024) t.Append("[lean]");   // RAM + video memory + small change: no 1.44 MB image in it
+            bool baseUntouched = fd.Base.AsSpan().SequenceEqual(orig);
+            // a fresh machine on ANOTHER array holding the same base image: the state resolves to it, the disk reads as the saved one
+            var m2 = new PcMachine(); var copy = (byte[])orig.Clone(); m2.Floppy[0] = new DiskImage(copy, true);
+            m2.LoadState(st);
+            if (baseUntouched && ReferenceEquals(m2.Floppy[0]!.Base, copy) && m2.Floppy[0]!.ToArray().AsSpan().SequenceEqual(fd.ToArray()) && m2.SaveState().AsSpan().SequenceEqual(st)) t.Append("[same]");
+            // a machine holding ANOTHER image of the same size: the state still resolves to its own base (alive in this process), never the wrong one
+            var m3 = new PcMachine(); var other = (byte[])orig.Clone(); other[0x7000] ^= 0xff; m3.Floppy[0] = new DiskImage(other, true);
+            m3.LoadState(st);
+            if (m3.Floppy[0]!.ToArray().AsSpan().SequenceEqual(fd.ToArray())) t.Append("[rightbase]");
+            // a base nobody has: no guess
+            if (DiskImage.FindBase("sha256:00", orig.Length, new byte[]?[] { other }) == null) t.Append("[refused]");
+        }, (m, c) =>
+        {
+            var t = m.Teletype.ToString();
+            c.True("2 sectors in the overlay (a write of base bytes is no diff)", t.Contains("[ov 2]"), t);
+            c.True("the state is smaller than the disk", t.Contains("[lean]"), t);
+            c.True("reloads onto the same base, byte for byte", t.Contains("[same]"), t);
+            c.True("another same-size image is not taken for the base", t.Contains("[rightbase]"), t);
+            c.True("an unknown base is not found", t.Contains("[refused]"), t);
+        }),
     };
 }
 

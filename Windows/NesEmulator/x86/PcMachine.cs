@@ -6,6 +6,7 @@
 // ticks at InstructionsPerSecond. The same disk image and the same input give the same run.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace NesEmulator.X86;
@@ -440,11 +441,8 @@ public sealed partial class PcMachine : IX86Bus
                 var blob = cs.ToArray();
                 w.Write(blob.Length); w.Write(blob);
             }
-            foreach (var d in new[] { Floppy[0], Floppy[1], Hdd[0], Hdd[1] })
-            {
-                w.Write(d != null);
-                if (d != null) { w.Write(d.Data.Length); w.Write(d.Data); }
-            }
+            // the disks are copy-on-write: their diffs go in the "DSKD" block at the end (base hash + changed sectors), never the whole image here
+            for (int i = 0; i < 4; i++) w.Write(false);
             // the VGA harvest picture chip's own state (its stale screen, caches), after everything else: a stock-VGA state is byte for byte what it was
             if (Vga.Picture != null)
             {
@@ -474,6 +472,13 @@ public sealed partial class PcMachine : IX86Bus
             if (Nic != null) { w.Write(0x3043494e); Nic.Save(w); }   // "NIC0", after the config block
             if (Kbc.HasMouse) { w.Write(0x4d325350); Kbc.SaveMouse(w); }   // "PS2M"
             if (Fdc != null) { w.Write(0x30434446); Fdc.Save(w); }   // "FDC0"
+            // "DSKD": the four drives (A:, B:, C:, D:) as base hash + overlay of changed sectors (DiskImage.SaveDiff)
+            w.Write(0x444b5344);
+            foreach (var d in new[] { Floppy[0], Floppy[1], Hdd[0], Hdd[1] })
+            {
+                w.Write(d != null);
+                d?.SaveDiff(w);
+            }
         }
         return ms.ToArray();
     }
@@ -523,7 +528,8 @@ public sealed partial class PcMachine : IX86Bus
         {
             if (!r.ReadBoolean()) continue;
             var data = r.ReadBytes(r.ReadInt32());
-            disks[i] = new DiskImage(data, i < 2);
+            // an old full-disk state: on the base already in that drive (when the size fits) it becomes base + diff, so the next save is lean
+            disks[i] = DiskImage.FromFull(old[i]?.Base, data, i < 2);
         }
         Floppy[0] = disks[0]; Floppy[1] = disks[1]; Hdd[0] = disks[2]; Hdd[1] = disks[3];
         // the picture chip saved is restored when the same chip draws now; another one (or a state without one) starts it cold: a clean re-key, never a guess
@@ -548,6 +554,13 @@ public sealed partial class PcMachine : IX86Bus
             }
             else if (magic == 0x3043494e && Nic != null) { Nic.Load(r); nicLoaded = true; }
             else if (magic == 0x30434446 && Fdc != null) { Fdc.Load(r); fdcLoaded = true; }
+            else if (magic == 0x444b5344)
+            {
+                var bases = new List<byte[]?>();
+                foreach (var o in old) bases.Add(o?.Base);
+                for (int i = 0; i < 4; i++) disks[i] = r.ReadBoolean() ? DiskImage.LoadDiff(r, bases) : null;
+                Floppy[0] = disks[0]; Floppy[1] = disks[1]; Hdd[0] = disks[2]; Hdd[1] = disks[3];
+            }
             else throw new InvalidDataException($"unknown block {magic:X8} in an x86 state");
         }
         if (Nic != null && !nicLoaded) Nic.Reset();   // a state from before the card: it sits there as after a cold boot, unconfigured

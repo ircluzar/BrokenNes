@@ -59,7 +59,7 @@ internal static class MovieCli
                         Directory.CreateDirectory(pngDir);
                         BrokenNes.Workshop.MixLab.MixLabCli.SaveRgba(m.Host.Nes.GetFrameBuffer(), 256, 240, Path.Combine(pngDir, $"f{f:D5}.png"));
                     };
-                    var mv = MoviePlayer.Record(m, Opt("input"), Opt("input2"), frames, int.Parse(Opt("key-every", "60"), CultureInfo.InvariantCulture), vars, Opt("build"), st, after);
+                    var mv = MoviePlayer.Record(m, RomTestCli.InputArg(Opt("input")), RomTestCli.InputArg(Opt("input2")), frames, int.Parse(Opt("key-every", "60"), CultureInfo.InvariantCulture), vars, Opt("build"), st, after);
                     mv.Save(outFile);
                     Console.WriteLine($"recorded {outFile}: {mv.Frames} frames, {mv.Inputs.Count} input changes, {mv.Keys.Count} keyframes, {m.ConsoleKey} {m.Cores}{(mv.Vars.Count > 0 ? ", course: " + string.Join(", ", mv.Vars.Select(v => v.Name)) : "")}");
                     return 0;
