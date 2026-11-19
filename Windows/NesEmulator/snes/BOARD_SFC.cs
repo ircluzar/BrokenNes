@@ -520,7 +520,7 @@ public sealed partial class BOARD_SFC : ISnesBus
             {
                 bool nmiWasOff = (nmitimen & 0x80) == 0;
                 nmitimen = value;
-                if (nmiWasOff && (value & 0x80) != 0 && nmiFlag) Cpu.RaiseNmi();   // enabling mid-vblank fires at once
+                if (nmiWasOff && (value & 0x80) != 0 && nmiFlag) Cpu.RaiseNmiAfterNext();   // enabling mid-vblank fires after the next instruction
                 if ((value & 0x30) == 0) { ClearIrq(); }
                 UpdateNextEvent();
                 break;
