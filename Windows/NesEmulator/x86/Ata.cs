@@ -384,13 +384,16 @@ public sealed class AtaChannel
     public long DmaTransfers, DmaBytes;   // diagnostics (not saved)
 
     /// <summary>Bus-master register <paramref name="reg"/> (0 command, 2 status, 4-7 PRD table address).</summary>
-    public byte BmRead(int reg) => reg switch
+    public long BmAccesses;   // diagnostics (not saved)
+    public byte BmRead(int reg) { BmAccesses++; return BmRead0(reg); }
+    private byte BmRead0(int reg) => reg switch
     {
         0 => _bmCmd, 2 => _bmStatus, 4 => (byte)_bmPrd, 5 => (byte)(_bmPrd >> 8), 6 => (byte)(_bmPrd >> 16), 7 => (byte)(_bmPrd >> 24), _ => 0,
     };
 
     public void BmWrite(int reg, byte v)
     {
+        BmAccesses++;
         switch (reg)
         {
             case 0:
