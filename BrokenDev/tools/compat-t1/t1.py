@@ -601,6 +601,11 @@ def con_run(rom, console, frames, png_at, out_dir, script=None):
 def check_console(rec, console, minutes, keep_dir):
     global REF_LAG, WIN, RANK, MD_LADDER
     REF_LAG, WIN, RANK = 4, 6, console in RANK_CONSOLES
+    if console in ("snes", "gb", "gbc"):
+        # 2026-11-19 offset probe (no input, a picture every 5 frames): Mesen's SNES picture is BrokenNes's f+6..f+7 on Super Mad
+        # Champ and f+0..f-5 on NHL '94, Game Boy f+2 (Popeye 2): the old window f-10..f+2 missed the +side, and pictures in a fade
+        # graded "close but not the same" (deep-run review). Search f-12..f+8.
+        REF_LAG, WIN = 2, 10
     MD_LADDER = console == "md"   # SNES pictures sit ~6 frames lower on Mesen's counter, Game Boy ~3: search f-10..f+2
     rom = rec.get("path") or rec["file"]["path"]
     work = os.path.join(SCRATCH, rec["sha1"])
