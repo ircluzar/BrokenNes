@@ -271,6 +271,7 @@ internal static class X86IdeCli
         uint bar = m.Pci!.ConfigRead(0, PciBus.IdeDevFn, 0x20);
         int bm = (int)(bar & 0xfffc);
         Check((bar & 1) == 1 && bm != 0 && (m.Pci.ConfigRead(0, PciBus.IdeDevFn, 4) & 4) != 0, $"POST puts the bus-master BAR4 at {bm:X4} and enables bus mastering");
+        Check((m.In8(bm + 2) & 0x20) != 0 && (m.In8(bm + 10) & 0x20) != 0, $"POST marks drive 0 DMA-capable on both channels (status {m.In8(bm + 2):X2} / {m.In8(bm + 10):X2})");
         void Prd(uint at, params (uint addr, int n, bool eot)[] e) { for (int i = 0; i < e.Length; i++) { m.PhysW32(at + (uint)(8 * i), e[i].addr); m.PhysW32(at + (uint)(8 * i) + 4, (uint)(e[i].n & 0xffff) | (e[i].eot ? 0x80000000u : 0)); } }
         Prd(0x10000, (0x200000, 3 * 512, false), (0x300000, 5 * 512, true));
         const int B = 0x1f0;
