@@ -47,6 +47,12 @@ public static class SegaRomFormat
             }
         }
 
+        // ... or a cartridge without the "SEGA" header (unlicensed carts and early Japanese ones: Ishido, Whac-A-Critter, Super
+        // Ping Pong, Devilish Mahjong Tower; Onslaught has it at $108): a model-1 console without TMSS runs them, and so do
+        // Genplus-gx / BlastEm. Taken when the 68000 vectors look like a Genesis program: the stack in work RAM ($FFxxxx)
+        // and the reset address even and inside the ROM. (A Master System program starts DI/IM 1, never $00 $FF.)
+        if (ext is ".bin" or ".md" or ".gen" && LooksLike68kCart(md)) return ConsoleKind.Genesis;
+
         return ext switch
         {
             ".sms" or ".sg" or ".sc" => ConsoleKind.MasterSystem,
@@ -54,6 +60,14 @@ public static class SegaRomFormat
             ".md" or ".gen" or ".smd" => ConsoleKind.Genesis,   // .bin is ambiguous: only the header decides
             _ => null,
         };
+    }
+
+    /// <summary>A headerless Genesis program by its 68000 vectors: initial stack $00FFxxxx, reset PC even, $200 or more and inside the ROM.</summary>
+    public static bool LooksLike68kCart(byte[] md)
+    {
+        if (md.Length < 0x400 || (md.Length & 1) != 0 || md[0] != 0x00 || md[1] != 0xFF) return false;
+        uint pc = (uint)(md[4] << 24 | md[5] << 16 | md[6] << 8 | md[7]);
+        return (pc & 1) == 0 && pc >= 0x100 && pc < (uint)md.Length;
     }
 
     /// <summary>

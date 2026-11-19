@@ -117,6 +117,23 @@ def direct_cmd(cmd):
     return cmd
 
 
+SCRIPT_INLINE_MAX = 6000   # longer --input scripts go through "@file" (Workshop reads it; 2026-11-19, md-fix-r2)
+
+
+def script_arg(cmd, out_dir):
+    """A deep run's input script (45k characters for a 30-minute run) is longer than a command line may be (Flashback,
+    Warsong, Minnesota Fats graded Broken on "command line 45665 characters"). Pass it as @file instead."""
+    if "--input" not in cmd:
+        return cmd
+    i = cmd.index("--input") + 1
+    if i < len(cmd) and len(cmd[i]) > SCRIPT_INLINE_MAX and not cmd[i].startswith("@"):
+        path = os.path.join(out_dir, "input_script.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(cmd[i])
+        cmd = list(cmd); cmd[i] = "@" + path
+    return cmd
+
+
 def run(cmd, timeout, env=None, cwd=None):
     """one launch; a timeout is tried once more with 3x the time before it counts (a loaded fleet PC ran BreakThru's 1200-frame
     boot probe past 120 s and the 3-minute deep run graded it Broken "boot hung" while it plays fine)"""
@@ -408,7 +425,30 @@ BIZHAWK = os.environ.get("BNT1_BIZHAWK", r"T:\BrokenDev\env\emulatorsizhawk-2.1
 BIZHAWK_CFG = os.environ.get("BNT1_BIZHAWK_CFG", os.path.join(HERE, "bizhawk_config_md.json"))   # its paths say C:\BHSCRATCH
 
 
+def smd_to_md(rom, out_dir):
+    """A Super Magic Drive dump (512-byte header with $AA $BB at 8-9, then 16 KB blocks split odd/even) named .bin: BizHawk
+    reads .bin as a plain image and showed nothing (Sub-Terrania, Mega Turrican, Bubba N Stix, D&D graded Broken against a
+    blank reference). BrokenNes de-interleaves it (SegaRomFormat.IsInterleavedSmd); give the reference the same bytes."""
+    try:
+        data = open(rom, "rb").read()
+    except OSError:
+        return rom
+    if not (len(data) > 0x200 and (len(data) - 0x200) % 0x4000 == 0 and data[8] == 0xAA and data[9] == 0xBB):
+        return rom
+    out = bytearray(len(data) - 0x200)
+    for b in range((len(data) - 0x200) // 0x4000):
+        src = data[0x200 + b * 0x4000: 0x200 + (b + 1) * 0x4000]
+        out[b * 0x4000 + 1: (b + 1) * 0x4000: 2] = src[:0x2000]
+        out[b * 0x4000: (b + 1) * 0x4000: 2] = src[0x2000:]
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, "deinterleaved.md")
+    with open(path, "wb") as f:
+        f.write(out)
+    return path
+
+
 def bizhawk_run(rom, script, shots, out_dir, frames):
+    rom = smd_to_md(rom, out_dir)
     home = os.path.join(SCRATCH, "_bizhawk_home")
     shutil.rmtree(os.path.join(home, "bizhawk", "SaveRAM"), ignore_errors=True)
     os.makedirs(home, exist_ok=True)
