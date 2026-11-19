@@ -64,7 +64,9 @@ public partial class MdVdp
     }
 
     // ---- decoded registers
-    public bool H40 => (Reg[12] & 0x81) == 0x81;
+    /// RS1 (bit 0) picks the 40-cell display; RS0 (bit 7) alone does not. Test Drive II and the Wisdom Tree carts (Joshua,
+    /// Exodus) write $01 and show 320 pixels on Genplus-gx and BlastEm (md-fix-r2: they were drawn at 256, stretched).
+    public bool H40 => (Reg[12] & 0x01) != 0;
     public bool V30 => (Reg[1] & 0x08) != 0;
     public bool DisplayEnabled => (Reg[1] & 0x40) != 0;
     public bool Mode5 => (Reg[1] & 0x04) != 0;

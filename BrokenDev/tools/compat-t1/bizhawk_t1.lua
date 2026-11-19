@@ -5,6 +5,11 @@
 --      BNT1_SHOTS "f1,f2,..." frames wanted (frames completed since power-on); BNT1_WIN pictures f-WIN..f+WIN
 --      BNT1_OUT   folder: m_<frame>.png
 local script = os.getenv("BNT1_INPUT") or ""
+-- BNT1_INPUT_FILE: the script in a file (a 40-minute script is ~55k characters; one environment variable holds 32767)
+do
+  local fn = os.getenv("BNT1_INPUT_FILE")
+  if fn and fn ~= "" then local fh = io.open(fn, "r"); if fh then script = fh:read("*a"):gsub("%s+$", ""); fh:close() end end
+end
 local outDir = os.getenv("BNT1_OUT")
 local win = tonumber(os.getenv("BNT1_WIN") or "2")
 if emu.framecount() ~= 0 then client.reboot_core() end

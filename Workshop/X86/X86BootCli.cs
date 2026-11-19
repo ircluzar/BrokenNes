@@ -325,19 +325,19 @@ internal static class X86BootCli
         Console.WriteLine(Screen(m).TrimEnd());
         Console.WriteLine("----------------");
         if (shot != null) X86Shots.SavePng(m.Vga, shot);
-        if (Arg(args, "--wav") is string wavp) WriteWav(wavp, _wav!);
-        if (Arg(args, "--cdwav") is string cdwp) WriteWav(cdwp, _cdWav!);
+        if (Arg(args, "--wav") is string wavp) WriteWav(wavp);
+        if (Arg(args, "--cdwav") is string cdwp) WriteWav(cdwp, _cdWav!.ToArray());
         if (Arg(args, "--savestate") is string ss) File.WriteAllBytes(ss, m.SaveState());
         if (excKeep > 0)
         {
             Console.WriteLine("exceptions: " + string.Join(" ", Enumerable.Range(0, 32).Where(i => excCount[i] > 0).Select(i => $"#{i}={excCount[i]}")));
             foreach (var l in excRing) Console.WriteLine("  " + l);
         }
-        if (Arg(args, "--save") is string save && m.Hdd[0] != null) File.WriteAllBytes(save, m.Hdd[0]!.Data);
+        if (Arg(args, "--save") is string save && m.Hdd[0] != null) File.WriteAllBytes(save, m.Hdd[0]!.ToArray());
         foreach (var g in Args(args, "--get"))
         {
             int i = g.IndexOf('=');
-            var data = new FatImage(m.Hdd[0]!.Data).ReadFile(g[..i]);
+            var data = new FatImage(m.Hdd[0]!.ToArray()).ReadFile(g[..i]);
             if (data == null) { Console.WriteLine($"x86boot: {g[..i]} not on the disk"); found = false; continue; }
             File.WriteAllBytes(g[(i + 1)..], data);
         }
@@ -381,9 +381,15 @@ internal static class X86BootCli
         }
         return r;
     }
-    private static void WriteWav(string path, System.IO.MemoryStream src)
+    private static long _wavMark = -1;
+    private static void WriteWav(string path)
     {
-        var d = src.ToArray(); using var w = new BinaryWriter(File.Create(path));
+        if (_wavMark >= 0) { var all = _wav!.ToArray(); var tail = new System.IO.MemoryStream(); tail.Write(all, (int)_wavMark, all.Length - (int)_wavMark); WriteWav(Path.ChangeExtension(path, null) + ".after.wav", tail.ToArray()); }
+        WriteWav(path, _wav!.ToArray());
+    }
+    private static void WriteWav(string path, byte[] d)
+    {
+        using var w = new BinaryWriter(File.Create(path));
         w.Write("RIFF"u8); w.Write(36 + d.Length); w.Write("WAVEfmt "u8); w.Write(16); w.Write((short)1); w.Write((short)2); w.Write(44100); w.Write(44100 * 4); w.Write((short)4); w.Write((short)16);
         w.Write("data"u8); w.Write(d.Length); w.Write(d);
         int peak = 0; for (int i = 0; i + 1 < d.Length; i += 2) peak = Math.Max(peak, Math.Abs((int)(short)(d[i] | d[i + 1] << 8)));
@@ -441,7 +447,8 @@ internal static class X86BootCli
                 string tok = text[(ci + 1)..ce].ToLowerInvariant(); ci = ce;
                 if (tok.StartsWith("m:")) { var mv = tok[2..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), mv.Length > 2 ? int.Parse(mv[2]) : 0); Frame(m); Frame(m); continue; }   // {m:dx,dy[,buttons]}: the PS/2 mouse
                 if (tok.StartsWith("click:")) { var mv = tok[6..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), 0); Frame(m); Frame(m); m.Kbc.MouseInput(0, 0, 1); Frame(m); Frame(m); m.Kbc.MouseInput(0, 0, 0); Frame(m); Frame(m); continue; }   // {click:dx,dy}: move then left click
-                if (tok.StartsWith("save:")) { File.WriteAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5), m.SaveState()); continue; }   // {save:PATH}: a savestate right here (the run goes on)
+                if (tok.StartsWith("save:")) { File.WriteAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5), m.SaveState()); _wavMark = _wav?.Length ?? 0; continue; }   // {save:PATH}: a savestate right here (the run goes on; --wav also writes the sound from here on as FILE.after.wav)
+                if (tok.StartsWith("load:")) { m.LoadState(File.ReadAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5))); continue; }   // {load:PATH}: load a savestate right here, in this process (the run goes on from it)
                 if (tok.StartsWith("wait:")) { int wn = int.Parse(tok[5..]); for (int q = 0; q < wn; q++) Frame(m); continue; }
                 var parts = tok.Split('+'); var mods = new List<byte[]>();
                 foreach (var p in parts[..^1]) mods.Add(p switch { "ctrl" => new byte[] { 0x1d }, "alt" => new byte[] { 0x38 }, "shift" => new byte[] { 0x2a }, "win" => new byte[] { 0xe0, 0x5b }, _ => throw new ArgumentException("key mod " + p) });

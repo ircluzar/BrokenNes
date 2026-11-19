@@ -168,7 +168,7 @@ public sealed partial class PcMachine
     {
         w.Write(_cdBoot); w.Write(_cdImageLba); w.Write(_cdMedia);
         w.Write(_cdEmu != null);
-        if (_cdEmu != null) { w.Write(_cdEmu.Data.Length); w.Write(_cdEmu.Data); }
+        if (_cdEmu != null) { var e = _cdEmu.ToArray(); w.Write(e.Length); w.Write(e); }
     }
 
     private void LoadBiosExtras(BinaryReader r)

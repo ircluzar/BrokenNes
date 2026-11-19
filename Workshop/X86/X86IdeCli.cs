@@ -87,7 +87,7 @@ internal static class X86IdeCli
             for (int i = 0; i < 4 * 512; i += 4) m.Out32(B, 0xA5000000u | (uint)(blk * 4096 + i));
         }
         Check((m.In8(B + 7) & 0x89) == 0, "status idle after write");
-        Check(BitConverter.ToUInt32(img, 100 * 512 + 4 * 512 + 8) == (0xA5000000u | 4096 + 8), "write landed in the image");
+        Check(BitConverter.ToUInt32(m.Hdd[0]!.ToArray(), 100 * 512 + 4 * 512 + 8) == (0xA5000000u | 4096 + 8), "write landed in the image");
         Check(m.Hdd[0]!.Dirty, "disk marked dirty");
         // out of range -> IDNF error
         m.Out8(B + 2, 1); m.Out8(B + 3, 0); m.Out8(B + 4, 0); m.Out8(B + 5, 0xff); m.Out8(B + 6, 0xef); m.Out8(B + 7, 0x20);
@@ -285,7 +285,8 @@ internal static class X86IdeCli
         Prd(0x10100, (0x400000, 512, true)); m.Out32(bm + 4, 0x10100);
         m.Out8(B + 6, 0xe0); m.Out8(B + 2, 1); m.Out8(B + 3, 50); m.Out8(B + 4, 0); m.Out8(B + 5, 0); m.Out8(B + 7, 0xca);
         m.Out8(bm, 0x01);
-        Check(img.Skip(50 * 512).Take(512).Select((v, i) => v == (byte)(255 - i)).All(x => x) && m.Hdd[0]!.Dirty, "WRITE DMA lands on the disk");
+        var wb = new byte[512]; m.Hdd[0]!.Read(50, 1, wb);
+        Check(wb.Select((v, i) => v == (byte)(255 - i)).All(x => x) && m.Hdd[0]!.Dirty, "WRITE DMA lands on the disk");
         m.Out8(bm, 0); m.Out8(bm + 2, 0x04);
         // ATAPI READ(10) 3 sectors with the DMA feature bit, engine started before the packet
         const int S = 0x170;
