@@ -220,6 +220,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	public void Step(int elapsedCycles)
 	{
 		ppuDotCounter += elapsedCycles;
+		if (bus.cpu is CPU_FIX { Mmc3IrqHeld: true } heldCpu && bus.cartridge.mapper is Mapper4 { IrqLine: false }) heldCpu.ReleaseMmc3Irq();   // $E000 dropped MMC3's line before the IRQ was taken
 		for (int c = 0; c < elapsedCycles; c++)
 		{
 			// Speed (Lite AOT, 2026-11-14): lines 240-260 (after 241's dot 1) do nothing per dot but count - no fetches, no pixels, no loopy-v, no events -
@@ -300,7 +301,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 					mmc3.ClockScanlineCounterHardware();
 					if (mmc3.IRQPending())
 					{
-						if (bus.cpu is CPU_FIX fixCpu) fixCpu.RequestIRQAtDot(ppuDotCounter - elapsedCycles + c); else bus.cpu.RequestIRQ(true);
+						if (bus.cpu is CPU_FIX fixCpu) { fixCpu.RequestIRQAtDot(ppuDotCounter - elapsedCycles + c); fixCpu.Mmc3IrqHeld = true; } else bus.cpu.RequestIRQ(true);
 						mmc3.ClearIRQ();
 					}
 				}

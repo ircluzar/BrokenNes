@@ -352,6 +352,50 @@
         "result": "ok",
         "crashInfo": ""
       }
+    },
+    {
+      "id": "nesfix-deeprun-rampart-mmc3-ack",
+      "description": "MMC3 \$E000 drops the IRQ CPU_FIX had latched (Rampart CLIs after acknowledging under SEI; the ghost IRQ jumped through an unset RAM vector: blank screen). Credits screen at 900 as Mesen (2026-11-19).",
+      "kind": "romtest",
+      "rom": "{lib}/Rampart (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "6DE3FF66519E394D",
+        "framesRun": 900,
+        "distinctColors": 5,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "nesfix-deeprun-rbi3-mmc3-ack",
+      "description": "Same MMC3 acknowledge fix: R.B.I. Baseball 3 left the dim TENGEN screen (deep-run review 2026-11-19).",
+      "kind": "romtest",
+      "rom": "{lib}/R.B.I. Baseball 3 (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "B3C91307659B2FBF",
+        "framesRun": 900,
+        "distinctColors": 2,
+        "result": "ok",
+        "crashInfo": ""
+      }
     }
   ],
   "goldenGeneratedUtc": "2026-11-17T05:46:37Z"

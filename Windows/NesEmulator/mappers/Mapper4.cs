@@ -50,7 +50,7 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
         } else {
             irqCounter--;
             if (irqCounter == 0 && irqEnable) {
-                irqAsserted = true;
+                irqAsserted = true; IrqLine = true;
             }
         }
 
@@ -74,9 +74,12 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
             irqCounter--;
         }
         if (irqCounter == 0 && irqEnable) {
-            irqAsserted = true;
+            irqAsserted = true; IrqLine = true;
         }
     }
+
+    /// <summary>MMC3's IRQ output: high from the counter reaching 0 (enabled) until a $E000 write (PPU_FIX releases the CPU's latched request when it falls).</summary>
+    public bool IrqLine { get; private set; }
 
     public virtual bool IRQPending() {
         return irqAsserted;
@@ -147,6 +150,7 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
             case 0xE000:
                 irqEnable = false;
                 irqAsserted = false;
+                IrqLine = false;
                 break;
             case 0xE001:
                 irqEnable = true;

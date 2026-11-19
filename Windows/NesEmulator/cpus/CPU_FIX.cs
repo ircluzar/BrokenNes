@@ -92,7 +92,7 @@ public class CPU_FIX : ICPU {
 
 		this.bus = bus;
 
-		irqRequested = false;
+		irqRequested = false; otherIrqLine = false; Mmc3IrqHeld = false;
 		nmiRequested = false;
 		pollFlagI = GetFlag(FLAG_I);
 	}
@@ -147,7 +147,8 @@ public class CPU_FIX : ICPU {
 	//    cycle out of phase, which the earlier sub-cycle and MMC3-dot fits had been compensating.
 	//  - Anything else (APU frame/DMC IRQ): by bus access - raised during the last access, or after
 	//    it (Bus.PreciseInterruptPhase == MaxValue), waits one instruction.
-	public void RequestIRQ(bool line)
+	public void RequestIRQ(bool line) { otherIrqLine = line; RaiseIrqLine(line); }
+	private void RaiseIrqLine(bool line)
 	{
 		if (line && !irqRequested)
 		{
@@ -156,6 +157,13 @@ public class CPU_FIX : ICPU {
 		}
 		irqRequested = line;
 	}
+	// MMC3's IRQ (forwarded by PPU_FIX) is a level the game drops with a $E000 write. The CPU latches requests, so
+	// PPU_FIX marks the one it forwarded (Mmc3IrqHeld) and lets go of it when the mapper's line falls before it was
+	// taken: Rampart enables its IRQ with latch 0 in vblank, acknowledges it with $E000 under SEI and only then CLIs -
+	// the latched request fired anyway into an unset RAM vector (BRK loop, blank screen from frame 8; Mesen plays).
+	private bool otherIrqLine;   // the last level another source (APU frame / DMC, other mappers) asked for
+	internal bool Mmc3IrqHeld;
+	internal void ReleaseMmc3Irq() { Mmc3IrqHeld = false; if (!otherIrqLine) { irqRequested = false; irqDeferOne = false; irqRaisedRel = -1; irqRaisedAtAccess = -1; } }
 	private int irqRaisedAtAccess = -1;
 	private long irqRaisedRel = -1; // dot offset into the running instruction of a dot-stamped IRQ; -1 none
 	private int irqPollCycles; // the finished instruction's length as the IRQ poll sees it
@@ -175,7 +183,7 @@ public class CPU_FIX : ICPU {
 			irqRequested = true;
 			return;
 		}
-		RequestIRQ(true);
+		RaiseIrqLine(true);
 	}
 	private bool irqDeferOne;
 
@@ -219,7 +227,7 @@ public class CPU_FIX : ICPU {
 		// unmasked here, so a masked IRQ cannot leave it armed against a later one.
 		bool irqDeferred = irqDeferOne; irqDeferOne = false;
 		if (!pollFlagI && irqRequested && !irqDeferred) {
-			irqRequested = false;
+			irqRequested = false; Mmc3IrqHeld = false;
 			int irqCycles = IRQ();
 			pollFlagI = GetFlag(FLAG_I);
 			InstructionTracer.OnInterrupt(2, (byte)irqCycles);
