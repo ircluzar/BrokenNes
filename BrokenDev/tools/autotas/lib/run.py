@@ -729,13 +729,17 @@ def try_parallel(b, r, pkg, ch, plans, kw, state_file):
     return outs
 
 
+DEADLINE = None   # set by advance: every search inside it returns at once after this time (an agent's tool call ends at 10 min)
+
+
 def search(b, r, cfg, pkg, ch, a):
     """Tries every timing in a small grid from HERE and keeps the fastest that reaches --want without dying.
 
     run.py search --ch C "Right+B:{a} Right+B+A:{j} Right+B:4" --vals a=0..12:2,j=8..30:2 --want "EXPR" [--then Right+B] [--within 120] [--apply]
     Each try: the pattern's steps (buttons:frames, {name} = a grid value), then --then held until EXPR is true (at most --within frames).
     Prints the best few; --apply plays the best one for real (it goes into the log)."""
-    import itertools
+    import itertools, time as _t
+    if DEADLINE and _t.time() > DEADLINE: return
     pat = a.args[0]
     a.want = names(a.want, cfg)
     if not a.want or "$" not in a.want and "[" not in a.want and "frame" not in a.want:
@@ -858,6 +862,7 @@ def advance(b, r, cfg, pkg, ch, a):
         store(pkg, ch, r)
     import time
     t0 = time.time(); cap = float(os.environ.get("AUTOTAS_ADVANCE_SECONDS", 300))
+    global DEADLINE; DEADLINE = t0 + cap + 120   # hard stop for the fallbacks: the whole call stays under ~7 min
     for i in range(n):
         if time.time() - t0 > cap:   # return before the agent's 10-minute tool timeout (a backgrounded advance loses the player)
             print(f"advance: time cap ({int(cap)} s) after {i} hops - run advance again to continue"); return
