@@ -30,6 +30,10 @@ $R peek "Right+B:20 Right+B+A:15 none:20" --grid
                             # grid at the end, then puts everything back (nothing recorded). Try 2-3 plans, then `step` the best.
 $R rewind 60                # TIME MACHINE: go back 60 frames on your current line (no checkpoint needed)
 $R tree                     # your checkpoints as a branch tree
+$R probe 8                  # MAPS/MENUS: what each button does here (RAM changes, a picture each); nothing recorded
+$R explore 8 --vals Up,Down,Left,Right,A --key mapx,mapy,mode --want 'mode != 0' --apply
+                            # MAPS/MENUS: searches button presses until --want holds (e.g. a level entered), tightens the
+                            # path to the fewest frames, --apply records it. If it enters the wrong place, add && mode != N.
 $R finish --note "<notes>"  # ONLY after a step printed >>> GOAL; replays + writes the movie and state
 ```
 Every step prints frame, RAM (mode 0 = map, x/y position, xspd, p = P-meter, pow, lives, time) and events:
@@ -45,6 +49,9 @@ Buttons: Up Down Left Right A B Start Select. A held longer = higher jump. To ju
 ## Rules
 - Use timeout 600000 ms on every runner call; keep `advance` to 3-4 hops per call and search grids under ~300 combos.
 - A level can end at a pipe (stand on it, hold Down ~40) or a card box, not just at the far right: look at the picture when advance is stuck at a wall.
+- On a map or menu: never guess presses; use `explore` (or `probe` to learn what the buttons do).
+- The grid's last line says AUTO-SCROLL when the screen moves by itself: then platforms beyond the screen edge are not there
+  yet; wait (step none) until they appear before searching for a landing.
 - When stuck: `grid --cell 16` FIRST (what is ahead of '@': a wall, a gap, a pipe, a platform that moves?), then `peek` a plan or two,
   then commit it with `step` or a `search`. Use the picture (--shot) only when the grid is unclear.
 - Main loop: `advance 6` -> if stuck: look, `search` past the spot (or `back` to an earlier a<frame> checkpoint and search from there) -> `advance 6` again. At the level end: the card search, then `step none 600`.
