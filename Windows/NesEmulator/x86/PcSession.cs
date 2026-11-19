@@ -44,6 +44,7 @@ public sealed class PcSession : IConsoleSession
         if (_m.Nic != null && Environment.GetEnvironmentVariable("BROKENNES_X86_LAN") is { Length: > 0 } lan)
         {
             _lan = PcLanUdp.FromSpec(lan);
+            if (_nat != null) _nat.LanShared = true;
             _m.Nic.Link = _m.Nic.Link != null ? new PcLinkPair(_lan, _m.Nic.Link) : _lan;
         }
         Title = fileName.Length > 0 ? Path.GetFileNameWithoutExtension(fileName) : "x86 disk";

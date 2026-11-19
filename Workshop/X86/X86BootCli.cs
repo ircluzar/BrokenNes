@@ -68,6 +68,8 @@ internal static class X86BootCli
         if (Arg(args, "--floppy") is string f) m.Floppy[0] = new DiskImage(File.ReadAllBytes(f), true);
         int frames = int.Parse(Arg(args, "--frames") ?? "3000");
         string? until = Arg(args, "--until"), type = Arg(args, "--type"), shot = Arg(args, "--shot");
+        // --mac: the card's PROM address (a cold boot reads it; a loaded state keeps the address saved in it)
+        if (Arg(args, "--mac") is string macs && m.Nic != null) { m.Nic.Mac = PcMac.Parse(macs); m.Nic.Reset(); }
         var sw = Stopwatch.StartNew();
         m.PowerOn();
         // --loadstate: carry on from a --savestate of the same machine (its disks come from the state; the CD stays the one given)
@@ -82,12 +84,30 @@ internal static class X86BootCli
         }
         if (args.Contains("--net") && m.Nic != null) { nat = new PcNat { Log = l => Console.WriteLine("net: " + l) }; m.Nic.Link = nat; }
         // X86-02 LAN: --mac N|AA:BB:.. (the card's PROM address: give each PC its own, then cold boot), --lan host:PORT | join:HOST:PORT
-        if (Arg(args, "--mac") is string macs && m.Nic != null) { m.Nic.Mac = PcMac.Parse(macs); m.Nic.Reset(); }
         PcLanUdp? lanLink = null;
         if (Arg(args, "--lan") is string lans && m.Nic != null)
         {
             lanLink = PcLanUdp.FromSpec(lans); Console.WriteLine("lan: " + lanLink.Description);
+            if (nat != null) nat.LanShared = true;
             m.Nic.Link = m.Nic.Link != null ? new PcLinkPair(lanLink, m.Nic.Link) : lanLink;
+        }
+        // --pair STATE|cold [--pair-mac N] [--pair-shot png]: a second PC in this same process (same machine, same --hdd base), its card and this one's on an
+        // in-process hub (each keeps its own NAT if --net): the X86-02 LAN proof on one heavy slot, both PCs advancing frame by frame together
+        if (Arg(args, "--pair") is string pairSpec && m.Nic != null)
+        {
+            var m2 = cfg == PcConfig.Default ? new PcMachine(PcMachine.DefaultMemory, model, video) : new PcMachine(cfg, model, video);
+            m2.InstructionsPerSecond = m.InstructionsPerSecond;
+            if (Arg(args, "--hdd") is string ph) m2.Hdd[0] = new DiskImage(File.ReadAllBytes(ph), false);
+            if (Arg(args, "--pair-mac") is string pm) { m2.Nic!.Mac = PcMac.Parse(pm); m2.Nic.Reset(); }
+            m2.PowerOn();
+            if (!pairSpec.Equals("cold", StringComparison.OrdinalIgnoreCase)) m2.LoadState(File.ReadAllBytes(pairSpec));
+            var hub = new PcLanHub();
+            INetLink Cable(INetLink port, PcNat? own) { if (own != null) own.LanShared = true; return own != null ? new PcLinkPair(port, own) : port; }
+            m.Nic.Link = Cable(hub.Connect(), nat);
+            _pairNat = args.Contains("--net") ? new PcNat { Log = l => Console.WriteLine("net2: " + l) } : null;
+            m2.Nic!.Link = Cable(hub.Connect(), _pairNat);
+            _partner = m2; _pairHub = hub;
+            Console.WriteLine($"pair: second PC {(pairSpec == "cold" ? "cold boots" : "from " + pairSpec)}, both on an in-process hub");
         }
         // --exclog N: the last N CPU exceptions other than page faults (printed at the end), with a count per vector
         var excRing = new Queue<string>(); var excCount = new long[32]; int excKeep = int.Parse(Arg(args, "--exclog") ?? "0");
@@ -325,6 +345,12 @@ internal static class X86BootCli
         Console.WriteLine(Screen(m).TrimEnd());
         Console.WriteLine("----------------");
         if (shot != null) X86Shots.SavePng(m.Vga, shot);
+        if (_partner != null)
+        {
+            if (Arg(args, "--pair-shot") is string ps2) X86Shots.SavePng(_partner.Vga, ps2);
+            Console.WriteLine($"pair: hub frames {_pairHub!.Frames}; PC 1 nic sent {m.Nic!.FramesSent} received {m.Nic.FramesReceived}; PC 2 nic sent {_partner.Nic!.FramesSent} received {_partner.Nic.FramesReceived}");
+            if (Arg(args, "--pair-save") is string pss) File.WriteAllBytes(pss, _partner.SaveState());
+        }
         if (Arg(args, "--wav") is string wavp) WriteWav(wavp);
         if (Arg(args, "--cdwav") is string cdwp) WriteWav(cdwp, _cdWav!.ToArray());
         if (Arg(args, "--savestate") is string ss) File.WriteAllBytes(ss, m.SaveState());
@@ -361,10 +387,12 @@ internal static class X86BootCli
         const double rt = 1000.0 / 70;   // a VGA frame of machine time
         return $"frametimes: {a.Length} frames, mean {sum / a.Length:F2} ms ({rt / (sum / a.Length) * 100:F0}% real time), p50 {P(.5):F2}, p99 {P(.99):F2} ({rt / P(.99) * 100:F0}%), max {a[^1]:F1} ms, frames over 50 ms {a.Count(v => v > 50)}; GC gen0/1/2 {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}, GC pause total {GC.GetTotalPauseDuration().TotalMilliseconds:F0} ms, allocated {GC.GetTotalAllocatedBytes() / 1048576} MB";
     }
+    private static PcMachine? _partner; private static PcLanHub? _pairHub; private static PcNat? _pairNat;
     private static bool Frame(PcMachine m)
     {
         _frameSw.Restart();
         bool r = m.RunFrame();
+        if (_partner != null && m != _partner) _partner.RunFrame();
         _frameMs.Add(_frameSw.Elapsed.TotalMilliseconds);
         if (_cdWav != null && m.Ata != null)
         {
