@@ -29,6 +29,7 @@ marks the milestone and writes the raw state FILE. So retries (`back`) never lea
   python -I run.py do --ch 1-2 "Right+B@x>=400 Right+B+A:14 none@air==0"   MOVEMENT SCRIPT, for real (peek takes the same script)
   python -I run.py map --ch 1-2 [WIDTH] [--cell 16]  the level map stitched from every grid seen so far
   python -I run.py gap --ch 1-2 [FAMILY] [--want EXPR]  GAP SOLVER: long waits (0-400) before jumps, from here and 3 earlier checkpoints
+  python -I run.py exits --ch 1-2 [--vals Down,Up,A] [--apply]   EXIT FINDER: pipes/doors/warps near you (walk, stop, hold Down/Up)
   python -I run.py tree --ch 1-2                     checkpoints as a branch tree (which ones are on the current line)
   python -I run.py finish --ch 1-2 [--note TEXT]     replay -> seg/<ch>.bnm + state/<ch>.raw.state + thumb
   python -I run.py close --ch 1-2                    drop the session (no output)
@@ -210,6 +211,8 @@ def run_cmd(a, pkg, ch):
         seek(b, r, cfg, pkg, ch, target)
     elif a.cmd == "tree":
         tree(r)
+    elif a.cmd == "exits":
+        exits(b, r, cfg, pkg, ch, a)
     elif a.cmd == "gap":
         gap(b, r, cfg, pkg, ch, a)
     elif a.cmd == "map":
@@ -466,6 +469,38 @@ def discover(b, r, cfg, pkg, ch, a):
         lst.sort(key=lambda t: t[0] if k == "y/air" else -t[0])   # y/air: flags and smooth arcs first
         print(f"{k:6}: " + ("  ".join(f"{nm} {vals}" for _, nm, vals in lst[:8]) or "none found here (try where the player can move freely)"))
     print("(discover: machine put back; an x high byte is the byte that steps by 1 when the low byte wraps - pair them as hi*256+lo)")
+
+
+def exits(b, r, cfg, pkg, ch, a):
+    """Exit finder (pipes, doors, ladders, hidden warps), any game: from here, walks Left or Right for a few frames, stops,
+    then holds Down, Up (or A) and watches for a SCENE CHANGE: runner.json "scene_change" (e.g. "mode != {mode}"), else the
+    x position jumping by more than 64 in one go. Lists every spot that works (fastest first); --apply takes the fastest."""
+    cur = b.call("play_step", session=r["session"], frames=0, scale=0, ram=cfg["ram"])["ram"]
+    sc = cfg.get("scene_change")
+    if sc:
+        for k, v in cur.items(): sc = sc.replace("{" + k + "}", str(v))
+        want = sc
+    else:
+        x0 = int(cur.get("x", 0)); want = f"x < {x0 - 64} || x > {x0 + 300}"
+    found = []
+    for d in ("Right", "Left"):
+        for act in (a.vals or "Down,Up").split(","):
+            a2 = argparse.Namespace(**vars(a)); a2.args = [f"{d}:{{a}} {d}+A:{{j}} none:{{s}} {act}:45"]; a2.vals = "a=0..90:6,j=0..20:10,s=0..24:12"
+            a2.want = want; a2.then = act; a2.within = 60; a2.apply = False; a2.wait = "off"; a2.all = False; a2.settle = 0; a2.survive = 0
+            import io, contextlib
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf): search(b, r, cfg, pkg, ch, a2)
+            for line in buf.getvalue().splitlines():
+                if " frames  {" in line: found.append((int(line.split()[0]), d, act, line)); break
+    if not found:
+        print(f"exits: no pipe/door/warp within ~90 frames of walking either way (want: {want}) - move on and try again further along"); return
+    found.sort()
+    for t, d, act, line in found: print(f"  EXIT: walk {d}, then hold {act}: {line.strip()}")
+    if a.apply:
+        t, d, act, _ = found[0]
+        a2 = argparse.Namespace(**vars(a)); a2.args = [f"{d}:{{a}} {d}+A:{{j}} none:{{s}} {act}:45"]; a2.vals = "a=0..90:6,j=0..20:10,s=0..24:12"
+        a2.want = want; a2.then = act; a2.within = 60; a2.apply = True; a2.wait = "off"; a2.all = False; a2.settle = 0; a2.survive = 0
+        search(b, r, cfg, pkg, ch, a2)
 
 
 def gap(b, r, cfg, pkg, ch, a):
@@ -896,6 +931,11 @@ def advance(b, r, cfg, pkg, ch, a):
             a._gapped = True; print("  (every hop dies: trying the gap solver - long waits, earlier starts)")
             a3 = argparse.Namespace(**vars(a)); a3.args = []; a3.want = None; a3.vals = None
             gap(b, r, cfg, pkg, ch, a3)
+            if r["frames"] != before: continue
+        if r["frames"] == before and not r.get("goal_frame") and cfg.get("scene_change") and not getattr(a, "_exited", False):
+            a._exited = True; print("  (stuck: looking for an exit - pipe, door - nearby)")
+            a6 = argparse.Namespace(**vars(a)); a6.args = []; a6.vals = None; a6.apply = True
+            exits(b, r, cfg, pkg, ch, a6)
             if r["frames"] != before: continue
         if r["frames"] == before or r.get("goal_frame"):
             print(f"advance: stopped after {i} hops (stuck before {ad['start']}={target}: look at the picture and solve this spot with search)")
