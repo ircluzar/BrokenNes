@@ -114,7 +114,7 @@ internal static class X86BootCli
         {
             var m2 = cfg == PcConfig.Default ? new PcMachine(PcMachine.DefaultMemory, model, video) : new PcMachine(cfg, model, video);
             m2.InstructionsPerSecond = m.InstructionsPerSecond;
-            if (Arg(args, "--hdd") is string ph) m2.Hdd[0] = new DiskImage(File.ReadAllBytes(ph), false);
+            if ((Arg(args, "--pair-hdd") ?? Arg(args, "--hdd")) is string ph) m2.Hdd[0] = new DiskImage(File.ReadAllBytes(ph), false);   // --pair-hdd: the second PC's own disk (its own computer name)
             if (Arg(args, "--pair-mac") is string pm) { m2.Nic!.Mac = PcMac.Parse(pm); m2.Nic.Reset(); }
             m2.PowerOn();
             if (!pairSpec.Equals("cold", StringComparison.OrdinalIgnoreCase)) m2.LoadState(File.ReadAllBytes(pairSpec));
