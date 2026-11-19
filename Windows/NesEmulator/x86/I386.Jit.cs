@@ -981,6 +981,11 @@ public sealed partial class I386
                 case DK_MOVGE:
                     ReadE(); Stl(t); StReg(bits, e.Reg, () => Ld(t));
                     break;
+                case DK_XCHG:   // register with register (Mod 3): no memory, no flags
+                    LdReg(bits, e.Rm); Stl(t);
+                    StReg(bits, e.Rm, () => LdReg(bits, e.Reg));
+                    StReg(bits, e.Reg, () => Ld(t));
+                    break;
                 case DK_MOVEG:
                     LdReg(bits, e.Reg); Stl(t); WriteET();
                     break;
