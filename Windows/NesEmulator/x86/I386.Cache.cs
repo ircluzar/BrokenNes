@@ -26,7 +26,7 @@ public sealed partial class I386
     private const byte DK_SLOW = 0, DK_MOVEG = 1, DK_MOVGE = 2, DK_ALUEG = 3, DK_ALUGE = 4, DK_ALUAI = 5, DK_GRP1 = 6, DK_GRP2 = 7,
         DK_TESTEG = 8, DK_G3TEST = 9, DK_GRP3 = 10, DK_MOVEI = 11, DK_LEA = 12, DK_MOVRI = 13, DK_INC = 14, DK_DEC = 15, DK_PUSH = 16,
         DK_POP = 17, DK_JCC = 18, DK_JMP = 19, DK_CALL = 20, DK_RET = 21,
-        DK_INTERP = 22, DK_MOVX = 23, DK_CBW = 24, DK_SETCC = 25, DK_IMUL = 26, DK_GRP5 = 27, DK_LEAVE = 28, DK_STOS = 29, DK_MOVSR = 30, DK_SRMOV = 31, DK_STR = 32, DK_REPSTR = 33, DK_FPU = 34;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
+        DK_INTERP = 22, DK_MOVX = 23, DK_CBW = 24, DK_SETCC = 25, DK_IMUL = 26, DK_GRP5 = 27, DK_LEAVE = 28, DK_STOS = 29, DK_MOVSR = 30, DK_SRMOV = 31, DK_STR = 32, DK_REPSTR = 33, DK_FPU = 34, DK_XCHG = 35, DK_FLAGOP = 36, DK_STKOP = 37;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
 
     /// <summary>Decode the instruction at <paramref name="paddr"/> (in a fast-fetch code page) into <paramref name="e"/>; Kind 0 if it is not
     /// one of the cached forms.</summary>
@@ -39,6 +39,20 @@ public sealed partial class I386
         if (len <= 0) return;
         e = default;
         e.Kind = DK_INTERP; e.Len = (byte)len; e.Op = (byte)(noFall ? 1 : 0); e.Mod = (byte)(DcNoWrite(paddr) ? 0 : 1);
+        e.Rm = (byte)(DcKeepsSegs(paddr) ? 1 : 0);
+    }
+
+    /// <summary>Does this out-of-line instruction leave every segment register, SS's size, the CPL and the code size alone (unless it faults, which
+    /// JStill catches)? Then the compiled code needs not reload them after it. CLI / STI / CLC..STD / CMC, PUSHF / POPF, SAHF / LAHF, IN / OUT, XLAT,
+    /// PUSHA / POPA, PUSH Sreg, the BCD adjusts, ENTER. Conservative: false when unsure.</summary>
+    private bool DcKeepsSegs(uint paddr)
+    {
+        int p = 0; uint b;
+        do { b = U8(paddr + (uint)p++); } while (IsPrefix[b] && p < 5);
+        if (IsPrefix[b]) return false;
+        if (b == 0x0f) { uint b2 = U8(paddr + (uint)p); return b2 is 0xa0 or 0xa8; }   // PUSH FS / GS
+        return b is 0xfa or 0xfb or (>= 0xf8 and <= 0xfd) or 0xf5 or 0x9c or 0x9d or 0x9e or 0x9f or (>= 0xe4 and <= 0xe7) or (>= 0xec and <= 0xef)
+            or 0xd7 or 0x60 or 0x61 or 0x06 or 0x0e or 0x16 or 0x1e or 0x27 or 0x2f or 0x37 or 0x3f or 0xc8;
     }
 
     /// <summary>Can this out-of-line instruction not write to memory at all (so not to the compiled code either)? Registers, flags,
@@ -277,6 +291,7 @@ public sealed partial class I386
                 if (b is 0xb6 or 0xb7 or 0xbe or 0xbf) { kind = DK_MOVX; bits = (b & 1) == 0 ? 8 : 16; op = b >= 0xbe ? 1 : 0; modrm = true; break; }   // MOVZX / MOVSX: Bits = the source's
                 if ((b & 0xf0) == 0x90) { kind = DK_SETCC; bits = 8; op = (int)b; modrm = true; break; }
                 if (b == 0xaf) { kind = DK_IMUL; modrm = true; op = 0; break; }   // IMUL r, rm
+                if (b is 0xa0 or 0xa8 && !NoHelperOps && !NoStkOp && (StkMask & 8) != 0) { kind = DK_STKOP; op = b == 0xa0 ? 0xf0 : 0xf8; break; }   // (Op is a byte: F0h = PUSH FS, F8h = PUSH GS)   // PUSH FS / GS
                 return;
             case 0x69: kind = DK_IMUL; modrm = true; immBits = v; op = 1; break;   // IMUL r, rm, imm
             case 0x6b: kind = DK_IMUL; modrm = true; immBits = 8; immSext8 = true; op = 1; break;
@@ -292,6 +307,14 @@ public sealed partial class I386
             case 0x8c: kind = DK_MOVSR; modrm = true; break;             // MOV Ew, Sw (Bits: the register's operand size, a store 16)
             case 0x8e: kind = DK_SRMOV; bits = 16; modrm = true; break;  // MOV Sw, Ew (not CS / SS: the ordinary path)
             case 0xaa: case 0xab: kind = DK_STOS; bits = (b & 1) == 0 ? 8 : v; break;   // STOSB / STOSW / STOSD without REP (REP: the ordinary path)
+            case 0xa8: case 0xa9:                                        // TEST AL / eAX, imm: TEST Eb/Ev, imm on register 0 (the F6 / F7 /0 form)
+                kind = DK_G3TEST; bits = b == 0xa8 ? 8 : v; immBits = bits; e.Mod = 3; e.Reg = 0; e.Rm = 0; e.Base = 8; e.Index = 8; e.Seg = -1; break;
+            case 0x90: kind = DK_JMP; immBits = 0; break;
+            case 0x9c: case 0x60: case 0x61: case 0x06: case 0x0e: case 0x16: case 0x1e: if (NoHelperOps || NoStkOp || (StkMask & (b == 0x9c ? 1 : b == 0x60 ? 2 : b == 0x61 ? 4 : 8)) == 0) return; kind = DK_STKOP; op = (int)b; break;   // PUSHF PUSHA POPA PUSH Sreg: the interpreter's own code through JStk
+            case 0xf5: case 0xf8: case 0xf9: case 0xfa: case 0xfc: case 0xfd: if (NoHelperOps || NoFlagOp) return; kind = DK_FLAGOP; op = (int)b; break;   // CMC CLC STC CLI CLD STD (STI: out of line, it opens the interrupt window)
+            case >= 0x91 and <= 0x97: kind = DK_XCHG; op = (int)(b & 7); e.Mod = 3; e.Reg = 0; e.Rm = (byte)(b & 7); e.Base = 8; e.Index = 8; e.Seg = -1; break;   // XCHG eAX, r
+            case 0x86: kind = DK_XCHG; bits = 8; modrm = true; break;   // XCHG r, r only (a memory operand: the ordinary path, it is locked)
+            case 0x87: kind = DK_XCHG; modrm = true; break;                // NOP: a jump to the next instruction (F3 90 PAUSE: the REP path above returns)
             case 0xa0: case 0xa1: kind = DK_MOVGE; bits = (b & 1) == 0 ? 8 : v; moffs = true; break;   // MOV AL/eAX, moffs
             case 0xa2: case 0xa3: kind = DK_MOVEG; bits = (b & 1) == 0 ? 8 : v; moffs = true; break;   // MOV moffs, AL/eAX
             default: return;
@@ -303,6 +326,7 @@ public sealed partial class I386
             e.Mod = (byte)mod; e.Reg = (byte)reg; e.Rm = (byte)rm;
             if (kind == DK_MOVSR) { if (reg > 5) return; if (mod != 3) bits = 16; }
             if (kind == DK_SRMOV && (reg is SEG_CS or SEG_SS || reg > 5)) return;
+            if (kind == DK_XCHG && mod != 3) return;
             e.Base = 8; e.Index = 8; e.Scale = 0;
             uint disp = 0;
             int s = seg;
@@ -376,7 +400,7 @@ public sealed partial class I386
         else if (immBits == 16) { imm = U16(paddr + (uint)p); p += 2; }
         else if (immBits == 32) { imm = U32(paddr + (uint)p); p += 4; }
         if (immSext8) imm = Sext8(imm);
-        if (kind is DK_JCC or DK_JMP or DK_CALL) rel = Sext(immBits, imm);
+        if (kind is DK_JCC or DK_JMP or DK_CALL) rel = immBits == 0 ? 0 : Sext(immBits, imm);
         if (p > 15) return;
         e.Imm = kind is DK_JCC or DK_JMP or DK_CALL ? rel : imm;
         e.Bits = (byte)bits; e.Op = (byte)op; e.O16 = o16; e.A16 = a16; e.SegRaw = (sbyte)seg;

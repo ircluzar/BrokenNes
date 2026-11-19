@@ -57,6 +57,12 @@ public sealed partial class I386
     private static readonly bool JitOn = RuntimeFeature.IsDynamicCodeCompiled && Environment.GetEnvironmentVariable("X86_NOJIT") == null;
     private const int JitBits = 20, JitMask = (1 << JitBits) - 1, JIT_DECLINE = 3, JIT_END = 4, JitKeep = 16384;
     private static readonly int JitMaxInstr = int.TryParse(Environment.GetEnvironmentVariable("X86_JITMAX"), out int jm) ? jm : 128;
+    /// <summary>X86_NOKEEPSEGS: reload the segments after every out-of-line instruction (A/B of DcKeepsSegs).</summary>
+    private static readonly bool NoKeepSegs = Environment.GetEnvironmentVariable("X86_NOKEEPSEGS") != null;
+    /// <summary>X86_NOHELPEROPS: flag ops and stack ops out of line again (A/B).</summary>
+    private static readonly bool NoHelperOps = Environment.GetEnvironmentVariable("X86_NOHELPEROPS") != null;
+    private static readonly bool NoStkOp = Environment.GetEnvironmentVariable("X86_NOSTKOP") != null, NoFlagOp = Environment.GetEnvironmentVariable("X86_NOFLAGOP") != null;
+    private static readonly int StkMask = int.TryParse(Environment.GetEnvironmentVariable("X86_STKMASK"), out int sm) ? sm : 15;   // (bit 3 PUSH Sreg: was broken by an Op truncation, PUSH FS pushed GS: Win98 fatal 0D at boot)
     private static readonly int JitHot = int.TryParse(Environment.GetEnvironmentVariable("X86_JITHOT"), out int jh) ? jh : 32;
     private JitCode? _jitCur;   // the block running now
     private readonly JitEntry?[] _je = new JitEntry?[1 << JitBits];
@@ -71,8 +77,11 @@ public sealed partial class I386
     public IEnumerable<string> JitTop(int n) => _jitAll.OrderByDescending(b => b.Instrs).Take(n)
         .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} ns/instr {b.Ticks * 1e9 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, b.Instrs):F2} | {Convert.ToHexString(b.Bytes)}");
     private readonly long[] _interpOps = new long[65536];
+    public readonly Dictionary<uint, long> InterpAt = new();
+    /// <summary>JITSTAT: why an interpreted address is not compiled: its entry's state.</summary>
+    public string JitWhy(uint pa) { var en = _je[JitIndex(pa)]; return en == null ? "no entry" : en.Start != pa ? $"slot holds {en.Start:X8}" : $"c16 {en.C16} pg {en.Pg} visits {en.Visits} failed {en.Failed} pending {en.Pending} code {(en.Code != null)}"; }
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void JitCountInterp(uint pa) { if (pa + 2 < MemSize) { int k = Mem[pa] << 8 | Mem[pa + 1]; if (++_interpOps[k] == 100000 && JitWatch == k) Console.Error.WriteLine($"jw: op {k:X4} at {pa:X8}"); } }
+    private void JitCountInterp(uint pa) { InterpAt[pa] = InterpAt.GetValueOrDefault(pa) + 1; if (pa + 2 < MemSize) { int k = Mem[pa] << 8 | Mem[pa + 1]; if (++_interpOps[k] == 100000 && JitWatch == k) Console.Error.WriteLine($"jw: op {k:X4} at {pa:X8}"); } }
     private readonly long[] _oolOps = new long[65536];
     /// <summary>The out-of-line instructions inside compiled blocks (JInterp), by first two bytes.</summary>
     public IEnumerable<string> OutOfLineTop(int n) => Enumerable.Range(0, 65536).Where(i => _oolOps[i] > 0).OrderByDescending(i => _oolOps[i]).Take(n)
@@ -204,6 +213,28 @@ public sealed partial class I386
     }
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JLeave() => Leave();
     /// <summary>MOV Sw, Ew (after JPrep): the interpreter's checked segment load. False = a fault (raised).</summary>
+    /// <summary>CMC / CLC / STC / CLI / CLD / STD, exactly as the interpreter (CLI with IOPL &lt; CPL: #GP, false).</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool JFlagOp(int op)
+    {
+        switch (op)
+        {
+            case 0xf5: { int cf = GetCF(); _ccMask &= ~CF; Flags = SetBit(Flags, cf == 0, CF); return true; }
+            case 0xf8: _ccMask &= ~CF; Flags &= ~CF; return true;
+            case 0xf9: _ccMask &= ~CF; Flags |= CF; return true;
+            case 0xfa: if (GetIOPL() < Cpl) return Throw(EX_GP, 0); Flags &= ~IF; return true;
+            case 0xfc: Flags &= ~DF; return true;
+            default: Flags |= DF; return true;
+        }
+    }
+    /// <summary>PUSHF / PUSHA / POPA / PUSH Sreg through the interpreter's own code (after JPrep: the operand size); false = a fault.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool JStk(int op) => op switch
+    {
+        0x9c => PushF(), 0x60 => Pusha(), 0x61 => Popa(),
+        0x06 => PushSeg(SEG_ES), 0x0e => PushSeg(SEG_CS), 0x16 => PushSeg(SEG_SS), 0x1e => PushSeg(SEG_DS),
+        0xf0 => PushSeg(SEG_FS), _ => PushSeg(SEG_GS),
+    };
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JMovSeg(int seg, uint v) => LoadSegChecked(seg, v);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegSel(int seg) => SegSel[seg];
     /// <summary>A REP / REPNE string instruction (after JPrep), the interpreter's own loop (it charges the iterations to Cycle). False = a fault.</summary>
@@ -220,11 +251,14 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JRet() => OpRet() != FAIL;
 
     /// <summary>An out-of-line instruction: exactly one iteration of Exec1's loop (without the compiled code), from Ip <paramref name="ip"/>.</summary>
+    /// <summary>JITSTAT: out-of-line instructions by physical address (the top ones, disassembled by the caller from memory).</summary>
+    public readonly Dictionary<uint, long> OolAt = new();
+    private void JitOolAt(uint pa) { OolAt[pa] = OolAt.GetValueOrDefault(pa) + 1; }
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JInterp(uint ip, long cyc, int st)
     {
         Cycle = cyc; _steps = st; NextIp = ip;
-        if (JitStats) { uint pa = _ifXaddr ^ (SegBase[SEG_CS] + ip); if (pa + 2 < MemSize) _oolOps[Mem[pa] << 8 | Mem[pa + 1]]++; }
+        if (JitStats && _jitCur != null) { uint pa = (_jitCur.Start & ~0xfffu) | ((SegBase[SEG_CS] + ip) & 0xfff); if (pa + 2 < MemSize) { _oolOps[Mem[pa] << 8 | Mem[pa + 1]]++; JitOolAt(pa); } }   // (the region never leaves its 4 KB page)
         return Step1(false);
     }
     /// <summary>After an out-of-line instruction: can the compiled code go on (the same code size, paging still off, the fetch still
@@ -342,7 +376,7 @@ public sealed partial class I386
         var d = new Dictionary<string, MethodInfo>();
         foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
-                     "JXlat", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
+                     "JXlat", "JFlagOp", "JStk", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
         return d;
     });
@@ -865,9 +899,12 @@ public sealed partial class I386
                 Ld0(); Call("JCycle"); Stl(cyc);
                 Ld0(); Call("JSteps"); Op(OpCodes.Ldc_I4_1); Op(OpCodes.Sub); Stl(st);
                 Ld0(); Bool(c16); Bool(pg); U4(pa); I4(segMask); Bool(e.Mod != 0); Call("JStill"); il.Emit(OpCodes.Brfalse, leaveG);
-                foreach (int s in usedSegs) { Ld0(); I4(s); Call("JSegBase"); Stl(sb[s]!); Ld0(); I4(s); Call("JSegLim"); Stl(sl[s]!); }
-                Ld0(); Call("JSpm"); Stl(spm);
-                if (pg) LdPerm();   // (an out-of-line instruction may have changed the CPL)
+                if (e.Rm == 0 || NoKeepSegs)   // (DcKeepsSegs: segments, SS size and CPL stay as they were: nothing to reload)
+                {
+                    foreach (int s in usedSegs) { Ld0(); I4(s); Call("JSegBase"); Stl(sb[s]!); Ld0(); I4(s); Call("JSegLim"); Stl(sl[s]!); }
+                    Ld0(); Call("JSpm"); Stl(spm);
+                    if (pg) LdPerm();   // (an out-of-line instruction may have changed the CPL)
+                }
                 var notRep = il.DefineLabel();   // a REP string instruction that goes on: run it again
                 Ld0(); Call("JNextIp"); IpAt(pa); il.Emit(OpCodes.Bne_Un, notRep);
                 Ld(st); Op(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Ble, leaveG);
@@ -977,6 +1014,25 @@ public sealed partial class I386
             {
                 case DK_MOVGE:
                     ReadE(); Stl(t); StReg(bits, e.Reg, () => Ld(t));
+                    break;
+                case DK_STKOP:
+                    Prep();
+                    Ld0(); I4(op); Call("JStk"); FailIfFalse();
+                    if (op != 0x61)
+                    {   // the store went to SS base + the new ESP (PUSHA: eight of them)
+                        Ld0(); I4(SEG_SS); Call("JSegBase"); LdReg(32, 4); Ld(spm); Op(OpCodes.And); Op(OpCodes.Add); Stl(la);
+                        SmcCheck(la, (e.O16 ? 2 : 4) * (op == 0x60 ? 8 : 1));
+                    }
+                    break;
+                case DK_FLAGOP:
+                    if (op == 0xfa) Prep();   // (CLI may fault)
+                    Ld0(); I4(op); Call("JFlagOp");
+                    if (op == 0xfa) FailIfFalse(); else Op(OpCodes.Pop);
+                    break;
+                case DK_XCHG:   // register with register (Mod 3): no memory, no flags
+                    LdReg(bits, e.Rm); Stl(t);
+                    StReg(bits, e.Rm, () => LdReg(bits, e.Reg));
+                    StReg(bits, e.Reg, () => Ld(t));
                     break;
                 case DK_MOVEG:
                     LdReg(bits, e.Reg); Stl(t); WriteET();

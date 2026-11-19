@@ -20,7 +20,7 @@ public sealed class PcLanHub
 {
     private readonly List<Port> _ports = new();
     private readonly object _lock = new();
-    public long Frames;
+    public long Frames, IpxFrames, IpFrames;
 
     public sealed class Port : INetLink
     {
@@ -34,6 +34,9 @@ public sealed class PcLanHub
         public void Disconnect() { lock (_hub._lock) _hub._ports.Remove(this); }
     }
 
+    /// <summary>An IPX frame: Ethernet II type 8137h, raw 802.3 (FFFFh checksum), or 802.2 LLC with SAP E0h.</summary>
+    public static bool IsIpx(byte[] f) { int et = f[12] << 8 | f[13]; return et == 0x8137 || et <= 1500 && f.Length > 16 && (f[14] == 0xff && f[15] == 0xff || f[14] == 0xe0 && f[15] == 0xe0); }
+
     public Port Connect() { var p = new Port(this); lock (_lock) _ports.Add(p); return p; }
 
     internal void Forward(Port? from, byte[] frame)
@@ -41,6 +44,7 @@ public sealed class PcLanHub
         if (frame.Length < 14) return;
         Port[] ports; lock (_lock) ports = _ports.ToArray();
         Frames++;
+        if (IsIpx(frame)) IpxFrames++; else if ((frame[12] << 8 | frame[13]) == 0x0800) IpFrames++;
         foreach (var p in ports) if (p != from && p.Inbox.Count < 512) p.Inbox.Enqueue(frame);
         FrameOut?.Invoke(from, frame);
     }
@@ -65,7 +69,7 @@ public sealed class PcLanUdp : INetLink, IDisposable
     private readonly Thread _rx;
     private readonly System.Threading.Timer _hello;
     private volatile bool _closed;
-    public long Sent, Received;
+    public long Sent, Received, SentIpx, ReceivedIpx;
     public string Description { get; }
 
     private PcLanUdp(UdpClient udp, IPEndPoint? hostEp, bool host, string desc)
@@ -157,14 +161,14 @@ public sealed class PcLanUdp : INetLink, IDisposable
     public void Send(byte[] frame)
     {
         if (_closed || frame.Length < 14) return;
-        Sent++;
+        Sent++; if (PcLanHub.IsIpx(frame)) SentIpx++;
         if (_hub != null) _hub.Forward(_local, frame);           // to the remote members (FrameOut) and any in-process ports
         else Try(() => _udp.Send(Packet(frame), frame.Length + 4, _hostEp!));
     }
 
     public byte[]? Receive()
     {
-        if (_inbox.TryDequeue(out var f)) return f;
+        if (_inbox.TryDequeue(out var f)) { if (PcLanHub.IsIpx(f)) ReceivedIpx++; return f; }
         return _local?.Receive();                                // hosting: frames from other in-process ports
     }
 

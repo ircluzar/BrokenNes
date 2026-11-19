@@ -347,6 +347,7 @@ public sealed partial class PcMachine : IX86Bus
         }
         _lastFrame = target;
         if (Profiling) { long t0 = System.Diagnostics.Stopwatch.GetTimestamp(); Vga.Render(); RenderTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0; }
+        else if (AllocProbe) { long a0 = GC.GetAllocatedBytesForCurrentThread(); Vga.Render(); AllocRender += GC.GetAllocatedBytesForCurrentThread() - a0; }
         else Vga.Render();
         return Stopped == null;
     }
@@ -361,14 +362,24 @@ public sealed partial class PcMachine : IX86Bus
 
     /// <summary>Diagnostics: batches run (instructions per batch = cycles / batches).</summary>
     public long Batches, HaltBatches;
+    /// <summary>X86_ALLOCPROBE=1: bytes allocated per part of a batch (devices / CPU / picture), for the GC hunt (diagnostics).</summary>
+    public static readonly bool AllocProbe = Environment.GetEnvironmentVariable("X86_ALLOCPROBE") == "1";
+    public long AllocDevices, AllocCpu, AllocRender;
     private bool RunBatch()
     {
         Batches++;
+        long a0 = AllocProbe ? GC.GetAllocatedBytesForCurrentThread() : 0;
         Card?.Advance();
         Nic?.Poll();
         Fdc?.Poll();
         Pit.UpdateIrq();
         Kbc.Pump();
+        if (AllocProbe) { long a1 = GC.GetAllocatedBytesForCurrentThread(); AllocDevices += a1 - a0; try { return RunBatchCpu(); } finally { AllocCpu += GC.GetAllocatedBytesForCurrentThread() - a1; } }
+        return RunBatchCpu();
+    }
+
+    private bool RunBatchCpu()
+    {
         try
         {
             if (Cpu.Halt)

@@ -30,6 +30,7 @@ public sealed class PcNat : INetLink, IDisposable
     private readonly ConcurrentQueue<byte[]> _toGuest = new();
     private readonly ConcurrentQueue<Action> _posted = new();     // host results, run on the emulation thread
     private readonly Dictionary<(ushort gport, uint rip, ushort rport), TcpConn> _tcp = new();
+    private readonly List<TcpConn> _pump = new();
     private byte[] _guestMac = { 0x52, 0x54, 0x00, 0x12, 0x34, 0x56 };
     /// <summary>The cable also goes to a LAN of other emulated PCs (PcLan.cs): each PC gets its own address from DHCP (10.0.2.20 + its MAC's last byte),
     /// and the NAT answers ARP / ping only for its own hosts (10.0.2.1-9), so the PCs reach each other directly.</summary>
@@ -58,7 +59,7 @@ public sealed class PcNat : INetLink, IDisposable
     public byte[]? Receive()
     {
         while (_posted.TryDequeue(out var a)) a();
-        foreach (var c in _tcp.Values.ToList()) c.Pump();
+        if (_tcp.Count > 0) { _pump.Clear(); _pump.AddRange(_tcp.Values); foreach (var c in _pump) c.Pump(); }   // (a snapshot list reused: this runs every batch)
         return _toGuest.TryDequeue(out var f) ? f : null;
     }
 

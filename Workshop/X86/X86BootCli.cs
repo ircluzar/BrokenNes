@@ -48,8 +48,25 @@ internal static class X86BootCli
     public static byte[] BuildDisk(string basePath, string config, string autoexec, IEnumerable<(string host, string dos)> puts, IEnumerable<string>? drop = null) =>
         PcDisks.BuildDisk(File.ReadAllBytes(basePath), config, autoexec, puts.Select(p => (File.ReadAllBytes(p.host), p.dos)), drop);
 
+    /// <summary>--allocs: the runtime's allocation ticks (one per ~100 KB allocated) by type, printed at the end: where the GC pressure comes from.</summary>
+    private sealed class AllocListener : System.Diagnostics.Tracing.EventListener
+    {
+        public readonly Dictionary<string, long> ByType = new();
+        protected override void OnEventSourceCreated(System.Diagnostics.Tracing.EventSource s)
+        { if (s.Name == "Microsoft-Windows-DotNETRuntime") EnableEvents(s, System.Diagnostics.Tracing.EventLevel.Verbose, (System.Diagnostics.Tracing.EventKeywords)0x1); }
+        protected override void OnEventWritten(System.Diagnostics.Tracing.EventWrittenEventArgs e)
+        {
+            if (e.EventName == null || !e.EventName.StartsWith("GCAllocationTick") || e.PayloadNames == null) return;
+            int i = e.PayloadNames.IndexOf("TypeName"); int a = e.PayloadNames.IndexOf("AllocationAmount64");
+            string t = i >= 0 ? e.Payload![i]?.ToString() ?? "?" : "?"; long n = a >= 0 ? Convert.ToInt64(e.Payload![a]) : 100_000;
+            lock (ByType) ByType[t] = ByType.GetValueOrDefault(t) + n;
+        }
+    }
+    private static AllocListener? _allocs;
+
     public static int Boot(string[] args)
     {
+        if (args.Contains("--allocs")) _allocs = new AllocListener();
         var cfg = Arg(args, "--machine") is string mp ? PcConfig.Preset(mp) : PcConfig.Default;
         if (Arg(args, "--mem") is string mem) cfg = cfg with { MemoryMB = int.Parse(mem) };
         if (Arg(args, "--bootorder") is string bo) cfg = cfg with { BootOrder = bo.ToUpperInvariant() };
@@ -97,7 +114,7 @@ internal static class X86BootCli
         {
             var m2 = cfg == PcConfig.Default ? new PcMachine(PcMachine.DefaultMemory, model, video) : new PcMachine(cfg, model, video);
             m2.InstructionsPerSecond = m.InstructionsPerSecond;
-            if (Arg(args, "--hdd") is string ph) m2.Hdd[0] = new DiskImage(File.ReadAllBytes(ph), false);
+            if ((Arg(args, "--pair-hdd") ?? Arg(args, "--hdd")) is string ph) m2.Hdd[0] = new DiskImage(File.ReadAllBytes(ph), false);   // --pair-hdd: the second PC's own disk (its own computer name)
             if (Arg(args, "--pair-mac") is string pm) { m2.Nic!.Mac = PcMac.Parse(pm); m2.Nic.Reset(); }
             m2.PowerOn();
             if (!pairSpec.Equals("cold", StringComparison.OrdinalIgnoreCase)) m2.LoadState(File.ReadAllBytes(pairSpec));
@@ -335,11 +352,16 @@ internal static class X86BootCli
             Console.WriteLine($"linmap {a0:X8}: " + string.Join(" ", Enumerable.Range(0, np).Select(k => { uint p = LinPhys(m, a0 + (uint)k * 4096); return p == 0xffffffff ? "--" : (p >> 12).ToString("X"); })) + $" | {LinBytes(m, a0, 16)}");
         }
         if (args.Contains("--frametimes")) Console.WriteLine(FrameTimeReport());
+        if (PcMachine.AllocProbe) Console.WriteLine($"allocprobe: devices {m.AllocDevices / 1048576} MB, cpu {m.AllocCpu / 1048576} MB, render {m.AllocRender / 1048576} MB, total thread {GC.GetAllocatedBytesForCurrentThread() / 1048576} MB");
+        if (_allocs != null) lock (_allocs.ByType) foreach (var kv in _allocs.ByType.OrderByDescending(x => x.Value).Take(15)) Console.WriteLine($"  alloc {kv.Value / 1048576,6} MB {kv.Key}");
+        if (lanLink != null) Console.WriteLine($"lan: sent {lanLink.Sent} (IPX {lanLink.SentIpx}), received {lanLink.Received} (IPX {lanLink.ReceivedIpx}){(lanLink.Members > 0 ? $", members {lanLink.Members}" : "")}");
         if (m.Ata != null) Console.WriteLine($"ide: bus-master DMA transfers {m.Ata.Primary.DmaTransfers + m.Ata.Secondary.DmaTransfers}, {(m.Ata.Primary.DmaBytes + m.Ata.Secondary.DmaBytes) / 1024} KB");
         if (m.Nic != null) Console.WriteLine($"nic: sent {m.Nic.FramesSent} frames, received {m.Nic.FramesReceived}; BAR0 {m.Pci!.NicFn!.Read32(0x10):X8} cmd {m.Pci.NicFn.Cfg[4]:X2} line {m.Pci.NicFn.Cfg[0x3c]} PIRQB {m.Pci.Isa.Cfg[0x61]:X2}");
         if (args.Contains("--jitstat")) Console.WriteLine($"jit: compiled {m.Cpu.JitCompiled} reused {m.Cpu.JitReused} runs {m.Cpu.JitRuns} invalid {m.Cpu.JitInvalid} cycle {m.Cpu.Cycle} compiled-instrs {m.Cpu.JitInstrsTotal} ({100.0 * m.Cpu.JitInstrsTotal / Math.Max(1, m.Cpu.Cycle):F1}%) (set X86_JITSTAT for the per-block counts)");
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.JitTop(25)) Console.WriteLine("  blk " + l);
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.InterpTop(40)) Console.WriteLine("  interp " + l);
+        if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.InterpAt.OrderByDescending(x => x.Value).Take(30)) Console.WriteLine($"  interpat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))} [{m.Cpu.JitWhy(kv.Key)}]");
+        if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.OolAt.OrderByDescending(x => x.Value).Take(40)) Console.WriteLine($"  oolat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))}");
         if (args.Contains("--irqstat")) Console.WriteLine($"batches {m.Batches} halted {m.HaltBatches} cycle {m.Cpu.Cycle} idle-clock {m.Clock - m.Cpu.Cycle}");
         if (args.Contains("--irqstat")) Console.WriteLine("irqs: " + string.Join(" ", Enumerable.Range(0, 256).Where(i => m.IrqCount[i] > 0).Select(i => $"{i:X2}h={m.IrqCount[i]}")) + $"; PIC imr {m.Pic.MasterImr:X2}/{m.Pic.SlaveImr:X2}; CR0 {m.Cpu.Cr0:X}; CS:EIP {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8}; IF {(m.Cpu.Flags >> 9) & 1}; halt {m.Cpu.Halt}");
         Console.WriteLine("---- screen ----");
@@ -349,7 +371,7 @@ internal static class X86BootCli
         if (_partner != null)
         {
             if (Arg(args, "--pair-shot") is string ps2) X86Shots.SavePng(_partner.Vga, ps2);
-            Console.WriteLine($"pair: hub frames {_pairHub!.Frames}; PC 1 nic sent {m.Nic!.FramesSent} received {m.Nic.FramesReceived}; PC 2 nic sent {_partner.Nic!.FramesSent} received {_partner.Nic.FramesReceived}");
+            Console.WriteLine($"pair: hub frames {_pairHub!.Frames} (IPX {_pairHub.IpxFrames}, IP {_pairHub.IpFrames}); PC 1 nic sent {m.Nic!.FramesSent} received {m.Nic.FramesReceived}; PC 2 nic sent {_partner.Nic!.FramesSent} received {_partner.Nic.FramesReceived}");
             if (Arg(args, "--pair-save") is string pss) File.WriteAllBytes(pss, _partner.SaveState());
         }
         if (Arg(args, "--wav") is string wavp) WriteWav(wavp);
