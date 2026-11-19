@@ -186,7 +186,8 @@ public static class PcMac
     public static byte[] Parse(string spec)
     {
         var mac = new byte[] { 0x52, 0x54, 0x00, 0x12, 0x34, 0x56 };
-        if (int.TryParse(spec, out int n) && n is >= 0 and <= 255) { mac[5] = (byte)n; return mac; }
+        // a number goes in byte 2 as well: Windows 98's RTL8029 driver reads the word-doubled PROM's first six bytes (52-52-54-54-xx-xx), so only bytes 0-2 reach it
+        if (int.TryParse(spec, out int n) && n is >= 0 and <= 255) { mac[2] = (byte)n; mac[5] = (byte)n; return mac; }
         var p = spec.Split(':', '-');
         if (p.Length != 6) throw new ArgumentException($"x86 MAC '{spec}': six hex bytes (52:54:00:12:34:57) or a number 0-255");
         for (int i = 0; i < 6; i++) mac[i] = Convert.ToByte(p[i], 16);

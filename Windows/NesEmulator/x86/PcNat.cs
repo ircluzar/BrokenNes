@@ -168,7 +168,7 @@ public sealed class PcNat : INetLink, IDisposable
         int type = 0;
         for (int i = 240; i < b.Length && b[i] != 255;) { if (b[i] == 0) { i++; continue; } if (b[i] == 53) type = b[i + 2]; i += 2 + b[i + 1]; }
         if (type is not (1 or 3)) return;                 // DISCOVER -> OFFER, REQUEST -> ACK
-        if (LanShared) _guestHost = (byte)(20 + b[33] % 200);
+        if (LanShared) _guestHost = (byte)(20 + _guestMac[5] % 200);   // (the sender of this frame)
         var r = new byte[300];
         r[0] = 2; r[1] = 1; r[2] = 6;
         Array.Copy(b, 4, r, 4, 4);                         // xid
@@ -187,7 +187,7 @@ public sealed class PcNat : INetLink, IDisposable
         Opt(6, IpB(DnsHost));
         Opt(15, Encoding.ASCII.GetBytes("brokennes"));
         r[o++] = 255;
-        Log?.Invoke($"dhcp: {(type == 1 ? "offer" : "ack")} 10.0.2.{_guestHost}");
+        Log?.Invoke($"dhcp: {(type == 1 ? "offer" : "ack")} 10.0.2.{_guestHost} to {BitConverter.ToString(_guestMac)} (chaddr {BitConverter.ToString(b, 28, 6)})");
         SendUdp(Ip(GatewayHost), 67, 0xffffffff, 68, r);
     }
 
