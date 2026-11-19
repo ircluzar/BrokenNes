@@ -415,7 +415,11 @@ def advance(b, r, cfg, pkg, ch, a):
             ran = int(res.get("framesRun", 0) or 0)
             if ran: r["log"].append([[], ran]); r["frames"] += ran
         store(pkg, ch, r)
+    import time
+    t0 = time.time(); cap = float(os.environ.get("AUTOTAS_ADVANCE_SECONDS", 420))
     for i in range(n):
+        if time.time() - t0 > cap:   # return before the agent's 10-minute tool timeout (a backgrounded advance loses the player)
+            print(f"advance: time cap ({int(cap)} s) after {i} hops - run advance again to continue"); return
         cur = b.call("play_step", session=r["session"], frames=0, scale=0, ram=cfg["ram"])["ram"]
         target = int(cur[ad["start"]]) + stride
         a2 = argparse.Namespace(**vars(a)); a2.args = [ad["pattern"]]; a2.vals = ad["vals"]; a2.want = ad["want"].replace("{X}", str(target))
