@@ -268,6 +268,13 @@ def gridtext(b, r, cfg, pkg, ch, cell=8):
     return "\n".join(out)
 
 
+def autoscrolls(b, r):
+    try:
+        tm = b.call("tilemap", session=r["session"])
+        return "AUTO-SCROLL" in scroll_note(b, r, tm, None)
+    except Exception: return False
+
+
 def scroll_note(b, r, tm, player):
     """Does the screen move by itself? Runs 16 frames with no input, reads the scroll again, puts the machine back.
     An auto-scroller says so (and how far the player is from the screen edge that pushes)."""
@@ -677,6 +684,8 @@ def advance(b, r, cfg, pkg, ch, a):
         if r["frames"] == before and stride > int(ad.get("min_stride", 32)):
             stride //= 2; print(f"  (no hop of that size: trying stride {stride})"); continue
         pat = int(getattr(a, "patience", 0) or ad.get("patience", 0))
+        if r["frames"] == before and pat == 0 and autoscrolls(b, r):   # an auto-scroller: the next platform may not be there yet
+            pat = 12; print("  (the screen scrolls by itself: waiting for what comes next)")
         if r["frames"] == before and pat > 0:   # auto-scrollers: the next platform is not on screen yet, so stand still a bit and retry
             hopped = False
             for k in range(pat):
