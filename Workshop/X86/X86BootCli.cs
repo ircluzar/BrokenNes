@@ -67,6 +67,7 @@ internal static class X86BootCli
     public static int Boot(string[] args)
     {
         if (args.Contains("--allocs")) _allocs = new AllocListener();
+        if (Environment.GetEnvironmentVariable("X86_GCLAT") != "0") System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
         var cfg = Arg(args, "--machine") is string mp ? PcConfig.Preset(mp) : PcConfig.Default;
         if (Arg(args, "--mem") is string mem) cfg = cfg with { MemoryMB = int.Parse(mem) };
         if (Arg(args, "--bootorder") is string bo) cfg = cfg with { BootOrder = bo.ToUpperInvariant() };

@@ -761,19 +761,25 @@ public sealed partial class I386
 
         // prologue: decline when a segment the region uses has a null selector (the translation would fault)
         var usedSegs = new SortedSet<int>();
-        foreach (var e in ins)
-        {
-            if (e.Kind is DK_PUSH or DK_POP or DK_CALL or DK_RET) usedSegs.Add(SEG_SS);
-            if (e.Kind == DK_STOS || (e.Kind == DK_STR && e.Op != 2)) usedSegs.Add(SEG_ES);
-            if (e.Kind == DK_STR && e.Op != 3) usedSegs.Add(e.Seg);
-            if (DcHasModrm(e.Kind) && e.Mod != 3 && e.Kind != DK_LEA) usedSegs.Add(e.Seg);
-        }
+        foreach (var e in ins) { int m = InsSegs(e); for (int sg = 0; sg < 6; sg++) if ((m >> sg & 1) != 0) usedSegs.Add(sg); }
+        // a segment the region uses but that is not usable now: only the instructions that use it leave (before running; at the entry
+        // instruction: decline, the interpreter runs it and raises what it must); the rest of the region still runs compiled (X86_SEGLAZY=0: decline)
+        var segOkL = new LocalBuilder?[6];
+        var ran = il.DeclareLocal(typeof(bool));
         foreach (int s in usedSegs)
         {
-            var ok = il.DefineLabel();
-            Ld0(); I4(s); Call("JSegOk"); il.Emit(OpCodes.Brtrue, ok);
-            I4(JIT_DECLINE); il.Emit(OpCodes.Ret);
-            il.MarkLabel(ok);
+            if (SegLazy)
+            {
+                segOkL[s] = il.DeclareLocal(typeof(bool));
+                Ld0(); I4(s); Call("JSegOk"); Stl(segOkL[s]!);
+            }
+            else
+            {
+                var ok = il.DefineLabel();
+                Ld0(); I4(s); Call("JSegOk"); il.Emit(OpCodes.Brtrue, ok);
+                I4(JIT_DECLINE); il.Emit(OpCodes.Ret);
+                il.MarkLabel(ok);
+            }
             sb[s] = il.DeclareLocal(typeof(uint));
             Ld0(); I4(s); Call("JSegBase"); il.Emit(OpCodes.Stloc, sb[s]!);
             sl[s] = il.DeclareLocal(typeof(uint));
@@ -890,6 +896,7 @@ public sealed partial class I386
             il.MarkLabel(body[k]);
             if (e.Kind == DK_INTERP)
             {   // out of line, through the interpreter's own loop body (it counts the instruction clock itself)
+                if (SegLazy) { I4(1); Stl(ran); }   // (something ran: a later unusable segment must leave, not decline)
                 var notFail = il.DefineLabel(); var notEnd = il.DefineLabel(); var leaveG = il.DefineLabel();
                 Ld0(); IpAt(pa); Ld(cyc); Ld(st); Call("JInterp"); Stl(Y);
                 Ld(Y); I4(FAIL); il.Emit(OpCodes.Bne_Un, notFail); I4(FAIL); Op(OpCodes.Ret);
@@ -917,6 +924,21 @@ public sealed partial class I386
                 il.MarkLabel(fall);
                 Continue(k, () => IpAt(pe), pe, true);   // (falls into the next instruction's code, which follows)
                 continue;
+            }
+            if (SegLazy)
+            {   // the segments this instruction uses must be usable (see the prologue): else leave before it
+                int my = InsSegs(e);
+                for (int sg = 0; sg < 6; sg++)
+                {
+                    if ((my >> sg & 1) == 0 || segOkL[sg] == null) continue;
+                    var usable = il.DefineLabel(); var declineL = il.DefineLabel();
+                    Ld(segOkL[sg]!); il.Emit(OpCodes.Brtrue, usable);
+                    Ld(ran); il.Emit(OpCodes.Brfalse, declineL);
+                    Ld0(); IpAt(pa); IpAt(pa); Ld(cyc); Ld(st); Call("JExitOk"); Op(OpCodes.Ret);
+                    il.MarkLabel(declineL); I4(JIT_DECLINE); Op(OpCodes.Ret);
+                    il.MarkLabel(usable);
+                }
+                I4(1); Stl(ran);
             }
             il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldc_I4, 1 + JitExtraCost(pa, e.Kind, e.Reg, bits, mem)); il.Emit(OpCodes.Conv_I8); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, cyc);
 
@@ -1299,6 +1321,7 @@ public sealed partial class I386
                         StDec(); LeaveAfter(k, () => IpAt(pe));
                         il.MarkLabel(usable);
                         Ld0(); I4(e.Reg); Call("JSegBase"); Stl(sb[e.Reg]!); Ld0(); I4(e.Reg); Call("JSegLim"); Stl(sl[e.Reg]!);
+                        if (segOkL[e.Reg] != null) { I4(1); Stl(segOkL[e.Reg]!); }   // (usable now, whatever it was at entry)
                     }
                     break;
                 }
@@ -1375,6 +1398,18 @@ public sealed partial class I386
         }
         return (JitFn)dm.CreateDelegate(typeof(JitFn));
     }
+
+    /// <summary>The segments a compiled instruction reads or writes through (bit per segment).</summary>
+    private static int InsSegs(DEntry e)
+    {
+        int m = 0;
+        if (e.Kind is DK_PUSH or DK_POP or DK_CALL or DK_RET) m |= 1 << SEG_SS;
+        if (e.Kind == DK_STOS || (e.Kind == DK_STR && e.Op != 2)) m |= 1 << SEG_ES;
+        if (e.Kind == DK_STR && e.Op != 3) m |= 1 << e.Seg;
+        if (DcHasModrm(e.Kind) && e.Mod != 3 && e.Kind != DK_LEA) m |= 1 << e.Seg;
+        return m;
+    }
+    private static readonly bool SegLazy = Environment.GetEnvironmentVariable("X86_SEGLAZY") != "0";
 
     private static bool DcHasModrm(byte kind) => kind is DK_MOVEG or DK_MOVGE or DK_ALUEG or DK_ALUGE or DK_GRP1 or DK_GRP2 or DK_TESTEG
         or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU;
