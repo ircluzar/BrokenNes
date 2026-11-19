@@ -396,6 +396,29 @@
         "result": "ok",
         "crashInfo": ""
       }
+    },
+    {
+      "id": "nesfix-deeprun-startropics2-mmc6",
+      "description": "MMC6 (HKROM, picked by CRC): 1 KiB PRG-RAM with per-half enables in $A001. As MMC3, bit 6 write-protected the RAM and the empty name slots drew as bars; name entry now matches Mesen (2026-11-19).",
+      "kind": "romtest",
+      "rom": "{lib}/Startropics 2 - Zoda's Revenge (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "180:Start,188:,420:Start,428:,600:A,608:",
+      "tags": [
+        "corpus",
+        "nes-fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "BB57673C627AC0DF",
+        "framesRun": 900,
+        "distinctColors": 5,
+        "result": "ok",
+        "crashInfo": ""
+      }
     }
   ],
   "goldenGeneratedUtc": "2026-11-17T05:46:37Z"

@@ -120,6 +120,7 @@ public class Cartridge
 			// Known dumps whose header names the wrong board (Mesen's game database agrees): CRC32 of PRG+CHR -> mapper.
 			int bodyLen = Math.Min(prgSize + chrSize, rom.Length - offset);
 			uint crc = Crc32(rom, offset, bodyLen);
+			bodyCrc = crc;
 			if (HeaderFixups.TryGetValue(crc, out int fixedMapper)) mapperID = fixedMapper;
 			if (MirroringFixups.TryGetValue(crc, out var fixedMirroring)) mirroringMode = fixedMirroring;
 		}
@@ -176,7 +177,7 @@ public class Cartridge
 				mapper = new Mapper3(this); // CNROM
 				break;
 			case 4:
-				mapper = new Mapper4(this);
+				mapper = new Mapper4(this) { Mmc6 = Mmc6Boards.Contains(bodyCrc) };
 				break;
 			case 5:
 				mapper = new Mapper5(this); // MMC5 (partial)
@@ -226,6 +227,9 @@ public class Cartridge
 	}
 
 	// CRC32 (PRG+CHR, no header) -> the board it really is. Only dumps verified against Mesen 2's NesDB.
+	private uint bodyCrc;
+	// CRC32 (PRG+CHR) of the MMC6 (HKROM) carts, which iNES headers call plain mapper 4 (Mesen's game database knows them).
+	private static readonly System.Collections.Generic.HashSet<uint> Mmc6Boards = new() { 0x889129CBu /* StarTropics (U) */, 0xD054FFB0u /* StarTropics 2 (U) */ };
 	private static readonly System.Collections.Generic.Dictionary<uint, int> HeaderFixups = new()
 	{
 		{ 0x8EAB381Cu, 79 },   // Deathbots (U): headered as 113, really AVE NINA-06 (79); as 113 its writes flip the mirroring
