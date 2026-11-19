@@ -44,5 +44,6 @@
  },
  "player_screen": [
   "([$0090]-[$00FD])&255"
- ]
+ ],
+ "scene_change": "mode != {mode}"
 }
