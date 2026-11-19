@@ -740,7 +740,7 @@ def advance(b, r, cfg, pkg, ch, a):
             if ran: r["log"].append([[], ran]); r["frames"] += ran
         store(pkg, ch, r)
     import time
-    t0 = time.time(); cap = float(os.environ.get("AUTOTAS_ADVANCE_SECONDS", 420))
+    t0 = time.time(); cap = float(os.environ.get("AUTOTAS_ADVANCE_SECONDS", 300))
     for i in range(n):
         if time.time() - t0 > cap:   # return before the agent's 10-minute tool timeout (a backgrounded advance loses the player)
             print(f"advance: time cap ({int(cap)} s) after {i} hops - run advance again to continue"); return
@@ -753,6 +753,7 @@ def advance(b, r, cfg, pkg, ch, a):
             a2.want = f"({names(a2.want, cfg)}) || {fin}"
         if ad.get("end_expr"): a2.want = f"({names(a2.want, cfg)}) || ({names(ad['end_expr'], cfg)})"   # reaching the level end counts as a hop
         a2.then = ad.get("then", "none"); a2.within = int(ad.get("within", 90)); a2.apply = True
+        a2.wait = "off"   # the plain hop first; waits only when it is stuck (patience below): a 5x bigger grid every hop timed agents out
         before = r["frames"]
         search(b, r, cfg, pkg, ch, a2)
         if fin and r["frames"] != before:
