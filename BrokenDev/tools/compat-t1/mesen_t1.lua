@@ -39,6 +39,10 @@ for s in (os.getenv("BNT1_SHOTS") or ""):gmatch("%d+") do
 end
 local done, cur, pad = 0, 1, {}
 local useHw = os.getenv("BNT1_HW") == "1"   -- t1-3, see below
+-- BNT1_BOOT (t1-5): frames Mesen spends before the game's own first frame (its GBC boot without firmware: ~13; measured on Woody
+-- Woodpecker Racing / Monster Rancher BC by the frame of each LCDC write, a constant 13-14 apart). Input steps and picture frame
+-- numbers are counted from there, so step f and picture m_f mean BrokenNes's frame f.
+local boot = tonumber(os.getenv("BNT1_BOOT") or "0") or 0
 local function writeShot(path)
   local buf = emu.getScreenBuffer()
   local sz = emu.getScreenSize and emu.getScreenSize() or nil
@@ -57,7 +61,7 @@ end
 -- done here, so every step reached Mesen's pad one frame before it reached BrokenNes's (which latches at the frame's start).
 local pollLag = useHw and 1 or 0
 emu.addEventCallback(function()
-  while cur <= #steps and steps[cur].f <= done - pollLag do pad = steps[cur].pad; cur = cur + 1 end
+  while cur <= #steps and steps[cur].f <= done - pollLag - boot do pad = steps[cur].pad; cur = cur + 1 end
   emu.setInput(pad, 0)
 end, emu.eventType.inputPolled)
 local function hwFrame()

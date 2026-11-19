@@ -399,7 +399,7 @@ def mesen_run(rom, script, shots, out_dir, frames, console="nes"):
     for d in ("Saves", "SaveStates", "RecentGames"):   # every game boots clean (no battery save from an earlier run)
         shutil.rmtree(os.path.join(home, d), ignore_errors=True)
     os.makedirs(out_dir, exist_ok=True)
-    env = dict(os.environ, BNT1_MAP=MESEN_MAP.get(console, ""), BNT1_HW="1" if REF_LAG == -1 else "", **script_env(script, out_dir), BNT1_SHOTS=",".join(str(max(0, f - REF_LAG)) for f in shots), BNT1_WIN=str(WIN), BNT1_OUT=out_dir)
+    env = dict(os.environ, BNT1_MAP=MESEN_MAP.get(console, ""), BNT1_HW="1" if REF_LAG == -1 else "", BNT1_BOOT=str(MESEN_BOOT.get(console, 0)), **script_env(script, out_dir), BNT1_SHOTS=",".join(str(max(0, f - REF_LAG)) for f in shots), BNT1_WIN=str(WIN), BNT1_OUT=out_dir)
     secs_limit = frames // 20 + 60   # a loaded machine can drop Mesen's test runner to ~60 fps
     cmd = [exe, rom, "--luaScriptsToLoad", os.path.join(HERE, "mesen_t1.lua"), "--testRunner", f"--timeout={secs_limit}"]
     with Slot():
@@ -568,6 +568,10 @@ def check_nes(rec, minutes, keep_dir):
 
 
 # ------------------------------------------------------------------------------------------------ other consoles (--console-run)
+# t1-5: Mesen 2.1.1 runs ~13 frames of its own CGB boot before a GBC game starts (no firmware); BrokenNes starts at the game.
+# Without this the deep-run review graded GBC "slower than Mesen" (Woody Woodpecker Racing +5 -> +21): every LCDC write is a
+# constant 13-14 frames later on Mesen, and the input reached Mesen's game 13 frames early.
+MESEN_BOOT = {"gbc": 13}
 MESEN_CONSOLES = ("snes", "gb", "gbc", "sms", "gg")
 # BrokenNes SMS/GG pads: A=button 1, B=button 2, Start=the Game Gear Start, Select=the SMS Pause; Mesen names them one/two/pause
 MESEN_MAP = {"sms": "a=one,b=two,select=pause,start=", "gg": "a=one,b=two,start=pause,select="}   # Mesen 2.1.1 plays these; md needs another reference (not wired)
