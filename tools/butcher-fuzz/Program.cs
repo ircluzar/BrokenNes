@@ -119,8 +119,8 @@ PadButtons Pad(Random r, int f) { var v = (PadButtons)r.Next(0, 4096); return f 
                     step = "save-before"; before = m.Save(); m.Load(before); m.Audio();
                     { var again = m.Save(); if (!again.AsSpan().SequenceEqual(before)) { if (Environment.GetEnvironmentVariable("DUMP") == "1") { File.WriteAllBytes($"dump-{seed}-ls1.st", before); File.WriteAllBytes($"dump-{seed}-ls2.st", again); } int i0 = 0; while (i0 < Math.Min(again.Length, before.Length) && again[i0] == before[i0]) i0++; var tx = System.Text.Encoding.UTF8.GetString(before); Find("oracle", "load-save-not-idempotent " + (tx.StartsWith("{") ? tx.Substring(Math.Max(0, i0 - 50), Math.Min(70, tx.Length - Math.Max(0, i0 - 50))).Replace("\\", "") : $"byte {i0}"), ctx); } }
                     var prA = new Random(seed ^ 0x5A5A); for (int i = 0; i < applyAt; i++) Pad(prA, i);
-                    ulong c = 0; for (int i = 0; i < refLen; i++) { m.Pad(Pad(prA, 1000 + i)); m.Run(); c = HashP(m, c); } cleanRef = c; refState = m.CanState ? m.Save() : null;
-                    m.Load(before); m.Audio();
+                    ulong c = 0; for (int i = 0; i < refLen; i++) { m.Pad(Pad(prA, 1000 + i)); m.Run(); c = HashP(m, c); if (Environment.GetEnvironmentVariable("STEPDUMP") == "1") File.WriteAllBytes($"step-ref-{i:D2}.st", m.Save()); } cleanRef = c; refState = m.CanState ? m.Save() : null;
+                    m.Load(before); m.Audio(); if (Environment.GetEnvironmentVariable("GRAPHDUMP") == "1" && m is NesM gm1) File.WriteAllText($"graph-{seed}-ref.txt", GraphDump.Of(gm1.N));
                     var prB = new Random(seed ^ 0x5A5A); for (int i = 0; i < applyAt; i++) Pad(prB, i);
                     ulong c2 = 0; for (int i = 0; i < refLen; i++) { m.Pad(Pad(prB, 1000 + i)); m.Run(); c2 = HashP(m, c2); }
                     if (c2 != cleanRef) { Find("info", "savestate-not-replayable " + desc.Split(' ').Skip(1).Aggregate("", (a, b) => a + " " + b), ctx); before = null; }
@@ -148,10 +148,10 @@ PadButtons Pad(Random r, int f) { var v = (PadButtons)r.Next(0, 4096); return f 
     {
         try
         {
-            m.Load(before); m.Host.ApplyButcher(new ButcherSettings()); m.Audio();
+            m.Load(before); m.Host.ApplyButcher(new ButcherSettings()); m.Audio(); if (Environment.GetEnvironmentVariable("GRAPHDUMP") == "1" && m is NesM gm2) File.WriteAllText($"graph-{seed}-undo.txt", GraphDump.Of(gm2.N));
             var pr2 = new Random(seed ^ 0x5A5A); // the pad stream used for the reference was drawn after the warm-up; redo it identically
             for (int i = 0; i < applyAt; i++) Pad(pr2, i);
-            ulong c = 0; for (int i = 0; i < refLen; i++) { m.Pad(Pad(pr2, 1000 + i)); m.Run(); c = HashP(m, c); }
+            ulong c = 0; for (int i = 0; i < refLen; i++) { m.Pad(Pad(pr2, 1000 + i)); m.Run(); c = HashP(m, c); if (Environment.GetEnvironmentVariable("STEPDUMP") == "1") File.WriteAllBytes($"step-undo-{i:D2}.st", m.Save()); }
             if (c != cleanRef) { var ns = m.Save(); bool same = refState != null && ns.AsSpan().SequenceEqual(refState); if (Environment.GetEnvironmentVariable("DUMP") == "1" && refState != null) { File.WriteAllBytes($"dump-{seed}-before.st", before!); File.WriteAllBytes($"dump-{seed}-ref.st", refState); File.WriteAllBytes($"dump-{seed}-undo.st", ns); } string where = ""; if (!same && refState != null) { int i0 = 0; while (i0 < Math.Min(ns.Length, refState.Length) && ns[i0] == refState[i0]) i0++; var t1 = System.Text.Encoding.UTF8.GetString(refState); if (t1.Length > i0 && t1.StartsWith("{")) where = " near " + t1.Substring(Math.Max(0, i0 - 40), Math.Min(50, t1.Length - Math.Max(0, i0 - 40))).Replace("\\", ""); else where = $" at byte {i0}/{refState.Length}"; } Find("oracle", "undo-mismatch " + (same ? "picture-only " : "STATE" + where + " ") + (hostile ? "hostile" : "normal"), $"{ctx}\nsettings {sj}"); return (h, "undo"); }
             if (m.Host.Butcher is { Idle: false } bb) { var names = "RamBusFaults IrqActive irqLeft CiramFault PaletteBusFaults VideoBusFaults PadActive SoundBus SampleFaults DacActive Dma Copro Console Cart CpuPins SoundCpu SpritesActive SoundActive BandsActive dropMask RamActive PaletteActive RotActive".Split(' '); var on = names.Where(n => { const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance; object? v = bb.GetType().GetField(n, F)?.GetValue(bb) ?? bb.GetType().GetProperty(n, F)?.GetValue(bb); return v is true || v is int i && i != 0 || v is uint u && u != 0 || (v != null && v is not bool && v is not int && v is not uint); }); Find("oracle", "engine-not-idle-after-off: " + string.Join(",", on), ctx); }
         }
@@ -177,6 +177,7 @@ if (Environment.GetEnvironmentVariable("REPRO") is string rs)
     var paths = new List<string>();
     void Walk(Type t, string pre, int d) { foreach (var p in t.GetProperties()) { if (!p.CanWrite || p.Name == "Enabled") continue; var pt = p.PropertyType; if (pt.IsClass && pt != typeof(string) && !pt.IsArray && d < 1) Walk(pt, pre + p.Name + ".", d + 1); else if (pt.IsClass && pt != typeof(string) && !pt.IsArray || pt.IsArray) paths.Add(pre + p.Name); } }
     Walk(typeof(ButcherSettings), "", 0);
+    if (Environment.GetEnvironmentVariable("REPRO_ONLY") is string only) { var keep = only.Split(','); foreach (var pth in paths) if (!keep.Contains(pth)) Zeroed.Add(pth); Console.WriteLine($"only {only}: crashes={Crashes()}"); Environment.Exit(0); }   // REPRO_ONLY=a,b: does the finding still happen with just these effects on
     foreach (var pth in paths) { Zeroed.Add(pth); if (!Crashes()) Zeroed.Remove(pth); }
     Console.WriteLine("needed: " + string.Join(", ", paths.Where(x => !Zeroed.Contains(x))));
     Environment.Exit(0);
@@ -209,6 +210,7 @@ interface IMachine
 }
 sealed class NesM(NES n) : IMachine
 {
+    public NES N => n;
     public IButcherHost Host => n; public uint[] Frame => n.GetFrameBuffer().Select(x => (uint)x).ToArray(); public bool CanState => true; public int Visible => int.MaxValue;
     public void Run() => n.RunFrame();
     public void Pad(PadButtons b) { int v = (int)b; n.SetInput(Enumerable.Range(0, 8).Select(i => (v >> i & 1) != 0).ToArray()); }
@@ -227,4 +229,39 @@ sealed class SesM(IConsoleSession s) : IMachine
     public short[] Audio() { var l = new List<short>(); int g; while ((g = s.ReadSamples(buf)) > 0) l.AddRange(buf.AsSpan(0, g).ToArray()); return l.ToArray(); }
     public byte[] Save() => s.SaveState(); public void Load(byte[] st) => s.LoadState(st); public void Reset() => s.Reset();
     public void TrySwap(Random r) { var sl = (CoreSlot)r.Next(3); var o = CoreCatalog.Options(s.Console, sl); if (o.Count > 0) { var id = o[r.Next(o.Count)].Id; bool ok = s.TrySwapCore(sl, id); if (Environment.GetEnvironmentVariable("FTRACE") == "1") Console.WriteLine($"SWAP {sl} {id} {ok}"); } }
+}
+
+/// <summary>Debug (GRAPHDUMP=1): every field reachable from the machine, one line each (arrays hashed), to diff the machine after a load on two timelines.</summary>
+static class GraphDump
+{
+    public static string Of(object root)
+    {
+        var sb = new System.Text.StringBuilder(); var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        void Walk(object o, string path, int depth)
+        {
+            if (depth > 7 || !seen.Add(o)) return;
+            var t = o.GetType();
+            if (t.Namespace != null && (t.Namespace.StartsWith("System") || t.Namespace.StartsWith("Microsoft"))) return;
+            for (var c = t; c != null && c != typeof(object); c = c.BaseType)
+                foreach (var f in c.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                {
+                    if (typeof(Delegate).IsAssignableFrom(f.FieldType)) continue;
+                    object? v; try { v = f.GetValue(o); } catch { continue; }
+                    string p = path + "." + f.Name;
+                    if (v == null) { sb.Append(p).Append(" = null\n"); continue; }
+                    var vt = v.GetType();
+                    if (vt.IsPrimitive || vt.IsEnum || v is string || v is decimal) { sb.Append(p).Append(" = ").Append(v is float fl ? fl.ToString("R") : v is double db ? db.ToString("R") : v.ToString()).Append('\n'); continue; }
+                    if (v is Array a)
+                    {
+                        if (a.GetType().GetElementType()!.IsPrimitive) { var bytes = new byte[Buffer.ByteLength(a)]; Buffer.BlockCopy(a, 0, bytes, 0, bytes.Length); sb.Append(p).Append($" = arr[{a.Length}] {Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(bytes))[..12]}\n"); }
+                        else { int i = 0; foreach (var e in a) { if (e != null && i < 64) Walk(e, p + "[" + i + "]", depth + 1); i++; } }
+                        continue;
+                    }
+                    if (vt.IsValueType) { sb.Append(p).Append(" = ").Append(v.ToString()).Append('\n'); continue; }
+                    Walk(v, p, depth + 1);
+                }
+        }
+        Walk(root, "nes", 0);
+        return sb.ToString();
+    }
 }

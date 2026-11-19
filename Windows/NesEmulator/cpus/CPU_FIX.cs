@@ -1277,9 +1277,9 @@ public class CPU_FIX : ICPU {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private bool HasPageCrossPenalty(ushort baseAddr, ushort effectiveAddr) => (baseAddr & 0xFF00) != (effectiveAddr & 0xFF00);
 
-	public object GetState() => new CpuSharedState { A=A,X=X,Y=Y,status=status,PC=PC,SP=SP,irqRequested=irqRequested,nmiRequested=nmiRequested,irqDeferOne=irqDeferOne,nmiDeferOne=nmiDeferOne };
+	public object GetState() => new CpuSharedState { A=A,X=X,Y=Y,status=status,PC=PC,SP=SP,irqRequested=irqRequested,nmiRequested=nmiRequested,irqDeferOne=irqDeferOne,nmiDeferOne=nmiDeferOne,dispatchedCycles=dispatchedCycles,irqPollCycles=irqPollCycles,irqRaisedRel=irqRaisedRel,nmiRaisedRel=nmiRaisedRel };
 	public void SetState(object state) {
-		if (state is CpuSharedState s) { A=s.A;X=s.X;Y=s.Y;status=s.status;PC=s.PC;SP=s.SP;irqRequested=s.irqRequested;nmiRequested=s.nmiRequested;irqDeferOne=s.irqDeferOne;nmiDeferOne=s.nmiDeferOne; pollFlagI = GetFlag(FLAG_I); return; }
+		if (state is CpuSharedState s) { A=s.A;X=s.X;Y=s.Y;status=s.status;PC=s.PC;SP=s.SP;irqRequested=s.irqRequested;nmiRequested=s.nmiRequested;irqDeferOne=s.irqDeferOne;nmiDeferOne=s.nmiDeferOne; dispatchedCycles=s.dispatchedCycles; irqPollCycles=s.irqPollCycles; irqRaisedRel=s.irqRaisedRel; nmiRaisedRel=s.nmiRaisedRel; pollFlagI = GetFlag(FLAG_I); return; }
 		if (state is System.Text.Json.JsonElement je) {
 			if (je.TryGetProperty("A", out var pA)) A = (byte)pA.GetInt32();
 			if (je.TryGetProperty("X", out var pX)) X = (byte)pX.GetInt32();
@@ -1291,6 +1291,10 @@ public class CPU_FIX : ICPU {
 			irqDeferOne = je.TryGetProperty("irqDeferOne", out var pdo) && pdo.GetBoolean();
 			nmiDeferOne = je.TryGetProperty("nmiDeferOne", out var pdn) && pdn.GetBoolean();
 			if (je.TryGetProperty("nmiRequested", out var pn)) nmiRequested = pn.GetBoolean();
+			dispatchedCycles = je.TryGetProperty("dispatchedCycles", out var pdc) ? pdc.GetInt32() : 0;
+			irqPollCycles = je.TryGetProperty("irqPollCycles", out var pip) ? pip.GetInt32() : 0;
+			irqRaisedRel = je.TryGetProperty("irqRaisedRel", out var pir) ? pir.GetInt64() : -1;
+			nmiRaisedRel = je.TryGetProperty("nmiRaisedRel", out var pnr) ? pnr.GetInt64() : -1;
 			// pollFlagI has no cross-core representation in shared state; resync to the live I
 			// flag on load/hot-swap. This loses a mid-flight one-instruction delay across a
 			// savestate/hot-swap boundary, an acceptable edge case for a non-serialized latch.

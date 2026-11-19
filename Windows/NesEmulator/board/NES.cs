@@ -620,6 +620,7 @@ namespace NesEmulator
 			// Keep showing the last good picture (rather than a half-drawn one) until the loaded machine
 			// has drawn a whole frame - see NotePpuProgress.
 			lastClockScanline = -1; awaitingFrameStart = true;
+			presentedThisRun = false;   // a run that returned early (Butchering clock stall) left it set: the loaded machine skipped its first UpdateFrameBuffer (fuzz undo-mismatch, BFR / EXE)
 			resetSequencePending = false; // the state carries its own timing
 			NesState? st = null;
 			bool loadedFixedPointTiming = false;
