@@ -61,6 +61,8 @@ public sealed partial class I386
     private static readonly bool NoKeepSegs = Environment.GetEnvironmentVariable("X86_NOKEEPSEGS") != null;
     /// <summary>X86_NOHELPEROPS: flag ops and stack ops out of line again (A/B).</summary>
     private static readonly bool NoHelperOps = Environment.GetEnvironmentVariable("X86_NOHELPEROPS") != null;
+    private static readonly bool NoStkOp = Environment.GetEnvironmentVariable("X86_NOSTKOP") != null, NoFlagOp = Environment.GetEnvironmentVariable("X86_NOFLAGOP") != null;
+    private static readonly int StkMask = int.TryParse(Environment.GetEnvironmentVariable("X86_STKMASK"), out int sm) ? sm : 15;   // (bit 3 PUSH Sreg: was broken by an Op truncation, PUSH FS pushed GS: Win98 fatal 0D at boot)
     private static readonly int JitHot = int.TryParse(Environment.GetEnvironmentVariable("X86_JITHOT"), out int jh) ? jh : 32;
     private JitCode? _jitCur;   // the block running now
     private readonly JitEntry?[] _je = new JitEntry?[1 << JitBits];
@@ -231,7 +233,7 @@ public sealed partial class I386
     {
         0x9c => PushF(), 0x60 => Pusha(), 0x61 => Popa(),
         0x06 => PushSeg(SEG_ES), 0x0e => PushSeg(SEG_CS), 0x16 => PushSeg(SEG_SS), 0x1e => PushSeg(SEG_DS),
-        0x1a0 => PushSeg(SEG_FS), _ => PushSeg(SEG_GS),
+        0xf0 => PushSeg(SEG_FS), _ => PushSeg(SEG_GS),
     };
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JMovSeg(int seg, uint v) => LoadSegChecked(seg, v);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegSel(int seg) => SegSel[seg];
