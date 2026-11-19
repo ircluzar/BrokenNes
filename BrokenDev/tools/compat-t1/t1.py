@@ -421,7 +421,7 @@ def fit_ref(ref, img):
     return ref[y:y + img.shape[0], x:x + img.shape[1]]
 
 
-BIZHAWK = os.environ.get("BNT1_BIZHAWK", r"T:\BrokenDev\env\emulatorsizhawk-2.11.1\EmuHawk.exe")
+BIZHAWK = os.environ.get("BNT1_BIZHAWK", r"T:\BrokenDev\env\emulators\bizhawk-2.11.1\EmuHawk.exe")
 BIZHAWK_CFG = os.environ.get("BNT1_BIZHAWK_CFG", os.path.join(HERE, "bizhawk_config_md.json"))   # its paths say C:\BHSCRATCH
 
 
