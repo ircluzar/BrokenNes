@@ -295,7 +295,7 @@ public sealed partial class PcMachine : IX86Bus
     /// <summary>Bus-master DMA into guest physical memory: RAM in one copy (the JIT told once), anything else byte by byte.</summary>
     private void DmaToMem(uint a, byte[] src, int off, int n)
     {
-        if (a >= 0x100000 && (long)a + n <= Cpu.MemSize || (long)a + n <= 0xa0000) { Array.Copy(src, off, Cpu.Mem, a, n); Cpu.MemTouched(); return; }
+        if (a >= 0x100000 && (long)a + n <= Cpu.MemSize || (long)a + n <= 0xa0000) { Array.Copy(src, off, Cpu.Mem, a, n); Cpu.RamWritten(a, n); return; }
         for (int i = 0; i < n; i++) PhysW8(a + (uint)i, src[off + i]);
     }
     private void DmaFromMem(uint a, byte[] dst, int off, int n)

@@ -314,6 +314,7 @@ internal static class X86BootCli
             var parts = la.Split(':'); uint a0 = Convert.ToUInt32(parts[0], 16); int np = parts.Length > 1 ? int.Parse(parts[1]) : 1;
             Console.WriteLine($"linmap {a0:X8}: " + string.Join(" ", Enumerable.Range(0, np).Select(k => { uint p = LinPhys(m, a0 + (uint)k * 4096); return p == 0xffffffff ? "--" : (p >> 12).ToString("X"); })) + $" | {LinBytes(m, a0, 16)}");
         }
+        if (args.Contains("--frametimes")) Console.WriteLine(FrameTimeReport());
         if (m.Nic != null) Console.WriteLine($"nic: sent {m.Nic.FramesSent} frames, received {m.Nic.FramesReceived}; BAR0 {m.Pci!.NicFn!.Read32(0x10):X8} cmd {m.Pci.NicFn.Cfg[4]:X2} line {m.Pci.NicFn.Cfg[0x3c]} PIRQB {m.Pci.Isa.Cfg[0x61]:X2}");
         if (args.Contains("--jitstat")) Console.WriteLine($"jit: compiled {m.Cpu.JitCompiled} reused {m.Cpu.JitReused} runs {m.Cpu.JitRuns} invalid {m.Cpu.JitInvalid} cycle {m.Cpu.Cycle} compiled-instrs {m.Cpu.JitInstrsTotal} ({100.0 * m.Cpu.JitInstrsTotal / Math.Max(1, m.Cpu.Cycle):F1}%) (set X86_JITSTAT for the per-block counts)");
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.JitTop(25)) Console.WriteLine("  blk " + l);
@@ -348,9 +349,23 @@ internal static class X86BootCli
     /// <summary>--cdwav FILE: the CD drive's audio output (CD-DA, 44.1 kHz stereo), collected after every frame.</summary>
     private static System.IO.MemoryStream? _cdWav; private static long _cdLast = -1;
     private static readonly short[] _wavBuf = new short[44100];
+    /// <summary>Wall-clock time of every frame run (X86-02 speed climb: the worst 1% matters, not only the average); printed at the end.</summary>
+    private static readonly List<double> _frameMs = new();
+    private static readonly System.Diagnostics.Stopwatch _frameSw = new();
+    public static string FrameTimeReport()
+    {
+        if (_frameMs.Count == 0) return "frametimes: none";
+        var a = _frameMs.ToArray(); Array.Sort(a);
+        double P(double q) => a[Math.Min(a.Length - 1, (int)(q * a.Length))];
+        double sum = 0; foreach (var v in a) sum += v;
+        const double rt = 1000.0 / 70;   // a VGA frame of machine time
+        return $"frametimes: {a.Length} frames, mean {sum / a.Length:F2} ms ({rt / (sum / a.Length) * 100:F0}% real time), p50 {P(.5):F2}, p99 {P(.99):F2} ({rt / P(.99) * 100:F0}%), max {a[^1]:F1} ms, frames over 50 ms {a.Count(v => v > 50)}";
+    }
     private static bool Frame(PcMachine m)
     {
+        _frameSw.Restart();
         bool r = m.RunFrame();
+        _frameMs.Add(_frameSw.Elapsed.TotalMilliseconds);
         if (_cdWav != null && m.Ata != null)
         {
             long now = (long)((Int128)m.PitNow * 44100 / Pit8254.Freq);

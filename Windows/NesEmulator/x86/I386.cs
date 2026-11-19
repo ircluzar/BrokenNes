@@ -164,6 +164,13 @@ public sealed partial class I386
     private uint _memEpoch;
     /// <summary>Memory was written by something other than the CPU's own stores (the BIOS, DMA, a disk load, a tool): compiled blocks check their bytes.</summary>
     public void MemTouched() => _memEpoch++;
+    /// <summary>RAM [a, a+n) was written from outside the CPU (bus-master DMA): only the pages holding compiled code lines in that range move to a new generation
+    /// (cheaper than <see cref="MemTouched"/>, which makes every compiled block compare its bytes once).</summary>
+    public void RamWritten(uint a, int n)
+    {
+        if (n <= 0) return;
+        for (uint l = a >> 6, e = (uint)((a + n - 1) >> 6); l <= e; l++) if (_codeMark[l] != 0) { CodeWrite(l << 6, 64); }
+    }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void CodeWr1(uint a) { if (Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_codeMark), (nint)(a >> 6)) != 0) CodeWrite(a, 1); }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
