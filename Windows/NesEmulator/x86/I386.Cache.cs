@@ -39,6 +39,20 @@ public sealed partial class I386
         if (len <= 0) return;
         e = default;
         e.Kind = DK_INTERP; e.Len = (byte)len; e.Op = (byte)(noFall ? 1 : 0); e.Mod = (byte)(DcNoWrite(paddr) ? 0 : 1);
+        e.Rm = (byte)(DcKeepsSegs(paddr) ? 1 : 0);
+    }
+
+    /// <summary>Does this out-of-line instruction leave every segment register, SS's size, the CPL and the code size alone (unless it faults, which
+    /// JStill catches)? Then the compiled code needs not reload them after it. CLI / STI / CLC..STD / CMC, PUSHF / POPF, SAHF / LAHF, IN / OUT, XLAT,
+    /// PUSHA / POPA, PUSH Sreg, the BCD adjusts, ENTER. Conservative: false when unsure.</summary>
+    private bool DcKeepsSegs(uint paddr)
+    {
+        int p = 0; uint b;
+        do { b = U8(paddr + (uint)p++); } while (IsPrefix[b] && p < 5);
+        if (IsPrefix[b]) return false;
+        if (b == 0x0f) { uint b2 = U8(paddr + (uint)p); return b2 is 0xa0 or 0xa8; }   // PUSH FS / GS
+        return b is 0xfa or 0xfb or (>= 0xf8 and <= 0xfd) or 0xf5 or 0x9c or 0x9d or 0x9e or 0x9f or (>= 0xe4 and <= 0xe7) or (>= 0xec and <= 0xef)
+            or 0xd7 or 0x60 or 0x61 or 0x06 or 0x0e or 0x16 or 0x1e or 0x27 or 0x2f or 0x37 or 0x3f or 0xc8;
     }
 
     /// <summary>Can this out-of-line instruction not write to memory at all (so not to the compiled code either)? Registers, flags,

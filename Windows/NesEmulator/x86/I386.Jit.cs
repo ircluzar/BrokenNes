@@ -57,6 +57,8 @@ public sealed partial class I386
     private static readonly bool JitOn = RuntimeFeature.IsDynamicCodeCompiled && Environment.GetEnvironmentVariable("X86_NOJIT") == null;
     private const int JitBits = 20, JitMask = (1 << JitBits) - 1, JIT_DECLINE = 3, JIT_END = 4, JitKeep = 16384;
     private static readonly int JitMaxInstr = int.TryParse(Environment.GetEnvironmentVariable("X86_JITMAX"), out int jm) ? jm : 128;
+    /// <summary>X86_NOKEEPSEGS: reload the segments after every out-of-line instruction (A/B of DcKeepsSegs).</summary>
+    private static readonly bool NoKeepSegs = Environment.GetEnvironmentVariable("X86_NOKEEPSEGS") != null;
     private static readonly int JitHot = int.TryParse(Environment.GetEnvironmentVariable("X86_JITHOT"), out int jh) ? jh : 32;
     private JitCode? _jitCur;   // the block running now
     private readonly JitEntry?[] _je = new JitEntry?[1 << JitBits];
@@ -868,9 +870,12 @@ public sealed partial class I386
                 Ld0(); Call("JCycle"); Stl(cyc);
                 Ld0(); Call("JSteps"); Op(OpCodes.Ldc_I4_1); Op(OpCodes.Sub); Stl(st);
                 Ld0(); Bool(c16); Bool(pg); U4(pa); I4(segMask); Bool(e.Mod != 0); Call("JStill"); il.Emit(OpCodes.Brfalse, leaveG);
-                foreach (int s in usedSegs) { Ld0(); I4(s); Call("JSegBase"); Stl(sb[s]!); Ld0(); I4(s); Call("JSegLim"); Stl(sl[s]!); }
-                Ld0(); Call("JSpm"); Stl(spm);
-                if (pg) LdPerm();   // (an out-of-line instruction may have changed the CPL)
+                if (e.Rm == 0 || NoKeepSegs)   // (DcKeepsSegs: segments, SS size and CPL stay as they were: nothing to reload)
+                {
+                    foreach (int s in usedSegs) { Ld0(); I4(s); Call("JSegBase"); Stl(sb[s]!); Ld0(); I4(s); Call("JSegLim"); Stl(sl[s]!); }
+                    Ld0(); Call("JSpm"); Stl(spm);
+                    if (pg) LdPerm();   // (an out-of-line instruction may have changed the CPL)
+                }
                 var notRep = il.DefineLabel();   // a REP string instruction that goes on: run it again
                 Ld0(); Call("JNextIp"); IpAt(pa); il.Emit(OpCodes.Bne_Un, notRep);
                 Ld(st); Op(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Ble, leaveG);

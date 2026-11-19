@@ -229,6 +229,9 @@ public sealed partial class PcMachine
             ide.Cfg[0x3c] = 14;
             pci.ConfigWrite(0, PciBus.IdeDevFn, 0x20, IdeBmBase | 1, 4);   // bus-master DMA registers at E040h
             pci.ConfigWrite(0, PciBus.IdeDevFn, 0x04, 0x05, 1);            // I/O + bus master
+            // the BIOS marks each present drive "DMA capable" in its channel's bus-master status (bits 5 / 6): Windows' ESDI_506 looks there before it uses DMA
+            if (Ata != null) { Ata.Primary.BmWrite(2, (byte)((Hdd[0] != null ? 0x20 : 0) | (Hdd[1] != null ? 0x40 : 0))); Ata.Secondary.BmWrite(2, 0x20); }
+            ide.Cfg[0x40] = 0x07; ide.Cfg[0x41] = 0xa3; ide.Cfg[0x42] = 0x07; ide.Cfg[0x43] = 0xa3;   // IDETIM: decode on, fast timing + prefetch + IORDY for drive 0 (as a BIOS leaves it for DMA mode 2)
         }
         // the network card: I/O at E000h (32 ports), INTA# -> PIRQB -> IRQ 10 (level-triggered)
         if (pci.Functions.TryGetValue(PciBus.NicDevFn, out var nic))
