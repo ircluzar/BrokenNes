@@ -780,9 +780,24 @@ public sealed class CPU_EIL : ICPU {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private bool HasPageCrossPenalty(ushort baseAddr, ushort effectiveAddr) => (baseAddr & 0xFF00) != (effectiveAddr & 0xFF00);
 
-	public object GetState() => new CpuSharedState { A=A,X=X,Y=Y,status=status,PC=PC,SP=SP,irqRequested=irqRequested,nmiRequested=nmiRequested };
+	/// <summary>The idle-loop detector rides along in the state: it decides when a loop's iterations are skipped (and so the cycle count), so left out a
+	/// load kept the old timeline's detector and the loaded machine ran a different number of cycles (fuzz undo-mismatch, cpu=EIL). Absent in
+	/// older states and in other cores' states: the detector starts cold, as at power-on.</summary>
+	public sealed class EilCpuState : CpuSharedState
+	{
+		public byte idlePollKind { get; set; } public ushort idlePollPC { get; set; } public byte idlePollValue { get; set; } public int idleStablePolls { get; set; } public int idlePollCycles { get; set; }
+		public int idleCost { get; set; } public int idleStreak { get; set; } public bool idleFlag { get; set; } public ushort idleBranchPC { get; set; } public int idleEntry { get; set; }
+	}
+	public object GetState() => new EilCpuState { A=A,X=X,Y=Y,status=status,PC=PC,SP=SP,irqRequested=irqRequested,nmiRequested=nmiRequested,
+		idlePollKind=(byte)lastPollKind, idlePollPC=lastStatusPollPC, idlePollValue=lastPollValue, idleStablePolls=stablePollCount, idlePollCycles=lastPollCycles,
+		idleCost=idleLoopIterationCostCycles, idleStreak=idleLoopStreak, idleFlag=idleLoopFlag, idleBranchPC=idleLoopBranchPC, idleEntry=idleLoopEntryIterations };
+	private void SetIdleState(EilCpuState? e)
+	{
+		lastPollKind = (IdlePollKind)(e?.idlePollKind ?? 0); lastStatusPollPC = e?.idlePollPC ?? 0; lastPollValue = e?.idlePollValue ?? 0; stablePollCount = e?.idleStablePolls ?? 0; lastPollCycles = e?.idlePollCycles ?? 0;
+		idleLoopIterationCostCycles = e?.idleCost ?? 0; idleLoopStreak = e?.idleStreak ?? 0; idleLoopFlag = e?.idleFlag ?? false; idleLoopBranchPC = e?.idleBranchPC ?? 0; idleLoopEntryIterations = e?.idleEntry ?? 0;
+	}
 	public void SetState(object state) {
-		if (state is CpuSharedState s) { A=s.A;X=s.X;Y=s.Y;status=s.status;PC=s.PC;SP=s.SP;irqRequested=s.irqRequested;nmiRequested=s.nmiRequested; return; }
+		if (state is CpuSharedState s) { A=s.A;X=s.X;Y=s.Y;status=s.status;PC=s.PC;SP=s.SP;irqRequested=s.irqRequested;nmiRequested=s.nmiRequested; SetIdleState(s as EilCpuState); return; }
 		if (state is System.Text.Json.JsonElement je) {
 			if (je.TryGetProperty("A", out var pA)) A = (byte)pA.GetInt32();
 			if (je.TryGetProperty("X", out var pX)) X = (byte)pX.GetInt32();
@@ -792,6 +807,14 @@ public sealed class CPU_EIL : ICPU {
 			if (je.TryGetProperty("SP", out var pSP)) SP = (ushort)pSP.GetInt32();
 			if (je.TryGetProperty("irqRequested", out var pi)) irqRequested = pi.GetBoolean();
 			if (je.TryGetProperty("nmiRequested", out var pn)) nmiRequested = pn.GetBoolean();
+			EilCpuState? e = null;
+			if (je.TryGetProperty("idleStreak", out _))
+			{
+				int I(string n) => je.TryGetProperty(n, out var p) ? p.GetInt32() : 0;
+				e = new EilCpuState { idlePollKind=(byte)I("idlePollKind"), idlePollPC=(ushort)I("idlePollPC"), idlePollValue=(byte)I("idlePollValue"), idleStablePolls=I("idleStablePolls"), idlePollCycles=I("idlePollCycles"),
+					idleCost=I("idleCost"), idleStreak=I("idleStreak"), idleFlag=je.TryGetProperty("idleFlag", out var pf) && pf.GetBoolean(), idleBranchPC=(ushort)I("idleBranchPC"), idleEntry=I("idleEntry") };
+			}
+			SetIdleState(e);
 		}
 	}
 }
