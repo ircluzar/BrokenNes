@@ -220,11 +220,14 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JRet() => OpRet() != FAIL;
 
     /// <summary>An out-of-line instruction: exactly one iteration of Exec1's loop (without the compiled code), from Ip <paramref name="ip"/>.</summary>
+    /// <summary>JITSTAT: out-of-line instructions by physical address (the top ones, disassembled by the caller from memory).</summary>
+    public readonly Dictionary<uint, long> OolAt = new();
+    private void JitOolAt(uint pa) { OolAt[pa] = OolAt.GetValueOrDefault(pa) + 1; }
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JInterp(uint ip, long cyc, int st)
     {
         Cycle = cyc; _steps = st; NextIp = ip;
-        if (JitStats) { uint pa = _ifXaddr ^ (SegBase[SEG_CS] + ip); if (pa + 2 < MemSize) _oolOps[Mem[pa] << 8 | Mem[pa + 1]]++; }
+        if (JitStats && _jitCur != null) { uint pa = (_jitCur.Start & ~0xfffu) | ((SegBase[SEG_CS] + ip) & 0xfff); if (pa + 2 < MemSize) { _oolOps[Mem[pa] << 8 | Mem[pa + 1]]++; JitOolAt(pa); } }   // (the region never leaves its 4 KB page)
         return Step1(false);
     }
     /// <summary>After an out-of-line instruction: can the compiled code go on (the same code size, paging still off, the fetch still

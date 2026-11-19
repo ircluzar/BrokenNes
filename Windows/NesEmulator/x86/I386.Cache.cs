@@ -292,6 +292,9 @@ public sealed partial class I386
             case 0x8c: kind = DK_MOVSR; modrm = true; break;             // MOV Ew, Sw (Bits: the register's operand size, a store 16)
             case 0x8e: kind = DK_SRMOV; bits = 16; modrm = true; break;  // MOV Sw, Ew (not CS / SS: the ordinary path)
             case 0xaa: case 0xab: kind = DK_STOS; bits = (b & 1) == 0 ? 8 : v; break;   // STOSB / STOSW / STOSD without REP (REP: the ordinary path)
+            case 0xa8: case 0xa9:                                        // TEST AL / eAX, imm: TEST Eb/Ev, imm on register 0 (the F6 / F7 /0 form)
+                kind = DK_G3TEST; bits = b == 0xa8 ? 8 : v; immBits = bits; e.Mod = 3; e.Reg = 0; e.Rm = 0; e.Base = 8; e.Index = 8; e.Seg = -1; break;
+            case 0x90: kind = DK_JMP; immBits = 0; break;                // NOP: a jump to the next instruction (F3 90 PAUSE: the REP path above returns)
             case 0xa0: case 0xa1: kind = DK_MOVGE; bits = (b & 1) == 0 ? 8 : v; moffs = true; break;   // MOV AL/eAX, moffs
             case 0xa2: case 0xa3: kind = DK_MOVEG; bits = (b & 1) == 0 ? 8 : v; moffs = true; break;   // MOV moffs, AL/eAX
             default: return;
@@ -376,7 +379,7 @@ public sealed partial class I386
         else if (immBits == 16) { imm = U16(paddr + (uint)p); p += 2; }
         else if (immBits == 32) { imm = U32(paddr + (uint)p); p += 4; }
         if (immSext8) imm = Sext8(imm);
-        if (kind is DK_JCC or DK_JMP or DK_CALL) rel = Sext(immBits, imm);
+        if (kind is DK_JCC or DK_JMP or DK_CALL) rel = immBits == 0 ? 0 : Sext(immBits, imm);
         if (p > 15) return;
         e.Imm = kind is DK_JCC or DK_JMP or DK_CALL ? rel : imm;
         e.Bits = (byte)bits; e.Op = (byte)op; e.O16 = o16; e.A16 = a16; e.SegRaw = (sbyte)seg;
