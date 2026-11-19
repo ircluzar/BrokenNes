@@ -352,6 +352,7 @@ internal static class X86BootCli
             Console.WriteLine($"linmap {a0:X8}: " + string.Join(" ", Enumerable.Range(0, np).Select(k => { uint p = LinPhys(m, a0 + (uint)k * 4096); return p == 0xffffffff ? "--" : (p >> 12).ToString("X"); })) + $" | {LinBytes(m, a0, 16)}");
         }
         if (args.Contains("--frametimes")) Console.WriteLine(FrameTimeReport());
+        if (PcMachine.AllocProbe) Console.WriteLine($"allocprobe: devices {m.AllocDevices / 1048576} MB, cpu {m.AllocCpu / 1048576} MB, render {m.AllocRender / 1048576} MB, total thread {GC.GetAllocatedBytesForCurrentThread() / 1048576} MB");
         if (_allocs != null) lock (_allocs.ByType) foreach (var kv in _allocs.ByType.OrderByDescending(x => x.Value).Take(15)) Console.WriteLine($"  alloc {kv.Value / 1048576,6} MB {kv.Key}");
         if (lanLink != null) Console.WriteLine($"lan: sent {lanLink.Sent} (IPX {lanLink.SentIpx}), received {lanLink.Received} (IPX {lanLink.ReceivedIpx}){(lanLink.Members > 0 ? $", members {lanLink.Members}" : "")}");
         if (m.Ata != null) Console.WriteLine($"ide: bus-master DMA transfers {m.Ata.Primary.DmaTransfers + m.Ata.Secondary.DmaTransfers}, {(m.Ata.Primary.DmaBytes + m.Ata.Secondary.DmaBytes) / 1024} KB");
