@@ -487,6 +487,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             return;
         }
         if (address >= 0xC00000 && address < 0xE00000) { WriteVdp(address, upper, lower, data, now); return; }
+        if (Cart.Realtec && address >= 0x400000 && address < 0x404002) { Cart.WriteRealtec(address, lower ? (byte)data : (byte)(data >> 8)); return; }
         if (address >= 0xA00000 && address < 0xA10000)
         {
             byte v = upper ? (byte)(data >> 8) : (byte)data;

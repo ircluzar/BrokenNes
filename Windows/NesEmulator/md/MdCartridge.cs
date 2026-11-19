@@ -63,7 +63,7 @@ public sealed class MdCartridge
     }
 
     /// <summary>A short description for status lines.</summary>
-    public string Mapper => Microwire != null ? $"plain ROM + {Microwire.Data.Length} byte 93C46 (three-wire) EEPROM" : SramHeaderless ? $"plain ROM + {Sram.Length / 1024} KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)" : Eeprom != null ? $"plain ROM + {Eeprom.Data.Length} byte EEPROM ({Eeprom.Chip}, {EepromWiring} wiring)" : EepromUnsupported != null ? "plain ROM (" + EepromUnsupported + ")" : bankMapper ? "SSF2 banked (ROM above 4 MB)" : LockedOn ? $"Sonic & Knuckles lock-on image, locked-on game's {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : HasBattery ? $"plain ROM + {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : "plain ROM";
+    public string Mapper => Realtec ? "Realtec (8 KB boot block, then the ROM mapped through $400000-$404000)" : Microwire != null ? $"plain ROM + {Microwire.Data.Length} byte 93C46 (three-wire) EEPROM" : SramHeaderless ? $"plain ROM + {Sram.Length / 1024} KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)" : Eeprom != null ? $"plain ROM + {Eeprom.Data.Length} byte EEPROM ({Eeprom.Chip}, {EepromWiring} wiring)" : EepromUnsupported != null ? "plain ROM (" + EepromUnsupported + ")" : bankMapper ? "SSF2 banked (ROM above 4 MB)" : LockedOn ? $"Sonic & Knuckles lock-on image, locked-on game's {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : HasBattery ? $"plain ROM + {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : "plain ROM";
 
     public MdCartridge(byte[] file)
     {
@@ -77,6 +77,10 @@ public sealed class MdCartridge
         for (int i = rom.Length; i < size; i++) Rom[i] = 0xFF;
         romMask = size - 1;
         bankMapper = rom.Length > 0x400000;
+        // Realtec (Whac-A-Critter, Funny World & Balloon Boy, Earth Defense): an 8 KB boot block at the end of the first 512 KB,
+        // seen everywhere until the game maps its ROM through $400000/$402000/$404000 (Genplus-gx md_cart.c mapper_realtec_w)
+        Realtec = rom.Length >= 0x80000 && rom.Length <= 0x200000 && !(rom[0x100] == 'S' && rom[0x101] == 'E' && rom[0x102] == 'G' && rom[0x103] == 'A')
+                  && rom[0x7E100] == 'S' && rom[0x7E101] == 'E' && rom[0x7E102] == 'G' && rom[0x7E103] == 'A';
 
         string Ascii(int at, int len)
         {
@@ -127,6 +131,9 @@ public sealed class MdCartridge
             }
         }
         if (!HasSramHeader) Sram = Array.Empty<byte>();
+        // Sonic & Knuckles on its own (the 2 MB dump): nothing is locked on, so $200000-$3FFFFF holds no cartridge. Mirrored there,
+        // its own "SEGA" header looked like an unknown locked-on game and the cart went to the "NO WAY?" screen (md-fix-r2).
+        SkAlone = Serial.StartsWith("GM MK-1563") && rom.Length == 0x200000;
 
         // Serial EEPROM: the header can say a cartridge has one (the SRAM header's type word $E840) but not which chip or how its two lines are wired, and several carts that have one say nothing at all;
         // MdEepromTable (by serial, header checksum and size) knows the ones this emulator has been checked against. A header that declares an EEPROM nobody can place is reported, not mapped as SRAM.
@@ -236,8 +243,35 @@ public sealed class MdCartridge
     /// <summary>The window the SRAM answers in, for word reads: true when <paramref name="address"/> (even) may be SRAM.</summary>
     private bool InSramWindow(uint address) => SramMapped && address <= 0x3FFFFF && address >= ((HasSramHeader ? SramStart : SramHeaderless ? 0x200001u : 0xFFFFFFFFu) & ~1u);
 
+    /// <summary>The Realtec mapper (see the constructor): boot mode until the first $400000 write with a size set.</summary>
+    public readonly bool Realtec;
+    /// <summary>A Sonic &amp; Knuckles cartridge with nothing locked on (see the constructor).</summary>
+    public readonly bool SkAlone;
+    private int realtecOffset, realtecSize;
+    private bool realtecMapped;
+
+    /// <summary>A write to a Realtec register: $404000 = the start (bits 0-2, in 128 KB), $402000 = the size in 128 KB, $400000 = the start's high bits (bits 1-2) and the switch out of boot mode.</summary>
+    public void WriteRealtec(uint address, byte data)
+    {
+        switch (address & ~1u)
+        {
+            case 0x404000: realtecOffset = realtecOffset & ~7 | data & 7; break;
+            case 0x402000: realtecSize = data << 1; break;
+            case 0x400000:
+                realtecOffset = realtecOffset & 7 | (data & 6) << 2;
+                if (realtecSize != 0) realtecMapped = true;
+                break;
+        }
+    }
+
     private int RomAddress(uint address)
     {
+        if (Realtec)
+        {
+            if (!realtecMapped) return 0x7E000 | (int)(address & 0x1FFF);
+            int bank = (realtecOffset & 7) << 1 | (realtecOffset >> 3) << 3;
+            return (bank + (int)((address >> 16) % (uint)realtecSize)) << 16 & romMask | (int)(address & 0xFFFF);
+        }
         if (bankMapper)
         {
             int page = (int)(address >> 19) & 7;
@@ -260,6 +294,7 @@ public sealed class MdCartridge
     /// <summary>A byte of cartridge space ($000000-$3FFFFF).</summary>
     public byte ReadByte(uint address)
     {
+        if (SkAlone && address >= 0x200000) return 0xFF;
         int s = SramIndex(address);
         if (s >= 0) return Sram[s];
         if (s == -2) return 0xFF;
@@ -273,6 +308,7 @@ public sealed class MdCartridge
     /// <summary>A word of cartridge space (even address).</summary>
     public ushort ReadWord(uint address)
     {
+        if (SkAlone && address >= 0x200000) return 0xFFFF;
         if (InSramWindow(address)) return (ushort)(ReadByte(address) << 8 | ReadByte(address | 1));
         if (Eeprom != null && (address == 0x200000 || address == 0x380000)) return (ushort)(ReadByte(address) << 8 | ReadByte(address | 1));
         if (Microwire != null && address == 0x200000) return (ushort)(ReadByte(address) << 8 | ReadByte(address | 1));
@@ -321,6 +357,7 @@ public sealed class MdCartridge
     {
         w.Write(Sram.Length); w.Write(Sram); w.Write(SramMapped); w.Write(SramWriteProtected);
         foreach (int b in banks) w.Write(b);
+        if (Realtec) { w.Write(realtecOffset); w.Write(realtecSize); w.Write(realtecMapped); }
         w.Write(StrayWrites); w.Write(OtherMapperWrites); w.Write(LastStrayWrite); w.Write(LastOtherMapperWrite);
         w.Write(Eeprom != null); Eeprom?.SaveState(w);
         w.Write(Microwire != null); Microwire?.SaveState(w);
@@ -333,6 +370,7 @@ public sealed class MdCartridge
         MdVdp.ReadAll(r, Sram);
         SramMapped = r.ReadBoolean(); SramWriteProtected = r.ReadBoolean();
         for (int i = 0; i < banks.Length; i++) banks[i] = r.ReadInt32();
+        if (Realtec) { realtecOffset = r.ReadInt32(); realtecSize = r.ReadInt32(); realtecMapped = r.ReadBoolean(); }
         StrayWrites = r.ReadInt64(); OtherMapperWrites = r.ReadInt64(); LastStrayWrite = r.ReadUInt32(); LastOtherMapperWrite = r.ReadUInt32();
         bool hadEeprom = r.ReadBoolean();
         if (hadEeprom != (Eeprom != null)) throw new InvalidDataException("The state's EEPROM does not match this cartridge.");

@@ -157,6 +157,8 @@ internal static class ConsoleRunCli
     private static Dictionary<int, PadButtons> ParseInput(string spec)
     {
         var d = new Dictionary<int, PadButtons>();
+        // "@file": the script is read from that file (a 10-minute script is longer than a Windows command line may be)
+        if (spec.StartsWith('@')) spec = File.ReadAllText(spec[1..]).Trim();
         foreach (var part in spec.Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
             var kv = part.Split(':'); PadButtons b = 0;
