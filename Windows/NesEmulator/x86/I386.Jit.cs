@@ -141,7 +141,7 @@ public sealed partial class I386
         JitRuns++; code.Runs++; code.Instrs += Cycle - c0;
         if (rc == JIT_DECLINE)
         {
-            JitDeclines++;
+            JitDeclines++; DeclineWhy[Math.Min(63, _declWhy)]++; _declWhy = 0;
             for (int s = 0; s < 6; s++) if (!JSegOk(s)) JitDeclineSeg[s]++;
             if (JitDeclines % 2000000 == 1) Console.Error.WriteLine($"jitdecl: blk {code.Start:X8} k {k} vm {(Flags >> 17) & 1} cpl {Cpl} c16 {Code16} " + string.Join(" ", Enumerable.Range(0, 6).Select(s => $"{s}:{SegSel[s]:X4}/{SegFlags[s]:X4}/{SegLimit[s]:X}")));
         }
@@ -184,6 +184,8 @@ public sealed partial class I386
     private bool JSegOk(int seg) => ((Cr0 & 1) == 0 || SegLimit[seg] != 0 || (SegSel[seg] & ~3u) != 0) && !(ExpandDown(seg) && (NoExpandDown || SegLimit[seg] == 0xffffffff)) && JSegSpan(seg) >= 3 && ((SegFlags[seg] & 0x10) == 0 || (SegFlags[seg] & 0x1a) == 0x12);
     // expand-down data segments (Win98's flat Win32 DS / ES / SS is one: 0167h, limit EE60h, B = 1): valid offsets are limit + 1 .. FFFFh / FFFFFFFFh.
     // The compiled limit check is (off - lo) <= span - (size - 1): lo = 0, span = limit for the usual kind; lo = limit + 1, span = top - lo here
+    /// <summary>Usable for reads only: a readable code segment (a CS: override, jump tables in 16-bit code; Win98's ring-0 code reads through CS too).</summary>
+    private bool JSegRdOk(int seg) => JSegOk(seg) || (Cr0 & 1) != 0 && (Flags & VM) == 0 && (SegFlags[seg] & 0x1a) == 0x1a && SegLimit[seg] >= 3;
     private bool ExpandDown(int seg) => (Cr0 & 1) != 0 && (Flags & VM) == 0 && (SegFlags[seg] & 0x1c) == 0x14;
     [MethodImpl(MethodImplOptions.NoInlining)] private uint JSegLo(int seg) => ExpandDown(seg) ? SegLimit[seg] + 1 : 0;
     [MethodImpl(MethodImplOptions.NoInlining)] private uint JSegSpan(int seg) => ExpandDown(seg) ? ((SegFlags[seg] & 0x4000) != 0 ? 0xffffffffu : 0xffffu) - (SegLimit[seg] + 1) : SegLimit[seg];
@@ -358,6 +360,9 @@ public sealed partial class I386
         return OK;
     }
     private int _linkDepth;
+    /// <summary>JITSTAT: why the last compiled block declined (2 entry index, 1x segment at the prologue, 3x segment at the entry instruction).</summary>
+    private int _declWhy;
+    public readonly long[] DeclineWhy = new long[64];
     /// <summary>Block linking: on by default since X86-02 round 4 (A/B Win98 boot: mean 36.7 -> 34.3 ms/frame, p99 170 -> 148 ms; on dhry it had
     /// measured no faster). X86_NOLINK turns it off.</summary>
     private static readonly bool JitLink = Environment.GetEnvironmentVariable("X86_NOLINK") == null;
@@ -374,14 +379,14 @@ public sealed partial class I386
         ?? throw new MissingFieldException(nameof(I386), name);
     private static readonly FieldInfo FSrc1 = Fld("_ccSrc1"), FSrc2 = Fld("_ccSrc2"), FDst = Fld("_ccDst"), FDst2 = Fld("_ccDst2"), FOp = Fld("_ccOp"),
         FMask = Fld("_ccMask"), FFlags = Fld("Flags"), FR = Fld("R"), FMem = Fld("Mem"), FSpm = Fld("_spm"),
-        FTlbL = Fld("_tlbLpgno"), FTlbX = Fld("_tlbXaddr"), FTlbT = Fld("_tlbTag"), FCpl = Fld("Cpl"), FCodeMark = Fld("_codeMark");
+        FTlbL = Fld("_tlbLpgno"), FTlbX = Fld("_tlbXaddr"), FTlbT = Fld("_tlbTag"), FCpl = Fld("Cpl"), FCodeMark = Fld("_codeMark"), FDeclWhy = Fld("_declWhy");
 
     private static MethodInfo M(string name) => typeof(I386).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
         ?? throw new MissingMethodException(nameof(I386), name);
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JCodeSame", "JCall", "JRet",
+        foreach (var n in new[] { "JRam", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
                      "JXlat", "JFlagOp", "JStk", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
@@ -772,7 +777,7 @@ public sealed partial class I386
         foreach (var e in ins) { int m = InsSegs(e); for (int sg = 0; sg < 6; sg++) if ((m >> sg & 1) != 0) usedSegs.Add(sg); }
         // a segment the region uses but that is not usable now: only the instructions that use it leave (before running; at the entry
         // instruction: decline, the interpreter runs it and raises what it must); the rest of the region still runs compiled (X86_SEGLAZY=0: decline)
-        var segOkL = new LocalBuilder?[6];
+        var segOkL = new LocalBuilder?[6]; var segRdL = new LocalBuilder?[6];
         var ran = il.DeclareLocal(typeof(bool));
         foreach (int s in usedSegs)
         {
@@ -780,11 +785,14 @@ public sealed partial class I386
             {
                 segOkL[s] = il.DeclareLocal(typeof(bool));
                 Ld0(); I4(s); Call("JSegOk"); Stl(segOkL[s]!);
+                segRdL[s] = il.DeclareLocal(typeof(bool));
+                Ld0(); I4(s); Call("JSegRdOk"); Stl(segRdL[s]!);
             }
             else
             {
                 var ok = il.DefineLabel();
                 Ld0(); I4(s); Call("JSegOk"); il.Emit(OpCodes.Brtrue, ok);
+                Ld0(); I4(10 + s); il.Emit(OpCodes.Stfld, FDeclWhy);
                 I4(JIT_DECLINE); il.Emit(OpCodes.Ret);
                 il.MarkLabel(ok);
             }
@@ -823,6 +831,7 @@ public sealed partial class I386
         for (int k = 0; k < n; k++) { body[k] = il.DefineLabel(); pre[k] = il.DefineLabel(); }
         il.Emit(OpCodes.Ldarg_1);
         il.Emit(OpCodes.Switch, pre);
+        Ld0(); I4(2); il.Emit(OpCodes.Stfld, FDeclWhy);
         il.Emit(OpCodes.Ldc_I4, JIT_DECLINE); il.Emit(OpCodes.Ret);
         for (int k = 0; k < n; k++)
         {   // entered at instruction k (Exec1 checked the step budget)
@@ -938,14 +947,15 @@ public sealed partial class I386
             if (SegLazy)
             {   // the segments this instruction uses must be usable (see the prologue): else leave before it
                 int my = InsSegs(e);
+                bool readsOnly = InsReadsOnly(e);
                 for (int sg = 0; sg < 6; sg++)
                 {
                     if ((my >> sg & 1) == 0 || segOkL[sg] == null) continue;
                     var usable = il.DefineLabel(); var declineL = il.DefineLabel();
-                    Ld(segOkL[sg]!); il.Emit(OpCodes.Brtrue, usable);
+                    Ld(readsOnly ? segRdL[sg]! : segOkL[sg]!); il.Emit(OpCodes.Brtrue, usable);
                     Ld(ran); il.Emit(OpCodes.Brfalse, declineL);
                     Ld0(); IpAt(pa); IpAt(pa); Ld(cyc); Ld(st); Call("JExitOk"); Op(OpCodes.Ret);
-                    il.MarkLabel(declineL); I4(JIT_DECLINE); Op(OpCodes.Ret);
+                    il.MarkLabel(declineL); Ld0(); I4(30 + sg); il.Emit(OpCodes.Stfld, FDeclWhy); I4(JIT_DECLINE); Op(OpCodes.Ret);
                     il.MarkLabel(usable);
                 }
                 I4(1); Stl(ran);
@@ -1419,6 +1429,9 @@ public sealed partial class I386
         if (DcHasModrm(e.Kind) && e.Mod != 3 && e.Kind != DK_LEA) m |= 1 << e.Seg;
         return m;
     }
+    /// <summary>Does this compiled instruction only read its memory operand (so a readable code segment will do)? Conservative: false when unsure.</summary>
+    private static bool InsReadsOnly(DEntry e) => e.Kind is DK_MOVGE or DK_ALUGE or DK_TESTEG or DK_G3TEST or DK_MOVX or DK_IMUL
+        || (e.Kind == DK_ALUEG && e.Op == 7) || (e.Kind == DK_GRP1 && e.Reg == 7);
     private static readonly bool SegLazy = Environment.GetEnvironmentVariable("X86_SEGLAZY") != "0";
 
     private static bool DcHasModrm(byte kind) => kind is DK_MOVEG or DK_MOVGE or DK_ALUEG or DK_ALUGE or DK_GRP1 or DK_GRP2 or DK_TESTEG
