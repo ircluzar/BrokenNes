@@ -327,7 +327,7 @@ public sealed partial class I386
         return IsRam(r.A1) && (!r.Two || IsRam(r.A2));
     }
 
-    /// <summary>Block linking (X86_LINK turns it on): leave as JExitOk, but when the next instruction starts a valid compiled block
+    /// <summary>Block linking (X86_NOLINK turns it off): leave as JExitOk, but when the next instruction starts a valid compiled block
     /// that Exec1's next iteration would run (the same fetch-page test, entry lookup and code check as Step1), run it from here.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JExitLink(uint ip, uint nextIp, long cyc, int st)
@@ -358,9 +358,9 @@ public sealed partial class I386
         return OK;
     }
     private int _linkDepth;
-    /// <summary>X86_LINK turns block linking on. Off by default: measured no faster on dhry (the dispatch is not where the time goes; the nested
-    /// calls cost what the Exec1 round trip saved).</summary>
-    private static readonly bool JitLink = Environment.GetEnvironmentVariable("X86_LINK") != null;
+    /// <summary>Block linking: on by default since X86-02 round 4 (A/B Win98 boot: mean 36.7 -> 34.3 ms/frame, p99 170 -> 148 ms; on dhry it had
+    /// measured no faster). X86_NOLINK turns it off.</summary>
+    private static readonly bool JitLink = Environment.GetEnvironmentVariable("X86_NOLINK") == null;
     [MethodImpl(MethodImplOptions.NoInlining)] private int JExitOk(uint ip, uint nextIp, long cyc, int st) { Ip = ip; NextIp = nextIp; Cycle = cyc; _steps = st + 1; return OK; }
     [MethodImpl(MethodImplOptions.NoInlining)] private int JExitFail(uint ip, long cyc, int st) { Ip = ip; Cycle = cyc; _steps = st; return FAIL; }
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JLimitFault(int seg) => LimitFault(seg);
