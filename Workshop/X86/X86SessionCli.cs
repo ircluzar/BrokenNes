@@ -80,7 +80,8 @@ internal static class X86SessionCli
         if (si > 0 && si + 1 < args.Length && s is PcSession ps) { X86Shots.SavePng(ps.Machine.Vga, args[si + 1]); Console.WriteLine($"  picture: {args[si + 1]}"); }
         Check(Math.Abs(samples / 2.0 - frames * 44100 / s.FramesPerSecond) < 2000, $"silence at the right rate ({samples / 2} stereo samples)");
         var st = s.SaveState();
-        string Run100() { using var h = IncrementalHash.CreateHash(HashAlgorithmName.SHA1); for (int f = 0; f < 100; f++) { s.SetPad(0, f % 20 < 10 ? PadButtons.Right : PadButtons.None); s.RunFrame(); h.AppendData(System.Runtime.InteropServices.MemoryMarshal.AsBytes(s.Frame.AsSpan(0, s.FrameWidth * s.FrameHeight))); } return Convert.ToHexString(h.GetHashAndReset()); }   // every frame's picture
+        string Run100() => RunN(s);
+        string RunN(IConsoleSession q) { using var h = IncrementalHash.CreateHash(HashAlgorithmName.SHA1); for (int f = 0; f < 100; f++) { q.SetPad(0, f % 20 < 10 ? PadButtons.Right : PadButtons.None); q.RunFrame(); h.AppendData(System.Runtime.InteropServices.MemoryMarshal.AsBytes(q.Frame.AsSpan(0, q.FrameWidth * q.FrameHeight))); } return Convert.ToHexString(h.GetHashAndReset()); }   // every frame's picture
         string a = Run100();
         var stA = ((PcSession)s).Machine.SaveState();   // payloads (the wrapped state carries a time stamp)
         s.LoadState(st);
@@ -94,6 +95,17 @@ internal static class X86SessionCli
         var stB = ((PcSession)s).Machine.SaveState();
         if (Environment.GetEnvironmentVariable("X86_DUMPST") is string dd) { File.WriteAllBytes(dd + ".a", stA); File.WriteAllBytes(dd + ".b", stB); }
         Check(stA.AsSpan().SequenceEqual(stB), "save state round trip: the state after those frames is byte for byte the same");
+        // copy-on-write disks: the .bnstate carries the disk's diff from the opened image, not the image; a NEW session on a fresh read of the same file reloads it exactly
+        Console.WriteLine($"  state {st.Length:N0} bytes for a {data.Length:N0}-byte disk image");
+        using (var s2 = ConsoleSessions.Create(ConsoleKind.Pc, File.ReadAllBytes(img), Array.IndexOf(args, "--cpu") is int ci2 && ci2 > 0 && ci2 + 1 < args.Length ? args[ci2 + 1] : CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Cpu), Arg(args, "--ppu") ?? CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Ppu), CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Apu), null, name, pcMachine: Arg(args, "--machine") ?? "classic"))
+        {
+            s2.RunFrame();
+            s2.LoadState(st);
+            string c = RunN(s2);
+            s.LoadState(st); string d = Run100();
+            Check(c == d, $"save state cold reload: a new session on the same image runs the same 100 frames ({c[..12]})");
+            Check(((PcSession)s2).Machine.SaveState().AsSpan().SequenceEqual(((PcSession)s).Machine.SaveState()), "save state cold reload: then the same machine state, byte for byte");
+        }
         var save1 = s.ExportSave();
         Check(ReferenceEquals(save1, s.ExportSave()), "an unchanged disk exports the same array (no copy)");
         Console.WriteLine($"  disk changed since power-on: {!save0.AsSpan().SequenceEqual(save1)}");
