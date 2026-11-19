@@ -892,7 +892,7 @@ public sealed partial class I386
     {
         int bits = V; uint n = (uint)(bits / 8);
         uint sp = R[4];
-        var m = new OptAddr[8];
+        Span<OptAddr> m = stackalloc OptAddr[8];
         for (int i = 0; i < 8; i++) if (!Translate(ref m[i], 2, SEG_SS, (sp - n * (uint)(i + 1)) & _spm, bits / 8)) return false;
         for (int i = 0; i < 8; i++) Store(bits, ref m[i], i == 4 ? sp : LReg(bits, i));
         SetSp(sp - n * 8, _spm);
@@ -903,7 +903,7 @@ public sealed partial class I386
     {
         int bits = V; uint n = (uint)(bits / 8);
         uint sp = R[4];
-        var m = new OptAddr[8];
+        Span<OptAddr> m = stackalloc OptAddr[8];
         for (int i = 0; i < 8; i++) { if (i == 3) continue; if (!Translate(ref m[i], 1, SEG_SS, (sp + n * (uint)i) & _spm, bits / 8)) return false; }
         for (int i = 0; i < 8; i++) { if (i == 3) continue; SReg(bits, 7 - i, Load(bits, ref m[i])); }
         SetSp(sp + n * 8, _spm);
