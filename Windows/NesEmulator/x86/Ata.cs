@@ -55,6 +55,7 @@ public sealed class AtaChannel
         Signature();
         SetIrq(false);
         ClearAudio();
+        ClearBm();
     }
 
     private void Signature()
@@ -195,6 +196,14 @@ public sealed class AtaChannel
                 }
                 _next = Next.ReadMore; LoadReadBlock(); Interrupt(); return;
             }
+            case 0xc8: case 0xc9: case 0xca: case 0xcb:                         // READ DMA / WRITE DMA (bus master)
+            {
+                if (DmaToMem == null) { Abort(); Interrupt(); return; }
+                if (!TaskLba(d, out _lba)) { Abort(0x10); Interrupt(); return; }
+                _left = _count == 0 ? 256 : _count;
+                if (_lba + _left > d.TotalSectors) { Abort(0x10); Interrupt(); return; }
+                DmaArm(cmd >= 0xca, false); return;
+            }
             case 0x40: case 0x41:                                               // READ VERIFY SECTORS
             {
                 if (!TaskLba(d, out long l)) { Abort(0x10); Interrupt(); return; }
@@ -270,7 +279,8 @@ public sealed class AtaChannel
         Str(b, 23, 4, "1.0");
         Str(b, 27, 20, "BrokenNes ATA disk");
         Word(b, 47, 0x8010);                 // READ/WRITE MULTIPLE up to 16
-        Word(b, 49, 0x0200);                 // LBA supported (no DMA: PIO only)
+        Word(b, 49, 0x0300);                 // LBA + DMA supported
+        Word(b, 63, 0x0407);                 // multiword DMA 0-2, mode 2 selected
         Word(b, 51, 0x0200);                 // PIO mode 2 timing
         Word(b, 53, 0x0003);                 // words 54-58 and 64-70 valid
         int lc = Math.Min(65535, (int)Math.Min(int.MaxValue, total / (_lHeads[Dev] * _lSpt[Dev])));
@@ -300,7 +310,7 @@ public sealed class AtaChannel
                 Str(b, 10, 10, $"BNCD{Dev}");
                 Str(b, 23, 4, "1.0");
                 Str(b, 27, 20, "BrokenNes ATAPI CD-ROM");
-                Word(b, 49, 0x0200); Word(b, 53, 0x0003); Word(b, 64, 0x0003);
+                Word(b, 49, 0x0300); Word(b, 53, 0x0003); Word(b, 63, 0x0407); Word(b, 64, 0x0003);
                 Word(b, 65, 120); Word(b, 66, 120); Word(b, 67, 120); Word(b, 68, 120);
                 Word(b, 80, 0x001e);
                 _pos = 0; _len = 512; _next = Next.None; _status = DRDY | DSC | DRQ; Interrupt(); return;
@@ -342,6 +352,7 @@ public sealed class AtaChannel
     {
         _atapiLen = Math.Min(length, alloc); _atapiPos = 0;
         if (_atapiLen == 0) { AtapiComplete(); return; }
+        if ((_feature & 1) != 0 && DmaToMem != null) { DmaArm(false, true); return; }   // the packet asked for DMA
         AtapiSendChunk();
     }
 
@@ -358,6 +369,84 @@ public sealed class AtaChannel
         _pos = 0; _len = n; _next = Next.AtapiData; _status = DRDY | DRQ;
         Interrupt();
     }
+
+
+    // ================= PIIX4 bus-master DMA (X86-02): the PRD table is walked in guest memory, the whole transfer happens when both sides are ready =================
+
+    /// <summary>Guest physical memory for bus-master DMA (set by the board): copy n bytes to / from phys.</summary>
+    public Action<uint, byte[], int, int>? DmaToMem, DmaFromMem;
+    private byte _bmCmd, _bmStatus; private uint _bmPrd;
+    private bool _dmaPending, _dmaToDisk, _dmaAtapi;
+    public long DmaTransfers, DmaBytes;   // diagnostics (not saved)
+
+    /// <summary>Bus-master register <paramref name="reg"/> (0 command, 2 status, 4-7 PRD table address).</summary>
+    public byte BmRead(int reg) => reg switch
+    {
+        0 => _bmCmd, 2 => _bmStatus, 4 => (byte)_bmPrd, 5 => (byte)(_bmPrd >> 8), 6 => (byte)(_bmPrd >> 16), 7 => (byte)(_bmPrd >> 24), _ => 0,
+    };
+
+    public void BmWrite(int reg, byte v)
+    {
+        switch (reg)
+        {
+            case 0:
+            {
+                bool start = (v & 1) != 0, was = (_bmCmd & 1) != 0;
+                _bmCmd = (byte)(v & 0x09);
+                if (start && !was) { _bmStatus |= 1; if (_dmaPending) RunDma(); }
+                else if (!start) _bmStatus &= unchecked((byte)~1);
+                break;
+            }
+            case 2: _bmStatus = (byte)((_bmStatus & 0x01) | (_bmStatus & 0x06 & ~v) | (v & 0x60)); break;   // bits 1-2 write-1-to-clear, 5-6 drive DMA capable
+            case 4: _bmPrd = (_bmPrd & 0xffffff00) | (uint)(v & 0xfc); break;
+            case 5: _bmPrd = (_bmPrd & 0xffff00ff) | (uint)v << 8; break;
+            case 6: _bmPrd = (_bmPrd & 0xff00ffff) | (uint)v << 16; break;
+            case 7: _bmPrd = (_bmPrd & 0x00ffffff) | (uint)v << 24; break;
+        }
+    }
+
+    private void DmaArm(bool toDisk, bool atapi)
+    {
+        _dmaPending = true; _dmaToDisk = toDisk; _dmaAtapi = atapi; _next = Next.None; _pos = _len = 0;
+        _status = (byte)(atapi ? DRDY | DRQ : DRDY | DSC | DRQ);
+        if (atapi) _count = 2;
+        if ((_bmCmd & 1) != 0) RunDma();
+    }
+
+    private void RunDma()
+    {
+        _dmaPending = false;
+        byte[] data; int total;
+        if (_dmaAtapi) { data = _atapiData; total = _atapiLen; }
+        else { total = _left * 512; data = new byte[total]; if (!_dmaToDisk) Disk[Dev]!.Read(_lba, _left, data); }
+        int done = 0; uint prd = _bmPrd; var e = new byte[8]; bool err = false;
+        for (int guard = 0; guard < 8192 && done < total; guard++)
+        {
+            DmaFromMem!(prd, e, 0, 8);
+            uint addr = BitConverter.ToUInt32(e, 0) & 0xfffffffe; int cnt = BitConverter.ToUInt16(e, 4) & 0xfffe; if (cnt == 0) cnt = 65536;
+            bool eot = (e[7] & 0x80) != 0;
+            int n = Math.Min(cnt, total - done);
+            if (_dmaToDisk) DmaFromMem(addr, data, done, n); else DmaToMem!(addr, data, done, n);
+            done += n; prd += 8;
+            if (eot) break;
+        }
+        if (done < total) err = true;                               // the PRD table was shorter than the transfer
+        DmaTransfers++; DmaBytes += done;
+        if (_dmaAtapi) { _atapiPos = _atapiLen; AtapiComplete(); }
+        else
+        {
+            if (_dmaToDisk && !Disk[Dev]!.Write(_lba, _left, data)) { Abort(0x10); }
+            else { _lba += _left; _left = 0; StoreLba(_lba - 1); _count = 0; _status = DRDY | DSC; }
+            Interrupt();
+        }
+        _bmStatus = (byte)((_bmStatus & ~1) | 4 | (err ? 2 : 0));
+    }
+
+    /// <summary>The bus-master block (the board saves it only once a driver has touched the engine, so older states stay byte for byte).</summary>
+    public bool BmActive => _bmCmd != 0 || _bmStatus != 0 || _bmPrd != 0 || _dmaPending;
+    public void SaveBm(BinaryWriter w) { w.Write(_bmCmd); w.Write(_bmStatus); w.Write(_bmPrd); w.Write(_dmaPending); w.Write(_dmaToDisk); w.Write(_dmaAtapi); }
+    public void LoadBm(BinaryReader r) { _bmCmd = r.ReadByte(); _bmStatus = r.ReadByte(); _bmPrd = r.ReadUInt32(); _dmaPending = r.ReadBoolean(); _dmaToDisk = r.ReadBoolean(); _dmaAtapi = r.ReadBoolean(); }
+    public void ClearBm() { _bmCmd = _bmStatus = 0; _bmPrd = 0; _dmaPending = false; }
 
     // ================= CD audio (PLAY AUDIO): the play position follows the machine clock, 588 stereo samples per sector =================
 

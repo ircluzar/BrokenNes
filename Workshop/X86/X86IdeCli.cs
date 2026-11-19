@@ -23,6 +23,7 @@ internal static class X86IdeCli
         AtaDisk();
         Atapi();
         BinCue();
+        BusMaster();
         CdBootNoEmulation();
         CdBootFloppyEmulation();
         StateBlock();
@@ -257,6 +258,46 @@ internal static class X86IdeCli
         var rawb = new byte[2352]; c1.ReadRaw(c1.Tracks[1].Start, rawb, 0);
         Check(c1.Tracks[1].Start == dataSec + 150 && c1.LeadOut == dataSec + 2 * audSec && rawb.SequenceEqual(bin2.Skip(150 * 2352).Take(2352)), $"single-file CUE with INDEX 00: {c1}");
         try { Directory.Delete(dir, true); } catch { }
+    }
+
+    // X86-02: PIIX4 bus-master DMA on the PCI board: READ DMA / WRITE DMA through a two-entry PRD table, and an ATAPI READ(10) with the DMA feature bit.
+    private static void BusMaster()
+    {
+        var m = new PcMachine(PcConfig.Win98 with { MemoryMB = 16 });
+        var img = Pattern(16 * 63 * 4);
+        m.Hdd[0] = new DiskImage(img, false);
+        var iso = Iso(0, NoEmulBoot()); m.Cd = new CdImage(iso);
+        m.PowerOn();
+        uint bar = m.Pci!.ConfigRead(0, PciBus.IdeDevFn, 0x20);
+        int bm = (int)(bar & 0xfffc);
+        Check((bar & 1) == 1 && bm != 0 && (m.Pci.ConfigRead(0, PciBus.IdeDevFn, 4) & 4) != 0, $"POST puts the bus-master BAR4 at {bm:X4} and enables bus mastering");
+        void Prd(uint at, params (uint addr, int n, bool eot)[] e) { for (int i = 0; i < e.Length; i++) { m.PhysW32(at + (uint)(8 * i), e[i].addr); m.PhysW32(at + (uint)(8 * i) + 4, (uint)(e[i].n & 0xffff) | (e[i].eot ? 0x80000000u : 0)); } }
+        Prd(0x10000, (0x200000, 3 * 512, false), (0x300000, 5 * 512, true));
+        const int B = 0x1f0;
+        m.Out32(bm + 4, 0x10000); m.Out8(bm + 2, 0x06);
+        m.Out8(B + 6, 0xe0); m.Out8(B + 2, 8); m.Out8(B + 3, 10); m.Out8(B + 4, 0); m.Out8(B + 5, 0); m.Out8(B + 7, 0xc8);
+        m.Out8(bm, 0x09);   // start, to memory
+        bool ok = true; for (int i = 0; i < 8 * 512; i++) if (m.Phys8((uint)(i < 1536 ? 0x200000 + i : 0x300000 + i - 1536)) != img[10 * 512 + i]) { ok = false; break; }
+        Check(ok, "READ DMA: 8 sectors scattered over two PRD entries");
+        Check((m.In8(bm + 2) & 7) == 4 && (m.In8(B + 7) & 0x89) == 0, "READ DMA: bus-master interrupt bit, idle status");
+        m.Out8(bm, 0); m.Out8(bm + 2, 0x04);
+        for (int i = 0; i < 512; i++) m.PhysW8(0x400000 + (uint)i, (byte)(255 - i));
+        Prd(0x10100, (0x400000, 512, true)); m.Out32(bm + 4, 0x10100);
+        m.Out8(B + 6, 0xe0); m.Out8(B + 2, 1); m.Out8(B + 3, 50); m.Out8(B + 4, 0); m.Out8(B + 5, 0); m.Out8(B + 7, 0xca);
+        m.Out8(bm, 0x01);
+        Check(img.Skip(50 * 512).Take(512).Select((v, i) => v == (byte)(255 - i)).All(x => x) && m.Hdd[0]!.Dirty, "WRITE DMA lands on the disk");
+        m.Out8(bm, 0); m.Out8(bm + 2, 0x04);
+        // ATAPI READ(10) 3 sectors with the DMA feature bit, engine started before the packet
+        const int S = 0x170;
+        Prd(0x10200, (0x500000, 3 * 2048, true)); m.Out32(bm + 8 + 4, 0x10200); m.Out8(bm + 8, 0x09);
+        m.Out8(S + 6, 0xa0); m.Out8(S + 1, 1); m.Out8(S + 4, 0); m.Out8(S + 5, 0x80); m.Out8(S + 7, 0xa0);
+        WaitDrq(m, S);
+        var p = new byte[] { 0x28, 0, 0, 0, 0, 20, 0, 0, 3, 0, 0, 0 };
+        for (int i = 0; i < 12; i += 2) m.Out16(S, (ushort)(p[i] | p[i + 1] << 8));
+        ok = true; for (int i = 0; i < 3 * 2048; i++) if (m.Phys8(0x500000 + (uint)i) != iso[20 * 2048 + i]) { ok = false; break; }
+        Check(ok && (m.In8(bm + 10) & 4) != 0 && (m.In8(S + 7) & 0x89) == 0, "ATAPI READ(10) by DMA");
+        var st = m.SaveState(); var n = new PcMachine(PcConfig.Win98 with { MemoryMB = 16 }); n.Hdd[0] = m.Hdd[0]; n.Cd = m.Cd; n.LoadState(st);
+        Check(n.In8(bm + 10) == m.In8(bm + 10) && n.In32(bm + 12) == 0x10200, "bus-master registers survive a state");
     }
 
     private static void CdBootNoEmulation()
