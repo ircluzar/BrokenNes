@@ -414,6 +414,7 @@ namespace NesEmulator
                         if(je.TryGetProperty("noiseShift", out v)) tmp.noiseShift=(ushort)v.GetUInt16();
                         if(je.TryGetProperty("noiseTimer", out v)) tmp.noiseTimer=v.GetInt32();
                         if(je.TryGetProperty("frameCycle", out v)) tmp.frameCycle=v.GetInt32();
+                        ApuJsonState.Fill(tmp, je);   // every field the save holds (the list above is the legacy subset)
                         RestoreState(tmp);
                         PostRestoreAudioResync();
                     }

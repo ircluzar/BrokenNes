@@ -449,7 +449,7 @@ namespace NesEmulator
 			string cpuJson = string.Empty, ppuJson = string.Empty, apuJson = string.Empty, mapperJson = string.Empty;
 			try { Log("Serializing CPU state - start"); cpuJson = PlainSerialize(bus.cpu.GetState()); Log($"Serializing CPU state - done length={cpuJson.Length}"); } catch (Exception ex) { Log("CPU state serialization FAILED: "+ex.GetType().Name+" "+ex.Message); }
 			try { Log("Serializing PPU state - start"); ppuJson = PlainSerialize(bus.ppu.GetState()); Log($"Serializing PPU state - done length={ppuJson.Length}"); } catch (Exception ex) { Log("PPU state serialization FAILED: "+ex.GetType().Name+" "+ex.Message); }
-			try { Log("Serializing APU state - start"); apuJson = PlainSerialize(bus.ActiveAPU.GetState()); Log($"Serializing APU state - done length={apuJson.Length}"); } catch (Exception ex) { Log("APU state serialization FAILED: "+ex.GetType().Name+" "+ex.Message); }
+			try { Log("Serializing APU state - start"); apuJson = SaveApuAsLoaded(bus.ActiveAPU); Log($"Serializing APU state - done length={apuJson.Length}"); } catch (Exception ex) { Log("APU state serialization FAILED: "+ex.GetType().Name+" "+ex.Message); }
 			try { Log("Serializing Mapper state - start"); mapperJson = PlainSerialize(cartridge.mapper.GetMapperState()); Log($"Serializing Mapper state - done length={mapperJson.Length}"); } catch (Exception ex) { Log("Mapper state serialization FAILED: "+ex.GetType().Name+" "+ex.Message); }
 			NesState? st = null;
 			try {
@@ -532,6 +532,19 @@ namespace NesEmulator
 			if (n != into.Length) return false;   // only a frame of the same size as this core's target
 			Buffer.BlockCopy(tmp, 0, into, 0, n);
 			return true;
+		}
+
+		/// <summary>The APU's state as a load leaves it: LoadState drops the queued audio (<see cref="IAPU.ClearAudioBuffers"/>: ring cursors, resampler
+		/// queues, and on some cores the output filters), so the state is written with that already done, from an exact stash that is put back
+		/// afterwards (the live sound is untouched). Without it save -> load -> save differed on every core in the queue bookkeeping (bfuzz
+		/// load-save-not-idempotent).</summary>
+		private static string SaveApuAsLoaded(IAPU apu)
+		{
+			Action restore;
+			try { restore = EngineState.Stash(apu); }
+			catch (Exception e) { Console.Error.WriteLine($"[SaveState] APU stash failed ({e.GetType().Name}: {e.Message}); state written with the live audio queue"); return PlainSerialize(apu.GetState()); }
+			try { apu.ClearAudioBuffers(); return PlainSerialize(apu.GetState()); }
+			finally { restore(); }
 		}
 
 		private static string PlainSerialize(object? obj)

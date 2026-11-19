@@ -117,7 +117,7 @@ PadButtons Pad(Random r, int f) { var v = (PadButtons)r.Next(0, 4096); return f 
                 if (deep && m.CanState)
                 {
                     step = "save-before"; before = m.Save(); m.Load(before); m.Audio();
-                    { var again = m.Save(); if (!again.AsSpan().SequenceEqual(before)) { int i0 = 0; while (i0 < Math.Min(again.Length, before.Length) && again[i0] == before[i0]) i0++; var tx = System.Text.Encoding.UTF8.GetString(before); Find("oracle", "load-save-not-idempotent " + (tx.StartsWith("{") ? tx.Substring(Math.Max(0, i0 - 50), Math.Min(70, tx.Length - Math.Max(0, i0 - 50))).Replace("\\", "") : $"byte {i0}"), ctx); } }
+                    { var again = m.Save(); if (!again.AsSpan().SequenceEqual(before)) { if (Environment.GetEnvironmentVariable("DUMP") == "1") { File.WriteAllBytes($"dump-{seed}-ls1.st", before); File.WriteAllBytes($"dump-{seed}-ls2.st", again); } int i0 = 0; while (i0 < Math.Min(again.Length, before.Length) && again[i0] == before[i0]) i0++; var tx = System.Text.Encoding.UTF8.GetString(before); Find("oracle", "load-save-not-idempotent " + (tx.StartsWith("{") ? tx.Substring(Math.Max(0, i0 - 50), Math.Min(70, tx.Length - Math.Max(0, i0 - 50))).Replace("\\", "") : $"byte {i0}"), ctx); } }
                     var prA = new Random(seed ^ 0x5A5A); for (int i = 0; i < applyAt; i++) Pad(prA, i);
                     ulong c = 0; for (int i = 0; i < refLen; i++) { m.Pad(Pad(prA, 1000 + i)); m.Run(); c = HashP(m, c); } cleanRef = c; refState = m.CanState ? m.Save() : null;
                     m.Load(before); m.Audio();
