@@ -355,7 +355,7 @@
     },
     {
       "id": "nesfix-deeprun-rampart-mmc3-ack",
-      "description": "MMC3 \$E000 drops the IRQ CPU_FIX had latched (Rampart CLIs after acknowledging under SEI; the ghost IRQ jumped through an unset RAM vector: blank screen). Credits screen at 900 as Mesen (2026-11-19).",
+      "description": "MMC3 $E000 drops the IRQ CPU_FIX had latched (Rampart CLIs after acknowledging under SEI; the ghost IRQ jumped through an unset RAM vector: blank screen). Credits screen at 900 as Mesen (2026-11-19).",
       "kind": "romtest",
       "rom": "{lib}/Rampart (U).nes",
       "cpu": "FIX",
