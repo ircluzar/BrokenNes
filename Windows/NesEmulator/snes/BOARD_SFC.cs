@@ -266,6 +266,10 @@ public sealed partial class BOARD_SFC : ISnesBus
     {
         autoJoy[0] = Pads[0]; autoJoy[1] = Pads[1]; autoJoy[2] = autoJoy[3] = 0;
         autoJoyBusyUntil = MasterClock + 4224;
+        // The auto-read latches the pads and clocks all 16 bits out of their shift registers: a manual $4016/$4017 read
+        // afterwards (no new latch) returns 1s, as on Mesen and bsnes. NHL '94's multitap probe reads $4016 right after the
+        // auto-read: a 0 there marked the pad missing ($0776) and the EA logo timed out to a blank demo instead of waiting.
+        joyLatch = false; serialShift[0] = serialShift[1] = 0xFFFFFFFF;
     }
 
     // =====================================================================================
@@ -516,7 +520,7 @@ public sealed partial class BOARD_SFC : ISnesBus
             {
                 bool nmiWasOff = (nmitimen & 0x80) == 0;
                 nmitimen = value;
-                if (nmiWasOff && (value & 0x80) != 0 && nmiFlag) Cpu.RaiseNmi();   // enabling mid-vblank fires at once
+                if (nmiWasOff && (value & 0x80) != 0 && nmiFlag) Cpu.RaiseNmiAfterNext();   // enabling mid-vblank fires after the next instruction
                 if ((value & 0x30) == 0) { ClearIrq(); }
                 UpdateNextEvent();
                 break;

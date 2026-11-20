@@ -42,3 +42,6 @@ World change expected at `$0727` 0 -> 1 (unverified).
 - P-meter reads 0 while airborne: read it on the ground.
 - Power-up sprite on the map and card slots only refresh on the next level entry after RAM writes.
 - Hand-edited inventory (e.g. P-wing) is research only, never a TAS route.
+
+## Level kinds by $070A (mode) on entry
+$070A is the level's TILESET, not its number: several levels share one (4 = sky: 1-4 AND 1-6; 2 = fortress; 1/3/14 = plains, hills, other). 7, 15, 16 = Toad house / bonus panel rooms (not levels). Cleared levels cannot be entered again, so `nodes` lists only levels still to play: take the one the chapter asks for (World 1 order) - usually the nearest.

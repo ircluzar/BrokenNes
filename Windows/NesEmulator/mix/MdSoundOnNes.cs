@@ -215,7 +215,17 @@ namespace NesEmulator.Sega
         /// <summary>The inner unit's eleven voices (what the bridge replays); reading them clears the DAC's swing, so a probe should not interleave with the running bridge.</summary>
         public int DescribeVoices(Span<HubVoice> dest) => inner.DescribeVoices(dest);
 
-        public void SaveState(BinaryWriter w) { inner.SaveState(w); NesEmulator.EngineState.SaveHub(w, this, back, inner); }
+        /// <summary>The bridge and its NES chip are written as they stand once the host has read every queued sample (an exact stash of both is put back
+        /// afterwards, the live sound is untouched): the load restores them exactly, so a state no longer depends on how much sound was waiting to be read
+        /// and save -> load -> save is byte-identical (bfuzz load-save-not-idempotent, Genesis NES:&lt;chip&gt;).</summary>
+        public void SaveState(BinaryWriter w)
+        {
+            // the inner unit's own sound is discarded (drained at every sync, and by a load's re-key): written as if all of it had been read, so how much was waiting is not in the state
+            using (NesEmulator.Sega.BandLimitedMixer.HostIndependent()) inner.SaveState(w);
+            var restore = NesEmulator.EngineState.Stash(this, inner);
+            try { while (output.ReadStereo(drain) > 0) { } NesEmulator.EngineState.SaveHub(w, this, back, inner); }
+            finally { restore(); }
+        }
 
         public void LoadState(BinaryReader r)
         {
@@ -231,8 +241,10 @@ namespace NesEmulator.Sega
                 back.Step(StepCycles);
                 int n; while ((n = output.ReadStereo(drain)) > 0) spent += n / 2;
             }
+            float swing = inner.Fm.DacSwing;   // the re-key's voice description clears the DAC swing the loaded chip holds: put back, so the chip stays as saved (save -> load -> save byte-identical)
             ForgetVoices();
             Replay();
+            inner.Fm.DacSwing = swing;
             NesEmulator.EngineState.LoadHub(r, this, back, inner);   // FA-ST-2: the bridge and its NES chip as saved (over the re-key above)
         }
 

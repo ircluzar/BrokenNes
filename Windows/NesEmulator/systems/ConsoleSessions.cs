@@ -661,7 +661,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
         try
         {
             board.LoadState(payload); Butcher?.NoteStateLoaded();
-            if (toNes != null || toSnes != null) { cap?.Clear(); SetPicture(ppuId); }   // the bridge's chip and its idle NES are not the Game Boy's state (BFR's bleeding frames, EXE's echo): a fresh one, as the SNES and Sega sessions do on a load
+            if (toNes != null || toSnes != null || foreignView != null) { cap?.Clear(); SetPicture(ppuId); }   // the harvest displays (VBA172, PGB, GMB031...) keep their own line state too; the bridge's chip and its idle NES are not the Game Boy's state (BFR's bleeding frames, EXE's echo): a fresh one, as the SNES and Sega sessions do on a load
             // the picture the state carries (v2), on show at once: a paused game shows the loaded frame, not the one from before the load
             if (toNes == null && toSnes == null) { Array.Copy(board.Ppu.FrameBuffer, frame, PPU_GB.Width * PPU_GB.Height); width = PPU_GB.Width; height = PPU_GB.Height; }
         }

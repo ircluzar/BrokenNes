@@ -71,12 +71,18 @@ public sealed partial class CPU_SFC
         S = (ushort)(0x0100 | (S & 0xFF));
         D = 0; DBR = 0; PBR = 0;
         X &= 0xFF; Y &= 0xFF;
-        Stopped = Waiting = nmiPending = false;
+        Stopped = Waiting = nmiPending = nmiAfterNext = false;
         PC = (ushort)(bus.Read(0xFFFC) | bus.Read(0xFFFD) << 8);
     }
 
     /// <summary>Edge-triggered: latched until serviced.</summary>
     public void RaiseNmi() => nmiPending = true;
+    /// <summary>An NMI raised during an instruction's last cycle (NMITIMEN enabled while the vblank flag is set): the CPU polls
+    /// its interrupt lines before that cycle, so the interrupt is taken after the NEXT instruction (as on Mesen). War 3010 does
+    /// STA $4200 / STA $0000 / WAI with an NMI handler that copies $0000 back to $4200: taken one instruction early, the handler
+    /// saw the old $0000 (NMI off) and the WAI never woke - a black screen from frame 409.</summary>
+    public void RaiseNmiAfterNext() => nmiAfterNext = true;
+    private bool nmiAfterNext;
 
     /// <summary>Level-triggered: the board holds it while its IRQ flag is set.</summary>
     public void SetIrq(bool asserted) => irqLine = asserted;
@@ -85,9 +91,9 @@ public sealed partial class CPU_SFC
     public void Step()
     {
         if (Stopped) { Io(); return; }
-        if (nmiPending)
+        if (nmiPending || (nmiAfterNext && Waiting))
         {
-            nmiPending = false; Waiting = false;
+            nmiPending = nmiAfterNext = false; Waiting = false;
             Io(); Io();
             Interrupt(0xFFEA, 0xFFFA, software: false);
             return;
@@ -105,8 +111,10 @@ public sealed partial class CPU_SFC
             if (irqLine) Waiting = false;
             else { Io(); return; }
         }
+        bool armed = nmiAfterNext;
         InstructionCount++;
         Execute(Fetch());
+        if (armed) { nmiAfterNext = false; nmiPending = true; }
     }
 
     private void Interrupt(ushort nativeVector, ushort emulationVector, bool software)

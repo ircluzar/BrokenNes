@@ -1075,6 +1075,9 @@ public class PPU_EIL : IPPU, IPpuFrameClock
 		};
 	}
 	public void SetState(object state) {
+		// the speed caches describe the old timeline's CHR / palette: rebuilt from the loaded machine (fuzz undo-mismatch picture-only, as PPU_SPD)
+		System.Array.Clear(patternRowValid, 0, patternRowValid.Length); System.Array.Clear(spritePatternRowValid, 0, spritePatternRowValid.Length);
+		lastChrSignature = 0; for (int i = 0; i < 32; i++) paletteEntryDirty[i] = true;
 		if (state is PpuSharedState s) {
 			vram = (byte[])s.vram.Clone(); paletteRAM=(byte[])s.palette.Clone(); oam=(byte[])s.oam.Clone();
 			// Legacy compatibility: if a frame is present and matches expected length, copy it; otherwise leave empty

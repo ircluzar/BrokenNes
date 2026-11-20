@@ -88,18 +88,16 @@ public class Mapper33 : IMapper
             {
                 case 0: // $8000 [.MPP PPPP] : M=mirroring bit6, P=PRG bank 0
                     if ((value & 0x40) != 0) cart.SetMirroring(Mirroring.Horizontal); else cart.SetMirroring(Mirroring.Vertical);
-                    SetPrgBank0(value & 0x1F);
+                    SetPrgBank0(value & 0x3F);
                     break;
                 case 1: // $8001 [..PP PPPP] : PRG bank 1
-                    SetPrgBank1(value & 0x1F);
+                    SetPrgBank1(value & 0x3F);
                     break;
                 case 2: // $8002 [CCCC CCCC] : CHR 2KB @ $0000
-                    // Even-align required for 2KB region: hardware ignores bit 0
-                    chr2k0 = value & ~1; // 2KB units (1KB LSB cleared)
+                    chr2k0 = value; // 2KB units (Mesen TaitoTc0190: SelectChrPage2x(0, value*2))
                     break;
                 case 3: // $8003 [CCCC CCCC] : CHR 2KB @ $0800
-                    // Even-align required for 2KB region: hardware ignores bit 0
-                    chr2k1 = value & ~1; // 2KB units (1KB LSB cleared)
+                    chr2k1 = value; // 2KB units
                     break;
             }
         }

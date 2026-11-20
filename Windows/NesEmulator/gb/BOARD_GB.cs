@@ -502,7 +502,7 @@ public sealed class BOARD_GB : IGbCpuBus
         using var ms = new MemoryStream();
         using (var w = new BinaryWriter(ms))
         {
-            w.Write("GBST"u8); w.Write(2);   // 2: + the picture (frames the LCD does not fully draw keep earlier pixels, so a load must bring them back)
+            w.Write("GBST"u8); w.Write(3);   // 2: + the picture (frames the LCD does not fully draw keep earlier pixels, so a load must bring them back); 3: + dotAcc
             Core.SaveState(w); Ppu.SaveState(w); Apu.SaveState(w); Cart.SaveState(w);
             w.Write(wram); w.Write(hram); w.Write(ie); w.Write(iflag); w.Write(wramBank); w.Write(joypSelect);
             w.Write(divCounter); w.Write(tima); w.Write(tma); w.Write(tac); w.Write(timaState);
@@ -511,6 +511,7 @@ public sealed class BOARD_GB : IGbCpuBus
             w.Write(key1); w.Write(hdmaActive); w.Write(hdmaRequest); w.Write(hdmaBlocks); w.Write(hdmaSrc); w.Write(hdmaDst);
             w.Write(DoubleSpeed); w.Write(CycleCount);
             w.Write(System.Runtime.InteropServices.MemoryMarshal.AsBytes(Ppu.FrameBuffer.AsSpan())); w.Write(Ppu.ShadeBuffer);
+            w.Write(dotAcc);   // the clock-variant CPUs' (GB-NESCLOCK, GB-SNESCLOCK, GB-HALF...) fraction of a dot: left out, a load kept the live one and the picture drifted (bfuzz undo-mismatch)
         }
         return ms.ToArray();
     }
@@ -520,7 +521,7 @@ public sealed class BOARD_GB : IGbCpuBus
         using var r = new BinaryReader(new MemoryStream(state));
         if (r.ReadUInt32() != 0x54534247) throw new InvalidDataException("Not a BrokenNes Game Boy state.");
         int version = r.ReadInt32();
-        if (version is not (1 or 2)) throw new InvalidDataException("Not a BrokenNes Game Boy state.");
+        if (version is not (1 or 2 or 3)) throw new InvalidDataException("Not a BrokenNes Game Boy state.");
         Core.LoadState(r); Ppu.LoadState(r); Apu.LoadState(r); Cart.LoadState(r);
         r.ReadBytes(wram.Length).CopyTo(wram, 0); r.ReadBytes(hram.Length).CopyTo(hram, 0);
         ie = r.ReadByte(); iflag = r.ReadByte(); wramBank = r.ReadInt32(); joypSelect = r.ReadByte();
@@ -534,5 +535,6 @@ public sealed class BOARD_GB : IGbCpuBus
             r.ReadBytes(Ppu.FrameBuffer.Length * 4).CopyTo(System.Runtime.InteropServices.MemoryMarshal.AsBytes(Ppu.FrameBuffer.AsSpan()));
             r.ReadBytes(Ppu.ShadeBuffer.Length).CopyTo(Ppu.ShadeBuffer, 0);
         }
+        dotAcc = version >= 3 ? r.ReadDouble() : 0;
     }
 }

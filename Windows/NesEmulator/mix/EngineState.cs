@@ -150,6 +150,16 @@ public static class EngineState
     /// <summary>Reports a fallback to the re-key path (never silent: FA-ST-1).</summary>
     public static void ReportRekey(object root) { if (liveSwap == 0) Console.WriteLine($"[EngineState] {root.GetType().Name}: {LastLoadNote}; engine re-keyed from the stock registers instead (not sample-exact)"); }
 
+    /// <summary>An exact in-memory copy of a whole sound unit (every field, through the objects it owns, nested sound units included; the host stays as it is),
+    /// and the action that puts it back in place. A NES save uses it to write the unit as a state load leaves it (output queue dropped,
+    /// <see cref="IAPU.ClearAudioBuffers"/>) without disturbing the live sound: save -> load -> save is then byte-identical on every core.</summary>
+    public static Action Stash(object root, params object?[] skip)
+    {
+        var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, true)) new Walker(typeof(object), true, skip, nestedUnits: true).Write(w, root);
+        return () => { ms.Position = 0; using var r = new BinaryReader(ms); new Walker(typeof(object), true, skip, nestedUnits: true).Read(r, root); };
+    }
+
     /// <summary>A diagnostic: the types the walker reaches from <paramref name="root"/> and the section size (Workshop --apu-channels --state --audit).</summary>
     public static (int bytes, string[] types) Audit(object root, Type stockBase)
     {
@@ -189,14 +199,14 @@ public static class EngineState
         typeof(Delegate).IsAssignableFrom(t) || t.IsPointer || t == typeof(IntPtr) || t == typeof(UIntPtr) || t.IsByRefLike;
 
     /// <summary>Objects that belong to the host or the runtime, not the engine (decided from the runtime type).</summary>
-    private static bool IsHost(Type t, object root, bool units)
+    private static bool IsHost(Type t, object root, bool units, bool nestedUnits = false)
     {
         if (typeof(Delegate).IsAssignableFrom(t) || t == typeof(object) || typeof(Type).IsAssignableFrom(t) || typeof(MemberInfo).IsAssignableFrom(t)) return true;
         string ns = t.Namespace ?? "";
         if (ns.StartsWith("System.Threading") || ns.StartsWith("System.IO") || ns.StartsWith("System.Reflection") || ns.StartsWith("System.Runtime") || ns.StartsWith("System.Diagnostics") || ns.StartsWith("System.Net")) return true;
         if (typeof(Bus).IsAssignableFrom(t) || typeof(NES).IsAssignableFrom(t) || typeof(ICPU).IsAssignableFrom(t) || typeof(IPPU).IsAssignableFrom(t)
             || typeof(IMapper).IsAssignableFrom(t) || typeof(Cartridge).IsAssignableFrom(t)) return true;
-        if (typeof(IAPU).IsAssignableFrom(t)) return true;
+        if (typeof(IAPU).IsAssignableFrom(t)) return !nestedUnits;
         if (!units && (typeof(Snes.APU_SFC).IsAssignableFrom(t) || typeof(Sega.MdSoundUnit).IsAssignableFrom(t) || typeof(Sega.ISmsSound).IsAssignableFrom(t))) return true; // another unit (the root itself is a back-reference)
         return false;
     }
@@ -205,15 +215,15 @@ public static class EngineState
 
     private sealed class Walker
     {
-        private readonly Type stockBase; private readonly bool units;
+        private readonly Type stockBase; private readonly bool units, nestedUnits;
         private readonly HashSet<object>? skip;
         public SortedSet<string>? Seen;
         private readonly Dictionary<object, int> ids = new(ReferenceEqualityComparer.Instance);
         private readonly List<object> objs = new();
         private object root = null!;
-        public Walker(Type stockBase, bool units, object?[]? skip = null)
+        public Walker(Type stockBase, bool units, object?[]? skip = null, bool nestedUnits = false)
         {
-            this.stockBase = stockBase; this.units = units;
+            this.stockBase = stockBase; this.units = units; this.nestedUnits = nestedUnits;
             if (skip != null) { this.skip = new HashSet<object>(ReferenceEqualityComparer.Instance); foreach (var o in skip) if (o != null) this.skip.Add(o); }
         }
 
@@ -255,7 +265,11 @@ public static class EngineState
         public void Write(BinaryWriter w, object r) { root = r; ids[r] = 0; objs.Add(r); WriteFields(w, r, Fields(r.GetType(), stockBase)); }
         public void Read(BinaryReader rd, object r) { root = r; objs.Add(r); object o = r; ReadFields(rd, ref o, Fields(r.GetType(), stockBase)); }
 
-        private void WriteFields(BinaryWriter w, object o, FieldInfo[] fs) { ScanStatics(o.GetType()); foreach (var f in fs) WriteValue(w, f.FieldType, f.GetValue(o)); }
+        private void WriteFields(BinaryWriter w, object o, FieldInfo[] fs) { ScanStatics(o.GetType()); foreach (var f in fs) WriteValue(w, f.FieldType, IsMutationCounter(f) ? 0 : f.GetValue(o)); }
+
+        /// <summary>The BCL collections' <c>_version</c> (bumped by every Enqueue/Clear, only there to fail enumerators): not state. Written as 0 and not restored (the slot stays in the
+        /// layout, so older states still read), else a queue that was cleared by a load saved differently from the one that was not (bfuzz load-save-not-idempotent, APU_DMG/APU_SNES).</summary>
+        private static bool IsMutationCounter(FieldInfo f) => f.Name == "_version" && f.FieldType == typeof(int) && (f.DeclaringType?.Namespace ?? "").StartsWith("System.Collections", StringComparison.Ordinal);
 
         private void ReadFields(BinaryReader r, ref object o, FieldInfo[] fs)
         {
@@ -264,6 +278,7 @@ public static class EngineState
             {
                 object? cur = f.GetValue(o);
                 object? v = ReadValue(r, f.FieldType, cur);
+                if (IsMutationCounter(f)) continue;
                 if (!ReferenceEquals(v, cur) || f.FieldType.IsValueType) f.SetValue(o, v);
             }
         }
@@ -283,7 +298,7 @@ public static class EngineState
             string? sk; lock (staticKey) staticKey.TryGetValue(v, out sk);
             if (sk != null) { w.Write(Static); w.Write(sk); return; }
             var t = v.GetType();
-            if (IsHost(t, root, units) || IsSkippedStatic(t) || skip?.Contains(v) == true) { w.Write(HostRef); return; }
+            if (IsHost(t, root, units, nestedUnits) || IsSkippedStatic(t) || skip?.Contains(v) == true) { w.Write(HostRef); return; }
             w.Write(New); w.Write(t.AssemblyQualifiedName!);
             ids[v] = objs.Count; objs.Add(v);
             if (t == typeof(string)) { w.Write((string)v); return; }

@@ -23,6 +23,26 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
         cartridge = cart;
     }
 
+    // MMC6 (HKROM: StarTropics 1 and 2; the cartridge picks it by CRC): 1 KiB of PRG-RAM at $7000-$7FFF (mirrored), enabled by
+    // $8000 bit 5, with per-512-byte read/write enables in $A001 (bit 7/6: $7200-$73FF read/write, bit 5/4: $7000-$71FF).
+    // As MMC3, $A001's bit 6 "write protect" blocked StarTropics 2's name saves: empty name slots drew as bars (deep-run review).
+    public bool Mmc6;
+    private bool mmc6RamEnable;
+    private byte mmc6Prot;
+    private byte Mmc6Read(ushort address) {
+        if (address < 0x7000 || !mmc6RamEnable) return (byte)(address >> 8);       // open bus
+        bool hi = (address & 0x200) != 0;
+        bool readHi = (mmc6Prot & 0x80) != 0, readLo = (mmc6Prot & 0x20) != 0;
+        if (!readHi && !readLo) return (byte)(address >> 8);
+        if (hi ? !readHi : !readLo) return 0;                                         // the other half readable: 0
+        return cartridge.prgRAM[address & 0x3FF];
+    }
+    private void Mmc6Write(ushort address, byte value) {
+        if (address < 0x7000 || !mmc6RamEnable) return;
+        bool hi = (address & 0x200) != 0;
+        if ((mmc6Prot & (hi ? 0x40 : 0x10)) != 0) cartridge.prgRAM[address & 0x3FF] = value;
+    }
+
     public void Reset() {
         bankSelect = 0;
 
@@ -33,7 +53,7 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
         prgMode = false;
         chrMode = false;
         prgRamEnable = true;
-        prgRamWriteProtect = false;
+        prgRamWriteProtect = false; mmc6RamEnable = false; mmc6Prot = 0;
         
         irqLatch = 0;
         irqCounter = 0;
@@ -50,7 +70,7 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
         } else {
             irqCounter--;
             if (irqCounter == 0 && irqEnable) {
-                irqAsserted = true;
+                irqAsserted = true; IrqLine = true;
             }
         }
 
@@ -74,9 +94,12 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
             irqCounter--;
         }
         if (irqCounter == 0 && irqEnable) {
-            irqAsserted = true;
+            irqAsserted = true; IrqLine = true;
         }
     }
+
+    /// <summary>MMC3's IRQ output: high from the counter reaching 0 (enabled) until a $E000 write (PPU_FIX releases the CPU's latched request when it falls).</summary>
+    public bool IrqLine { get; private set; }
 
     public virtual bool IRQPending() {
         return irqAsserted;
@@ -88,6 +111,7 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
 
     public byte CPURead(ushort address) {
         if (address >= 0x6000 && address <= 0x7FFF) {
+            if (Mmc6) return Mmc6Read(address);
             if (prgRamEnable) {
                 int ramOffset = (address - 0x6000) % cartridge.prgRAM.Length;
                 return cartridge.prgRAM[ramOffset];
@@ -109,6 +133,7 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
 
     public void CPUWrite(ushort address, byte value) {
         if (address >= 0x6000 && address <= 0x7FFF) {
+            if (Mmc6) { Mmc6Write(address, value); return; }
             if (prgRamEnable && !prgRamWriteProtect) {
                 int ramOffset = (address - 0x6000) % cartridge.prgRAM.Length;
                 cartridge.prgRAM[ramOffset] = value;
@@ -119,6 +144,7 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
         switch (address & 0xE001) {
             case 0x8000:
                 bankSelect = value;
+                if (Mmc6) { mmc6RamEnable = (value & 0x20) != 0; if (!mmc6RamEnable) mmc6Prot = 0; }
                 prgMode = (value & 0x40) != 0;
                 chrMode = (value & 0x80) != 0;
                 ApplyBankMapping();
@@ -135,6 +161,7 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
                     cartridge.SetMirroring(Mirroring.Horizontal);
                 break;
             case 0xA001:
+                if (Mmc6) { if (mmc6RamEnable) mmc6Prot = value; break; }
                 prgRamEnable = (value & 0x80) != 0;
                 prgRamWriteProtect = (value & 0x40) != 0;
                 break;
@@ -147,6 +174,7 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
             case 0xE000:
                 irqEnable = false;
                 irqAsserted = false;
+                IrqLine = false;
                 break;
             case 0xE001:
                 irqEnable = true;
@@ -248,11 +276,11 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
     }
 
     private class Mapper4State {
-        public byte bankSelect; public byte[] bankData = new byte[8]; public bool prgMode, chrMode, prgRamEnable, prgRamWriteProtect; public byte irqLatch, irqCounter; public bool irqEnable, irqReloadPending, irqAsserted;                                                                               }
+        public byte bankSelect; public byte[] bankData = new byte[8]; public bool prgMode, chrMode, prgRamEnable, prgRamWriteProtect; public byte irqLatch, irqCounter; public bool irqEnable, irqReloadPending, irqAsserted; public bool mmc6RamEnable; public byte mmc6Prot;                                                                               }
     public object GetMapperState() {
-        return new Mapper4State { bankSelect=this.bankSelect, bankData=(byte[])this.bankData.Clone(), prgMode=this.prgMode, chrMode=this.chrMode, prgRamEnable=this.prgRamEnable, prgRamWriteProtect=this.prgRamWriteProtect, irqLatch=this.irqLatch, irqCounter=this.irqCounter, irqEnable=this.irqEnable, irqReloadPending=this.irqReloadPending, irqAsserted=this.irqAsserted };                                                                             }
+        return new Mapper4State { bankSelect=this.bankSelect, bankData=(byte[])this.bankData.Clone(), prgMode=this.prgMode, chrMode=this.chrMode, prgRamEnable=this.prgRamEnable, prgRamWriteProtect=this.prgRamWriteProtect, irqLatch=this.irqLatch, irqCounter=this.irqCounter, irqEnable=this.irqEnable, irqReloadPending=this.irqReloadPending, irqAsserted=this.irqAsserted, mmc6RamEnable=this.mmc6RamEnable, mmc6Prot=this.mmc6Prot };                                                                             }
     public void SetMapperState(object state) {
-        if (state is Mapper4State s) { bankSelect=s.bankSelect; Array.Copy(s.bankData, bankData, 8); prgMode=s.prgMode; chrMode=s.chrMode; prgRamEnable=s.prgRamEnable; prgRamWriteProtect=s.prgRamWriteProtect; irqLatch=s.irqLatch; irqCounter=s.irqCounter; irqEnable=s.irqEnable; irqReloadPending=s.irqReloadPending; irqAsserted=s.irqAsserted; ApplyBankMapping(); return; }                                                                                 if (state is System.Text.Json.JsonElement je) {
+        if (state is Mapper4State s) { bankSelect=s.bankSelect; Array.Copy(s.bankData, bankData, 8); prgMode=s.prgMode; chrMode=s.chrMode; prgRamEnable=s.prgRamEnable; prgRamWriteProtect=s.prgRamWriteProtect; irqLatch=s.irqLatch; irqCounter=s.irqCounter; irqEnable=s.irqEnable; irqReloadPending=s.irqReloadPending; irqAsserted=s.irqAsserted; mmc6RamEnable=s.mmc6RamEnable; mmc6Prot=s.mmc6Prot; ApplyBankMapping(); return; }                                                                                 if (state is System.Text.Json.JsonElement je) {
             try {
                 if(je.ValueKind==System.Text.Json.JsonValueKind.Object){
                     if(je.TryGetProperty("bankSelect", out var v)) bankSelect = (byte)v.GetByte();

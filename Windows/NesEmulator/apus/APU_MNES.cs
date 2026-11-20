@@ -846,7 +846,8 @@ namespace NesEmulator
                         if(je.TryGetProperty("triangle_lengthCounter", out v)) tmp.triangle_lengthCounter=v.GetInt32();
                         if(je.TryGetProperty("noise_lengthCounter", out v)) tmp.noise_lengthCounter=v.GetInt32();
                         if(je.TryGetProperty("fractionalSampleAccumulator", out v)) tmp.fractionalSampleAccumulator=v.GetDouble();
-                        ApplyState(tmp); PostRestore();
+                        ApuJsonState.Fill(tmp, je);   // every field the save holds (the list above is the legacy subset)
+                        ApplyState(tmp); PostRestore(); if (je.TryGetProperty("pulse1_output", out _)) { pulse1_output = tmp.pulse1_output; pulse2_output = tmp.pulse2_output; triangle_output = tmp.triangle_output; noise_output = tmp.noise_output; }   // the saved outputs, not PostRestore's re-derived ones
                     }
                 } catch { }
             }

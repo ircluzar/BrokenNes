@@ -1282,6 +1282,9 @@ public sealed class Butcher
 		// when the hold ran out) wrote the old timeline's release into the loaded machine (fuzz md 311174). The interrupt holds stay: their lines are
 		// the host's on some boards (SNES), and those still need their release.
 		busHoldLeft = resetHoldLeft = 0;
+		// a NES frozen core's band overlay (NesCoreLine) of the old timeline: undoing it at the next line wrote the old timeline's PPUCTRL/PPUMASK into the
+		// loaded machine's registers (fuzz undo-mismatch, bands.patternSwap / spriteHeight on BFR, EXE, EIL...)
+		nesOverlayOn = false;
 	}
 	private int stutterLeft, droneLeft, dutyLeft, detuneLeft;
 

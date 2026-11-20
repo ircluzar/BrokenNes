@@ -931,6 +931,8 @@ public sealed partial class Ym2612 : IHubVoiceSource
     }
 
     private float dacSwing;
+    /// <summary>The DAC swing gathered since the last voice description (<see cref="DescribeVoices"/> reads and clears it): a bridge that re-keys after a state load puts it back, so the load leaves the chip as saved.</summary>
+    public float DacSwing { get => dacSwing; set => dacSwing = value; }
 
     /// <summary>Tracks the DAC's distance from centre between voice descriptions (called on every DAC data write); kept out of the sample loop.</summary>
     private void NoteDac()

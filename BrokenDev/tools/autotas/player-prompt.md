@@ -23,6 +23,27 @@ $R search "Right+B:{a} Right+B+A:{j} Right+B:{k}" --vals a=0..10:2,j=6..30:3,k=0
                             # (x past the obstacle); add "&& [$00D8] == 0" (SMB3: not in the air) to want it LANDED. ~1.5 s per combo: keep grids under ~100 combos. No result = start the search earlier (back).
 $R advance 6               # AUTOPILOT: hops forward (a search per hop, a checkpoint per hop) until stuck;
                             # when it says stuck: look at the picture, solve that spot with one search, then advance again
+$R grid --cell 16            # SEE THE SCREEN AS TEXT (cheap, no picture): '.' empty, symbols = solid/drawn things,
+                            # letters = moving objects (sprites), '@' = you; column numbers on top. --cell 8 = finer.
+$R peek "Right+B:20 Right+B+A:15 none:20" --grid
+                            # LOOK INTO THE FUTURE: plays the plan, prints RAM after each part (and >>> DIES), shows the
+                            # grid at the end, then puts everything back (nothing recorded). Try 2-3 plans, then `step` the best.
+$R do "Right+B@x>=400 Right+B+A:14 none@air==0"
+                            # MOVEMENT SCRIPT for real: Buttons:N = hold N frames, Buttons@COND = hold until COND (RAM names,
+                            # max 300; @COND~N = max N). peek takes the same scripts. Prefer one `do` over many small steps.
+$R map 120 --cell 16        # the LEVEL MAP stitched from every grid you have looked at ('|' = you): plan routes on it
+$R rewind 60                # TIME MACHINE: go back 60 frames on your current line (no checkpoint needed)
+$R gap                      # GAP SOLVER when every jump dies: long waits (a platform must arrive) + slow landings from earlier checkpoints
+$R roam 30                  # MAZES (castles, caves): explores every reachable spot both ways + doors (Up/Down) until a door/pipe/goal, plays the path
+$R goal --apply             # LEVEL END: touches the goal object (card box) even if it is behind/above you
+$R exits --apply            # EXIT FINDER: a wall or dead end often hides a pipe/door: walks, jumps, holds Down/Up to find it
+$R tree                     # your checkpoints as a branch tree
+$R probe 8                  # MAPS/MENUS: what each button does here (RAM changes, a picture each); nothing recorded
+$R nodes 8 --key mapx,mapy       # MAP: every place the d-pad reaches + what A does there (LEVEL / room / nothing) and its path
+$R explore 8 --vals Up,Down,Left,Right,A --key mapx,mapy,mode --want 'lvl == 1' --apply
+                            # MAPS/MENUS: searches button presses until --want holds (e.g. a level entered), tightens the
+                            # path to the fewest frames, --apply records it. Use the game's level flag (lvl) so bonus rooms/houses do not count;
+                            # to reach a SPECIFIC level, run it without --apply first: it lists what it reached.
 $R finish --note "<notes>"  # ONLY after a step printed >>> GOAL; replays + writes the movie and state
 ```
 Every step prints frame, RAM (mode 0 = map, x/y position, xspd, p = P-meter, pow, lives, time) and events:
@@ -38,6 +59,13 @@ Buttons: Up Down Left Right A B Start Select. A held longer = higher jump. To ju
 ## Rules
 - Use timeout 600000 ms on every runner call; keep `advance` to 3-4 hops per call and search grids under ~300 combos.
 - A level can end at a pipe (stand on it, hold Down ~40) or a card box, not just at the far right: look at the picture when advance is stuck at a wall.
+- On a map or menu: never guess presses; run `nodes` first to see which places are LEVELS, then `do "<its path> A:8"` (or `explore`).
+- The grid's last line says AUTO-SCROLL when the screen moves by itself: then platforms beyond the screen edge are not there
+  yet; wait (step none) until they appear before searching for a landing. `search` and `advance` then also try waiting
+  0-120 frames before each jump by themselves; a gap that no jump crosses usually needs a WAIT (a platform arrives), not a better jump.
+- A pipe or door that leads to another room (dark background, different mode, x reset) is NORMAL level design, not a glitch: keep it and play on (the goal is often in that room).
+- When stuck: `grid --cell 16` FIRST (what is ahead of '@': a wall, a gap, a pipe, a platform that moves?), then `peek` a plan or two,
+  then commit it with `step` or a `search`. Use the picture (--shot) only when the grid is unclear.
 - Main loop: `advance 6` -> if stuck: look, `search` past the spot (or `back` to an earlier a<frame> checkpoint and search from there) -> `advance 6` again. At the level end: the card search, then `step none 600`.
 - Never run two runner commands at once, never in the background (the runner refuses it).
 - Look often (`--shot`, Read the picture) when anything is near: enemies, pits, the goal. Steps of 8-30 frames in danger, longer on clear ground.
