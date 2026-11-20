@@ -55,7 +55,8 @@ namespace cor64.Mips.R4300I
         // at steady state. COR64_CPU_REC=0 turns it off.
         public static readonly bool s_CpuRec = Environment.GetEnvironmentVariable("COR64_CPU_REC") != "0";
         private static readonly int s_CpuRecAfter = int.TryParse(Environment.GetEnvironmentVariable("COR64_CPU_REC_AFTER"), out var cra) && cra >= 1 ? cra : 4;
-        private const int CpuRecMaxBlock = 32;
+        // [n64 blk2] COR64_CPU_REC_MAXBLK: most words per discovered block (default 32; 8..256) - fewer block entries/links per run
+        private static readonly int CpuRecMaxBlock = int.TryParse(Environment.GetEnvironmentVariable("COR64_CPU_REC_MAXBLK"), out var cmb) ? Math.Clamp(cmb, 8, 256) : 32;
         private static readonly bool s_NoVal = Environment.GetEnvironmentVariable("COR64_CPU_REC_NOVAL") == "1"; // measurement only (unsafe)
         private static readonly bool s_RecLoops = Environment.GetEnvironmentVariable("COR64_CPU_REC_LOOP") != "0";
         private static readonly bool s_RecSuperblocks = Environment.GetEnvironmentVariable("COR64_CPU_REC_SB") != "0";
