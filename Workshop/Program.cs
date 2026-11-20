@@ -67,6 +67,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--x86speed", StringComparison.OrdinalIgnoreCase)) return X86.X86SpeedCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--n64session", StringComparison.OrdinalIgnoreCase)) return N64.N64SessionCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86session", StringComparison.OrdinalIgnoreCase)) return X86.X86SessionCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--x86bugring", StringComparison.OrdinalIgnoreCase)) return X86.X86BugRingCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86opl", StringComparison.OrdinalIgnoreCase)) return X86.X86OplCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86engines", StringComparison.OrdinalIgnoreCase)) return X86.X86EnginesCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86cards", StringComparison.OrdinalIgnoreCase)) return X86.X86CardsCli.Run(args);

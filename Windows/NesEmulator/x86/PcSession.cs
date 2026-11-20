@@ -268,19 +268,18 @@ public sealed class PcSession : IConsoleSession
     public byte[] SaveState()
     {
         if (!_powered) { FirstPowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); }
-        return ConsoleStateFile.Wrap(Console, GameId, Title, StateUnits(), WithSoundOutput(_m.SaveState()));
+        return ConsoleStateFile.WrapStream(Console, GameId, Title, StateUnits(), st => { _m.SaveState(st); WriteSoundOutput(st); });   // streamed: no payload copies (the 2026-11-20 20 GB leak)
     }
 
     // FA-ST-3: the sound already drawn but not yet read (the speaker, the AdLib, the card) follows the machine as a trailer: [machine][PCAU section][its length][PCAU].
     // The machine state is unchanged; a state without the trailer (older) loads as before: the drawn samples are dropped and the sound carries on from the present.
     private const int SoundMagic = 0x55414350;   // "PCAU"
 
-    private byte[] WithSoundOutput(byte[] machine)
+    private void WriteSoundOutput(Stream to)
     {
         using var ms = new MemoryStream();
         using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, true))
         {
-            w.Write(machine);
             long start = ms.Position;
             w.Write(1);   // section version
             _m.Speaker.SaveOutput(w);
@@ -290,7 +289,7 @@ public sealed class PcSession : IConsoleSession
             card?.SaveOutput(w);
             w.Write((int)(ms.Position - start)); w.Write(SoundMagic);
         }
-        return ms.ToArray();
+        to.Write(ms.GetBuffer(), 0, (int)ms.Length);
     }
 
     /// <summary>Splits a payload into the machine state and the sound trailer (null when there is none).</summary>

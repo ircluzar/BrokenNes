@@ -24,20 +24,48 @@ public static class ConsoleStateFile
 
     /// <summary>Wraps a session's payload. <paramref name="units"/> are the parts the state depends on, by name (for example <c>apu</c> = <c>SMS-FM</c>, <c>format</c> = <c>sms-1</c>).</summary>
     public static byte[] Wrap(ConsoleKind console, string gameId, string title, IReadOnlyDictionary<string, string> units, byte[] payload)
+        => WrapStream(console, gameId, title, units, st => st.Write(payload), payload.Length + (1 << 16));
+
+    // the last packed file's size: the next one's buffer is made that big once
+    private static int _lastPacked = 1 << 16;
+
+    /// <summary>
+    /// <see cref="Wrap"/> with the payload written by <paramref name="write"/> straight into the deflater: the same bytes as Wrap of that payload,
+    /// without the payload ever being one array. A Win98 machine's payload is hundreds of MB (RAM, video memory, the disk diff) packing to ~70 MB;
+    /// the bug-capture ring's state a second used to copy it four times through growing MemoryStreams, GBs of large-object garbage that pushed a
+    /// desktop window to 20 GB (2026-11-20, Age of Empires). <paramref name="maxPacked"/>: a cap on the first buffer guess.
+    /// </summary>
+    public static byte[] WrapStream(ConsoleKind console, string gameId, string title, IReadOnlyDictionary<string, string> units, Action<Stream> write, long maxPacked = int.MaxValue)
     {
-        using var ms = new MemoryStream();
+        int guess = (int)Math.Min(maxPacked, Math.Max(1 << 16, (long)_lastPacked + _lastPacked / 8));
+        var ms = new MemoryStream(guess);
+        long lenAt;
         using (var w = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true))
         {
             w.Write(Magic); w.Write((ushort)Version);
             w.Write(Consoles.Key(console)); w.Write(gameId); w.Write(title);
             w.Write((byte)units.Count);
             foreach (var kv in units) { w.Write(kv.Key); w.Write(kv.Value); }
-            w.Write(payload.Length); w.Write(Crc32(payload));
-            using var z = new MemoryStream();
-            using (var d = new DeflateStream(z, CompressionLevel.Fastest, leaveOpen: true)) d.Write(payload);
-            w.Write((int)z.Length); w.Write(z.GetBuffer(), 0, (int)z.Length);
+            lenAt = ms.Position;
+            w.Write(0); w.Write(0u); w.Write(0);   // payload length, its CRC, the packed length: filled in below
         }
-        return ms.ToArray();
+        long zAt = ms.Position;
+        CrcCountStream counted;
+        using (var d = new DeflateStream(ms, CompressionLevel.Fastest, leaveOpen: true))
+        {
+            counted = new CrcCountStream(d);
+            using (var buffered = new BufferedStream(counted, 1 << 16)) write(buffered);
+        }
+        long end = ms.Position;
+        var buf = ms.GetBuffer();
+        BitConverter.TryWriteBytes(buf.AsSpan((int)lenAt, 4), checked((int)counted.Count));
+        BitConverter.TryWriteBytes(buf.AsSpan((int)lenAt + 4, 4), ~counted.Crc);
+        BitConverter.TryWriteBytes(buf.AsSpan((int)lenAt + 8, 4), checked((int)(end - zAt)));
+        _lastPacked = (int)end;
+        if (buf.Length == end) return buf;
+        var file = new byte[end];
+        buf.AsSpan(0, (int)end).CopyTo(file);
+        return file;
     }
 
     /// <summary>Reads the header only. Throws <see cref="InvalidDataException"/> (with the reason, for the user) when this is not a console state at all.</summary>
@@ -138,12 +166,28 @@ public static class ConsoleStateFile
     }
 
     /// <summary>CRC-32 (the zip / PNG polynomial), a table at a time: the same value as the bit-by-bit definition (the SNES state test checks that), about ten times faster on the half-megabyte a SNES state is.</summary>
-    internal static uint Crc32(ReadOnlySpan<byte> data)
+    internal static uint Crc32(ReadOnlySpan<byte> data) => ~Crc32Step(0xFFFFFFFF, data);
+
+    private static uint Crc32Step(uint crc, ReadOnlySpan<byte> data)
     {
-        uint crc = 0xFFFFFFFF;
         var table = CrcTable;
         foreach (byte b in data) crc = table[(crc ^ b) & 0xFF] ^ (crc >> 8);
-        return ~crc;
+        return crc;
+    }
+
+    /// <summary>Passes writes on to the deflater, counting them and keeping their CRC (<see cref="WrapStream"/>: the payload never exists as one array).</summary>
+    private sealed class CrcCountStream(Stream inner) : Stream
+    {
+        public uint Crc = 0xFFFFFFFF; public long Count;
+        public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
+        public override void Write(ReadOnlySpan<byte> b) { Crc = Crc32Step(Crc, b); Count += b.Length; inner.Write(b); }
+        public override void WriteByte(byte value) { ReadOnlySpan<byte> one = [value]; Write(one); }
+        public override bool CanRead => false; public override bool CanSeek => false; public override bool CanWrite => true;
+        public override long Length => Count; public override long Position { get => Count; set => throw new NotSupportedException(); }
+        public override void Flush() => inner.Flush();
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
     }
 
     /// <summary>The same CRC-32 for other files (BrokenDev Timeflow's blocks).</summary>
