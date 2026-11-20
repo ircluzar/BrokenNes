@@ -221,6 +221,7 @@ public sealed class S3Trio64
     public long LfbWrites, BankWrites;
     public bool InLfb(uint a) => LinearOn && !Window64K && a - LfbBase < Math.Min(VramBytes, LfbSize);
     public byte LfbRead8(uint a) => _v.Ram[a - LfbBase];
+    public Span<byte> LfbSpan(uint a, int bytes) => _v.Ram.AsSpan((int)(a - LfbBase), bytes);
     public void LfbWrite8(uint a, byte v) { LfbWrites++; _v.Ram[a - LfbBase] = v; }
     public uint LfbRead32(uint a) { uint o = a - LfbBase; return o <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)o) : LfbRead8(a); }
     public void LfbWrite32(uint a, uint v)

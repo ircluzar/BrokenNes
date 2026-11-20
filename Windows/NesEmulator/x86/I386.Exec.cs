@@ -1238,11 +1238,21 @@ public sealed partial class I386
         if (cx < 2) return false;
         var ms = new OptAddr(); var md = new OptAddr();
         if (!Translate(ref ms, 1, _curSeg, si, n) || !Translate(ref md, 2, SEG_ES, di, n)) return false;   // (the element loop raises the fault)
-        if (ms.Two || md.Two || !IsRam(ms.A1) || !IsRam(md.A1)) return false;
+        if (ms.Two || md.Two) return false;
+        bool sRam = IsRam(ms.A1), dRam = IsRam(md.A1);
+        if ((!sRam || !dRam) && (_bulk == null || !_ioMem || (!sRam && !InIoMem(ms.A1)) || (!dRam && !InIoMem(md.A1)))) return false;
         uint k = Math.Min(cx, Math.Min(RepSpan(_curSeg, si, ms.A1, n), RepSpan(SEG_ES, di, md.A1, n)));
         if (k < 2) return false;
         uint bytes = k * (uint)n, s0 = ms.A1, d0 = md.A1;
-        if (d0 > s0 && d0 < s0 + bytes)
+        if (!sRam || !dRam)
+        {   // to / from the linear frame buffer: a span copy; each element is one bus access on each device side (as Load / Store)
+            if (!sRam && !dRam) return false;   // (frame buffer to frame buffer: element by element, overlap rules)
+            var dev = _bulk!.BulkSpan(sRam ? d0 : s0, (int)bytes, (int)k);
+            if (dev.IsEmpty) return false;
+            if (sRam) Mem.AsSpan((int)s0, (int)bytes).CopyTo(dev);
+            else { dev.CopyTo(Mem.AsSpan((int)d0, (int)bytes)); CodeWrRange(d0, bytes); }
+        }
+        else if (d0 > s0 && d0 < s0 + bytes)
         {   // the destination runs ahead inside the source: element by element, as the CPU does
             for (uint i = 0; i < bytes; i += (uint)n)
             {
@@ -1261,11 +1271,21 @@ public sealed partial class I386
         if (cx < 2) return false;
         var md = new OptAddr();
         if (!Translate(ref md, 2, SEG_ES, di, n)) return false;
-        if (md.Two || !IsRam(md.A1)) return false;
+        if (md.Two) return false;
+        bool dRam = IsRam(md.A1);
+        if (!dRam && (_bulk == null || !_ioMem || !InIoMem(md.A1))) return false;
         uint k = Math.Min(cx, RepSpan(SEG_ES, di, md.A1, n));
         if (k < 2) return false;
         uint bytes = k * (uint)n, d0 = md.A1;
-        if (n == 1) { Mem.AsSpan((int)d0, (int)bytes).Fill((byte)ax); CodeWrRange(d0, bytes); }
+        if (!dRam)
+        {   // the linear frame buffer (the device's own store: no code lines there)
+            var span = _bulk!.BulkSpan(d0, (int)bytes, (int)k);
+            if (span.IsEmpty) return false;
+            if (n == 1) span.Fill((byte)ax);
+            else if (n == 2) System.Runtime.InteropServices.MemoryMarshal.Cast<byte, ushort>(span).Fill((ushort)ax);
+            else System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(span).Fill(ax);
+        }
+        else if (n == 1) { Mem.AsSpan((int)d0, (int)bytes).Fill((byte)ax); CodeWrRange(d0, bytes); }
         else if (n == 2) for (uint i = 0; i < bytes; i += 2) US16(d0 + i, ax);
         else for (uint i = 0; i < bytes; i += 4) US32(d0 + i, ax);
         SReg(A, 7, di + bytes); SReg(A, 1, cx - k);
