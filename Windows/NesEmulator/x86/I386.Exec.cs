@@ -1218,13 +1218,22 @@ public sealed partial class I386
     // last compare, the iteration count for the timing). Anything else (a fault, I/O memory, a page edge, DF = 1) takes the element loop.
 
     /// <summary>Elements of <paramref name="n"/> bytes from offset <paramref name="off"/> (physical <paramref name="pa"/>) before a page edge, the
-    /// 16-bit offset wrap or the segment limit (expand-down segments: 0, the element loop).</summary>
+    /// 16-bit offset wrap or the segment limit (expand-down: up to FFFFh / FFFFFFFFh; 0 = the element loop).</summary>
+    private static readonly bool NoExpDnChunk = Environment.GetEnvironmentVariable("X86_NOEXPDNCHUNK") != null;
     private uint RepSpan(int seg, uint off, uint pa, int n)
     {
         uint e = (4096 - (pa & 4095)) / (uint)n;
         if (_adsz16) e = Math.Min(e, (0x10000 - (off & 0xffff)) / (uint)n);
-        if ((SegFlags[seg] & 0xc) == 0x4) return 0;
-        ulong room = ((ulong)SegLimit[seg] + 1 - off) / (uint)n;
+        ulong room;
+        if ((SegFlags[seg] & 0xc) == 0x4)
+        {   // expand-down data (Win98 hands Win32 code an expand-down flat ES/DS, limit EE60h, B set): offsets above the limit, up to the top (as LimitOk);
+            // X86_NOEXPDNCHUNK: element by element again (AoE's REP STOSD: 6.5M one-element chunks in 300 frames)
+            if (NoExpDnChunk || off <= SegLimit[seg]) return 0;
+            ulong top = (SegFlags[seg] & SEG_B_BIT) != 0 ? 0xffffffffu : 0xffffu;
+            if (off > top) return 0;
+            room = (top + 1 - off) / (uint)n;
+        }
+        else room = ((ulong)SegLimit[seg] + 1 - off) / (uint)n;
         return (uint)Math.Min(e, room);
     }
 
