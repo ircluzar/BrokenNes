@@ -90,7 +90,7 @@ public sealed partial class I386
     public long JitPosted, JitDropped, JitRecompiles, JitKeepClears, JitInstrCompiled;
     public static long JitEmitTicks;
     private readonly HashSet<ulong> _jitSeenKeys = new();
-    public string JitPipeStat() => $"jitpipe: posted {JitPosted} installed {JitCompiled} dropped {JitDropped} recompiles(same key) {JitRecompiles} keep-clears {JitKeepClears} unseen-cut {JitUnseenCut} instrs-compiled {JitInstrCompiled} worker-compile {JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms ({JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, JitPosted):F2} ms/region; IL build {JitBuildTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms, IL {JitIlBytes / Math.Max(1, JitPosted)} bytes/region)";
+    public string JitPipeStat() => $"jitpipe: posted {JitPosted} installed {JitCompiled} dropped {JitDropped} recompiles(same key) {JitRecompiles} keep-clears {JitKeepClears} smc-stops {JitSmcStops} unseen-cut {JitUnseenCut} instrs-compiled {JitInstrCompiled} worker-compile {JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms ({JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, JitPosted):F2} ms/region; IL build {JitBuildTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms, IL {JitIlBytes / Math.Max(1, JitPosted)} bytes/region)";
 
     // statistics (Workshop --x86boot --jitstat)
     public int JitCompiled { get; private set; }
@@ -217,9 +217,16 @@ public sealed partial class I386
             var e2 = _je[JitIndex(en.Start)];
             if (e2 != null && e2.Code == v) { _jitCur = v; return v.Fn(this, e2.K); }
         }
+        // self-modifying code (StarCraft's campaign rewrites 006C79xx every ~1.4 frames with new bytes each time): after X86_JITSMC
+        // real rewrites of one address its code is no longer compiled, only interpreted (no compile, no queue, no pending wait)
+        if (JitSmc > 0 && en.Code is JitCode old && !old.SpecFail && (_smc[key] = _smc.GetValueOrDefault(key) + 1) >= JitSmc)
+        { en.Code = null; en.Visits = 0; en.Failed = true; en.Pending = false; JitSmcStops++; return JIT_DECLINE; }
         en.Code = null; en.Visits = 0; en.Failed = false; en.Pending = false;
         return JIT_DECLINE;
     }
+    private static readonly int JitSmc = int.TryParse(Environment.GetEnvironmentVariable("X86_JITSMC"), out int jsmc) ? jsmc : 0;
+    private readonly Dictionary<ulong, int> _smc = new();
+    public long JitSmcStops;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JitVisit(uint paddr)
