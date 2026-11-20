@@ -374,6 +374,15 @@ internal static class X86BootCli
         if (args.Contains("--jitstat")) Console.WriteLine($"jit: declined at entry {m.Cpu.JitDeclines} (unusable segment at the time: {string.Join(" ", m.Cpu.JitDeclineSeg)}); why: {string.Join(" ", Enumerable.Range(0, 64).Where(i => m.Cpu.DeclineWhy[i] > 0).Select(i => $"{i}={m.Cpu.DeclineWhy[i]}"))}");
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.JitTop(int.TryParse(Environment.GetEnvironmentVariable("X86_JITTOP"), out int jtn) ? jtn : 25)) Console.WriteLine("  blk " + l);
         if (PcMachine.TimeProbe) Console.WriteLine($"timeprobe: cpu batches {m.TicksCpu * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms (Exec1 {m.Cpu.TicksExec1 * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms), between batches {m.TicksDevices * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms, batches {m.Batches}");
+        if (PcMachine.TimeProbe) Console.WriteLine($"timeprobe: out-of-line instructions {m.Cpu.OolCalls}, {m.Cpu.TicksOol * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms inside them");
+        if (PcMachine.TimeProbe) Console.WriteLine($"timeprobe: compiled block runs {m.Cpu.JitTimedRuns}, {m.Cpu.TicksJit * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms inside them (out-of-line included); Exec1 steps {m.Cpu.Step1Calls}");
+        if (PcMachine.TimeProbe)
+        {
+            double tf = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            Console.WriteLine($"timeprobe: steps without a compiled block {m.Cpu.InterpCount.Sum()}, {m.Cpu.InterpTicks.Sum() * tf:F0} ms; top by time (first byte, 100 = fetch off the cached page):");
+            foreach (int i in Enumerable.Range(0, 257).OrderByDescending(i => m.Cpu.InterpTicks[i]).Take(16))
+                Console.WriteLine($"  {(i == 256 ? "page" : i.ToString("X2"))}: {m.Cpu.InterpCount[i]} steps, {m.Cpu.InterpTicks[i] * tf:F0} ms, {m.Cpu.InterpTicks[i] * tf * 1e6 / Math.Max(1, m.Cpu.InterpCount[i]):F0} ns each");
+        }
         if (args.Contains("--jitstat")) Console.WriteLine($"  exec1 steps {m.Cpu.Step1Calls} of which compiled-block entries {m.Cpu.Step1Jit}; halt batches {m.HaltBatches}");
         if (args.Contains("--jitstat")) Console.WriteLine("  linkpage nopg/pageend/limit/notlb/notag/io/ok: " + string.Join(" ", m.Cpu.LinkPageWhy));
         if (args.Contains("--jitstat")) Console.WriteLine("  linkwhy budget/depth/linked/nocode/otherpage: " + string.Join(" ", m.Cpu.LinkWhy));

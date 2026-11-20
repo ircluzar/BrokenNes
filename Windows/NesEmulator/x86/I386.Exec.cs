@@ -31,13 +31,26 @@ public sealed partial class I386
     }
 
     public long Step1Calls, Step1Jit;
+    /// <summary>X86_TIMEPROBE: wall ticks / counts of Exec1 steps that ran no compiled block, by first byte (256 = fetch outside the cached page).</summary>
+    public readonly long[] InterpTicks = new long[257], InterpCount = new long[257];
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int Step1Timed()
+    {
+        Step1Calls++;
+        uint laddr = SegBase[SEG_CS] + NextIp;
+        int b = ((ulong)laddr ^ _ifLaddr) < 4096 - 16 ? Mem[(_ifXaddr ^ laddr) % (uint)Mem.Length] : 256;
+        long runs = JitTimedRuns, t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        int r = Step1(true);
+        if (JitTimedRuns == runs) { InterpTicks[b] += System.Diagnostics.Stopwatch.GetTimestamp() - t0; InterpCount[b]++; }
+        return r;
+    }
     private bool Exec1(int stepcount)
     {
         _steps = stepcount;
         for (; _steps > 0; _steps--)
         {
             if (JitStats) Step1Calls++;
-            int r = Step1(true);
+            int r = PcMachine.TimeProbe ? Step1Timed() : Step1(true);
             if (r == OK) continue;
             if (r == FAIL) return false;
             return true;
@@ -80,14 +93,19 @@ public sealed partial class I386
                 if (!Peek8(out b1)) return FAIL;
                 // the fetch page was not cached (a jump / call / return onto another page): Peek8 has just cached it, so a compiled block
                 // from here can run now (before, the target's first instruction was always interpreted and its block never entered)
-                if (jit && JitOn && !NoPageMissJit && ((ulong)laddr ^ _ifLaddr) < 4096 - 16)
+                // and the rest of this instruction fetches from the cached page like the fast path (also without the JIT, so the
+                // interpreter folds CMP + Jcc here exactly as a compiled block entered here does: JIT and X86_NOJIT stay step-for-step equal)
+                if (!NoPageMissJit && ((ulong)laddr ^ _ifLaddr) < 4096 - 16)
                 {
                     uint paddr = _ifXaddr ^ laddr;
-                    int rc = JitTry(paddr);
-                    if (rc == OK) return OK;
-                    if (rc == FAIL) return FAIL;
-                    if (rc == JIT_END) return END;
-                    if (JitStats) JitCountInterp(paddr);
+                    if (jit && JitOn)
+                    {
+                        int rc = JitTry(paddr);
+                        if (rc == OK) return OK;
+                        if (rc == FAIL) return FAIL;
+                        if (rc == JIT_END) return END;
+                        if (JitStats) JitCountInterp(paddr);
+                    }
                     _ifPaddr = paddr + 1;
                 }
                 NextIp++;
