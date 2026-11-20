@@ -284,6 +284,9 @@ public sealed partial class I386
     /// <summary>X86_PEND: pending clock / step counts in compiled blocks (see Emit). Opt-in: A/B 2026-11-20 in StarCraft MEASURED SLOWER
     /// (+38% ns per retired instruction in the hot blocks: the per-exit constants grow the code more than the per-instruction adds cost).</summary>
     private static readonly bool UsePend = Environment.GetEnvironmentVariable("X86_PEND") != null;
+    private static readonly bool NoRamRange = Environment.GetEnvironmentVariable("X86_NORAMRANGE") != null;
+    /// <summary>X86_SHAREDEXIT: one shared budget-out exit per block (opt-in: A/B 2026-11-20 +5.9% ns/retired, no gain).</summary>
+    private static readonly bool NoSharedExit = Environment.GetEnvironmentVariable("X86_SHAREDEXIT") == null;
     private static readonly bool NoSegSpec = Environment.GetEnvironmentVariable("X86_NOSEGSPEC") != null;
     private readonly HashSet<ulong> _segSpecOff = new();   // blocks whose specialization failed once: compiled without it from then on
     public long JitSpecFails;
@@ -873,6 +876,14 @@ public sealed partial class I386
         // memory at physical address `la` (paging off: = linear; paging on: pax, translated by Xlat): plain RAM inline, the rest through Load*Slow / Store*Slow
         void IfRam(LocalBuilder addr, Label notRam)
         {
+            if (ioMem && memSize > 0xc0000 && !NoRamRange)
+            {   // [C0000, memSize) in one compare (the usual case), else below A0000 (X86_NORAMRANGE: the old two tests)
+                var ram = il.DefineLabel();
+                Ld(addr); U4(0xc0000); Op(OpCodes.Sub); U4(memSize - 0xc0000); il.Emit(OpCodes.Blt_Un, ram);
+                Ld(addr); U4(0xa0000); il.Emit(OpCodes.Bge_Un, notRam);
+                il.MarkLabel(ram);
+                return;
+            }
             Ld(addr); U4(memSize); il.Emit(OpCodes.Bge_Un, notRam);
             if (ioMem) { Ld(addr); U4(0xa0000); Op(OpCodes.Sub); U4(0x20000); il.Emit(OpCodes.Blt_Un, notRam); }
         }
@@ -1059,6 +1070,7 @@ public sealed partial class I386
             P[k] = P[k - 1] + cost[k - 1]; Q[k] = Q[k - 1] + 1;
             if (P[k] > 1 << 20) { P[k] = 0; Q[k] = 0; }
         }
+        LocalBuilder? xOff = null, xNext = null; Label sharedLeave = default;
         var body = new Label[n];
         var pre = new Label[n];
         for (int k = 0; k < n; k++) { body[k] = il.DefineLabel(); pre[k] = il.DefineLabel(); }
@@ -1092,13 +1104,22 @@ public sealed partial class I386
                     Adj(P[j], Q[j]);
                     il.Emit(OpCodes.Br, go);
                     il.MarkLabel(leave);
-                    Ld0(); IpAt(pas[k]); next(); LdCyc(); LdSt(); Call("JExitLink"); il.Emit(OpCodes.Ret);
+                    LeaveFall(k, tg);
                     il.MarkLabel(go);
                     return;
                 }
             }
             il.MarkLabel(leave);
-            Ld0(); IpAt(pas[k]); next(); LdCyc(); LdSt(); Call("JExitLink"); il.Emit(OpCodes.Ret);
+            if (fallsInto && target is uint ft) LeaveFall(k, ft);
+            else { Ld0(); IpAt(pas[k]); next(); LdCyc(); LdSt(); Call("JExitLink"); il.Emit(OpCodes.Ret); }
+        }
+        // the budget-out exit of a fall-through (Ip = instruction k, NextIp = the next address): one shared JExitLink call per block,
+        // each site only sets two offsets (X86_SHAREDEXIT opt-in, default a call per site; a call site makes the .NET JIT spill around it)
+        void LeaveFall(int k, uint nx)
+        {
+            if (NoSharedExit || UsePend) { Ld0(); IpAt(pas[k]); IpAt(nx); LdCyc(); LdSt(); Call("JExitLink"); il.Emit(OpCodes.Ret); return; }
+            if (xOff == null) { xOff = il.DeclareLocal(typeof(uint)); xNext = il.DeclareLocal(typeof(uint)); sharedLeave = il.DefineLabel(); }
+            U4(pas[k] - start); Stl(xOff); U4(nx - start); Stl(xNext!); il.Emit(OpCodes.Br, sharedLeave);
         }
         void LeaveAfterDec(int k, Action next) { var (c0, s0) = (pc, ps); StDec(); LeaveAfter(k, next); pc = c0; ps = s0; }   // (an exit path: the pending counts of the path that goes on stay)
         void LeaveAfter(int k, Action next)
@@ -1729,6 +1750,11 @@ public sealed partial class I386
                 StDec();
                 Continue(k, () => IpAt(pe), pe, true);
             }
+        }
+        if (xOff != null)
+        {
+            il.MarkLabel(sharedLeave);
+            Ld0(); Ld(ip0); Ld(xOff); Op(OpCodes.Add); Ld(ip0); Ld(xNext!); Op(OpCodes.Add); Ld(cyc); Ld(st); Call("JExitLink"); il.Emit(OpCodes.Ret);
         }
         System.Threading.Interlocked.Add(ref JitIlBytes, il.ILOffset);
         if (tb != null) return (JitFn)tb.CreateType()!.GetMethod("x86blk")!.CreateDelegate(typeof(JitFn));
