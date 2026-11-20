@@ -166,6 +166,9 @@ public sealed class PcSession : IConsoleSession
         {
             _stateHookUsed = true;
             _m.LoadState(File.ReadAllBytes(ms));
+            // the disc was put in at creation (InsertCd: UNIT ATTENTION) but the state was saved with it already in: without this Win98 saw a new disc, AutoPlay opened the
+            // disc's autorun window over the running game and a 256-colour game (Age of Empires) lost its palette to the desktop's (the scrambled-colours bug)
+            _m.Ata?.Secondary.ClearMediaChanged(0);
         }
     }
 
