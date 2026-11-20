@@ -25,7 +25,7 @@ internal static class MdCartTest
 
     private static void Group(string title) => Console.WriteLine($"-- {title}");
 
-    /// <summary>Which cartridges the app accepts as Genesis games: the header is "SEGA" at $100; a 32X, a Pico and an SVP cartridge (Virtua Racing: MK-1229) need hardware that is not emulated and are not accepted (a plain run would look like a bug of the game).</summary>
+    /// <summary>Which cartridges the app accepts as Genesis games: the header is "SEGA" at $100; a 32X and a Pico cartridge need hardware that is not emulated and are not accepted (the SVP cartridge, Virtua Racing: MK-1229, is: MdSvp) (a plain run would look like a bug of the game).</summary>
     private static void Detection()
     {
         Group("cartridges the app takes for Genesis games (and the three it refuses because their hardware is not emulated)");
@@ -41,7 +41,7 @@ internal static class MdCartTest
         Check("a SEGA MEGA DRIVE header too", SegaRomFormat.Detect(Rom("SEGA MEGA DRIVE", "GM T-12345 -00"), "g.bin") == ConsoleKind.Genesis);
         Check("a 32X header is refused", SegaRomFormat.Detect(Rom("SEGA 32X", "GM MK-84501-00"), "g.bin") == null);
         Check("a Pico header is refused", SegaRomFormat.Detect(Rom("SEGA PICO", "GM 00000000-00"), "g.bin") == null);
-        Check("the SVP cartridge (Virtua Racing, serial MK-1229) is refused", SegaRomFormat.Detect(Rom("SEGA GENESIS", "GM MK-1229 -00"), "g.bin") == null);
+        Check("the SVP cartridge (Virtua Racing, serial MK-1229) is a Genesis game (the SVP is emulated)", SegaRomFormat.Detect(Rom("SEGA GENESIS", "GM MK-1229 -00"), "g.bin") == ConsoleKind.Genesis);
         Check("another MK- serial (Sonic 3 is MK-1079) is not", SegaRomFormat.Detect(Rom("SEGA GENESIS", "GM MK-1079 -00"), "g.bin") == ConsoleKind.Genesis);
     }
 
