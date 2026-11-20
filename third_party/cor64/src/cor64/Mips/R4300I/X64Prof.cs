@@ -1,6 +1,10 @@
 // [climb4 speed_cat17] measurement only: COR64_SPDCAT17_PROF=<file> samples the CPU thread's instruction pointer (suspend +
 // GetThreadContext, ~every 200 us) and writes, at process exit, the native blocks by sample count plus the code bytes and
 // per-offset counts of the hottest blocks (for an offline disassembler). Nothing in the emulation reads it.
+// HANG TRAP (2026-11-20, Racer/ASB99): a GC during sampling can deadlock (sampler stuck in GetThreadContext on the
+// suspended CPU thread while the GC waits for it). Run with DOTNET_GCgen0size=0x30000000 (no gen0 GC in a 5400-frame bench).
+// Report also buckets the samples outside native blocks by module (managed JIT = "jit/heap") and lists the top 600 RIPs
+// (resolve with dotnet-dump ip2md on a dump taken from the same run).
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -18,10 +22,12 @@ namespace cor64.Mips.R4300I
         private static bool s_Started;
 
         [DllImport("kernel32")] private static extern uint GetCurrentThreadId();
+        [DllImport("kernel32", CharSet = CharSet.Unicode)] private static extern bool GetModuleHandleExW(uint flags, IntPtr addr, out IntPtr mod);
+        [DllImport("kernel32", CharSet = CharSet.Unicode)] private static extern uint GetModuleFileNameW(IntPtr mod, StringBuilder name, uint size);
         [DllImport("kernel32")] private static extern IntPtr OpenThread(uint access, bool inherit, uint id);
-        [DllImport("kernel32")] private static extern uint SuspendThread(IntPtr h);
-        [DllImport("kernel32")] private static extern uint ResumeThread(IntPtr h);
-        [DllImport("kernel32")] private static extern bool GetThreadContext(IntPtr h, IntPtr ctx);
+        [DllImport("kernel32"), System.Runtime.InteropServices.SuppressGCTransition] private static extern uint SuspendThread(IntPtr h);
+        [DllImport("kernel32"), System.Runtime.InteropServices.SuppressGCTransition] private static extern uint ResumeThread(IntPtr h);
+        [DllImport("kernel32"), System.Runtime.InteropServices.SuppressGCTransition] private static extern bool GetThreadContext(IntPtr h, IntPtr ctx);
 
         public static void Add(long start, int len, CpuRecBlock b) { lock (s_Blocks) s_Blocks.Add((start, len, b)); }
 
@@ -58,11 +64,11 @@ namespace cor64.Mips.R4300I
                 (long start, int len, CpuRecBlock b)[] bl; lock (s_Blocks) bl = s_Blocks.ToArray();
                 Array.Sort(bl, (x, y) => x.start.CompareTo(y.start));
                 KeyValuePair<long, int>[] rips; lock (s_Rip) rips = new List<KeyValuePair<long, int>>(s_Rip).ToArray();
-                var per = new Dictionary<int, long>(); var off = new Dictionary<int, Dictionary<int, int>>(); long nat = 0;
+                var other = new List<KeyValuePair<long, int>>(); var per = new Dictionary<int, long>(); var off = new Dictionary<int, Dictionary<int, int>>(); long nat = 0;
                 foreach (var kv in rips) {
                     int lo = 0, hi = bl.Length - 1, f = -1;
                     while (lo <= hi) { int m = (lo + hi) / 2; if (bl[m].start <= kv.Key) { f = m; lo = m + 1; } else hi = m - 1; }
-                    if (f < 0 || kv.Key >= bl[f].start + bl[f].len) continue;
+                    if (f < 0 || kv.Key >= bl[f].start + bl[f].len) { other.Add(kv); continue; }
                     nat += kv.Value;
                     per.TryGetValue(f, out long c); per[f] = c + kv.Value;
                     if (!off.TryGetValue(f, out var d)) off[f] = d = new();
@@ -70,6 +76,16 @@ namespace cor64.Mips.R4300I
                 }
                 var sb = new StringBuilder();
                 sb.AppendLine($"PROF total={s_Total} native={nat} fail={s_Fail}");
+                // samples outside the native blocks: by module (managed JIT code has no module: "jit/heap"), then the hottest raw RIPs
+                var mods = new Dictionary<string, long>(); var modBase = new Dictionary<long, string>();
+                foreach (var kv in other) {
+                    string m = "jit/heap";
+                    if (GetModuleHandleExW(6, (IntPtr)kv.Key, out IntPtr mh) && mh != IntPtr.Zero) { var nb = new StringBuilder(260); GetModuleFileNameW(mh, nb, 260); m = System.IO.Path.GetFileName(nb.ToString()) + "@" + ((long)mh).ToString("X"); }
+                    mods.TryGetValue(m, out long c); mods[m] = c + kv.Value;
+                }
+                foreach (var kv in mods) sb.AppendLine($"MOD {kv.Key} samples={kv.Value} pct={100.0 * kv.Value / Math.Max(1, s_Total):F2}");
+                other.Sort((x, y) => y.Value.CompareTo(x.Value));
+                for (int i = 0; i < Math.Min(600, other.Count); i++) sb.AppendLine($"RIP {other[i].Key:X} samples={other[i].Value}");
                 var order = new List<int>(per.Keys); order.Sort((x, y) => per[y].CompareTo(per[x]));
                 for (int i = 0; i < Math.Min(60, order.Count); i++) {
                     var b = bl[order[i]].b;
