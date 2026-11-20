@@ -372,6 +372,7 @@ internal static class X86BootCli
         if (m.Nic != null && m.Pci?.NicFn != null) Console.WriteLine($"nic: sent {m.Nic.FramesSent} frames, received {m.Nic.FramesReceived}; BAR0 {m.Pci!.NicFn!.Read32(0x10):X8} cmd {m.Pci.NicFn.Cfg[4]:X2} line {m.Pci.NicFn.Cfg[0x3c]} PIRQB {m.Pci.Isa.Cfg[0x61]:X2}");
         if (args.Contains("--jitstat")) Console.WriteLine($"jit: compiled {m.Cpu.JitCompiled} reused {m.Cpu.JitReused} variant-hits {m.Cpu.JitVariantHits} runs {m.Cpu.JitRuns} invalid {m.Cpu.JitInvalid} cycle {m.Cpu.Cycle} compiled-instrs {m.Cpu.JitInstrsTotal} ({100.0 * m.Cpu.JitInstrsTotal / Math.Max(1, m.Cpu.Cycle):F1}%) (set X86_JITSTAT for the per-block counts)");
         if (args.Contains("--jitstat")) Console.WriteLine($"jit: declined at entry {m.Cpu.JitDeclines} (unusable segment at the time: {string.Join(" ", m.Cpu.JitDeclineSeg)}); why: {string.Join(" ", Enumerable.Range(0, 64).Where(i => m.Cpu.DeclineWhy[i] > 0).Select(i => $"{i}={m.Cpu.DeclineWhy[i]}"))}");
+        if (args.Contains("--jitstat")) Console.WriteLine(m.Cpu.JitPipeStat());
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.JitTop(int.TryParse(Environment.GetEnvironmentVariable("X86_JITTOP"), out int jtn) ? jtn : 25)) Console.WriteLine("  blk " + l);
         if (PcMachine.TimeProbe) Console.WriteLine($"timeprobe: cpu batches {m.TicksCpu * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms (Exec1 {m.Cpu.TicksExec1 * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms), between batches {m.TicksDevices * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms, batches {m.Batches}");
         if (PcMachine.TimeProbe) Console.WriteLine($"timeprobe: out-of-line instructions {m.Cpu.OolCalls}, {m.Cpu.TicksOol * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms inside them");
@@ -380,6 +381,7 @@ internal static class X86BootCli
         {
             double tf = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             Console.WriteLine($"timeprobe: steps without a compiled block {m.Cpu.InterpCount.Sum()}, {m.Cpu.InterpTicks.Sum() * tf:F0} ms; top by time (first byte, 100 = fetch off the cached page):");
+            Console.WriteLine("timeprobe: by decline path (none,invalid,failed,pending,compile,counting,new): " + string.Join(" ", Enumerable.Range(0, 7).Select(i => $"{m.Cpu.WhyCount[i]}/{m.Cpu.WhyTicks[i] * tf:F0}ms")));
             foreach (int i in Enumerable.Range(0, 257).OrderByDescending(i => m.Cpu.InterpTicks[i]).Take(16))
                 Console.WriteLine($"  {(i == 256 ? "page" : i.ToString("X2"))}: {m.Cpu.InterpCount[i]} steps, {m.Cpu.InterpTicks[i] * tf:F0} ms, {m.Cpu.InterpTicks[i] * tf * 1e6 / Math.Max(1, m.Cpu.InterpCount[i]):F0} ns each");
         }
@@ -389,6 +391,7 @@ internal static class X86BootCli
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.InterpModes()) Console.WriteLine("  interpmode " + l);
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.InterpTop(40)) Console.WriteLine("  interp " + l);
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.InterpAt.OrderByDescending(x => x.Value).Take(30)) Console.WriteLine($"  interpat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))} [{m.Cpu.JitWhy(kv.Key)}]");
+        if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.OolTicksAt.OrderByDescending(x => x.Value).Take(25)) Console.WriteLine($"  oolms {kv.Key:X8} {kv.Value * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms / {m.Cpu.OolAt.GetValueOrDefault(kv.Key)} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))}");
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.OolAt.OrderByDescending(x => x.Value).Take(40)) Console.WriteLine($"  oolat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))}");
         if (args.Contains("--irqstat")) Console.WriteLine($"batches {m.Batches} halted {m.HaltBatches} cycle {m.Cpu.Cycle} idle-clock {m.Clock - m.Cpu.Cycle}");
         if (args.Contains("--irqstat")) Console.WriteLine("irqs: " + string.Join(" ", Enumerable.Range(0, 256).Where(i => m.IrqCount[i] > 0).Select(i => $"{i:X2}h={m.IrqCount[i]}")) + $"; PIC imr {m.Pic.MasterImr:X2}/{m.Pic.SlaveImr:X2}; CR0 {m.Cpu.Cr0:X}; CS:EIP {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8}; IF {(m.Cpu.Flags >> 9) & 1}; halt {m.Cpu.Halt}");

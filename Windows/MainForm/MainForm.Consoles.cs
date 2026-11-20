@@ -644,6 +644,17 @@ namespace BrokenNes.Windows
             sessionLastSave = s.ExportSave();
         }
 
+        private Task? sessionSaveTask;
+        private void WriteSessionSave(byte[] data, string path, bool force)
+        {
+            if (!force && sessionLastSave != null && data.AsSpan().SequenceEqual(sessionLastSave)) return;
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            string tmp = path + ".tmp";
+            File.WriteAllBytes(tmp, data);
+            File.Move(tmp, path, overwrite: true);
+            sessionLastSave = data;
+        }
+
         private void SaveSessionBattery(bool force)
         {
             // Butchering mode freezes disk saves (see SaveBatteryRamForNes)
@@ -651,6 +662,21 @@ namespace BrokenNes.Windows
             var s = session;
             if (s == null || !s.HasBattery) return;
             if (farm.SaveRamTouched) return;     // a corruption wrote the game's save RAM, or the machine is a replayed or loaded one: never over the player's save
+            if (s is NesEmulator.X86.PcSession pc)
+            {   // the x86 disk (1 GB for Win98): the periodic save is built, compared and written on a worker, the shutdown save waits for it
+                var pending = sessionSaveTask;
+                if (pending != null && !pending.IsCompleted) { if (!force) return; pending.Wait(); }
+                if (!force)
+                {
+                    Func<byte[]>? build;
+                    lock (emulationLock) build = pc.ExportSaveLater();
+                    if (build == null) return;
+                    string? p = SessionSavePath(s);
+                    if (p == null) return;
+                    sessionSaveTask = Task.Run(() => { try { WriteSessionSave(build(), p!, false); } catch (Exception ex) { Console.WriteLine($"[Console] save write failed: {ex.Message}"); } });
+                    return;
+                }
+            }
             try
             {
                 byte[] data;
@@ -735,12 +761,12 @@ namespace BrokenNes.Windows
                 DrainPcKeys(s);                     // the x86 PC: the real keyboard's keys typed since the last frame
                 s.SetPad(0, p1); s.SetPad(1, p2);
                 ApplyPointer(s, ptr);
-                s.RunFrame();
+                using (PerformanceProfiler.Time("Session.RunFrame")) s.RunFrame();
                 TfAfterFrame(s);
                 FarmAfterFrame();
             }
             sessionFrames++;
-            if (sessionFrames % 600 == 0) SaveSessionBattery(force: false);
+            if (sessionFrames % 600 == 0) using (PerformanceProfiler.Time("Session.Battery")) SaveSessionBattery(force: false);
 
             fpsFrameCount++; Interlocked.Increment(ref framesEmulated);
             if (fpsStopwatch != null && fpsStopwatch.Elapsed.TotalSeconds >= 0.5)
@@ -751,6 +777,7 @@ namespace BrokenNes.Windows
             }
 
             if (audioManager != null)
+            using (PerformanceProfiler.Time("Session.Audio"))
             {
                 int n;
                 while ((n = s.ReadSamples(sessionAudio)) > 0)
@@ -764,6 +791,7 @@ namespace BrokenNes.Windows
             // (160 x 144, the console's own chip again) read past the end of the picture, threw, and the loop below treats an exception as the end of the emulation - the game stopped for good
             // (found by driving the swaps through the HTTP API: about one swap back in three).
             int w, h, aw; bool resize = false;
+            using (PerformanceProfiler.Time("Session.Copy"))
             lock (emulationLock)
             {
                 w = s.FrameWidth; h = s.FrameHeight; aw = s.DisplayWidth;
