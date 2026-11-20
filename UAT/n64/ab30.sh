@@ -4,6 +4,7 @@
 # usage: UAT/n64/ab30.sh [out file]   FR=frames (default 1800). ROMs via compat/tools/get_rom.sh (N64_ROM_DIR / N64_LIBRARY_DIR).
 # Prints one line per game and a final "AB30 PASS n/n" or "AB30 FAIL". UPDATE=1 rewrites the expected file (after an approved change).
 . "$(dirname "$0")/lib/n64env.sh"
+. "$N64_UAT/lib/probe_lock.sh"; probe_lock
 OUTF=${1:-$N64_WORK/ab30/ab30_$(date +%Y%m%d_%H%M%S).txt}; mkdir -p "$(dirname "$OUTF")"; : > "$OUTF"
 EXP="$N64_GOLD/ab30_expected.tsv"; FAIL=0; n=0; ok=0
 cd "$N64_BIN" || exit 2

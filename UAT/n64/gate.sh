@@ -5,6 +5,7 @@
 # Prints "boot ok" ... and a final "GATE PASS" (exit 0) only when everything matches. Deterministic, so load does not matter
 # (but run one emulator at a time: see wait_free.sh). Output: $N64_WORK/gate/.
 . "$(dirname "$0")/lib/n64env.sh"
+. "$N64_UAT/lib/probe_lock.sh"; probe_lock
 E=${1:-X=1}; FAIL=0; G="$N64_WORK/gate"; mkdir -p "$G"
 [ "$BUILD" = "1" ] && { "$N64_UAT/build.sh" || exit 2; }
 [ -f "$N64_SM64_ROM" ] || { echo "no SM64 ROM: set N64_SM64_ROM or sm64Rom in UAT/n64/n64.local.json ($N64_SM64_ROM)"; exit 2; }
