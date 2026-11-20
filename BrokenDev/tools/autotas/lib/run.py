@@ -30,6 +30,8 @@ marks the milestone and writes the raw state FILE. So retries (`back`) never lea
   python -I run.py map --ch 1-2 [WIDTH] [--cell 16]  the level map stitched from every grid seen so far
   python -I run.py gap --ch 1-2 [FAMILY] [--want EXPR]  GAP SOLVER: long waits (0-400) before jumps, from here and 3 earlier checkpoints
   python -I run.py exits --ch 1-2 [--vals Down,Up,A] [--apply]   EXIT FINDER: pipes/doors/warps near you (walk, stop, hold Down/Up)
+  python -I run.py roam --ch 1-2 [MAX] [--want EXPR]  MAZES: explores every reachable spot both ways (+ Up/Down doors) until a scene change / level end
+  python -I run.py goal --ch 1-2 [--apply]          GOAL FINDER: touch the level-end object (card box...) going right OR left
   python -I run.py nodes --ch 1-2 [HOLD] --key mapx,mapy   MAP NODES: every reachable place and what pressing A there does (LEVEL / room / nothing)
   python -I run.py tree --ch 1-2                     checkpoints as a branch tree (which ones are on the current line)
   python -I run.py finish --ch 1-2 [--note TEXT]     replay -> seg/<ch>.bnm + state/<ch>.raw.state + thumb
@@ -222,6 +224,10 @@ def run_cmd(a, pkg, ch):
         do_script(b, r, cfg, pkg, ch, a)
     elif a.cmd == "discover":
         discover(b, r, cfg, pkg, ch, a)
+    elif a.cmd == "roam":
+        roam(b, r, cfg, pkg, ch, a)
+    elif a.cmd == "goal":
+        goal_touch(b, r, cfg, pkg, ch, a)
     elif a.cmd == "nodes":
         nodes(b, r, cfg, pkg, ch, a)
     elif a.cmd == "explore":
@@ -542,6 +548,117 @@ def gap(b, r, cfg, pkg, ch, a):
                 if r["frames"] != mid: print("gap: SOLVED (slow landing, wait, jump) - save a checkpoint"); return
                 seek(b, r, cfg, pkg, ch, before)
     print("gap: no wait + jump crossed it from here or the last 3 checkpoints (the log is at the oldest one tried: `resume`/`seek` as needed)")
+
+
+def roam(b, r, cfg, pkg, ch, a):
+    """Layer 6, exploration search for mazes (fortresses, castles, caves), any game with x/y/air in runner.json: from here,
+    finds every distinct spot a run+jump lands on going right AND left (reach), keeps the ones in map cells (64x32 px) not
+    seen yet as a frontier, and at each new spot also tries Up / Down holds (doors, pipes). Expands the newest / farthest
+    spots first. Stops at a scene change (runner.json scene_change), the level end (advance.finale) or --want, then plays
+    the whole path into the log. roam [MAX_SPOTS] [--want EXPR]   (time cap 7 min)"""
+    import time
+    t0 = time.time(); limit = int(a.args[0]) if a.args else 30
+    cur = b.call("play_step", session=r["session"], frames=0, scale=0, ram=cfg["ram"])["ram"]
+    goals = []
+    if a.want: goals.append("(" + names(a.want, cfg) + ")")
+    if cfg.get("scene_change"):
+        sc = cfg["scene_change"]
+        for k, v in cur.items(): sc = sc.replace("{" + k + "}", str(v))
+        goals.append("(" + names(sc, cfg) + ")")
+    ge = goal_expr(b, r, cfg)
+    if ge: goals.append("(" + ge + ")")
+    goal = " || ".join(goals) or "0"
+    d = os.path.join(wdir(pkg, ch), "_roam"); os.makedirs(d, exist_ok=True)
+    root = os.path.join(d, "r0.state"); b.call("save_state", session=r["session"], path=root)
+    cell = lambda ram: (int(ram["x"]) // 64, int(ram["y"]) // 32)
+    seen = {cell(cur)}; frontier = [(root, [], cur)]; found = None; n = 0
+    dead = cfg.get("dead")
+    def plans_from(st):
+        out = []
+        for dname in ("Right", "Left"):
+            for aa in range(0, 49, 12):
+                for j in (0, 6, 14, 24):
+                    for k in (0, 12):
+                        p = [[[dname, "B"], aa]] if aa else []
+                        if j: p.append([[dname, "B", "A"], j])
+                        if k: p.append([[dname], k])
+                        if p: out.append(p)
+        for hold in ("Up", "Down"):   # doors and pipes: stand exactly in front (a short walk, stop) and hold
+            out.append([[[hold], 45]])
+            for dname in ("Right", "Left"):
+                for w in (4, 10, 16, 24, 34):
+                    out.append([[[dname], w], [[], 12], [[hold], 30]])
+        return out
+    try:
+        while frontier and not found and n < limit and time.time() - t0 < 420:
+            frontier.sort(key=lambda t: (int(t[2]["x"]), -len(t[1])))
+            st, path, ram0 = frontier.pop()   # the farthest-right spot first, then the rest
+            n += 1
+            plans = plans_from(st)
+            texts = [" ".join(("+".join(bt) or "none") + f":{k}" for bt, k in p) + " none:30" for p in plans]
+            b.call("load_state", session=r["session"], path=st)
+            res = b.call("try_plans", session=r["session"], plans=texts, then=[], within=1, want="1", dead=dead, survive=30, survive_with=[], ram=cfg["ram"] + ["_g=" + goal])
+            sp = sorted(abs(int(rr["ram"]["x"]) - int(ram0["x"])) / (sum(k for _, k in plans[i]) + 30)
+                        for i, rr in enumerate(res["results"]) if rr["verdict"] == "ok" and plans[i][0][0][0] in ("Right", "Left"))
+            vmax = sp[len(sp) * 3 // 4] if sp else 2.0   # the usual top running speed here (px/frame)
+            for pi, rr in enumerate(res["results"]):
+                if rr["verdict"] != "ok": continue
+                ram = rr["ram"]; c = cell(ram)
+                pf = sum(k for _, k in plans[pi]) + 30
+                warp = abs(int(ram["x"]) - int(ram0["x"])) > max(96, 2.5 * vmax * pf)   # farther than running could carry: a door/pipe moved us
+                if ram.get("_g") or warp:
+                    found = path + plans[pi] + [[[], 30]]; print(f"  roam: {'a door/pipe (position jumped)' if warp else 'the goal'} at x={ram0['x']} -> {ram['x']}"); break
+                if c in seen or int(ram.get("air", 0)): continue
+                seen.add(c)
+                b.call("load_state", session=r["session"], path=st)
+                for bt, k in plans[pi] + [[[], 30]]: b.call("play_step", session=r["session"], buttons=bt, frames=k, scale=0)
+                f = os.path.join(d, f"r{len(seen)}.state"); b.call("save_state", session=r["session"], path=f)
+                frontier.append((f, path + plans[pi] + [[[], 30]], ram))
+            print(f"  roam: spot {n} x={ram0['x']} y={ram0['y']}: {len(seen)} cells known, frontier {len(frontier)}")
+    finally:
+        b.call("load_state", session=r["session"], path=root)
+    if not found:
+        print(f"roam: nothing found ({len(seen)} cells explored; cells (x/64,y/32): {sorted(seen)[:40]})"); return
+    print(f"roam: FOUND after {sum(k for _, k in found)} frames - playing the path into the log")
+    for bt, k in found:
+        res, ev = do_step(b, r, cfg, bt, k); ran = int(res.get("framesRun", 0) or 0)
+        if ran: r["log"].append([bt, ran]); r["frames"] += ran
+        if ev == "GOAL": r["goal_frame"] = r["frames"]
+        if ev and ev != "entered level": print(">>> " + ev); break
+    store(pkg, ch, r)
+    res = b.call("play_step", session=r["session"], frames=0, scale=0, ram=cfg["ram"]); show(res, "roam path played", r)
+
+
+def goal_expr(b, r, cfg):
+    """The level-end touch: runner.json advance.finale bytes changing (SMB3: a card slot fills), or end_expr."""
+    ad = cfg.get("advance") or {}
+    parts = [f"[{x}] != {table(b, r['session'], {'addr': int(x.strip('$'), 16), 'len': 1})[0]}" for x in ad.get("finale", [])]
+    if ad.get("end_expr"): parts.append("(" + names(ad["end_expr"], cfg) + ")")
+    return " || ".join(parts)
+
+
+def goal_touch(b, r, cfg, pkg, ch, a):
+    """Goal finder: the level's end object (card box, flag, axe, orb) may be behind you, above you or need a jump.
+    Tries run+jump families both ways wanting the game's level-end touch (runner.json advance.finale / end_expr).
+    --apply plays the fastest."""
+    want = goal_expr(b, r, cfg)
+    if not want: sys.exit("goal: this game's runner.json has no advance.finale / end_expr")
+    best = None
+    for d in ("Right", "Left"):
+        a2 = argparse.Namespace(**vars(a)); a2.args = [f"{d}+B:{{a}} {d}+B+A:{{j}} none:{{k}}"]; a2.vals = "a=0..72:6,j=4..24:4,k=0..20:10"
+        a2.want = want; a2.then = "none"; a2.within = 60; a2.apply = False; a2.wait = "off"; a2.all = False; a2.settle = 0; a2.survive = 0
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf): search(b, r, cfg, pkg, ch, a2)
+        for line in buf.getvalue().splitlines():
+            if " frames  {" in line:
+                t = int(line.split()[0])
+                if best is None or t < best[0]: best = (t, a2)
+                print(f"  GOAL TOUCH going {d}: {line.strip()[:110]}"); break
+    if not best: print("goal: no run/jump touched the level end from here (look at the picture: is the goal object on screen?)"); return
+    if a.apply:
+        best[1].apply = True; search(b, r, cfg, pkg, ch, best[1])
+        print("goal: touched - now `step none 600` until >>> GOAL")
 
 
 def nodes(b, r, cfg, pkg, ch, a):
@@ -991,6 +1108,18 @@ def advance(b, r, cfg, pkg, ch, a):
             a._gapped = True; print("  (every hop dies: trying the gap solver - long waits, earlier starts)")
             a3 = argparse.Namespace(**vars(a)); a3.args = []; a3.want = None; a3.vals = None
             gap(b, r, cfg, pkg, ch, a3)
+            if r["frames"] != before: continue
+        if r["frames"] == before and not r.get("goal_frame") and goal_expr(b, r, cfg) and not getattr(a, "_goaled", False):
+            a._goaled = True; a7 = argparse.Namespace(**vars(a)); a7.args = []; a7.apply = True
+            print("  (stuck: is the level end here? trying to touch it both ways)"); goal_touch(b, r, cfg, pkg, ch, a7)
+            if r["frames"] != before:
+                res, ev = do_step(b, r, cfg, [], 900); ran = int(res.get("framesRun", 0) or 0)
+                if ran: r["log"].append([[], ran]); r["frames"] += ran
+                if ev == "GOAL": r["goal_frame"] = r["frames"]
+                store(pkg, ch, r); show(res, ev, r); return
+        if r["frames"] == before and not r.get("goal_frame") and not getattr(a, "_roamed", False) and getattr(a, "_exited", False):
+            a._roamed = True; a8 = argparse.Namespace(**vars(a)); a8.args = ["20"]; a8.want = None
+            print("  (stuck everywhere: exploring the maze for a door/pipe/goal)"); roam(b, r, cfg, pkg, ch, a8)
             if r["frames"] != before: continue
         if r["frames"] == before and not r.get("goal_frame") and cfg.get("scene_change") and not getattr(a, "_exited", False):
             a._exited = True; print("  (stuck: looking for an exit - pipe, door - nearby)")

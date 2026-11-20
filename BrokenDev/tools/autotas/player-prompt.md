@@ -34,6 +34,8 @@ $R do "Right+B@x>=400 Right+B+A:14 none@air==0"
 $R map 120 --cell 16        # the LEVEL MAP stitched from every grid you have looked at ('|' = you): plan routes on it
 $R rewind 60                # TIME MACHINE: go back 60 frames on your current line (no checkpoint needed)
 $R gap                      # GAP SOLVER when every jump dies: long waits (a platform must arrive) + slow landings from earlier checkpoints
+$R roam 30                  # MAZES (castles, caves): explores every reachable spot both ways + doors (Up/Down) until a door/pipe/goal, plays the path
+$R goal --apply             # LEVEL END: touches the goal object (card box) even if it is behind/above you
 $R exits --apply            # EXIT FINDER: a wall or dead end often hides a pipe/door: walks, jumps, holds Down/Up to find it
 $R tree                     # your checkpoints as a branch tree
 $R probe 8                  # MAPS/MENUS: what each button does here (RAM changes, a picture each); nothing recorded
