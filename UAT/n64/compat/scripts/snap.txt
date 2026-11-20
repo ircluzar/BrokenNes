@@ -1,0 +1,816 @@
+# snap: boot -> title -> name card -> Prof. Oak intro (B = no repeat) -> Beach course on rails: Z held = camera,
+# A = photo (60 shots) -> camera check (keep PIDGEY) -> To Prof. Oak -> evaluation -> PKMN Report -> Go to Lab -> Save
+# (FlashRAM) -> keep going -> Beach again -> camera check; then the save-after-reset block. Lane cert_scripts2.
+run 120
+screenshot boot_2s
+run 480
+screenshot boot_10s
+run 600
+screenshot title_20s
+pulse START 60 20       # Start pressed 3 times over 1 s (some titles ignore the first press)
+run 570
+screenshot after_start_10s
+pulse START 60 20       # again: gets past "press start" menus that need two presses
+press A 5 25
+run 540
+screenshot after_start_20s
+press START 5 40
+press A 5 60
+press A 5 55
+run 120
+press A 5 55
+run 120
+press A 5 55
+run 120
+press A 5 55
+run 120
+press A 5 55
+run 120
+press A 5 55
+run 120
+press A 5 55
+run 120
+press B 5 55
+run 120
+screenshot m0
+run 60
+pulse B 60 20
+run 120
+screenshot k1
+press A 5 55
+run 120
+screenshot k2
+press A 5 55
+run 120
+screenshot k3
+press A 5 55
+run 120
+screenshot k4
+press A 5 55
+run 120
+screenshot k5
+savestate speed
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course1_3
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course1_6
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course1_9
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course1_12
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course1_15
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course1_18
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course1_21
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course1_24
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course1_27
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course1_30
+press A 5 90
+press B 5 90
+press B 5 60
+stick 0 -80
+run 15
+stick 0 0
+run 40
+stick 0 -80
+run 15
+stick 0 0
+run 40
+press A 5 120
+screenshot o0
+press A 5 60
+run 60
+press A 5 60
+run 60
+screenshot o2
+press A 5 60
+run 60
+press A 5 60
+run 60
+screenshot o4
+press A 5 60
+run 60
+press A 5 60
+run 60
+screenshot o6
+press A 5 60
+run 60
+press A 5 60
+run 60
+screenshot o8
+press A 5 60
+run 60
+press A 5 60
+run 60
+screenshot o10
+press A 5 60
+run 60
+press A 5 60
+run 60
+screenshot o12
+press A 5 60
+run 60
+press A 5 60
+run 60
+screenshot o14
+press A 5 60
+run 60
+press A 5 60
+run 60
+screenshot o16
+press A 5 60
+run 60
+press A 5 60
+run 60
+screenshot o18
+press A 5 60
+run 60
+press A 5 60
+run 60
+screenshot o20
+press A 5 60
+run 60
+press A 5 60
+run 60
+screenshot o22
+press A 5 60
+run 60
+press A 5 60
+run 60
+screenshot o24
+press A 5 60
+press A 5 60
+run 60
+screenshot s0
+stick 0 -80
+run 15
+stick 0 0
+run 40
+stick 0 -80
+run 15
+stick 0 0
+run 40
+stick 0 -80
+run 15
+stick 0 0
+run 40
+screenshot u1
+press A 5 120
+screenshot u2
+run 120
+screenshot l0
+stick 0 -80
+run 15
+stick 0 0
+run 40
+screenshot l1
+stick 0 -80
+run 15
+stick 0 0
+run 40
+screenshot l2
+press A 5 90
+screenshot l3
+press A 5 120
+screenshot l4
+press A 5 120
+screenshot l5
+press A 5 120
+screenshot l6
+press A 5 55
+run 120
+press A 5 55
+run 120
+press A 5 55
+run 120
+screenshot course2_start
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course2_3
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course2_6
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course2_9
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course2_12
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course2_15
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course2_18
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course2_21
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course2_24
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course2_27
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+hold Z
+run 30
+press A 5 30
+stick 30 0
+press A 5 30
+stick -30 0
+press A 5 30
+stick 0 0
+release
+run 60
+screenshot course2_30
+press A 5 55
+press A 5 55
+press A 5 55
+press A 5 55
+press A 5 55
+press A 5 55
+press A 5 55
+press A 5 55
+screenshot check2
+checkpoint end
+# [cert_scripts2] certification point 5: the saved report (FlashRAM) survives a reset
+release
+stick 0 0
+savefile pre_reset
+reset
+run 1200
+screenshot reset_title
+pulse START 60 20
+run 570
+screenshot reset_after_start
+press A 5 120
+run 120
+screenshot reset_lab
+savefile post_reset
+checkpoint save_end

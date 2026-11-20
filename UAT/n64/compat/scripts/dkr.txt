@@ -1,0 +1,4274 @@
+# dkr [cert_scripts7]: boot -> new game A (AAA) -> hub: meet Taj, take the hub balloon, enter Ancient Lake ->
+# race 3 laps and win (inputs recorded by a closed-loop RAM-reading driver, dev/pilot in lane cert_scripts7) ->
+# balloon x2 in the hub -> save block: reset -> Game Select shows AAA x02 -> back into the hub.
+run 1200
+press START 15 45
+run 300
+screenshot title_after_start
+press A 15 75
+run 120
+screenshot d1
+press A 15 75
+run 120
+screenshot d2
+press A 15 75
+run 120
+screenshot d3
+press A 15 75
+run 120
+screenshot d4
+press A 15 75
+run 120
+screenshot d5
+press A 15 75
+run 120
+screenshot d6
+press A 15 75
+run 120
+screenshot d7
+press A 15 75
+run 120
+screenshot d8
+press A 15 75
+run 120
+screenshot d9
+press A 15 75
+run 120
+screenshot d10
+press A 15 75
+run 120
+screenshot d11
+run 900
+screenshot adventure_intro
+savestate adventure
+pulse A 300 30
+run 600
+screenshot hub_0
+savestate speed
+run 200
+hold A
+run 360
+release A
+press A 5 90
+press A 5 90
+press A 5 90
+press A 5 90
+press A 5 90
+press A 5 90
+press A 5 90
+press A 5 90
+run 200
+run 240
+hold A
+run 60
+stick 60 0
+run 30
+stick 0 0
+run 300
+release A
+hold A
+run 40
+run 40
+run 40
+run 40
+run 40
+run 40
+run 40
+run 40
+run 40
+run 40
+run 40
+run 40
+release A
+screenshot in
+hold A
+stick -70 0
+run 30
+stick 0 0
+run 40
+screenshot y1
+run 40
+screenshot y2
+run 40
+screenshot y3
+run 40
+screenshot y4
+run 40
+screenshot y5
+run 40
+screenshot y6
+run 40
+screenshot y7
+release A
+run 200
+screenshot y8
+savestate race
+run 100
+hold A
+run 560
+stick 22 0
+run 2
+stick 16 0
+run 2
+stick 10 0
+run 2
+stick 4 0
+run 2
+stick 1 0
+run 2
+stick 2 0
+run 2
+stick 5 0
+run 2
+stick 8 0
+run 2
+stick 9 0
+run 2
+stick 10 0
+run 2
+stick 7 0
+run 2
+stick 2 0
+run 2
+stick 3 0
+run 6
+stick 4 0
+run 2
+stick 1 0
+run 2
+stick 0 0
+run 2
+stick -3 0
+run 4
+stick -5 0
+run 2
+stick -10 0
+run 4
+stick -11 0
+run 2
+stick -13 0
+run 2
+stick -12 0
+run 2
+stick -8 0
+run 2
+stick -12 0
+run 2
+stick -16 0
+run 2
+stick -14 0
+run 2
+stick -17 0
+run 4
+stick -20 0
+run 2
+stick -15 0
+run 2
+stick -13 0
+run 2
+stick -20 0
+run 2
+stick -21 0
+run 2
+stick -23 0
+run 2
+stick -26 0
+run 2
+stick -25 0
+run 2
+stick -18 0
+run 2
+stick -19 0
+run 2
+stick -20 0
+run 2
+stick -28 0
+run 2
+stick -26 0
+run 2
+stick -23 0
+run 4
+stick -19 0
+run 2
+stick -20 0
+run 2
+stick -26 0
+run 2
+stick -31 0
+run 2
+stick -29 0
+run 4
+stick -27 0
+run 2
+stick -20 0
+run 2
+stick -21 0
+run 2
+stick -23 0
+run 2
+stick -32 0
+run 2
+stick -33 0
+run 4
+stick -37 0
+run 2
+stick -35 0
+run 2
+stick -27 0
+run 2
+stick -28 0
+run 2
+stick -30 0
+run 2
+stick -38 0
+run 2
+stick -35 0
+run 2
+stick -32 0
+run 2
+stick -34 0
+run 2
+stick -31 0
+run 2
+stick -30 0
+run 2
+stick -37 0
+run 2
+stick -42 0
+run 2
+stick -39 0
+run 2
+stick -40 0
+run 2
+stick -37 0
+run 2
+stick -29 0
+run 4
+stick -32 0
+run 2
+stick -40 0
+run 4
+stick -41 0
+run 2
+stick -43 0
+run 2
+stick -37 0
+run 2
+stick -33 0
+run 2
+stick -35 0
+run 2
+stick -36 0
+run 2
+stick -35 0
+run 2
+stick -39 0
+run 2
+stick -41 0
+run 2
+stick -36 0
+run 2
+stick -38 0
+run 2
+stick -40 0
+run 2
+stick -43 0
+run 2
+stick -36 0
+run 2
+stick -33 0
+run 2
+stick -38 0
+run 2
+stick -36 0
+run 4
+stick -43 0
+run 2
+stick -42 0
+run 4
+stick -45 0
+run 2
+stick -38 0
+run 2
+stick -34 0
+run 2
+stick -39 0
+run 2
+stick -37 0
+run 2
+stick -36 0
+run 2
+stick -42 0
+run 2
+stick -45 0
+run 2
+stick -40 0
+run 2
+stick -41 0
+run 2
+stick -37 0
+run 2
+stick -28 0
+run 2
+stick -30 0
+run 2
+stick -35 0
+run 2
+stick -37 0
+run 2
+stick -45 0
+run 4
+stick -37 0
+run 2
+screenshot race_1
+stick -34 0
+run 2
+stick -32 0
+run 2
+stick -35 0
+run 2
+stick -34 0
+run 2
+stick -37 0
+run 2
+stick -42 0
+run 2
+stick -38 0
+run 2
+stick -34 0
+run 2
+stick -31 0
+run 2
+stick -28 0
+run 4
+stick -32 0
+run 2
+stick -33 0
+run 2
+stick -36 0
+run 2
+stick -37 0
+run 2
+stick -33 0
+run 2
+stick -26 0
+run 2
+stick -28 0
+run 2
+stick -32 0
+run 2
+stick -34 0
+run 2
+stick -36 0
+run 2
+stick -34 0
+run 2
+stick -27 0
+run 2
+stick -29 0
+run 2
+stick -31 0
+run 2
+stick -30 0
+run 2
+stick -38 0
+run 2
+stick -43 0
+run 2
+stick -38 0
+run 2
+release
+hold A+Z
+run 2
+release
+hold A
+stick -34 0
+run 4
+stick -30 0
+run 2
+stick -33 0
+run 2
+stick -41 0
+run 2
+stick -39 0
+run 2
+stick -37 0
+run 4
+stick -34 0
+run 2
+stick -28 0
+run 2
+stick -34 0
+run 2
+stick -39 0
+run 2
+stick -38 0
+run 2
+stick -42 0
+run 2
+stick -39 0
+run 2
+stick -41 0
+run 2
+stick -32 0
+run 2
+stick -27 0
+run 2
+stick -30 0
+run 2
+stick -31 0
+run 2
+stick -35 0
+run 2
+stick -42 0
+run 2
+stick -41 0
+run 2
+stick -36 0
+run 2
+stick -35 0
+run 2
+stick -34 0
+run 4
+stick -39 0
+run 2
+stick -40 0
+run 2
+stick -35 0
+run 2
+stick -33 0
+run 4
+stick -36 0
+run 2
+stick -37 0
+run 2
+stick -35 0
+run 2
+stick -33 0
+run 2
+stick -29 0
+run 4
+stick -32 0
+run 2
+stick -33 0
+run 4
+stick -31 0
+run 2
+stick -28 0
+run 4
+stick -31 0
+run 2
+stick -34 0
+run 2
+stick -31 0
+run 2
+stick -28 0
+run 6
+stick -31 0
+run 2
+stick -34 0
+run 2
+stick -32 0
+run 2
+stick -30 0
+run 2
+stick -25 0
+run 2
+stick -26 0
+run 4
+stick -28 0
+run 2
+stick -30 0
+run 2
+stick -33 0
+run 2
+stick -32 0
+run 2
+stick -26 0
+run 2
+stick -22 0
+run 2
+stick -25 0
+run 2
+stick -27 0
+run 2
+stick -33 0
+run 2
+stick -41 0
+run 2
+stick -42 0
+run 2
+stick -33 0
+run 4
+stick -31 0
+run 2
+stick -26 0
+run 2
+stick -36 0
+run 2
+stick -41 0
+run 2
+stick -49 0
+run 2
+stick -42 0
+run 2
+stick -36 0
+run 4
+stick -31 0
+run 2
+stick -34 0
+run 2
+stick -43 0
+run 2
+stick -48 0
+run 2
+stick -42 0
+run 2
+stick -37 0
+run 2
+stick -30 0
+run 2
+stick -25 0
+run 2
+stick -29 0
+run 2
+stick -35 0
+run 2
+stick -39 0
+run 2
+stick -37 0
+run 2
+stick -32 0
+run 2
+stick -25 0
+run 2
+stick -22 0
+run 4
+stick -24 0
+run 2
+stick -29 0
+run 2
+stick -31 0
+run 2
+stick -27 0
+run 2
+stick -22 0
+run 2
+stick -20 0
+run 2
+stick -17 0
+run 2
+stick -20 0
+run 2
+stick -24 0
+run 4
+stick -23 0
+run 2
+stick -20 0
+run 2
+stick -16 0
+run 2
+stick -18 0
+run 4
+stick -17 0
+run 2
+stick -20 0
+run 2
+stick -21 0
+run 2
+stick -15 0
+run 2
+stick -11 0
+run 2
+stick -9 0
+run 2
+stick -7 0
+run 2
+stick -13 0
+run 2
+stick -15 0
+run 4
+stick -14 0
+run 2
+stick -9 0
+run 2
+stick -3 0
+run 2
+stick -5 0
+run 4
+stick -3 0
+run 2
+stick -7 0
+run 2
+stick -8 0
+run 2
+stick -5 0
+run 2
+stick -4 0
+run 2
+stick 2 0
+run 2
+stick 5 0
+run 2
+stick 13 0
+run 2
+stick 18 0
+run 2
+stick 16 0
+run 2
+stick 20 0
+run 4
+stick 22 0
+run 2
+stick 16 0
+run 4
+stick 22 0
+run 2
+stick 21 0
+run 2
+stick 22 0
+run 2
+stick 29 0
+run 4
+stick 22 0
+run 2
+stick 24 0
+run 2
+stick 27 0
+run 2
+stick 35 0
+run 2
+stick 29 0
+run 2
+release
+hold A+Z
+stick 28 0
+run 2
+release
+hold A
+stick 33 0
+run 2
+stick 32 0
+run 2
+stick 25 0
+run 2
+stick 31 0
+run 2
+stick 35 0
+run 2
+stick 43 0
+run 2
+stick 37 0
+run 2
+stick 32 0
+run 2
+stick 35 0
+run 2
+stick 31 0
+run 2
+stick 32 0
+run 2
+stick 41 0
+run 2
+stick 47 0
+run 2
+stick 41 0
+run 4
+stick 36 0
+run 2
+stick 38 0
+run 2
+stick 34 0
+run 2
+stick 38 0
+run 2
+stick 50 0
+run 2
+stick 52 0
+run 2
+stick 41 0
+run 6
+stick 49 0
+run 2
+stick 46 0
+run 2
+stick 43 0
+run 2
+stick 44 0
+run 2
+stick 45 0
+run 2
+stick 38 0
+run 2
+stick 39 0
+run 4
+stick 37 0
+run 2
+stick 43 0
+run 2
+stick 47 0
+run 2
+stick 49 0
+run 2
+stick 42 0
+run 2
+stick 37 0
+run 2
+stick 38 0
+run 6
+stick 41 0
+run 2
+stick 43 0
+run 2
+stick 39 0
+run 2
+stick 35 0
+run 2
+stick 32 0
+run 2
+stick 31 0
+run 2
+stick 32 0
+run 6
+stick 33 0
+run 6
+stick 32 0
+run 2
+stick 29 0
+run 2
+stick 26 0
+run 2
+stick 24 0
+run 2
+stick 26 0
+run 2
+stick 23 0
+run 2
+stick 25 0
+run 2
+stick 24 0
+run 2
+stick 21 0
+run 2
+stick 23 0
+run 2
+stick 22 0
+run 2
+stick 18 0
+run 2
+stick 20 0
+run 2
+stick 19 0
+run 2
+stick 14 0
+run 2
+stick 17 0
+run 2
+stick 16 0
+run 2
+stick 9 0
+run 2
+stick 7 0
+run 2
+stick 11 0
+run 2
+stick 3 0
+run 2
+stick 1 0
+run 2
+stick 5 0
+run 2
+stick -3 0
+run 2
+stick -5 0
+run 2
+stick -1 0
+run 2
+stick -9 0
+run 2
+stick -13 0
+run 2
+stick -22 0
+run 2
+stick -19 0
+run 2
+stick -16 0
+run 2
+stick -22 0
+run 4
+stick -17 0
+run 2
+stick -24 0
+run 2
+stick -27 0
+run 2
+stick -35 0
+run 2
+stick -28 0
+run 2
+stick -23 0
+run 2
+stick -26 0
+run 2
+stick -29 0
+run 2
+stick -35 0
+run 2
+stick -30 0
+run 2
+stick -28 0
+run 2
+stick -30 0
+run 4
+stick -34 0
+run 2
+stick -32 0
+run 2
+stick -34 0
+run 2
+stick -27 0
+run 2
+stick -24 0
+run 2
+stick -28 0
+run 2
+stick -34 0
+run 2
+stick -43 0
+run 2
+stick -44 0
+run 2
+stick -41 0
+run 2
+stick -33 0
+run 2
+stick -24 0
+run 2
+stick -26 0
+run 2
+stick -29 0
+run 2
+stick -35 0
+run 2
+stick -37 0
+run 2
+stick -36 0
+run 4
+stick -32 0
+run 2
+stick -25 0
+run 2
+stick -26 0
+run 2
+stick -29 0
+run 2
+stick -30 0
+run 2
+stick -36 0
+run 2
+stick -37 0
+run 4
+stick -32 0
+run 2
+stick -27 0
+run 2
+stick -28 0
+run 2
+stick -27 0
+run 2
+stick -29 0
+run 2
+stick -34 0
+run 4
+stick -32 0
+run 2
+stick -30 0
+run 2
+stick -25 0
+run 2
+stick -23 0
+run 2
+stick -26 0
+run 2
+stick -29 0
+run 2
+stick -31 0
+run 2
+stick -33 0
+run 2
+stick -31 0
+run 2
+stick -30 0
+run 2
+stick -26 0
+run 2
+stick -27 0
+run 2
+stick -34 0
+run 2
+stick -36 0
+run 4
+stick -39 0
+run 2
+stick -37 0
+run 2
+release
+hold A+Z
+stick -28 0
+run 2
+release
+hold A
+run 4
+stick -27 0
+run 2
+stick -35 0
+run 2
+stick -41 0
+run 2
+stick -46 0
+run 2
+stick -39 0
+run 2
+stick -31 0
+run 2
+stick -30 0
+run 2
+stick -25 0
+run 2
+stick -27 0
+run 2
+stick -38 0
+run 2
+stick -44 0
+run 2
+stick -41 0
+run 2
+stick -42 0
+run 2
+stick -39 0
+run 2
+stick -31 0
+run 6
+stick -30 0
+run 2
+stick -38 0
+run 2
+stick -42 0
+run 2
+stick -46 0
+run 2
+stick -41 0
+run 2
+stick -35 0
+run 2
+stick -33 0
+run 2
+stick -29 0
+run 2
+stick -31 0
+run 2
+stick -39 0
+run 2
+stick -41 0
+run 4
+stick -42 0
+run 2
+stick -35 0
+run 2
+stick -31 0
+run 2
+stick -33 0
+run 2
+stick -32 0
+run 2
+stick -35 0
+run 2
+stick -42 0
+run 2
+stick -41 0
+run 2
+stick -35 0
+run 2
+stick -34 0
+run 4
+stick -33 0
+run 2
+stick -38 0
+run 2
+stick -42 0
+run 2
+stick -39 0
+run 2
+stick -36 0
+run 2
+stick -30 0
+run 2
+stick -27 0
+run 2
+stick -30 0
+run 2
+stick -35 0
+run 2
+stick -41 0
+run 2
+stick -38 0
+run 2
+stick -33 0
+run 2
+stick -30 0
+run 2
+stick -26 0
+run 2
+stick -27 0
+run 2
+stick -33 0
+run 2
+stick -36 0
+run 2
+stick -35 0
+run 2
+stick -34 0
+run 2
+stick -27 0
+run 2
+stick -25 0
+run 2
+stick -27 0
+run 2
+stick -31 0
+run 2
+stick -33 0
+run 2
+stick -34 0
+run 2
+stick -31 0
+run 2
+stick -25 0
+run 2
+stick -27 0
+run 2
+stick -29 0
+run 4
+stick -35 0
+run 2
+stick -37 0
+run 2
+stick -34 0
+run 4
+stick -30 0
+run 2
+stick -29 0
+run 2
+stick -27 0
+run 2
+stick -29 0
+run 2
+stick -37 0
+run 2
+stick -38 0
+run 2
+stick -37 0
+run 2
+stick -39 0
+run 2
+stick -32 0
+run 2
+stick -29 0
+run 2
+stick -35 0
+run 2
+stick -34 0
+run 2
+stick -35 0
+run 2
+stick -37 0
+run 2
+stick -35 0
+run 2
+stick -28 0
+run 2
+stick -33 0
+run 2
+stick -37 0
+run 4
+stick -42 0
+run 2
+stick -41 0
+run 2
+stick -34 0
+run 2
+stick -36 0
+run 2
+stick -37 0
+run 2
+stick -42 0
+run 2
+stick -36 0
+run 2
+stick -33 0
+run 2
+stick -38 0
+run 2
+stick -37 0
+run 2
+stick -36 0
+run 2
+stick -39 0
+run 2
+stick -38 0
+run 2
+stick -36 0
+run 2
+stick -37 0
+run 2
+stick -34 0
+run 4
+stick -38 0
+run 2
+stick -41 0
+run 2
+stick -38 0
+run 2
+stick -37 0
+run 2
+stick -33 0
+run 2
+stick -29 0
+run 2
+stick -33 0
+run 2
+stick -35 0
+run 2
+screenshot race_2
+stick -36 0
+run 4
+stick -32 0
+run 2
+stick -27 0
+run 2
+stick -29 0
+run 2
+stick -32 0
+run 2
+stick -34 0
+run 2
+stick -36 0
+run 2
+stick -34 0
+run 2
+stick -30 0
+run 2
+stick -25 0
+run 2
+stick -24 0
+run 2
+stick -28 0
+run 2
+stick -30 0
+run 2
+stick -33 0
+run 2
+stick -32 0
+run 2
+stick -27 0
+run 2
+stick -21 0
+run 2
+stick -20 0
+run 2
+stick -22 0
+run 2
+stick -27 0
+run 2
+stick -32 0
+run 2
+stick -30 0
+run 2
+stick -26 0
+run 2
+stick -22 0
+run 2
+stick -21 0
+run 4
+stick -23 0
+run 2
+stick -25 0
+run 2
+release
+hold A+Z
+stick -27 0
+run 2
+release
+hold A
+stick -26 0
+run 2
+stick -22 0
+run 2
+stick -19 0
+run 4
+stick -20 0
+run 2
+stick -22 0
+run 2
+stick -25 0
+run 4
+stick -23 0
+run 2
+stick -18 0
+run 2
+stick -17 0
+run 2
+stick -18 0
+run 2
+stick -20 0
+run 2
+stick -22 0
+run 2
+stick -23 0
+run 2
+stick -20 0
+run 2
+stick -16 0
+run 2
+stick -15 0
+run 4
+stick -18 0
+run 2
+stick -20 0
+run 4
+stick -17 0
+run 2
+stick -13 0
+run 2
+stick -12 0
+run 4
+stick -15 0
+run 2
+stick -17 0
+run 2
+stick -20 0
+run 2
+stick -18 0
+run 2
+stick -15 0
+run 2
+stick -9 0
+run 2
+stick -8 0
+run 2
+stick -12 0
+run 2
+stick -14 0
+run 2
+stick -17 0
+run 4
+stick -13 0
+run 2
+stick -8 0
+run 2
+stick -7 0
+run 2
+stick -8 0
+run 2
+stick -10 0
+run 2
+stick -12 0
+run 2
+stick -16 0
+run 2
+stick -14 0
+run 2
+stick -10 0
+run 2
+stick -5 0
+run 2
+stick -4 0
+run 4
+stick -6 0
+run 2
+stick -7 0
+run 2
+stick -11 0
+run 2
+stick -14 0
+run 2
+stick -11 0
+run 2
+stick -9 0
+run 2
+stick -5 0
+run 2
+stick -2 0
+run 2
+stick -3 0
+run 2
+stick -7 0
+run 2
+stick -6 0
+run 2
+stick -5 0
+run 2
+stick -3 0
+run 4
+stick -2 0
+run 2
+stick 0 0
+run 6
+stick 3 0
+run 2
+stick 5 0
+run 4
+stick 7 0
+run 2
+stick 9 0
+run 2
+stick 11 0
+run 2
+stick 9 0
+run 2
+stick 7 0
+run 2
+stick 10 0
+run 2
+stick 14 0
+run 2
+stick 13 0
+run 2
+stick 12 0
+run 2
+stick 10 0
+run 2
+stick 5 0
+run 2
+stick 7 0
+run 2
+stick 10 0
+run 2
+stick 15 0
+run 4
+stick 13 0
+run 2
+stick 10 0
+run 2
+stick 7 0
+run 2
+stick 6 0
+run 2
+stick 9 0
+run 2
+stick 13 0
+run 2
+stick 18 0
+run 4
+stick 13 0
+run 2
+stick 9 0
+run 2
+stick 6 0
+run 2
+stick 7 0
+run 2
+stick 9 0
+run 2
+stick 13 0
+run 2
+stick 16 0
+run 4
+stick 14 0
+run 2
+stick 10 0
+run 2
+stick 6 0
+run 2
+stick 5 0
+run 2
+stick 6 0
+run 2
+stick 8 0
+run 2
+stick 12 0
+run 2
+stick 15 0
+run 4
+stick 11 0
+run 2
+stick 8 0
+run 2
+stick 5 0
+run 4
+stick 7 0
+run 2
+stick 11 0
+run 4
+stick 10 0
+run 2
+stick 7 0
+run 2
+stick 4 0
+run 2
+stick 5 0
+run 2
+stick 7 0
+run 2
+stick 8 0
+run 2
+stick 9 0
+run 2
+stick 8 0
+run 2
+stick 6 0
+run 2
+stick 7 0
+run 28
+stick 6 0
+run 2
+stick 7 0
+run 4
+stick 6 0
+run 12
+release
+hold A+Z
+run 2
+release
+hold A
+run 2
+stick 5 0
+run 8
+stick 4 0
+run 6
+stick 3 0
+run 6
+stick 2 0
+run 2
+stick 1 0
+run 6
+stick 0 0
+run 6
+stick -2 0
+run 2
+stick -3 0
+run 4
+stick -4 0
+run 2
+stick -5 0
+run 2
+stick -7 0
+run 2
+stick -8 0
+run 2
+stick -9 0
+run 2
+stick -11 0
+run 2
+stick -9 0
+run 2
+stick -7 0
+run 2
+stick -10 0
+run 2
+stick -15 0
+run 2
+stick -14 0
+run 2
+stick -15 0
+run 2
+stick -13 0
+run 4
+stick -8 0
+run 4
+stick -13 0
+run 2
+stick -18 0
+run 2
+stick -17 0
+run 2
+stick -19 0
+run 2
+stick -18 0
+run 2
+stick -14 0
+run 4
+stick -17 0
+run 2
+stick -24 0
+run 2
+stick -23 0
+run 2
+stick -21 0
+run 4
+stick -19 0
+run 2
+stick -13 0
+run 2
+stick -19 0
+run 2
+stick -23 0
+run 2
+stick -27 0
+run 2
+stick -24 0
+run 2
+stick -22 0
+run 2
+stick -24 0
+run 4
+stick -19 0
+run 2
+stick -20 0
+run 2
+stick -22 0
+run 2
+stick -29 0
+run 6
+stick -30 0
+run 2
+stick -28 0
+run 2
+stick -22 0
+run 2
+stick -23 0
+run 2
+stick -25 0
+run 2
+stick -32 0
+run 6
+stick -36 0
+run 2
+stick -34 0
+run 2
+stick -26 0
+run 4
+stick -28 0
+run 2
+stick -27 0
+run 2
+stick -37 0
+run 2
+stick -43 0
+run 2
+stick -47 0
+run 2
+stick -37 0
+run 2
+stick -28 0
+run 2
+stick -26 0
+run 2
+stick -28 0
+run 2
+stick -30 0
+run 2
+stick -40 0
+run 2
+stick -46 0
+run 2
+stick -49 0
+run 2
+stick -39 0
+run 2
+stick -29 0
+run 2
+stick -25 0
+run 4
+stick -29 0
+run 2
+stick -41 0
+run 2
+stick -48 0
+run 2
+stick -43 0
+run 2
+stick -40 0
+run 2
+stick -34 0
+run 2
+stick -32 0
+run 2
+stick -28 0
+run 2
+stick -30 0
+run 2
+stick -39 0
+run 2
+stick -45 0
+run 2
+stick -43 0
+run 4
+stick -39 0
+run 2
+stick -31 0
+run 2
+stick -30 0
+run 2
+stick -33 0
+run 2
+stick -41 0
+run 4
+stick -42 0
+run 2
+stick -45 0
+run 2
+stick -38 0
+run 2
+stick -34 0
+run 2
+stick -39 0
+run 2
+stick -38 0
+run 2
+stick -37 0
+run 2
+stick -40 0
+run 2
+stick -42 0
+run 2
+stick -37 0
+run 2
+stick -38 0
+run 4
+stick -34 0
+run 2
+stick -37 0
+run 2
+stick -39 0
+run 2
+stick -42 0
+run 2
+stick -36 0
+run 2
+stick -33 0
+run 2
+stick -35 0
+run 2
+stick -34 0
+run 2
+stick -36 0
+run 2
+stick -41 0
+run 2
+stick -39 0
+run 2
+stick -33 0
+run 2
+stick -30 0
+run 2
+stick -29 0
+run 2
+stick -27 0
+run 2
+stick -30 0
+run 2
+stick -35 0
+run 2
+stick -41 0
+run 2
+stick -39 0
+run 2
+stick -33 0
+run 2
+stick -29 0
+run 2
+stick -26 0
+run 4
+stick -33 0
+run 2
+stick -35 0
+run 2
+release
+hold A+Z
+run 2
+release
+hold A
+stick -34 0
+run 2
+stick -28 0
+run 2
+stick -25 0
+run 2
+stick -29 0
+run 2
+stick -35 0
+run 2
+stick -37 0
+run 2
+stick -42 0
+run 2
+stick -41 0
+run 2
+stick -32 0
+run 6
+stick -39 0
+run 4
+stick -40 0
+run 2
+stick -43 0
+run 2
+stick -40 0
+run 2
+stick -31 0
+run 2
+stick -30 0
+run 4
+stick -37 0
+run 2
+stick -36 0
+run 4
+stick -40 0
+run 2
+stick -37 0
+run 2
+stick -35 0
+run 2
+stick -37 0
+run 2
+stick -39 0
+run 2
+stick -34 0
+run 4
+stick -35 0
+run 2
+stick -40 0
+run 2
+stick -41 0
+run 2
+stick -40 0
+run 4
+stick -36 0
+run 2
+stick -28 0
+run 2
+stick -30 0
+run 2
+stick -33 0
+run 2
+stick -34 0
+run 2
+stick -40 0
+run 2
+stick -41 0
+run 4
+stick -35 0
+run 2
+stick -30 0
+run 2
+stick -31 0
+run 2
+stick -30 0
+run 2
+stick -32 0
+run 2
+stick -36 0
+run 2
+stick -37 0
+run 2
+stick -36 0
+run 2
+stick -34 0
+run 2
+stick -28 0
+run 2
+stick -26 0
+run 2
+stick -28 0
+run 2
+stick -30 0
+run 2
+stick -31 0
+run 2
+stick -35 0
+run 2
+stick -34 0
+run 2
+stick -31 0
+run 2
+stick -25 0
+run 2
+stick -24 0
+run 2
+stick -26 0
+run 2
+stick -27 0
+run 2
+stick -29 0
+run 2
+stick -33 0
+run 2
+stick -32 0
+run 2
+stick -28 0
+run 2
+stick -25 0
+run 2
+stick -24 0
+run 4
+stick -31 0
+run 2
+stick -37 0
+run 2
+stick -34 0
+run 2
+stick -30 0
+run 4
+stick -32 0
+run 2
+stick -29 0
+run 2
+stick -34 0
+run 2
+stick -37 0
+run 2
+stick -44 0
+run 2
+stick -38 0
+run 2
+stick -33 0
+run 2
+stick -35 0
+run 2
+stick -31 0
+run 2
+stick -33 0
+run 2
+stick -43 0
+run 2
+stick -48 0
+run 2
+stick -43 0
+run 2
+stick -42 0
+run 2
+stick -36 0
+run 2
+stick -35 0
+run 2
+stick -31 0
+run 2
+stick -33 0
+run 2
+stick -37 0
+run 2
+stick -40 0
+run 2
+stick -36 0
+run 2
+stick -32 0
+run 2
+stick -30 0
+run 2
+stick -29 0
+run 6
+stick -28 0
+run 2
+stick -29 0
+run 2
+stick -30 0
+run 4
+stick -29 0
+run 2
+stick -26 0
+run 2
+stick -24 0
+run 2
+stick -25 0
+run 4
+stick -24 0
+run 2
+stick -25 0
+run 2
+stick -27 0
+run 2
+stick -22 0
+run 2
+stick -16 0
+run 2
+stick -15 0
+run 2
+stick -13 0
+run 2
+stick -16 0
+run 2
+stick -23 0
+run 4
+screenshot race_3
+stick -21 0
+run 2
+stick -18 0
+run 2
+stick -8 0
+run 2
+stick -5 0
+run 2
+stick -11 0
+run 2
+stick -12 0
+run 2
+stick -17 0
+run 2
+stick -19 0
+run 2
+stick -13 0
+run 2
+stick -8 0
+run 2
+stick -9 0
+run 2
+stick -4 0
+run 4
+stick -1 0
+run 2
+stick -5 0
+run 4
+stick -2 0
+run 2
+stick -1 0
+run 2
+stick 6 0
+run 2
+stick 9 0
+run 2
+stick 19 0
+run 2
+stick 21 0
+run 2
+stick 26 0
+run 2
+stick 19 0
+run 2
+stick 13 0
+run 2
+stick 15 0
+run 2
+stick 18 0
+run 2
+stick 19 0
+run 2
+stick 27 0
+run 2
+release
+hold A+Z
+stick 29 0
+run 2
+release
+hold A
+stick 34 0
+run 2
+stick 26 0
+run 2
+stick 20 0
+run 2
+stick 23 0
+run 2
+stick 26 0
+run 4
+stick 35 0
+run 2
+stick 37 0
+run 2
+stick 42 0
+run 2
+stick 33 0
+run 2
+stick 27 0
+run 2
+stick 30 0
+run 2
+stick 32 0
+run 2
+stick 31 0
+run 2
+stick 40 0
+run 2
+stick 45 0
+run 2
+stick 51 0
+run 2
+stick 40 0
+run 2
+stick 32 0
+run 4
+stick 29 0
+run 2
+stick 33 0
+run 2
+stick 47 0
+run 2
+stick 54 0
+run 2
+stick 48 0
+run 2
+stick 45 0
+run 2
+stick 40 0
+run 2
+stick 41 0
+run 2
+stick 37 0
+run 2
+stick 40 0
+run 2
+stick 51 0
+run 2
+stick 54 0
+run 2
+stick 47 0
+run 2
+stick 45 0
+run 2
+stick 39 0
+run 2
+stick 43 0
+run 2
+stick 40 0
+run 2
+stick 43 0
+run 2
+stick 51 0
+run 2
+stick 50 0
+run 2
+stick 42 0
+run 2
+stick 39 0
+run 2
+stick 38 0
+run 2
+stick 41 0
+run 2
+stick 40 0
+run 2
+stick 42 0
+run 2
+stick 46 0
+run 2
+stick 44 0
+run 2
+stick 37 0
+run 2
+stick 33 0
+run 2
+stick 30 0
+run 4
+stick 34 0
+run 2
+stick 38 0
+run 2
+stick 41 0
+run 2
+stick 38 0
+run 2
+stick 33 0
+run 2
+stick 27 0
+run 2
+stick 25 0
+run 4
+stick 27 0
+run 2
+stick 30 0
+run 2
+stick 33 0
+run 2
+stick 30 0
+run 2
+stick 25 0
+run 2
+stick 24 0
+run 2
+stick 19 0
+run 2
+stick 18 0
+run 2
+stick 22 0
+run 2
+stick 21 0
+run 4
+stick 25 0
+run 2
+stick 20 0
+run 2
+stick 15 0
+run 4
+stick 8 0
+run 2
+stick 5 0
+run 2
+stick 10 0
+run 2
+stick 6 0
+run 2
+stick 5 0
+run 2
+stick -1 0
+run 2
+stick 2 0
+run 2
+stick 0 0
+run 2
+stick -7 0
+run 2
+stick -9 0
+run 2
+stick -5 0
+run 2
+stick -14 0
+run 2
+stick -20 0
+run 2
+stick -31 0
+run 2
+stick -26 0
+run 2
+stick -18 0
+run 2
+stick -19 0
+run 4
+stick -13 0
+run 2
+stick -21 0
+run 2
+stick -27 0
+run 2
+stick -36 0
+run 4
+stick -26 0
+run 2
+stick -24 0
+run 4
+stick -33 0
+run 2
+stick -40 0
+run 2
+stick -45 0
+run 2
+stick -35 0
+run 2
+stick -25 0
+run 2
+stick -22 0
+run 2
+stick -24 0
+run 2
+stick -34 0
+run 2
+stick -40 0
+run 2
+stick -45 0
+run 2
+stick -42 0
+run 2
+stick -37 0
+run 2
+stick -27 0
+run 2
+stick -22 0
+run 2
+stick -26 0
+run 2
+stick -33 0
+run 2
+stick -42 0
+run 4
+stick -36 0
+run 2
+stick -31 0
+run 2
+stick -26 0
+run 2
+stick -28 0
+run 2
+stick -29 0
+run 2
+stick -33 0
+run 2
+stick -39 0
+run 2
+stick -36 0
+run 2
+stick -33 0
+run 2
+stick -30 0
+run 2
+stick -29 0
+run 4
+stick -33 0
+run 2
+stick -36 0
+run 2
+stick -33 0
+run 2
+stick -31 0
+run 2
+stick -27 0
+run 6
+stick -29 0
+run 2
+stick -34 0
+run 2
+stick -36 0
+run 2
+stick -32 0
+run 4
+stick -28 0
+run 2
+stick -23 0
+run 2
+stick -27 0
+run 2
+stick -32 0
+run 2
+stick -40 0
+run 2
+stick -38 0
+run 2
+release
+hold A+Z
+stick -35 0
+run 2
+release
+hold A
+run 2
+stick -31 0
+run 2
+stick -24 0
+run 2
+stick -28 0
+run 2
+stick -33 0
+run 2
+stick -35 0
+run 2
+stick -40 0
+run 2
+stick -39 0
+run 4
+stick -31 0
+run 2
+stick -27 0
+run 2
+stick -32 0
+run 2
+stick -37 0
+run 2
+stick -39 0
+run 2
+stick -44 0
+run 4
+stick -35 0
+run 2
+stick -33 0
+run 2
+stick -32 0
+run 2
+stick -38 0
+run 6
+stick -40 0
+run 2
+stick -33 0
+run 2
+stick -29 0
+run 2
+stick -33 0
+run 2
+stick -37 0
+run 2
+stick -38 0
+run 2
+stick -42 0
+run 2
+stick -40 0
+run 2
+stick -33 0
+run 2
+stick -32 0
+run 4
+stick -30 0
+run 2
+stick -36 0
+run 2
+stick -39 0
+run 2
+stick -42 0
+run 2
+stick -36 0
+run 2
+stick -32 0
+run 2
+stick -34 0
+run 2
+stick -33 0
+run 2
+stick -36 0
+run 2
+stick -42 0
+run 2
+stick -39 0
+run 2
+stick -36 0
+run 2
+stick -35 0
+run 2
+stick -34 0
+run 4
+stick -39 0
+run 2
+stick -40 0
+run 2
+stick -36 0
+run 2
+stick -34 0
+run 2
+stick -32 0
+run 2
+stick -30 0
+run 2
+stick -34 0
+run 2
+stick -37 0
+run 2
+stick -38 0
+run 2
+stick -32 0
+run 2
+stick -28 0
+run 2
+stick -29 0
+run 2
+stick -28 0
+run 2
+stick -30 0
+run 2
+stick -35 0
+run 2
+stick -36 0
+run 2
+stick -35 0
+run 2
+stick -34 0
+run 2
+stick -30 0
+run 2
+stick -25 0
+run 2
+stick -27 0
+run 2
+stick -31 0
+run 2
+stick -33 0
+run 2
+stick -35 0
+run 2
+stick -32 0
+run 2
+stick -31 0
+run 2
+stick -28 0
+run 2
+stick -30 0
+run 2
+stick -36 0
+run 2
+stick -35 0
+run 2
+stick -34 0
+run 4
+stick -31 0
+run 2
+stick -23 0
+run 2
+stick -27 0
+run 2
+stick -32 0
+run 2
+stick -33 0
+run 2
+stick -38 0
+run 2
+stick -37 0
+run 2
+stick -31 0
+run 2
+stick -32 0
+run 2
+stick -34 0
+run 2
+stick -42 0
+run 2
+stick -38 0
+run 2
+stick -34 0
+run 2
+stick -35 0
+run 2
+stick -32 0
+run 2
+stick -33 0
+run 2
+stick -40 0
+run 2
+stick -45 0
+run 2
+stick -42 0
+run 2
+stick -44 0
+run 2
+stick -40 0
+run 2
+stick -32 0
+run 2
+stick -33 0
+run 4
+stick -39 0
+run 6
+stick -40 0
+run 2
+stick -33 0
+run 2
+stick -28 0
+run 2
+stick -31 0
+run 2
+stick -32 0
+run 2
+stick -36 0
+run 2
+stick -43 0
+run 4
+stick -37 0
+run 2
+stick -36 0
+run 4
+stick -35 0
+run 2
+stick -38 0
+run 2
+stick -40 0
+run 2
+stick -36 0
+run 2
+stick -34 0
+run 2
+stick -33 0
+run 2
+stick -36 0
+run 2
+stick -37 0
+run 2
+stick -35 0
+run 2
+stick -32 0
+run 2
+stick -30 0
+run 2
+stick -31 0
+run 2
+stick -33 0
+run 2
+stick -34 0
+run 2
+stick -32 0
+run 2
+stick -29 0
+run 2
+stick -27 0
+run 4
+stick -29 0
+run 2
+stick -31 0
+run 2
+stick -33 0
+run 2
+stick -31 0
+run 2
+stick -27 0
+run 2
+stick -23 0
+run 4
+stick -24 0
+run 2
+stick -26 0
+run 2
+stick -28 0
+run 2
+stick -31 0
+run 2
+stick -30 0
+run 2
+stick -25 0
+run 2
+release
+hold A+Z
+stick -20 0
+run 2
+release
+hold A
+stick -19 0
+run 2
+stick -21 0
+run 2
+stick -24 0
+run 2
+stick -27 0
+run 2
+stick -28 0
+run 2
+stick -25 0
+run 2
+stick -20 0
+run 2
+stick -19 0
+run 2
+stick -20 0
+run 2
+stick -22 0
+run 2
+stick -24 0
+run 4
+stick -22 0
+run 2
+stick -17 0
+run 2
+stick -16 0
+run 4
+stick -18 0
+run 2
+stick -20 0
+run 2
+stick -23 0
+run 2
+stick -21 0
+run 2
+stick -17 0
+run 2
+stick -14 0
+run 2
+stick -13 0
+run 2
+stick -15 0
+run 2
+stick -17 0
+run 2
+stick -19 0
+run 2
+stick -20 0
+run 2
+stick -17 0
+run 2
+stick -12 0
+run 2
+stick -11 0
+run 2
+stick -13 0
+run 2
+stick -14 0
+run 2
+stick -16 0
+run 2
+stick -20 0
+run 2
+stick -18 0
+run 2
+stick -14 0
+run 2
+stick -9 0
+run 2
+stick -8 0
+run 2
+stick -9 0
+run 2
+stick -10 0
+run 2
+stick -13 0
+run 2
+stick -17 0
+run 2
+stick -14 0
+run 2
+stick -11 0
+run 2
+stick -9 0
+run 2
+stick -8 0
+run 2
+stick -9 0
+run 2
+stick -11 0
+run 2
+stick -15 0
+run 2
+stick -13 0
+run 2
+stick -8 0
+run 2
+stick -3 0
+run 4
+stick -2 0
+run 2
+stick -4 0
+run 2
+stick -7 0
+run 2
+stick -9 0
+run 2
+stick -10 0
+run 2
+stick -6 0
+run 2
+stick -3 0
+run 2
+stick -2 0
+run 6
+stick -3 0
+run 2
+stick 0 0
+run 4
+stick 3 0
+run 4
+stick 4 0
+run 2
+stick 7 0
+run 2
+stick 9 0
+run 8
+stick 11 0
+run 4
+stick 10 0
+run 2
+stick 9 0
+run 4
+stick 12 0
+run 2
+stick 16 0
+run 2
+stick 15 0
+run 2
+stick 12 0
+run 2
+stick 10 0
+run 2
+stick 9 0
+run 2
+stick 11 0
+run 2
+stick 14 0
+run 4
+stick 12 0
+run 2
+stick 9 0
+run 4
+stick 12 0
+run 2
+stick 16 0
+run 4
+stick 13 0
+run 2
+stick 10 0
+run 2
+stick 8 0
+run 2
+stick 9 0
+run 2
+stick 11 0
+run 2
+stick 15 0
+run 2
+stick 14 0
+run 2
+stick 11 0
+run 2
+stick 7 0
+run 4
+stick 8 0
+run 2
+stick 11 0
+run 2
+stick 15 0
+run 2
+stick 13 0
+run 2
+stick 10 0
+run 2
+stick 5 0
+run 4
+stick 7 0
+run 2
+stick 9 0
+run 2
+stick 12 0
+run 4
+stick 8 0
+run 2
+stick 4 0
+run 2
+stick 3 0
+run 2
+stick 5 0
+run 2
+stick 8 0
+run 2
+screenshot race_4
+run 2
+stick 9 0
+run 4
+stick 6 0
+run 2
+stick 5 0
+run 2
+stick 7 0
+run 18
+stick 6 0
+run 20
+stick 5 0
+run 2
+stick 6 0
+run 4
+stick 5 0
+run 4
+release
+hold A+Z
+run 2
+release
+hold A
+run 4
+stick 4 0
+run 6
+stick 3 0
+run 6
+stick 2 0
+run 6
+stick 1 0
+run 4
+stick 0 0
+run 6
+stick -1 0
+run 4
+stick -2 0
+run 2
+stick -4 0
+run 2
+stick -5 0
+run 4
+stick -7 0
+run 2
+stick -8 0
+run 2
+stick -10 0
+run 4
+stick -9 0
+run 2
+stick -8 0
+run 2
+stick -10 0
+run 2
+stick -13 0
+run 2
+stick -15 0
+run 2
+stick -14 0
+run 2
+stick -11 0
+run 2
+stick -10 0
+run 2
+stick -12 0
+run 2
+stick -19 0
+run 2
+stick -18 0
+run 2
+stick -15 0
+run 4
+stick -12 0
+run 2
+stick -9 0
+run 2
+stick -15 0
+run 2
+stick -20 0
+run 2
+stick -24 0
+run 2
+stick -21 0
+run 2
+stick -18 0
+run 6
+stick -16 0
+run 2
+stick -20 0
+run 2
+stick -25 0
+run 2
+stick -29 0
+run 2
+stick -26 0
+run 2
+stick -22 0
+run 6
+stick -19 0
+run 2
+stick -24 0
+run 2
+stick -28 0
+run 2
+stick -32 0
+run 2
+stick -27 0
+run 2
+stick -23 0
+run 6
+stick -24 0
+run 2
+stick -32 0
+run 2
+stick -33 0
+run 2
+stick -34 0
+run 2
+stick -28 0
+run 2
+stick -25 0
+run 2
+stick -28 0
+run 2
+stick -31 0
+run 2
+stick -27 0
+run 2
+stick -30 0
+run 2
+stick -33 0
+run 2
+stick -37 0
+run 2
+stick -32 0
+run 2
+stick -30 0
+run 2
+stick -32 0
+run 2
+stick -34 0
+run 2
+stick -29 0
+run 2
+stick -32 0
+run 2
+stick -34 0
+run 2
+stick -39 0
+run 2
+stick -35 0
+run 2
+stick -33 0
+run 2
+stick -34 0
+run 2
+stick -35 0
+run 2
+stick -32 0
+run 2
+stick -34 0
+run 2
+stick -36 0
+run 2
+stick -40 0
+run 2
+stick -35 0
+run 2
+stick -33 0
+run 2
+stick -36 0
+run 2
+stick -38 0
+run 2
+stick -34 0
+run 2
+stick -35 0
+run 2
+stick -36 0
+run 2
+stick -40 0
+run 2
+stick -35 0
+run 2
+stick -32 0
+run 2
+stick -37 0
+run 2
+stick -36 0
+run 2
+stick -35 0
+run 2
+stick -39 0
+run 2
+stick -42 0
+run 2
+stick -37 0
+run 2
+stick -39 0
+run 2
+stick -38 0
+run 2
+stick -32 0
+run 2
+stick -35 0
+run 2
+stick -37 0
+run 2
+stick -45 0
+run 2
+stick -41 0
+run 2
+stick -37 0
+run 2
+stick -36 0
+run 2
+stick -32 0
+run 2
+stick -34 0
+run 2
+stick -41 0
+run 2
+stick -45 0
+run 2
+stick -41 0
+run 2
+stick -39 0
+run 2
+stick -34 0
+run 2
+stick -30 0
+run 2
+stick -34 0
+run 2
+stick -39 0
+run 2
+stick -46 0
+run 2
+stick -44 0
+run 2
+stick -39 0
+run 2
+stick -36 0
+run 2
+stick -32 0
+run 2
+stick -29 0
+run 2
+stick -32 0
+run 2
+stick -36 0
+run 2
+stick -38 0
+run 2
+stick -39 0
+run 2
+stick -35 0
+run 2
+stick -32 0
+run 2
+stick -28 0
+run 2
+stick -29 0
+run 2
+stick -33 0
+run 2
+stick -34 0
+run 6
+stick -32 0
+run 2
+stick -29 0
+run 2
+stick -32 0
+run 2
+stick -35 0
+run 2
+release
+hold A+Z
+stick -34 0
+run 2
+release
+hold A
+run 2
+stick -31 0
+run 2
+stick -27 0
+run 2
+stick -31 0
+run 2
+stick -35 0
+run 2
+stick -43 0
+run 2
+stick -40 0
+run 2
+stick -36 0
+run 4
+stick -28 0
+run 2
+stick -26 0
+run 2
+stick -34 0
+run 2
+stick -41 0
+run 2
+stick -39 0
+run 2
+stick -40 0
+run 2
+stick -36 0
+run 2
+stick -37 0
+run 2
+stick -33 0
+run 2
+stick -32 0
+run 2
+stick -37 0
+run 2
+stick -41 0
+run 2
+stick -36 0
+run 2
+stick -38 0
+run 2
+stick -39 0
+run 2
+stick -41 0
+run 2
+stick -34 0
+run 2
+stick -30 0
+run 2
+stick -33 0
+run 2
+stick -34 0
+run 2
+stick -38 0
+run 2
+stick -45 0
+run 4
+stick -38 0
+run 2
+stick -33 0
+run 2
+stick -31 0
+run 2
+stick -33 0
+run 4
+stick -36 0
+run 2
+stick -41 0
+run 2
+stick -38 0
+run 2
+stick -34 0
+run 2
+stick -31 0
+run 2
+stick -29 0
+run 4
+stick -33 0
+run 2
+stick -36 0
+run 2
+stick -35 0
+run 2
+stick -33 0
+run 2
+stick -29 0
+run 2
+stick -26 0
+run 2
+stick -29 0
+run 2
+stick -30 0
+run 2
+stick -34 0
+run 2
+stick -36 0
+run 2
+stick -35 0
+run 2
+stick -32 0
+run 2
+stick -26 0
+run 2
+stick -25 0
+run 2
+stick -27 0
+run 2
+stick -29 0
+run 2
+stick -31 0
+run 2
+stick -33 0
+run 2
+stick -30 0
+run 2
+stick -25 0
+run 2
+stick -26 0
+run 2
+stick -27 0
+run 2
+stick -29 0
+run 2
+stick -35 0
+run 2
+stick -37 0
+run 2
+stick -35 0
+run 2
+stick -27 0
+run 2
+stick -24 0
+run 2
+stick -25 0
+run 2
+stick -24 0
+run 2
+stick -32 0
+run 2
+stick -38 0
+run 2
+stick -46 0
+run 2
+stick -39 0
+run 2
+stick -33 0
+run 2
+stick -34 0
+run 2
+stick -36 0
+run 2
+stick -32 0
+run 2
+stick -38 0
+run 2
+stick -42 0
+run 2
+stick -47 0
+run 2
+stick -41 0
+run 2
+stick -37 0
+run 4
+stick -34 0
+run 2
+stick -36 0
+run 2
+stick -43 0
+run 2
+stick -44 0
+run 2
+stick -39 0
+run 2
+stick -37 0
+run 2
+stick -31 0
+run 2
+stick -29 0
+run 2
+stick -28 0
+run 2
+stick -29 0
+run 2
+stick -30 0
+run 2
+stick -31 0
+run 2
+stick -32 0
+run 4
+stick -28 0
+run 2
+stick -25 0
+run 2
+stick -22 0
+run 2
+stick -21 0
+run 2
+stick -24 0
+run 4
+stick -25 0
+run 2
+stick -28 0
+run 2
+stick -25 0
+run 2
+stick -20 0
+run 2
+stick -19 0
+run 2
+stick -17 0
+run 2
+stick -16 0
+run 2
+stick -19 0
+run 2
+stick -17 0
+run 4
+stick -20 0
+run 2
+stick -19 0
+run 2
+stick -15 0
+run 2
+stick -14 0
+run 2
+stick -10 0
+run 2
+stick -9 0
+run 2
+stick -12 0
+run 2
+stick -10 0
+run 4
+stick -14 0
+run 2
+stick -12 0
+run 2
+stick -8 0
+run 2
+stick -3 0
+run 2
+stick -6 0
+run 2
+stick -7 0
+run 2
+stick -3 0
+run 2
+stick -4 0
+run 2
+stick 0 0
+run 2
+stick 3 0
+run 2
+stick 12 0
+run 2
+stick 16 0
+run 2
+stick 24 0
+run 2
+stick 21 0
+run 2
+stick 17 0
+run 2
+stick 18 0
+run 2
+stick 16 0
+run 2
+stick 10 0
+run 2
+stick 19 0
+run 2
+stick 25 0
+run 2
+stick 34 0
+run 2
+stick 29 0
+run 2
+release
+hold A+Z
+stick 22 0
+run 2
+release
+hold A
+stick 25 0
+run 2
+stick 27 0
+run 2
+stick 23 0
+run 2
+stick 30 0
+run 2
+stick 35 0
+run 2
+stick 44 0
+run 4
+stick 31 0
+run 2
+stick 29 0
+run 4
+stick 39 0
+run 2
+stick 40 0
+run 2
+stick 41 0
+run 2
+stick 44 0
+run 2
+stick 37 0
+run 2
+stick 33 0
+run 2
+stick 38 0
+run 2
+stick 41 0
+run 2
+stick 36 0
+run 2
+stick 41 0
+run 2
+stick 43 0
+run 2
+stick 49 0
+run 2
+stick 43 0
+run 2
+stick 39 0
+run 2
+stick 42 0
+run 2
+stick 44 0
+run 2
+stick 49 0
+run 2
+stick 41 0
+run 2
+stick 39 0
+run 2
+stick 46 0
+run 2
+stick 49 0
+run 2
+stick 44 0
+run 2
+stick 47 0
+run 2
+stick 46 0
+run 2
+stick 48 0
+run 2
+stick 40 0
+run 2
+stick 35 0
+run 2
+stick 38 0
+run 2
+stick 41 0
+run 4
+stick 48 0
+run 2
+stick 51 0
+run 2
+stick 52 0
+run 2
+stick 44 0
+run 2
+stick 35 0
+run 2
+stick 33 0
+run 4
+stick 35 0
+run 2
+stick 41 0
+run 2
+stick 44 0
+run 2
+stick 41 0
+run 2
+stick 36 0
+run 2
+stick 29 0
+run 2
+stick 26 0
+run 4
+stick 31 0
+run 2
+stick 35 0
+run 2
+stick 38 0
+run 2
+stick 35 0
+run 2
+stick 28 0
+run 2
+stick 19 0
+run 2
+stick 16 0
+run 4
+stick 23 0
+run 2
+stick 29 0
+run 2
+stick 30 0
+run 4
+stick 23 0
+run 2
+stick 11 0
+run 2
+stick 10 0
+run 6
+stick 13 0
+run 2
+stick 21 0
+run 2
+stick 17 0
+run 2
+stick 12 0
+run 2
+stick 10 0
+run 2
+stick 0 0
+run 2
+stick -4 0
+run 2
+stick -14 0
+run 2
+stick -11 0
+run 2
+stick -12 0
+run 2
+stick -20 0
+run 2
+stick -16 0
+run 2
+stick -14 0
+run 2
+stick -20 0
+run 2
+stick -21 0
+run 2
+stick -13 0
+run 2
+stick -20 0
+run 2
+stick -25 0
+run 2
+stick -35 0
+run 4
+stick -23 0
+run 2
+stick -21 0
+run 2
+stick -22 0
+run 2
+stick -32 0
+run 2
+stick -36 0
+run 2
+stick -31 0
+run 2
+stick -32 0
+run 2
+stick -29 0
+run 2
+stick -31 0
+run 4
+stick -34 0
+run 2
+stick -28 0
+run 2
+stick -26 0
+run 2
+stick -32 0
+run 2
+stick -35 0
+run 2
+stick -40 0
+run 2
+stick -38 0
+run 2
+stick -37 0
+run 2
+stick -32 0
+run 2
+stick -30 0
+run 2
+stick -27 0
+run 2
+stick -28 0
+run 2
+stick -34 0
+run 2
+stick -38 0
+run 2
+stick -39 0
+run 2
+stick -34 0
+run 2
+stick -30 0
+run 2
+stick -32 0
+run 2
+screenshot race_5
+stick -34 0
+run 4
+stick -35 0
+run 2
+stick -31 0
+run 2
+stick -28 0
+run 2
+stick -25 0
+run 2
+stick -26 0
+run 2
+stick -32 0
+run 2
+stick -35 0
+run 2
+stick -34 0
+run 2
+stick -32 0
+run 2
+stick -28 0
+run 2
+stick -25 0
+run 2
+stick -28 0
+run 2
+stick -31 0
+run 2
+stick -32 0
+run 2
+stick -33 0
+run 2
+stick -29 0
+run 2
+stick -27 0
+run 2
+stick -25 0
+run 2
+stick -27 0
+run 2
+stick -32 0
+run 2
+stick -36 0
+run 2
+stick -34 0
+run 2
+stick -35 0
+run 2
+stick -32 0
+run 2
+stick -26 0
+run 2
+stick -27 0
+run 2
+stick -29 0
+run 2
+release
+hold A+Z
+stick -36 0
+run 2
+release
+hold A
+stick -37 0
+run 2
+stick -38 0
+run 2
+stick -41 0
+run 2
+stick -39 0
+run 2
+stick -31 0
+run 2
+stick -30 0
+run 2
+stick -31 0
+run 2
+stick -30 0
+run 2
+stick -38 0
+run 2
+stick -44 0
+run 2
+stick -49 0
+run 2
+stick -40 0
+run 2
+stick -31 0
+run 2
+stick -28 0
+run 2
+stick -30 0
+run 2
+stick -31 0
+run 2
+stick -40 0
+run 2
+stick -46 0
+run 2
+stick -43 0
+run 2
+stick -42 0
+run 2
+stick -37 0
+run 2
+stick -36 0
+run 2
+stick -32 0
+run 2
+stick -34 0
+run 2
+stick -41 0
+run 2
+stick -42 0
+run 4
+stick -43 0
+run 2
+stick -40 0
+run 2
+stick -32 0
+run 2
+stick -31 0
+run 2
+stick -32 0
+run 4
+stick -38 0
+run 2
+stick -41 0
+run 2
+stick -38 0
+run 4
+stick -34 0
+run 2
+stick -29 0
+run 2
+stick -32 0
+run 2
+stick -36 0
+run 2
+stick -43 0
+run 2
+stick -40 0
+run 2
+stick -35 0
+run 2
+stick -32 0
+run 2
+stick -28 0
+run 2
+stick -27 0
+run 2
+stick -30 0
+run 2
+stick -32 0
+run 2
+stick -34 0
+run 2
+stick -36 0
+run 2
+stick -33 0
+run 2
+stick -29 0
+run 2
+stick -30 0
+run 2
+stick -32 0
+run 2
+stick -34 0
+run 4
+stick -31 0
+run 2
+stick -26 0
+run 2
+stick -27 0
+run 2
+stick -28 0
+run 2
+stick -33 0
+run 2
+stick -35 0
+run 2
+stick -34 0
+run 2
+stick -33 0
+run 2
+stick -27 0
+run 2
+stick -25 0
+run 2
+stick -27 0
+run 4
+stick -30 0
+run 2
+stick -35 0
+run 4
+stick -31 0
+run 2
+stick -29 0
+run 6
+stick -34 0
+run 2
+stick -36 0
+run 2
+stick -37 0
+run 2
+stick -33 0
+run 2
+stick -29 0
+run 2
+stick -28 0
+run 2
+stick -25 0
+run 2
+stick -28 0
+run 2
+stick -35 0
+run 2
+stick -37 0
+run 4
+stick -40 0
+run 2
+stick -49 0
+run 4
+stick -41 0
+run 2
+stick -34 0
+run 2
+stick -27 0
+run 2
+stick -29 0
+run 2
+stick -35 0
+run 2
+stick -39 0
+run 2
+stick -48 0
+run 4
+stick -46 0
+run 2
+stick -35 0
+run 2
+stick -28 0
+run 2
+stick -31 0
+run 2
+stick -33 0
+run 2
+stick -38 0
+run 2
+stick -47 0
+run 4
+stick -39 0
+run 2
+stick -36 0
+run 2
+stick -34 0
+run 2
+stick -31 0
+run 2
+stick -37 0
+run 2
+stick -40 0
+run 2
+stick -38 0
+run 2
+stick -39 0
+run 2
+stick -37 0
+run 2
+stick -35 0
+run 2
+stick -32 0
+run 2
+stick -34 0
+run 2
+stick -38 0
+run 2
+stick -39 0
+run 2
+stick -37 0
+run 2
+stick -35 0
+run 2
+stick -30 0
+run 4
+stick -32 0
+run 2
+stick -33 0
+run 2
+stick -35 0
+run 2
+stick -37 0
+run 2
+stick -32 0
+run 2
+stick -27 0
+run 4
+stick -26 0
+run 2
+stick -27 0
+run 2
+stick -29 0
+run 2
+stick -31 0
+run 2
+stick -33 0
+run 2
+stick -32 0
+run 2
+stick -28 0
+run 2
+stick -21 0
+run 2
+stick -20 0
+run 2
+stick -22 0
+run 2
+stick -27 0
+run 2
+stick -31 0
+run 2
+stick -30 0
+run 2
+stick -26 0
+run 2
+stick -21 0
+run 2
+stick -20 0
+run 2
+stick -21 0
+run 2
+stick -22 0
+run 2
+release
+hold A+Z
+stick -24 0
+run 2
+release
+hold A
+stick -27 0
+run 4
+stick -24 0
+run 2
+stick -20 0
+run 2
+stick -19 0
+run 4
+stick -21 0
+run 2
+stick -23 0
+run 2
+stick -26 0
+run 2
+stick -25 0
+run 2
+stick -21 0
+run 2
+stick -16 0
+run 2
+stick -14 0
+run 2
+stick -15 0
+run 2
+stick -19 0
+run 2
+stick -22 0
+run 2
+stick -24 0
+run 2
+stick -21 0
+run 2
+stick -17 0
+run 2
+stick -14 0
+run 2
+stick -13 0
+run 2
+stick -14 0
+run 2
+stick -16 0
+run 2
+stick -19 0
+run 2
+stick -22 0
+run 2
+stick -20 0
+run 2
+stick -17 0
+run 2
+stick -12 0
+run 2
+stick -10 0
+run 2
+stick -11 0
+run 2
+stick -13 0
+run 2
+stick -15 0
+run 2
+stick -18 0
+run 2
+stick -17 0
+run 2
+stick -13 0
+run 2
+stick -8 0
+run 2
+stick -6 0
+run 2
+stick -10 0
+run 2
+stick -13 0
+run 2
+stick -15 0
+run 2
+stick -14 0
+run 2
+stick -12 0
+run 2
+stick -8 0
+run 4
+stick -11 0
+run 2
+stick -12 0
+run 2
+stick -13 0
+run 2
+stick -9 0
+run 2
+stick -5 0
+run 2
+stick -4 0
+run 4
+stick -6 0
+run 2
+stick -10 0
+run 2
+stick -11 0
+run 2
+stick -10 0
+run 2
+stick -5 0
+run 2
+stick -4 0
+run 6
+stick -6 0
+run 2
+stick -5 0
+run 2
+stick -3 0
+run 2
+stick -2 0
+run 4
+stick 0 0
+run 2
+stick 1 0
+run 2
+stick 4 0
+run 4
+stick 5 0
+run 2
+stick 8 0
+run 2
+stick 10 0
+run 6
+stick 8 0
+run 4
+stick 10 0
+run 2
+stick 14 0
+run 2
+stick 15 0
+run 2
+stick 14 0
+run 2
+stick 11 0
+run 2
+stick 8 0
+run 2
+stick 9 0
+run 2
+stick 13 0
+run 2
+stick 17 0
+run 4
+stick 16 0
+run 2
+stick 13 0
+run 2
+stick 9 0
+run 2
+stick 8 0
+run 2
+stick 9 0
+run 2
+stick 12 0
+run 2
+stick 16 0
+run 2
+stick 7 0
+run 4
+stick 8 0
+run 2
+stick 7 0
+run 2
+stick 3 0
+run 2
+stick 0 0
+run 2
+stick -3 0
+run 2
+stick -8 0
+run 2
+stick -10 0
+run 2
+stick -14 0
+run 2
+stick -17 0
+run 4
+stick -19 0
+run 2
+stick -18 0
+run 2
+stick -21 0
+run 2
+stick -25 0
+run 4
+stick -23 0
+run 2
+stick -27 0
+run 2
+stick -28 0
+run 2
+stick -26 0
+run 2
+stick -29 0
+run 4
+stick -28 0
+run 2
+stick -25 0
+run 4
+stick -26 0
+run 4
+stick -25 0
+run 4
+stick -27 0
+run 2
+stick -26 0
+run 2
+stick -27 0
+run 2
+stick -25 0
+run 2
+stick -26 0
+run 2
+stick -25 0
+run 2
+stick -21 0
+run 2
+stick -20 0
+run 2
+stick -17 0
+run 2
+stick -15 0
+run 2
+stick -12 0
+run 2
+stick -9 0
+run 2
+stick -5 0
+run 2
+stick 0 0
+run 2
+stick 4 0
+run 2
+stick 6 0
+run 2
+stick 5 0
+run 2
+stick 7 0
+run 4
+stick 5 0
+run 2
+stick 8 0
+run 2
+stick 12 0
+run 2
+stick 18 0
+run 2
+stick 24 0
+run 2
+stick 28 0
+run 2
+stick 30 0
+run 2
+stick 34 0
+run 2
+release
+hold A+Z
+stick 35 0
+run 2
+release
+hold A
+run 2
+stick 36 0
+run 2
+stick 35 0
+run 2
+stick 33 0
+run 2
+stick 30 0
+run 2
+stick 27 0
+run 2
+stick 23 0
+run 2
+stick 20 0
+run 2
+stick 15 0
+run 2
+stick 10 0
+run 2
+stick 8 0
+run 2
+stick 3 0
+run 2
+stick 0 0
+run 2
+stick -1 0
+run 2
+stick -4 0
+run 2
+stick -7 0
+run 2
+stick -4 0
+run 2
+stick -5 0
+run 2
+stick -17 0
+run 2
+stick -22 0
+run 2
+stick -23 0
+run 2
+stick -22 0
+run 2
+stick -19 0
+run 4
+stick -17 0
+run 2
+stick -16 0
+run 2
+stick -17 0
+run 4
+stick -15 0
+run 2
+stick -17 0
+run 2
+stick -15 0
+run 2
+stick -13 0
+run 2
+stick -12 0
+run 6
+stick -9 0
+run 2
+stick -8 0
+run 2
+stick -6 0
+run 2
+stick -4 0
+run 2
+stick -6 0
+run 2
+stick -4 0
+run 4
+stick -1 0
+run 2
+stick 0 0
+run 2
+stick -1 0
+run 2
+stick 0 0
+run 2
+stick 1 0
+run 4
+stick 4 0
+run 2
+stick 3 0
+run 2
+stick 6 0
+run 2
+stick 7 0
+run 2
+stick 8 0
+run 4
+stick 12 0
+run 4
+stick 15 0
+run 2
+stick 19 0
+run 2
+stick 23 0
+run 2
+stick 29 0
+run 2
+stick 38 0
+run 2
+stick 80 0
+run 2
+stick -80 0
+run 72
+stick -7 0
+run 6
+stick -80 0
+run 38
+screenshot race_6
+run 58
+release
+hold A+Z
+run 2
+release
+hold A
+run 298
+release
+hold A+Z
+run 2
+release
+hold A
+run 298
+release
+hold A+Z
+run 2
+release
+hold A
+run 240
+screenshot race_7
+run 58
+release
+hold A+Z
+run 2
+release
+hold A
+run 100
+screenshot race_finish
+press A 5 120
+screenshot post_1
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot post_4
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot post_7
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot post_10
+run 600
+screenshot hub_balloon2
+checkpoint end
+savefile pre_reset
+reset
+run 1200
+press START 15 45
+run 300
+screenshot reset_title
+press START 15 105
+screenshot reset_player_select
+press START 15 105
+press START 15 105
+screenshot reset_caution
+press START 15 105
+screenshot reset_game_select
+press START 15 105
+screenshot reset_files
+savefile post_reset
+press START 15 105
+run 300
+screenshot reset_hub
+checkpoint save_end

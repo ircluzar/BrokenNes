@@ -114,10 +114,10 @@ internal static partial class Tools
 
         Add("open_rom",
             "Opens a ROM in a new HEADLESS session: BrokenNes's own emulator inside this server, invisible, deterministic, as many at once as you like (no Mesen, no lock). " +
-            "Any console: NES (default cores CPU/PPU/APU FIX, as the desktop app), SNES, WideMess (.wms), Game Boy / Color, Master System, Game Gear, Genesis. The debugger covers every console: NES, SNES (65816 + SPC700), WideMess, Game Boy, Master System / Game Gear (Z80), Genesis (cpu main the 68000, cpu z80 its sound CPU). " +
+            "Any console: NES (default cores CPU/PPU/APU FIX, as the desktop app), SNES, WideMess (.wms), Game Boy / Color, Master System, Game Gear, Genesis. The debugger covers every console: NES, SNES (65816 + SPC700), WideMess, Game Boy, Master System / Game Gear (Z80), Genesis (cpu main the 68000, cpu z80 its sound CPU). Nintendo 64 (.z64 .n64 .v64): cor64, cpu main the VR4300 and cpu rsp; its debugger turns on with a breakpoint, a step or call_stack:true (then the CPU runs interpreted); no checks, layers, tiles or sprites. " +
             "Symbol files (.mlb NESFab/Mesen, WLA-DX .sym (also wla-z80), GBDK / devkitSMS .sym/.noi, GNU nm output such as SGDK's symbol.txt for the 68000) give names to addresses. checks:true turns the D4 hardware checks and the profiler on from power-on (needed for 'RAM read before written').",
             Schema(("path", P("string", "the ROM file (.nes .sfc .smc .wms .gb .gbc .sms .gg .md .bin, or a .zip)"), true),
-                   ("console", P("string", "force a console: nes, snes, wms, gb, gbc, sms, gg, md (default: detected from the ROM)"), false),
+                   ("console", P("string", "force a console: nes, snes, wms, gb, gbc, sms, gg, md, n64 (default: detected from the ROM)"), false),
                    ("cpu", P("string", "CPU core id (default: the console's default, NES FIX)"), false), ("ppu", P("string", "PPU core id"), false), ("apu", P("string", "APU core id"), false),
                    ("symbols", P("string[]", "symbol files to load"), false),
                    ("checks", P("boolean", "run the hardware checks and the profiler from power-on (default false)"), false),
@@ -126,7 +126,12 @@ internal static partial class Tools
                    ("call_stack", P("boolean", "track the call stack and the trace ring from the first instruction (default true; false runs faster)"), false)),
             a =>
             {
-                var s = HeadlessSession.Open(Sessions.NewId("h"), a.Req("path"), a.Str("console"), a.Str("cpu") ?? "", a.Str("ppu") ?? "", a.Str("apu") ?? "", a.List("symbols"),
+                // the Nintendo 64 (cor64): a session of its own over cor64's debugger (HeadlessSession.N64.cs); its call stack is off unless asked
+                // for, since cor64's debugger runs the CPU interpreted while it is on
+                Session s = N64HeadlessSession.Claims(a.Req("path"), a.Str("console"))
+                    ? N64HeadlessSession.Open(Sessions.NewId("h"), a.Req("path"), a.Str("cpu") ?? "", a.Str("ppu") ?? "", a.Str("apu") ?? "", a.List("symbols"),
+                        a.Has("call_stack") && a.Bool("call_stack", false), a.Bool("checks", false))
+                    : HeadlessSession.Open(Sessions.NewId("h"), a.Req("path"), a.Str("console"), a.Str("cpu") ?? "", a.Str("ppu") ?? "", a.Str("apu") ?? "", a.List("symbols"),
                     a.Bool("call_stack", true), a.Bool("checks", false), a.List("checks_off"), a.List("frame_wait"));
                 Sessions.Add(s);
                 return s.Describe();
@@ -207,9 +212,18 @@ internal static partial class Tools
             "Buttons per console: NES/GB A B Start Select; SNES/WideMess also X Y L R (L and R are ALWAYS the shoulders); Master System A(1) B(2) Pause Reset; Game Gear A B Start; Genesis A B C X Y Z Mode Start. Directions: Up Down Left Right (or U D, DLeft DRight). A button the console lacks is refused. Live: control (press / hold / release only).",
             Schema(S(), ("mode", P("string", "press, hold, release or script", Enum("press", "hold", "release", "script")), true), ("buttons", P("string[]", "the buttons"), false),
                    ("frames", P("integer", "press: frames to hold (default 6)"), false), ("player", P("integer", "1 (default) or 2"), false),
-                   ("script", P("string", "mode script: frame:Button+Button,..."), false), ("run_frames", P("integer", "mode script: frames to run (default: to the last step)"), false)),
-            a => On(a, s => s.Input(a.Req("mode").ToLowerInvariant(), a.List("buttons").ToArray(), a.Int("frames", 6), a.Int("player", 1) - 1,
-                a.Str("script") is { Length: > 0 } sc ? HeadlessSession.ParseScript(sc) : null, a.Long("run_frames"))));
+                   ("script", P("string", "mode script: frame:Button+Button,..."), false), ("run_frames", P("integer", "mode script: frames to run (default: to the last step)"), false),
+                   ("stick", P("string", "N64 only: the analog stick \"x,y\" (-128..127, up and right positive; a real pad reaches about +-80), held until changed, or \"off\" (the directions drive the stick again)"), false)),
+            a => On(a, s =>
+            {
+                JsonObject? stick = null;
+                if (a.Str("stick") is { Length: > 0 } st)
+                    stick = s is N64HeadlessSession n ? n.SetStick(a.Int("player", 1) - 1, st) : throw new ToolError("stick is the N64's analog stick; this session's pad has none");
+                var j = s.Input(a.Req("mode").ToLowerInvariant(), a.List("buttons").ToArray(), a.Int("frames", 6), a.Int("player", 1) - 1,
+                    a.Str("script") is { Length: > 0 } sc ? HeadlessSession.ParseScript(sc) : null, a.Long("run_frames"));
+                if (stick != null) j["stick"] = stick;
+                return j;
+            }));
 
         Add("pointer",
             "The WideMess pointer port (docs/projects/widemess-spec.md section 10; WideMess sessions only): point at the picture in console pixels (x 0-399, y 0-223). action move (hover), down / up (left button), " +

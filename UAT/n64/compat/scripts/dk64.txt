@@ -1,0 +1,518 @@
+# dk64: logos -> title (START) -> Adventure -> Game 1 (new file, saved) -> K. Rool intro (START/A to speed it up)
+# -> DK's tree house (gameplay): walk/jump/attack around the house for ~3 min; then the save-after-reset block
+# (Game 1 must show on the file screen, not EMPTY). Lane cert_scripts2.
+run 2400
+screenshot t0
+press START 5 40
+press A 5 100
+screenshot e1
+press START 5 40
+press A 5 100
+screenshot e2
+press START 5 40
+press A 5 100
+screenshot e3
+press START 5 40
+press A 5 100
+screenshot e4
+press START 5 40
+press A 5 100
+screenshot e5
+press START 5 40
+press A 5 100
+screenshot e6
+press START 5 40
+press A 5 100
+screenshot e7
+press START 5 40
+press A 5 100
+screenshot e8
+press START 5 40
+press A 5 100
+screenshot e9
+press START 5 40
+press A 5 100
+screenshot e10
+press START 5 40
+press A 5 100
+screenshot e11
+press START 5 40
+press A 5 100
+screenshot e12
+press START 5 40
+press A 5 100
+screenshot e13
+press START 5 40
+press A 5 100
+screenshot e14
+press START 5 40
+press A 5 100
+screenshot e15
+press START 5 40
+press A 5 100
+screenshot e16
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+screenshot intro_1
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+screenshot intro_2
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+screenshot intro_3
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+screenshot intro_4
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+screenshot intro_5
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+screenshot intro_6
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+screenshot intro_7
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+press START 5 40
+press A 5 40
+run 200
+screenshot intro_8
+press A 5 40
+run 400
+press A 5 40
+run 400
+press A 5 40
+run 400
+screenshot story_1
+press A 5 40
+run 400
+press A 5 40
+run 400
+press A 5 40
+run 400
+screenshot story_2
+press A 5 40
+run 400
+press A 5 40
+run 400
+press A 5 40
+run 400
+screenshot story_3
+press A 5 40
+run 400
+press A 5 40
+run 400
+press A 5 40
+run 400
+screenshot story_4
+savestate speed
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+screenshot play_1
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+screenshot play_2
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+screenshot play_3
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+screenshot play_4
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+screenshot play_5
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+screenshot play_6
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+screenshot play_7
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+screenshot play_8
+stick 0 70
+run 90
+stick 70 0
+run 60
+press A 5 30
+stick 0 -70
+run 90
+stick -70 0
+run 60
+stick 0 0
+press B 5 30
+run 30
+checkpoint end
+# [cert_scripts2] certification point 5
+release
+stick 0 0
+savefile pre_reset
+reset
+run 2400
+screenshot reset_intro
+press START 5 40
+press A 5 100
+screenshot reset_title
+press START 5 40
+press A 5 100
+screenshot reset_menu
+press START 5 40
+press A 5 100
+screenshot reset_adventure
+press START 5 40
+press A 5 100
+screenshot reset_adventure2
+press A 5 120
+screenshot reset_file
+savefile post_reset
+checkpoint save_end

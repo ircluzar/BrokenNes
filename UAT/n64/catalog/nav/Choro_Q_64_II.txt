@@ -1,0 +1,84 @@
+# nav2 Choro_Q_64_II: pak checks idle through; START/A to car select (OK); main menu: stick down x4 to START (start), A; hold A = accelerate
+run 600
+run 300
+screenshot p1
+run 300
+screenshot p2
+run 300
+screenshot p3
+press START 8 90
+screenshot p4
+press A 8 90
+screenshot p5
+press START 8 90
+screenshot p6
+press A 8 90
+screenshot p7
+press START 8 90
+screenshot p8
+press A 8 90
+screenshot p9
+press START 8 90
+screenshot p10
+press A 8 90
+screenshot p11
+press START 8 90
+screenshot p12
+press A 8 90
+screenshot p13
+press START 8 90
+screenshot p14
+press A 8 90
+screenshot p15
+press A 8 120
+screenshot p16
+press A 8 120
+screenshot p17
+press A 8 120
+screenshot p18
+press A 8 120
+screenshot p19
+press A 8 120
+screenshot p20
+press A 8 90
+stick 0 -100
+run 6
+stick 0 0
+run 25
+stick 0 -100
+run 6
+stick 0 0
+run 25
+stick 0 -100
+run 6
+stick 0 0
+run 25
+stick 0 -100
+run 6
+stick 0 0
+run 25
+screenshot b1
+press A 8 150
+screenshot b2
+press A 8 100
+screenshot b3
+press A 8 100
+screenshot b4
+press A 8 100
+screenshot b5
+press A 8 100
+screenshot b6
+press A 8 100
+screenshot b7
+press A 8 100
+screenshot b8
+hold A
+run 200
+screenshot b9
+run 200
+screenshot b10
+run 200
+screenshot b11
+run 200
+screenshot b12
+release

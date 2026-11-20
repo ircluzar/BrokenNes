@@ -1,0 +1,11536 @@
+# fzx: boot -> Time Attack, Mute City (Blue Falcon), 3 laps driven by a closed-loop pilot (follows the path of a CPU racer recorded in a GP race; gRacers 0x802C4920 from the inspectredc/fzerox decomp), recorded from power-on as plain pad inputs. NO cheats/pokes.
+# The game saves the course record to SRAM at the finish and after name entry (AAA); then Retry and a second time-attack run.
+# After reset: Time Attack -> Records -> Jack Cup -> Mute City shows the record.
+# Frame counts are VI fields (60/s NTSC). See compat/README.md for the commands.
+run 120
+screenshot boot_2s
+run 480
+screenshot boot_10s
+run 600
+screenshot title_20s
+pulse START 60 20       # Start pressed 3 times over 1 s (some titles ignore the first press)
+run 570
+screenshot after_start_10s
+pulse START 60 20       # again: gets past "press start" menus that need two presses
+press A 5 25
+run 540
+screenshot after_start_20s
+release
+hold DR
+run 5
+release
+run 90
+release
+hold A
+run 5
+release
+run 90
+release
+hold A
+run 5
+release
+run 90
+release
+hold A
+run 5
+release
+run 90
+release
+hold A
+run 5
+release
+run 90
+release
+hold A
+run 5
+release
+run 90
+release
+hold A
+run 5
+release
+run 90
+release
+hold A
+run 5
+release
+run 90
+release
+hold A
+run 5
+release
+run 90
+release
+hold A
+run 5
+release
+run 90
+release
+hold A
+run 5
+release
+run 90
+release
+stick 0 0
+screenshot ta_grid
+release
+hold A
+stick 23 0
+run 365
+stick 21 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 14 0
+run 1
+stick 13 0
+run 1
+stick 12 0
+run 1
+stick 11 0
+run 1
+stick 9 0
+run 1
+stick 8 0
+run 1
+stick 7 0
+run 3
+stick 6 0
+run 5
+stick 2 0
+run 1
+stick 1 0
+run 1
+stick 0 0
+run 4
+stick -1 0
+run 2
+stick -2 0
+run 2
+stick -3 0
+run 4
+stick -4 0
+run 2
+stick -5 0
+run 3
+stick -6 0
+run 6
+stick -7 0
+run 2
+stick -6 0
+run 6
+stick -5 0
+run 1
+stick -6 0
+run 1
+stick -5 0
+run 2
+stick -4 0
+run 1
+stick -5 0
+run 1
+stick -4 0
+run 2
+stick -3 0
+run 2
+stick -2 0
+run 4
+stick -1 0
+run 2
+stick 0 0
+run 9
+stick 1 0
+run 6
+stick 2 0
+run 2
+stick 3 0
+run 2
+stick 5 0
+run 2
+stick 6 0
+run 1
+stick 7 0
+run 1
+stick 8 0
+run 1
+stick 7 0
+run 6
+stick 6 0
+run 3
+stick 7 0
+run 3
+stick 6 0
+run 1
+stick 7 0
+run 3
+stick 6 0
+run 1
+stick 7 0
+run 4
+stick 8 0
+run 2
+stick 9 0
+run 1
+stick 8 0
+run 1
+stick 10 0
+run 1
+stick 9 0
+run 1
+stick 10 0
+run 2
+stick 11 0
+run 2
+stick 12 0
+run 1
+stick 11 0
+run 1
+stick 13 0
+run 1
+stick 12 0
+run 1
+stick 13 0
+run 2
+stick 14 0
+run 2
+stick 15 0
+run 1
+stick 14 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 17 0
+run 2
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 25 0
+run 1
+stick 24 0
+run 1
+stick 26 0
+run 1
+stick 25 0
+run 1
+stick 28 0
+run 1
+stick 26 0
+run 1
+stick 29 0
+run 1
+stick 28 0
+run 1
+stick 31 0
+run 1
+stick 29 0
+run 1
+stick 32 0
+run 1
+stick 30 0
+run 1
+stick 33 0
+run 1
+stick 31 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 35 0
+run 1
+stick 33 0
+run 1
+stick 36 0
+run 1
+stick 34 0
+run 1
+stick 37 0
+run 1
+stick 35 0
+run 1
+stick 38 0
+run 1
+stick 36 0
+run 1
+stick 39 0
+run 1
+stick 38 0
+run 1
+stick 39 0
+run 1
+stick 36 0
+run 1
+stick 37 0
+run 1
+stick 34 0
+run 1
+stick 35 0
+run 1
+stick 32 0
+run 1
+stick 30 0
+run 1
+stick 31 0
+run 1
+stick 29 0
+run 1
+stick 31 0
+run 1
+stick 29 0
+run 2
+stick 27 0
+run 2
+stick 25 0
+run 1
+stick 24 0
+run 2
+stick 22 0
+run 2
+stick 21 0
+run 1
+stick 20 0
+run 4
+stick 19 0
+run 1
+stick 18 0
+run 4
+stick 17 0
+run 3
+stick 16 0
+run 6
+stick 15 0
+run 6
+stick 14 0
+run 3
+stick 15 0
+run 1
+stick 14 0
+run 2
+stick 15 0
+run 1
+stick 14 0
+run 2
+stick 15 0
+run 1
+stick 14 0
+run 2
+stick 15 0
+run 2
+stick 14 0
+run 1
+stick 15 0
+run 4
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 16 0
+run 6
+stick 15 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 14 0
+run 1
+stick 15 0
+run 1
+stick 14 0
+run 9
+stick 13 0
+run 1
+stick 14 0
+run 1
+stick 13 0
+run 2
+stick 14 0
+run 1
+stick 13 0
+run 4
+stick 12 0
+run 3
+stick 11 0
+run 3
+stick 10 0
+run 3
+stick 9 0
+run 6
+stick 8 0
+run 6
+stick 7 0
+run 5
+stick 6 0
+run 2
+stick 7 0
+run 4
+stick 5 0
+run 2
+stick 4 0
+run 1
+stick 5 0
+run 2
+stick 4 0
+run 1
+stick 5 0
+run 2
+stick 4 0
+run 2
+stick 3 0
+run 2
+stick 4 0
+run 1
+stick 2 0
+run 1
+stick 3 0
+run 2
+stick 1 0
+run 3
+stick 0 0
+run 2
+stick -1 0
+run 2
+stick -3 0
+run 3
+stick -5 0
+run 2
+stick -6 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 3
+stick -9 0
+run 1
+stick -8 0
+run 1
+stick -9 0
+run 2
+stick -8 0
+run 1
+stick -9 0
+run 2
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 9
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 3
+stick -8 0
+run 1
+stick -7 0
+run 2
+stick -6 0
+run 6
+stick -7 0
+run 3
+stick -6 0
+run 16
+stick -5 0
+run 4
+stick -4 0
+run 2
+stick -3 0
+run 2
+stick -2 0
+run 1
+stick -1 0
+run 2
+stick 0 0
+run 4
+stick 2 0
+run 2
+stick 3 0
+run 1
+stick 5 0
+run 2
+stick 7 0
+run 2
+stick 8 0
+run 2
+stick 9 0
+run 1
+stick 11 0
+run 1
+stick 10 0
+run 1
+stick 13 0
+run 2
+stick 16 0
+run 2
+stick 19 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 25 0
+run 1
+stick 24 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 28 0
+run 1
+stick 31 0
+run 1
+stick 30 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 33 0
+run 1
+stick 35 0
+run 1
+stick 34 0
+run 1
+stick 36 0
+run 1
+stick 34 0
+run 1
+stick 36 0
+run 1
+stick 38 0
+run 1
+stick 36 0
+run 1
+stick 38 0
+run 1
+stick 36 0
+run 1
+stick 38 0
+run 1
+stick 40 0
+run 1
+stick 38 0
+run 1
+stick 39 0
+run 1
+stick 41 0
+run 1
+stick 39 0
+run 1
+stick 43 0
+run 1
+stick 44 0
+run 1
+stick 42 0
+run 3
+stick 40 0
+run 1
+stick 39 0
+run 1
+stick 37 0
+run 1
+stick 35 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 29 0
+run 1
+stick 28 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 24 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 3
+stick 21 0
+run 3
+stick 20 0
+run 2
+stick 21 0
+run 1
+stick 20 0
+run 2
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 21 0
+run 1
+stick 23 0
+run 1
+stick 24 0
+run 1
+stick 23 0
+run 1
+stick 25 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 28 0
+run 1
+stick 30 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 33 0
+run 1
+stick 36 0
+run 1
+stick 34 0
+run 1
+stick 37 0
+run 1
+stick 39 0
+run 1
+stick 37 0
+run 1
+stick 40 0
+run 1
+stick 42 0
+run 1
+stick 40 0
+run 1
+stick 42 0
+run 1
+stick 45 0
+run 1
+stick 43 0
+run 1
+stick 45 0
+run 1
+stick 47 0
+run 1
+stick 48 0
+run 1
+stick 46 0
+run 1
+stick 48 0
+run 1
+stick 49 0
+run 1
+stick 47 0
+run 1
+stick 48 0
+run 1
+stick 50 0
+run 1
+stick 51 0
+run 1
+stick 48 0
+run 1
+stick 49 0
+run 1
+stick 50 0
+run 2
+stick 48 0
+run 4
+stick 45 0
+run 3
+stick 43 0
+run 1
+stick 42 0
+run 2
+stick 40 0
+run 1
+stick 39 0
+run 1
+stick 38 0
+run 1
+stick 37 0
+run 1
+stick 36 0
+run 1
+stick 35 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 30 0
+run 1
+stick 28 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 25 0
+run 1
+stick 24 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 14 0
+run 1
+stick 13 0
+run 2
+stick 12 0
+run 2
+stick 11 0
+run 1
+stick 10 0
+run 3
+stick 9 0
+run 4
+stick 8 0
+run 4
+stick 7 0
+run 5
+stick 6 0
+run 3
+stick 7 0
+run 4
+stick 6 0
+run 2
+stick 7 0
+run 4
+stick 6 0
+run 2
+stick 7 0
+run 3
+stick 6 0
+run 3
+stick 7 0
+run 3
+stick 6 0
+run 3
+stick 7 0
+run 2
+stick 6 0
+run 3
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 7
+stick 7 0
+run 2
+stick 6 0
+run 10
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 9
+stick 7 0
+run 2
+stick 6 0
+run 9
+stick 7 0
+run 2
+stick 6 0
+run 5
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 2
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 10
+stick 4 0
+run 1
+stick 5 0
+run 1
+stick 4 0
+run 3
+stick 3 0
+run 5
+stick 2 0
+run 4
+stick 1 0
+run 2
+stick 0 0
+run 5
+stick -1 0
+run 2
+stick -2 0
+run 2
+stick -3 0
+run 3
+stick -4 0
+run 2
+stick -5 0
+run 1
+stick -6 0
+run 2
+stick -7 0
+run 2
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 4
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 4
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 18
+stick -6 0
+run 2
+stick -7 0
+run 1
+stick -8 0
+run 2
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 4
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 2
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 7
+stick -9 0
+run 4
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 4
+stick -12 0
+run 3
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 2
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 2
+stick -17 0
+run 1
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 2
+stick -16 0
+run 1
+stick -15 0
+run 2
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 5
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 4
+stick -14 0
+run 1
+stick -13 0
+run 4
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 2
+stick -12 0
+run 3
+stick -11 0
+run 4
+stick -10 0
+run 8
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 2
+stick -12 0
+run 3
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 2
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -21 0
+run 1
+stick -23 0
+run 1
+stick -21 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 2
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 2
+stick -20 0
+run 1
+stick -21 0
+run 2
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 2
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 2
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 4
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 4
+stick -16 0
+run 4
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 2
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 2
+stick -13 0
+run 1
+stick -14 0
+run 4
+stick -13 0
+run 6
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 17
+stick -13 0
+run 2
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 2
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 2
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 2
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 2
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -24 0
+run 1
+release
+stick 0 0
+savestate speed
+release
+hold A
+stick -25 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -25 0
+run 2
+stick -26 0
+run 1
+stick -25 0
+run 3
+stick -24 0
+run 2
+stick -23 0
+run 1
+stick -24 0
+run 2
+stick -23 0
+run 3
+stick -22 0
+run 3
+stick -21 0
+run 3
+stick -20 0
+run 2
+stick -21 0
+run 1
+stick -20 0
+run 3
+stick -19 0
+run 2
+stick -18 0
+run 3
+stick -17 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 4
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 2
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 2
+stick -23 0
+run 1
+stick -22 0
+run 2
+stick -21 0
+run 1
+stick -20 0
+run 2
+stick -19 0
+run 3
+stick -18 0
+run 3
+stick -17 0
+run 9
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 2
+stick -17 0
+run 1
+stick -16 0
+run 11
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 2
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -25 0
+run 1
+stick -23 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -26 0
+run 2
+stick -27 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 2
+stick -26 0
+run 2
+stick -25 0
+run 1
+stick -26 0
+run 2
+stick -25 0
+run 2
+stick -26 0
+run 1
+stick -24 0
+run 2
+stick -23 0
+run 3
+stick -22 0
+run 3
+stick -21 0
+run 2
+stick -19 0
+run 3
+stick -18 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -14 0
+run 2
+stick -13 0
+run 2
+stick -12 0
+run 2
+stick -11 0
+run 2
+stick -10 0
+run 3
+stick -9 0
+run 5
+stick -8 0
+run 9
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 9
+stick -6 0
+run 3
+stick -7 0
+run 5
+stick -6 0
+run 3
+stick -7 0
+run 3
+stick -6 0
+run 3
+stick -7 0
+run 2
+stick -6 0
+run 3
+stick -7 0
+run 2
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 6
+stick -7 0
+run 2
+stick -6 0
+run 7
+stick -7 0
+run 2
+stick -6 0
+run 7
+stick -7 0
+run 3
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 3
+stick -7 0
+run 2
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 3
+stick -5 0
+run 7
+stick -4 0
+run 2
+stick -3 0
+run 4
+stick -2 0
+run 2
+stick -1 0
+run 2
+stick 0 0
+run 5
+stick 1 0
+run 3
+stick 2 0
+run 3
+stick 3 0
+run 2
+stick 4 0
+run 1
+stick 5 0
+run 2
+stick 6 0
+run 2
+stick 7 0
+run 6
+stick 6 0
+run 2
+stick 7 0
+run 5
+stick 6 0
+run 3
+stick 7 0
+run 4
+stick 6 0
+run 4
+stick 7 0
+run 3
+stick 6 0
+run 14
+stick 7 0
+run 2
+stick 6 0
+run 2
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 13
+stick 7 0
+run 4
+stick 6 0
+run 3
+stick 7 0
+run 3
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 8
+stick 5 0
+run 5
+stick 4 0
+run 1
+stick 5 0
+run 1
+stick 4 0
+run 1
+stick 3 0
+run 1
+stick 4 0
+run 1
+stick 3 0
+run 2
+stick 2 0
+run 1
+stick 3 0
+run 1
+stick 2 0
+run 1
+stick 1 0
+run 1
+stick 2 0
+run 1
+stick 1 0
+run 2
+stick 0 0
+run 1
+stick 1 0
+run 1
+stick 0 0
+run 5
+stick -1 0
+run 1
+stick 0 0
+run 1
+stick -1 0
+run 3
+stick -2 0
+run 6
+stick -3 0
+run 3
+stick -4 0
+run 6
+stick -5 0
+run 5
+stick -6 0
+run 8
+stick -7 0
+run 2
+stick -6 0
+run 9
+stick -7 0
+run 2
+stick -6 0
+run 15
+stick -5 0
+run 5
+stick -4 0
+run 5
+stick -3 0
+run 6
+stick -2 0
+run 4
+stick -1 0
+run 3
+stick 0 0
+run 7
+stick 1 0
+run 4
+stick 2 0
+run 5
+stick 3 0
+run 32
+stick 4 0
+run 3
+stick 5 0
+run 4
+stick 6 0
+run 2
+stick 7 0
+run 3
+stick 6 0
+run 1
+stick 5 0
+run 2
+stick 6 0
+run 3
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 1
+stick 5 0
+run 4
+stick 6 0
+run 9
+stick 7 0
+run 2
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 29
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 2
+stick 4 0
+run 2
+stick 3 0
+run 9
+stick 4 0
+run 6
+stick 5 0
+run 6
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 5
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 12
+stick 7 0
+run 2
+stick 6 0
+run 9
+stick 26 0
+run 1
+stick 27 0
+run 1
+stick 25 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 20 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 14 0
+run 2
+stick 12 0
+run 1
+stick 10 0
+run 1
+stick 9 0
+run 1
+stick 8 0
+run 1
+stick 6 0
+run 2
+stick 5 0
+run 2
+stick 4 0
+run 1
+stick 3 0
+run 2
+stick 2 0
+run 2
+stick 1 0
+run 1
+stick 0 0
+run 4
+stick -2 0
+run 1
+stick -3 0
+run 2
+stick -4 0
+run 2
+stick -5 0
+run 1
+stick -6 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 2
+stick -9 0
+run 3
+stick -8 0
+run 4
+stick -7 0
+run 3
+stick -6 0
+run 7
+stick -5 0
+run 1
+stick -6 0
+run 1
+stick -5 0
+run 5
+stick -4 0
+run 1
+stick -3 0
+run 2
+stick -2 0
+run 2
+stick -1 0
+run 1
+stick 0 0
+run 4
+stick 1 0
+run 3
+stick 2 0
+run 2
+stick 3 0
+run 4
+stick 4 0
+run 2
+stick 5 0
+run 3
+stick 6 0
+run 2
+stick 7 0
+run 1
+stick 8 0
+run 2
+stick 9 0
+run 1
+stick 8 0
+run 1
+stick 9 0
+run 6
+stick 8 0
+run 3
+stick 7 0
+run 6
+stick 6 0
+run 2
+stick 7 0
+run 5
+stick 8 0
+run 2
+stick 9 0
+run 1
+stick 10 0
+run 2
+stick 11 0
+run 2
+stick 12 0
+run 1
+stick 11 0
+run 1
+stick 12 0
+run 2
+stick 13 0
+run 1
+stick 15 0
+run 1
+stick 14 0
+run 1
+stick 15 0
+run 2
+stick 16 0
+run 2
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 25 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 29 0
+run 1
+stick 27 0
+run 1
+stick 30 0
+run 1
+stick 28 0
+run 1
+stick 31 0
+run 1
+stick 30 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 33 0
+run 1
+stick 32 0
+run 1
+stick 35 0
+run 1
+stick 33 0
+run 1
+stick 36 0
+run 1
+stick 34 0
+run 1
+stick 37 0
+run 1
+stick 35 0
+run 1
+stick 38 0
+run 1
+stick 36 0
+run 1
+stick 38 0
+run 1
+stick 37 0
+run 1
+stick 39 0
+run 1
+stick 37 0
+run 1
+stick 40 0
+run 1
+stick 43 0
+run 1
+stick 41 0
+run 1
+stick 43 0
+run 1
+stick 41 0
+run 1
+stick 43 0
+run 1
+stick 41 0
+run 1
+stick 45 0
+run 1
+stick 41 0
+run 2
+stick 37 0
+run 2
+stick 34 0
+run 2
+stick 31 0
+run 2
+stick 28 0
+run 2
+stick 26 0
+run 2
+stick 24 0
+run 1
+stick 23 0
+run 2
+stick 22 0
+run 1
+stick 21 0
+run 3
+stick 20 0
+run 1
+stick 19 0
+run 2
+stick 18 0
+run 5
+stick 17 0
+run 5
+stick 16 0
+run 8
+stick 15 0
+run 2
+stick 16 0
+run 2
+stick 15 0
+run 1
+stick 16 0
+run 2
+stick 15 0
+run 1
+stick 16 0
+run 2
+stick 15 0
+run 1
+stick 16 0
+run 3
+stick 17 0
+run 2
+stick 16 0
+run 1
+stick 17 0
+run 6
+stick 16 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 6
+stick 14 0
+run 1
+stick 15 0
+run 1
+stick 14 0
+run 2
+stick 15 0
+run 1
+stick 14 0
+run 6
+stick 13 0
+run 3
+stick 12 0
+run 3
+stick 11 0
+run 2
+stick 10 0
+run 5
+stick 9 0
+run 9
+stick 8 0
+run 3
+stick 7 0
+run 5
+stick 6 0
+run 2
+stick 7 0
+run 1
+stick 6 0
+run 2
+stick 7 0
+run 1
+stick 6 0
+run 2
+stick 4 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 2
+stick 6 0
+run 1
+stick 4 0
+run 1
+stick 5 0
+run 2
+stick 4 0
+run 2
+stick 5 0
+run 1
+stick 3 0
+run 2
+stick 1 0
+run 1
+stick 2 0
+run 2
+stick 0 0
+run 2
+stick -1 0
+run 2
+stick -3 0
+run 2
+stick -5 0
+run 3
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -9 0
+run 1
+stick -8 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 2
+stick -9 0
+run 1
+stick -10 0
+run 2
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 8
+stick -10 0
+run 4
+stick -9 0
+run 2
+stick -8 0
+run 1
+stick -7 0
+run 3
+stick -6 0
+run 4
+stick -7 0
+run 3
+stick -6 0
+run 7
+stick -7 0
+run 2
+stick -6 0
+run 9
+stick -5 0
+run 5
+stick -4 0
+run 4
+stick -3 0
+run 2
+stick -2 0
+run 2
+stick 0 0
+run 4
+stick 1 0
+run 2
+stick 3 0
+run 2
+stick 4 0
+run 2
+stick 6 0
+run 3
+stick 8 0
+run 2
+stick 9 0
+run 2
+stick 10 0
+run 2
+stick 13 0
+run 2
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 25 0
+run 1
+stick 24 0
+run 1
+stick 27 0
+run 1
+stick 25 0
+run 1
+stick 28 0
+run 1
+stick 27 0
+run 1
+stick 29 0
+run 1
+stick 28 0
+run 1
+stick 30 0
+run 1
+stick 29 0
+run 1
+stick 31 0
+run 1
+stick 30 0
+run 1
+stick 32 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 34 0
+run 1
+stick 33 0
+run 1
+stick 34 0
+run 1
+stick 33 0
+run 1
+stick 34 0
+run 1
+stick 36 0
+run 1
+release
+stick 0 0
+screenshot ta_race_0
+release
+hold A
+stick 34 0
+run 1
+stick 38 0
+run 1
+stick 37 0
+run 1
+stick 38 0
+run 2
+stick 37 0
+run 1
+stick 36 0
+run 1
+stick 34 0
+run 1
+stick 33 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 29 0
+run 1
+stick 28 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 24 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 2
+stick 18 0
+run 4
+stick 17 0
+run 4
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 18 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 19 0
+run 2
+stick 20 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 23 0
+run 1
+stick 25 0
+run 1
+stick 24 0
+run 1
+stick 26 0
+run 1
+stick 28 0
+run 1
+stick 27 0
+run 1
+stick 29 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 33 0
+run 1
+stick 32 0
+run 1
+stick 34 0
+run 1
+stick 37 0
+run 1
+stick 35 0
+run 1
+stick 37 0
+run 1
+stick 40 0
+run 1
+stick 38 0
+run 1
+stick 40 0
+run 1
+stick 39 0
+run 1
+stick 41 0
+run 1
+stick 43 0
+run 1
+stick 41 0
+run 1
+stick 43 0
+run 1
+stick 45 0
+run 1
+stick 43 0
+run 1
+stick 45 0
+run 1
+stick 47 0
+run 1
+stick 45 0
+run 1
+stick 46 0
+run 1
+stick 47 0
+run 1
+stick 45 0
+run 1
+stick 46 0
+run 1
+stick 47 0
+run 1
+stick 44 0
+run 1
+stick 45 0
+run 1
+stick 46 0
+run 1
+stick 44 0
+run 3
+stick 42 0
+run 3
+stick 40 0
+run 3
+stick 38 0
+run 1
+stick 37 0
+run 2
+stick 35 0
+run 1
+stick 34 0
+run 2
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 30 0
+run 1
+stick 29 0
+run 1
+stick 28 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 25 0
+run 1
+stick 24 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 17 0
+run 2
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 14 0
+run 2
+stick 13 0
+run 1
+stick 12 0
+run 3
+stick 11 0
+run 1
+stick 10 0
+run 4
+stick 9 0
+run 2
+stick 8 0
+run 5
+stick 7 0
+run 4
+stick 6 0
+run 1
+stick 7 0
+run 6
+stick 6 0
+run 3
+stick 7 0
+run 4
+stick 6 0
+run 3
+stick 7 0
+run 5
+stick 6 0
+run 3
+stick 7 0
+run 4
+stick 6 0
+run 3
+stick 7 0
+run 2
+stick 6 0
+run 3
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 9
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 5
+stick 7 0
+run 2
+stick 6 0
+run 7
+stick 7 0
+run 2
+stick 6 0
+run 7
+stick 7 0
+run 2
+stick 6 0
+run 12
+stick 7 0
+run 2
+stick 6 0
+run 5
+stick 7 0
+run 2
+stick 6 0
+run 5
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 9
+stick 4 0
+run 4
+stick 3 0
+run 1
+stick 4 0
+run 1
+stick 3 0
+run 3
+stick 2 0
+run 4
+stick 1 0
+run 2
+stick 0 0
+run 1
+stick 1 0
+run 1
+stick 0 0
+run 3
+stick -1 0
+run 4
+stick -2 0
+run 2
+stick -3 0
+run 2
+stick -4 0
+run 2
+stick -5 0
+run 2
+stick -6 0
+run 2
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 6
+stick -8 0
+run 1
+stick -7 0
+run 8
+stick -6 0
+run 1
+stick -7 0
+run 5
+stick -6 0
+run 1
+stick -7 0
+run 10
+stick -6 0
+run 1
+stick -7 0
+run 21
+stick -8 0
+run 5
+stick -9 0
+run 1
+stick -8 0
+run 1
+stick -9 0
+run 1
+stick -8 0
+run 1
+stick -9 0
+run 6
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 3
+stick -11 0
+run 2
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 4
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 2
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 2
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 4
+stick -14 0
+run 1
+stick -15 0
+run 2
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 4
+stick -13 0
+run 1
+stick -14 0
+run 2
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 4
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 2
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 2
+stick -11 0
+run 3
+stick -10 0
+run 6
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 4
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 4
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 2
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 2
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 2
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 2
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 2
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 2
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 2
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 2
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 4
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 2
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 4
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 2
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 2
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 4
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 8
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 5
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 2
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 3
+stick -21 0
+run 3
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -24 0
+run 2
+stick -25 0
+run 1
+stick -24 0
+run 3
+stick -23 0
+run 3
+stick -22 0
+run 2
+stick -21 0
+run 1
+stick -22 0
+run 2
+stick -21 0
+run 3
+stick -20 0
+run 3
+stick -19 0
+run 3
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 3
+stick -17 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 2
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 2
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 2
+stick -22 0
+run 1
+stick -21 0
+run 2
+stick -20 0
+run 1
+stick -19 0
+run 2
+stick -18 0
+run 3
+stick -17 0
+run 2
+stick -18 0
+run 1
+stick -17 0
+run 3
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 10
+stick -15 0
+run 1
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -27 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -26 0
+run 2
+stick -27 0
+run 1
+stick -26 0
+run 2
+stick -25 0
+run 1
+stick -26 0
+run 2
+stick -25 0
+run 2
+stick -26 0
+run 1
+stick -25 0
+run 2
+stick -23 0
+run 1
+stick -24 0
+run 2
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 3
+stick -20 0
+run 2
+stick -19 0
+run 2
+stick -18 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 2
+stick -15 0
+run 2
+stick -14 0
+run 1
+stick -13 0
+run 3
+stick -12 0
+run 2
+stick -11 0
+run 2
+stick -10 0
+run 3
+stick -9 0
+run 3
+stick -8 0
+run 8
+stick -7 0
+run 1
+stick -8 0
+run 4
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 9
+stick -6 0
+run 3
+stick -7 0
+run 5
+stick -6 0
+run 3
+stick -7 0
+run 3
+stick -6 0
+run 3
+stick -7 0
+run 3
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 6
+stick -7 0
+run 2
+stick -6 0
+run 7
+stick -7 0
+run 2
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 3
+stick -7 0
+run 3
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 3
+stick -7 0
+run 2
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 14
+stick -5 0
+run 4
+stick -4 0
+run 4
+stick -3 0
+run 1
+stick -2 0
+run 4
+stick -1 0
+run 2
+stick 0 0
+run 5
+stick 1 0
+run 3
+stick 2 0
+run 2
+stick 3 0
+run 3
+stick 4 0
+run 1
+stick 5 0
+run 2
+stick 6 0
+run 3
+stick 7 0
+run 7
+stick 6 0
+run 2
+stick 7 0
+run 4
+stick 6 0
+run 3
+stick 7 0
+run 3
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 10
+stick 7 0
+run 2
+stick 6 0
+run 2
+stick 5 0
+run 1
+stick 6 0
+run 4
+stick 5 0
+run 1
+stick 6 0
+run 7
+stick 7 0
+run 3
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 11
+stick 7 0
+run 3
+stick 6 0
+run 3
+stick 7 0
+run 4
+stick 6 0
+run 5
+stick 7 0
+run 2
+stick 6 0
+run 2
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 5
+stick 4 0
+run 1
+stick 5 0
+run 1
+stick 4 0
+run 3
+stick 3 0
+run 2
+stick 2 0
+run 1
+stick 3 0
+run 1
+stick 2 0
+run 4
+stick 1 0
+run 1
+stick 0 0
+run 1
+stick 1 0
+run 1
+stick 0 0
+run 5
+stick -1 0
+run 4
+stick -2 0
+run 1
+stick -1 0
+run 1
+stick -2 0
+run 3
+stick -3 0
+run 2
+release
+stick 0 0
+screenshot ta_race_1
+release
+hold A
+stick -3 0
+run 2
+stick -4 0
+run 5
+stick -5 0
+run 4
+stick -6 0
+run 1
+stick -5 0
+run 1
+stick -6 0
+run 3
+stick -7 0
+run 1
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 9
+stick -7 0
+run 1
+stick -6 0
+run 8
+stick -7 0
+run 2
+stick -6 0
+run 1
+stick -5 0
+run 1
+stick -6 0
+run 1
+stick -5 0
+run 7
+stick -4 0
+run 4
+stick -3 0
+run 5
+stick -2 0
+run 4
+stick -1 0
+run 4
+stick 0 0
+run 7
+stick 1 0
+run 4
+stick 2 0
+run 4
+stick 3 0
+run 3
+stick 4 0
+run 8
+stick 5 0
+run 27
+stick 6 0
+run 2
+stick 7 0
+run 3
+stick 6 0
+run 2
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 1
+stick 5 0
+run 10
+stick 6 0
+run 12
+stick 7 0
+run 2
+stick 6 0
+run 17
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 2
+stick 4 0
+run 1
+stick 5 0
+run 1
+stick 4 0
+run 2
+stick 3 0
+run 2
+stick 2 0
+run 1
+stick 3 0
+run 1
+stick 2 0
+run 9
+stick 3 0
+run 7
+stick 4 0
+run 7
+stick 5 0
+run 6
+stick 6 0
+run 7
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 9
+stick 7 0
+run 2
+stick 6 0
+run 9
+stick 27 0
+run 1
+stick 28 0
+run 1
+stick 25 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 20 0
+run 1
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 15 0
+run 1
+stick 13 0
+run 1
+stick 12 0
+run 1
+stick 10 0
+run 1
+stick 8 0
+run 2
+stick 6 0
+run 2
+stick 5 0
+run 1
+stick 4 0
+run 2
+stick 3 0
+run 2
+stick 2 0
+run 1
+stick 1 0
+run 2
+stick 0 0
+run 3
+stick -1 0
+run 2
+stick -2 0
+run 1
+stick -3 0
+run 1
+stick -4 0
+run 2
+stick -6 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 6
+stick -7 0
+run 3
+stick -6 0
+run 8
+stick -7 0
+run 1
+stick -6 0
+run 1
+stick -5 0
+run 1
+stick -6 0
+run 1
+stick -5 0
+run 3
+stick -4 0
+run 2
+stick -3 0
+run 2
+stick -2 0
+run 1
+stick -3 0
+run 1
+stick -2 0
+run 1
+stick -1 0
+run 2
+stick 0 0
+run 3
+stick 1 0
+run 2
+stick 2 0
+run 4
+stick 3 0
+run 2
+stick 4 0
+run 3
+stick 5 0
+run 4
+stick 6 0
+run 1
+stick 8 0
+run 2
+stick 9 0
+run 8
+stick 8 0
+run 4
+stick 7 0
+run 5
+stick 6 0
+run 2
+stick 7 0
+run 5
+stick 8 0
+run 2
+stick 9 0
+run 1
+stick 10 0
+run 2
+stick 11 0
+run 2
+stick 12 0
+run 1
+stick 11 0
+run 1
+stick 13 0
+run 1
+stick 12 0
+run 1
+stick 13 0
+run 2
+stick 14 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 16 0
+run 2
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 25 0
+run 1
+stick 23 0
+run 1
+stick 26 0
+run 1
+stick 25 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 29 0
+run 1
+stick 32 0
+run 1
+stick 30 0
+run 1
+stick 33 0
+run 1
+stick 31 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 35 0
+run 1
+stick 33 0
+run 1
+stick 36 0
+run 1
+stick 34 0
+run 1
+stick 37 0
+run 1
+stick 35 0
+run 1
+stick 38 0
+run 1
+stick 36 0
+run 1
+stick 39 0
+run 1
+stick 37 0
+run 1
+stick 40 0
+run 1
+stick 38 0
+run 1
+stick 40 0
+run 1
+stick 38 0
+run 1
+stick 41 0
+run 1
+stick 39 0
+run 1
+stick 42 0
+run 1
+stick 44 0
+run 1
+stick 42 0
+run 1
+stick 45 0
+run 1
+stick 41 0
+run 1
+stick 42 0
+run 1
+stick 38 0
+run 2
+stick 34 0
+run 2
+stick 31 0
+run 2
+stick 28 0
+run 1
+stick 26 0
+run 2
+stick 25 0
+run 2
+stick 23 0
+run 2
+stick 22 0
+run 2
+stick 21 0
+run 1
+stick 20 0
+run 2
+stick 19 0
+run 3
+stick 18 0
+run 4
+stick 17 0
+run 4
+stick 16 0
+run 8
+stick 15 0
+run 1
+stick 16 0
+run 2
+stick 15 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 2
+stick 16 0
+run 4
+stick 15 0
+run 1
+stick 16 0
+run 2
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 17 0
+run 4
+stick 16 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 6
+stick 15 0
+run 5
+stick 14 0
+run 4
+stick 15 0
+run 1
+stick 14 0
+run 6
+stick 13 0
+run 4
+stick 12 0
+run 2
+stick 11 0
+run 2
+stick 10 0
+run 6
+stick 9 0
+run 5
+stick 8 0
+run 2
+stick 9 0
+run 1
+stick 8 0
+run 3
+stick 7 0
+run 2
+stick 8 0
+run 1
+stick 7 0
+run 3
+stick 6 0
+run 2
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 7 0
+run 1
+stick 6 0
+run 2
+stick 7 0
+run 1
+stick 5 0
+run 2
+stick 6 0
+run 1
+stick 4 0
+run 1
+stick 5 0
+run 1
+stick 4 0
+run 2
+stick 5 0
+run 1
+stick 3 0
+run 1
+stick 4 0
+run 2
+stick 2 0
+run 1
+stick 3 0
+run 2
+stick 1 0
+run 2
+stick 0 0
+run 3
+stick -2 0
+run 2
+stick -4 0
+run 2
+stick -6 0
+run 3
+stick -8 0
+run 2
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 2
+stick -10 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 7
+stick -10 0
+run 3
+stick -9 0
+run 2
+stick -8 0
+run 1
+stick -7 0
+run 2
+stick -6 0
+run 3
+stick -7 0
+run 3
+stick -6 0
+run 6
+stick -7 0
+run 1
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 2
+stick -5 0
+run 1
+stick -6 0
+run 1
+stick -5 0
+run 4
+stick -4 0
+run 4
+stick -3 0
+run 2
+stick -2 0
+run 2
+stick -1 0
+run 2
+stick 0 0
+run 3
+stick 1 0
+run 2
+stick 2 0
+run 2
+stick 4 0
+run 2
+stick 5 0
+run 2
+stick 7 0
+run 2
+stick 8 0
+run 2
+stick 9 0
+run 2
+stick 10 0
+run 1
+stick 9 0
+run 1
+stick 12 0
+run 2
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 18 0
+run 2
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 24 0
+run 1
+stick 23 0
+run 1
+stick 26 0
+run 1
+stick 25 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 29 0
+run 1
+stick 27 0
+run 1
+stick 30 0
+run 1
+stick 28 0
+run 1
+stick 30 0
+run 1
+stick 29 0
+run 1
+stick 31 0
+run 1
+stick 30 0
+run 1
+stick 32 0
+run 1
+stick 30 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 33 0
+run 1
+stick 31 0
+run 1
+stick 33 0
+run 1
+stick 35 0
+run 1
+stick 33 0
+run 1
+stick 35 0
+run 1
+stick 33 0
+run 1
+stick 35 0
+run 1
+stick 33 0
+run 1
+stick 38 0
+run 1
+stick 39 0
+run 1
+stick 37 0
+run 1
+stick 38 0
+run 1
+stick 37 0
+run 1
+stick 35 0
+run 1
+stick 34 0
+run 1
+stick 33 0
+run 1
+stick 32 0
+run 1
+stick 30 0
+run 1
+stick 29 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 25 0
+run 1
+stick 24 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 3
+stick 17 0
+run 4
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 18 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 19 0
+run 1
+stick 20 0
+run 2
+stick 21 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 24 0
+run 1
+stick 27 0
+run 1
+stick 25 0
+run 1
+stick 28 0
+run 1
+stick 30 0
+run 1
+stick 29 0
+run 1
+stick 31 0
+run 1
+stick 30 0
+run 1
+stick 33 0
+run 1
+stick 35 0
+run 1
+stick 34 0
+run 1
+stick 36 0
+run 1
+stick 39 0
+run 1
+stick 37 0
+run 1
+stick 39 0
+run 1
+stick 38 0
+run 1
+stick 40 0
+run 1
+stick 42 0
+run 1
+stick 40 0
+run 1
+stick 42 0
+run 1
+stick 45 0
+run 1
+stick 43 0
+run 1
+stick 44 0
+run 1
+stick 46 0
+run 1
+stick 44 0
+run 1
+stick 46 0
+run 1
+stick 47 0
+run 1
+stick 45 0
+run 1
+stick 46 0
+run 1
+stick 47 0
+run 1
+stick 45 0
+run 1
+stick 46 0
+run 2
+stick 44 0
+run 1
+stick 45 0
+run 2
+stick 43 0
+run 3
+stick 41 0
+run 3
+stick 39 0
+run 2
+stick 38 0
+run 1
+stick 37 0
+run 1
+stick 36 0
+run 1
+stick 35 0
+run 1
+stick 34 0
+run 1
+stick 33 0
+run 1
+stick 31 0
+run 2
+stick 30 0
+run 1
+stick 28 0
+run 2
+stick 26 0
+run 1
+stick 25 0
+run 2
+stick 23 0
+run 2
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 2
+stick 14 0
+run 1
+stick 13 0
+run 2
+stick 12 0
+run 1
+stick 11 0
+run 2
+stick 10 0
+run 3
+stick 9 0
+run 5
+stick 8 0
+run 3
+stick 7 0
+run 6
+stick 6 0
+run 1
+stick 7 0
+run 3
+stick 6 0
+run 2
+stick 7 0
+run 5
+stick 6 0
+run 3
+stick 7 0
+run 4
+stick 6 0
+run 3
+stick 7 0
+run 5
+stick 6 0
+run 4
+stick 7 0
+run 3
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 9
+stick 7 0
+run 2
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 5
+stick 7 0
+run 2
+stick 6 0
+run 7
+stick 7 0
+run 2
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 12
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 7
+stick 7 0
+run 1
+stick 6 0
+run 15
+stick 5 0
+run 3
+stick 4 0
+run 6
+stick 3 0
+run 4
+stick 2 0
+run 3
+stick 1 0
+run 2
+stick 0 0
+run 1
+stick 1 0
+run 1
+stick 0 0
+run 4
+stick -1 0
+run 3
+stick -2 0
+run 2
+stick -3 0
+run 2
+stick -4 0
+run 2
+stick -5 0
+run 2
+stick -6 0
+run 2
+stick -7 0
+run 2
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 4
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 15
+stick -6 0
+run 1
+stick -7 0
+run 7
+stick -6 0
+run 1
+stick -7 0
+run 14
+stick -6 0
+run 1
+stick -7 0
+run 3
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 6
+stick -9 0
+run 1
+stick -8 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 4
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 2
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 2
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 2
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 8
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 4
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 2
+stick -15 0
+run 1
+stick -14 0
+run 4
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 4
+release
+stick 0 0
+screenshot ta_race_2
+release
+hold A
+stick -13 0
+run 3
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 6
+stick -13 0
+run 7
+stick -12 0
+run 2
+stick -11 0
+run 3
+stick -10 0
+run 3
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 2
+stick -9 0
+run 1
+stick -10 0
+run 6
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 2
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 2
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 2
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 2
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 2
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 2
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 2
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 2
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 2
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 2
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 4
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 4
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 4
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 4
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 4
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 6
+stick -13 0
+run 1
+stick -12 0
+run 4
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 3
+stick -13 0
+run 4
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 2
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 2
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 2
+stick -24 0
+run 2
+stick -23 0
+run 2
+stick -24 0
+run 1
+stick -23 0
+run 3
+stick -22 0
+run 3
+stick -21 0
+run 3
+stick -20 0
+run 2
+stick -19 0
+run 1
+stick -20 0
+run 2
+stick -19 0
+run 3
+stick -18 0
+run 2
+stick -17 0
+run 2
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 2
+stick -19 0
+run 3
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 3
+stick -22 0
+run 2
+stick -21 0
+run 1
+stick -20 0
+run 2
+stick -19 0
+run 3
+stick -18 0
+run 3
+stick -17 0
+run 3
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 2
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 5
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 2
+stick -20 0
+run 1
+stick -21 0
+run 2
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -26 0
+run 1
+stick -24 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -26 0
+run 2
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -25 0
+run 2
+stick -26 0
+run 1
+stick -25 0
+run 3
+stick -24 0
+run 2
+stick -23 0
+run 3
+stick -22 0
+run 2
+stick -21 0
+run 1
+stick -20 0
+run 2
+stick -19 0
+run 2
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -16 0
+run 2
+stick -15 0
+run 2
+stick -14 0
+run 2
+stick -13 0
+run 2
+stick -12 0
+run 2
+stick -11 0
+run 2
+stick -10 0
+run 2
+stick -9 0
+run 5
+stick -8 0
+run 9
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 2
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 6
+stick -6 0
+run 2
+stick -7 0
+run 5
+stick -6 0
+run 3
+stick -7 0
+run 4
+stick -6 0
+run 4
+stick -7 0
+run 3
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 6
+stick -7 0
+run 2
+stick -6 0
+run 7
+stick -7 0
+run 2
+stick -6 0
+run 7
+stick -7 0
+run 3
+stick -6 0
+run 4
+stick -7 0
+run 3
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 11
+stick -5 0
+run 5
+stick -4 0
+run 2
+stick -3 0
+run 3
+stick -2 0
+run 3
+stick -1 0
+run 1
+stick 0 0
+run 6
+stick 1 0
+run 4
+stick 2 0
+run 1
+stick 3 0
+run 2
+stick 4 0
+run 2
+stick 5 0
+run 2
+stick 6 0
+run 3
+stick 7 0
+run 8
+stick 6 0
+run 2
+stick 7 0
+run 4
+stick 6 0
+run 3
+stick 7 0
+run 3
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 12
+stick 7 0
+run 1
+stick 6 0
+run 11
+stick 7 0
+run 3
+stick 6 0
+run 14
+stick 7 0
+run 2
+stick 6 0
+run 2
+stick 7 0
+run 3
+stick 6 0
+run 3
+stick 7 0
+run 3
+stick 6 0
+run 6
+stick 7 0
+run 1
+stick 6 0
+run 5
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 3
+stick 4 0
+run 1
+stick 5 0
+run 1
+stick 4 0
+run 3
+stick 3 0
+run 4
+stick 2 0
+run 4
+stick 1 0
+run 3
+stick 0 0
+run 7
+stick -1 0
+run 6
+stick -2 0
+run 3
+stick -3 0
+run 6
+stick -4 0
+run 3
+stick -5 0
+run 1
+stick -4 0
+run 1
+stick -5 0
+run 5
+stick -6 0
+run 8
+stick -7 0
+run 2
+stick -6 0
+run 9
+stick -7 0
+run 2
+stick -6 0
+run 12
+stick -5 0
+run 6
+stick -4 0
+run 4
+stick -3 0
+run 6
+stick -2 0
+run 4
+stick -1 0
+run 4
+stick 0 0
+run 7
+stick 1 0
+run 4
+stick 2 0
+run 4
+stick 3 0
+run 34
+stick 4 0
+run 2
+stick 5 0
+run 3
+stick 6 0
+run 3
+stick 7 0
+run 3
+stick 6 0
+run 1
+stick 5 0
+run 2
+stick 6 0
+run 3
+stick 7 0
+run 2
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 1
+stick 5 0
+run 3
+stick 6 0
+run 9
+stick 7 0
+run 2
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 12
+stick 7 0
+run 1
+stick 6 0
+run 16
+stick 5 0
+run 4
+stick 4 0
+run 2
+stick 3 0
+run 4
+stick 2 0
+run 6
+stick 3 0
+run 7
+stick 4 0
+run 7
+stick 5 0
+run 6
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 14
+stick 27 0
+run 2
+stick 26 0
+run 1
+stick 24 0
+run 1
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 15 0
+run 1
+stick 13 0
+run 2
+stick 11 0
+run 1
+stick 9 0
+run 1
+stick 8 0
+run 1
+stick 7 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 4 0
+run 2
+stick 3 0
+run 2
+stick 2 0
+run 1
+stick 0 0
+run 1
+stick 1 0
+run 1
+stick 0 0
+run 2
+stick -1 0
+run 1
+stick -2 0
+run 2
+stick -3 0
+run 2
+stick -4 0
+run 2
+release
+stick 0 0
+screenshot ta_race_3
+run 250
+release
+stick 0 0
+screenshot ta_record_0
+run 250
+release
+stick 0 0
+screenshot ta_record_1
+run 250
+release
+stick 0 0
+screenshot ta_record_2
+run 250
+release
+stick 0 0
+screenshot ta_record_3
+run 120
+release
+hold A
+run 5
+release
+run 120
+release
+hold A
+run 5
+release
+stick 0 0
+screenshot ta_record_4
+run 120
+release
+hold A
+run 5
+release
+run 120
+release
+hold A
+run 5
+release
+stick 0 0
+screenshot ta_record_5
+run 120
+release
+hold A
+run 5
+release
+run 120
+release
+hold A
+run 5
+release
+stick 0 0
+screenshot ta_record_6
+run 60
+release
+hold A
+run 5
+release
+run 60
+release
+hold A
+stick 23 0
+run 382
+stick 21 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 14 0
+run 1
+stick 13 0
+run 1
+stick 12 0
+run 1
+stick 11 0
+run 1
+stick 9 0
+run 1
+stick 8 0
+run 1
+stick 7 0
+run 3
+stick 6 0
+run 5
+stick 2 0
+run 1
+stick 1 0
+run 1
+stick 0 0
+run 4
+stick -1 0
+run 2
+stick -2 0
+run 2
+stick -3 0
+run 4
+stick -4 0
+run 2
+stick -5 0
+run 3
+stick -6 0
+run 6
+stick -7 0
+run 2
+stick -6 0
+run 6
+stick -5 0
+run 1
+stick -6 0
+run 1
+stick -5 0
+run 2
+stick -4 0
+run 1
+stick -5 0
+run 1
+stick -4 0
+run 2
+stick -3 0
+run 2
+stick -2 0
+run 4
+stick -1 0
+run 2
+stick 0 0
+run 9
+stick 1 0
+run 6
+stick 2 0
+run 2
+stick 3 0
+run 2
+stick 5 0
+run 2
+stick 6 0
+run 1
+stick 7 0
+run 1
+stick 8 0
+run 1
+stick 7 0
+run 6
+stick 6 0
+run 3
+stick 7 0
+run 3
+stick 6 0
+run 1
+stick 7 0
+run 3
+stick 6 0
+run 1
+stick 7 0
+run 4
+stick 8 0
+run 2
+stick 9 0
+run 1
+stick 8 0
+run 1
+stick 10 0
+run 1
+stick 9 0
+run 1
+stick 10 0
+run 2
+stick 11 0
+run 2
+stick 12 0
+run 1
+stick 11 0
+run 1
+stick 13 0
+run 1
+stick 12 0
+run 1
+stick 13 0
+run 2
+stick 14 0
+run 2
+stick 15 0
+run 1
+stick 14 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 17 0
+run 2
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 25 0
+run 1
+stick 24 0
+run 1
+stick 26 0
+run 1
+stick 25 0
+run 1
+stick 28 0
+run 1
+stick 26 0
+run 1
+stick 29 0
+run 1
+stick 28 0
+run 1
+stick 31 0
+run 1
+stick 29 0
+run 1
+stick 32 0
+run 1
+stick 30 0
+run 1
+stick 33 0
+run 1
+stick 31 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 35 0
+run 1
+stick 33 0
+run 1
+stick 36 0
+run 1
+stick 34 0
+run 1
+stick 37 0
+run 1
+stick 35 0
+run 1
+stick 38 0
+run 1
+stick 36 0
+run 1
+stick 39 0
+run 1
+stick 38 0
+run 1
+stick 39 0
+run 1
+stick 36 0
+run 1
+stick 37 0
+run 1
+stick 34 0
+run 1
+stick 35 0
+run 1
+stick 32 0
+run 1
+stick 30 0
+run 1
+stick 31 0
+run 1
+stick 29 0
+run 1
+stick 31 0
+run 1
+stick 29 0
+run 2
+stick 27 0
+run 2
+stick 25 0
+run 1
+stick 24 0
+run 2
+stick 22 0
+run 2
+stick 21 0
+run 1
+stick 20 0
+run 4
+stick 19 0
+run 1
+stick 18 0
+run 4
+stick 17 0
+run 3
+stick 16 0
+run 6
+stick 15 0
+run 6
+stick 14 0
+run 3
+stick 15 0
+run 1
+stick 14 0
+run 2
+stick 15 0
+run 1
+stick 14 0
+run 2
+stick 15 0
+run 1
+stick 14 0
+run 2
+stick 15 0
+run 2
+stick 14 0
+run 1
+stick 15 0
+run 4
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 16 0
+run 6
+stick 15 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 14 0
+run 1
+stick 15 0
+run 1
+stick 14 0
+run 9
+stick 13 0
+run 1
+stick 14 0
+run 1
+stick 13 0
+run 2
+stick 14 0
+run 1
+stick 13 0
+run 4
+stick 12 0
+run 3
+stick 11 0
+run 3
+stick 10 0
+run 3
+stick 9 0
+run 6
+stick 8 0
+run 6
+stick 7 0
+run 5
+stick 6 0
+run 2
+stick 7 0
+run 4
+stick 5 0
+run 2
+stick 4 0
+run 1
+stick 5 0
+run 2
+stick 4 0
+run 1
+stick 5 0
+run 2
+stick 4 0
+run 2
+stick 3 0
+run 2
+stick 4 0
+run 1
+stick 2 0
+run 1
+stick 3 0
+run 2
+stick 1 0
+run 3
+stick 0 0
+run 2
+stick -1 0
+run 2
+stick -3 0
+run 3
+stick -5 0
+run 2
+stick -6 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 3
+stick -9 0
+run 1
+stick -8 0
+run 1
+stick -9 0
+run 2
+stick -8 0
+run 1
+stick -9 0
+run 2
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 9
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 3
+stick -8 0
+run 1
+stick -7 0
+run 2
+stick -6 0
+run 6
+stick -7 0
+run 3
+stick -6 0
+run 16
+stick -5 0
+run 4
+stick -4 0
+run 2
+stick -3 0
+run 2
+stick -2 0
+run 1
+stick -1 0
+run 2
+stick 0 0
+run 4
+stick 2 0
+run 2
+stick 3 0
+run 1
+stick 5 0
+run 2
+stick 7 0
+run 2
+stick 8 0
+run 2
+stick 9 0
+run 1
+stick 11 0
+run 1
+stick 10 0
+run 1
+stick 13 0
+run 2
+stick 16 0
+run 2
+stick 19 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 25 0
+run 1
+stick 24 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 28 0
+run 1
+stick 31 0
+run 1
+stick 30 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 33 0
+run 1
+stick 35 0
+run 1
+stick 34 0
+run 1
+stick 36 0
+run 1
+stick 34 0
+run 1
+stick 36 0
+run 1
+stick 38 0
+run 1
+stick 36 0
+run 1
+stick 38 0
+run 1
+stick 36 0
+run 1
+stick 38 0
+run 1
+stick 40 0
+run 1
+stick 38 0
+run 1
+stick 39 0
+run 1
+stick 41 0
+run 1
+stick 39 0
+run 1
+stick 43 0
+run 1
+stick 44 0
+run 1
+stick 42 0
+run 3
+stick 40 0
+run 1
+stick 39 0
+run 1
+stick 37 0
+run 1
+stick 35 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 29 0
+run 1
+stick 28 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 24 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 3
+stick 21 0
+run 3
+stick 20 0
+run 2
+stick 21 0
+run 1
+stick 20 0
+run 2
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 21 0
+run 1
+stick 23 0
+run 1
+stick 24 0
+run 1
+stick 23 0
+run 1
+stick 25 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 28 0
+run 1
+stick 30 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 33 0
+run 1
+stick 36 0
+run 1
+stick 34 0
+run 1
+stick 37 0
+run 1
+stick 39 0
+run 1
+stick 37 0
+run 1
+stick 40 0
+run 1
+stick 42 0
+run 1
+stick 40 0
+run 1
+stick 42 0
+run 1
+stick 45 0
+run 1
+stick 43 0
+run 1
+stick 45 0
+run 1
+stick 47 0
+run 1
+stick 48 0
+run 1
+stick 46 0
+run 1
+stick 48 0
+run 1
+stick 49 0
+run 1
+stick 47 0
+run 1
+stick 48 0
+run 1
+stick 50 0
+run 1
+stick 51 0
+run 1
+stick 48 0
+run 1
+stick 49 0
+run 1
+stick 50 0
+run 2
+stick 48 0
+run 4
+stick 45 0
+run 3
+stick 43 0
+run 1
+stick 42 0
+run 2
+stick 40 0
+run 1
+stick 39 0
+run 1
+stick 38 0
+run 1
+stick 37 0
+run 1
+stick 36 0
+run 1
+stick 35 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 30 0
+run 1
+stick 28 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 25 0
+run 1
+stick 24 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 14 0
+run 1
+stick 13 0
+run 2
+stick 12 0
+run 2
+stick 11 0
+run 1
+stick 10 0
+run 3
+stick 9 0
+run 4
+stick 8 0
+run 4
+stick 7 0
+run 5
+stick 6 0
+run 3
+stick 7 0
+run 4
+stick 6 0
+run 2
+stick 7 0
+run 4
+stick 6 0
+run 2
+stick 7 0
+run 3
+stick 6 0
+run 3
+stick 7 0
+run 3
+stick 6 0
+run 3
+stick 7 0
+run 2
+stick 6 0
+run 3
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 7
+stick 7 0
+run 2
+stick 6 0
+run 10
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 9
+stick 7 0
+run 2
+stick 6 0
+run 9
+stick 7 0
+run 2
+stick 6 0
+run 5
+stick 7 0
+run 2
+stick 6 0
+run 3
+release
+stick 0 0
+screenshot ta_retry_0
+release
+hold A
+stick 6 0
+run 3
+stick 7 0
+run 2
+stick 6 0
+run 2
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 10
+stick 4 0
+run 1
+stick 5 0
+run 1
+stick 4 0
+run 3
+stick 3 0
+run 5
+stick 2 0
+run 4
+stick 1 0
+run 2
+stick 0 0
+run 5
+stick -1 0
+run 2
+stick -2 0
+run 2
+stick -3 0
+run 3
+stick -4 0
+run 2
+stick -5 0
+run 1
+stick -6 0
+run 2
+stick -7 0
+run 2
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 4
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 4
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 18
+stick -6 0
+run 2
+stick -7 0
+run 1
+stick -8 0
+run 2
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 4
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 2
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 7
+stick -9 0
+run 4
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 4
+stick -12 0
+run 3
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 2
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 2
+stick -17 0
+run 1
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 2
+stick -16 0
+run 1
+stick -15 0
+run 2
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 5
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 4
+stick -14 0
+run 1
+stick -13 0
+run 4
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 2
+stick -12 0
+run 3
+stick -11 0
+run 4
+stick -10 0
+run 8
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 2
+stick -12 0
+run 3
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 2
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -21 0
+run 1
+stick -23 0
+run 1
+stick -21 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 2
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 2
+stick -20 0
+run 1
+stick -21 0
+run 2
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 2
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 2
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 4
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 4
+stick -16 0
+run 4
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 2
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 2
+stick -13 0
+run 1
+stick -14 0
+run 4
+stick -13 0
+run 6
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 17
+stick -13 0
+run 2
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 2
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 2
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 2
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 2
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -25 0
+run 2
+stick -26 0
+run 1
+stick -25 0
+run 3
+stick -24 0
+run 2
+stick -23 0
+run 1
+stick -24 0
+run 2
+stick -23 0
+run 3
+stick -22 0
+run 3
+stick -21 0
+run 3
+stick -20 0
+run 2
+stick -21 0
+run 1
+stick -20 0
+run 3
+stick -19 0
+run 2
+stick -18 0
+run 3
+stick -17 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 4
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 2
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 2
+stick -23 0
+run 1
+stick -22 0
+run 2
+stick -21 0
+run 1
+stick -20 0
+run 2
+stick -19 0
+run 3
+stick -18 0
+run 3
+stick -17 0
+run 9
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 2
+stick -17 0
+run 1
+stick -16 0
+run 11
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 2
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -25 0
+run 1
+stick -23 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -26 0
+run 2
+stick -27 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 2
+stick -26 0
+run 2
+stick -25 0
+run 1
+stick -26 0
+run 2
+stick -25 0
+run 2
+stick -26 0
+run 1
+stick -24 0
+run 2
+stick -23 0
+run 3
+stick -22 0
+run 3
+stick -21 0
+run 2
+stick -19 0
+run 3
+stick -18 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -14 0
+run 2
+stick -13 0
+run 2
+stick -12 0
+run 2
+stick -11 0
+run 2
+stick -10 0
+run 3
+stick -9 0
+run 5
+stick -8 0
+run 9
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 9
+stick -6 0
+run 3
+stick -7 0
+run 5
+stick -6 0
+run 3
+stick -7 0
+run 3
+stick -6 0
+run 3
+stick -7 0
+run 2
+stick -6 0
+run 3
+stick -7 0
+run 2
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 6
+stick -7 0
+run 2
+stick -6 0
+run 7
+stick -7 0
+run 2
+stick -6 0
+run 7
+stick -7 0
+run 3
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 3
+stick -7 0
+run 2
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 3
+stick -5 0
+run 7
+stick -4 0
+run 2
+stick -3 0
+run 4
+stick -2 0
+run 2
+stick -1 0
+run 2
+stick 0 0
+run 5
+stick 1 0
+run 3
+stick 2 0
+run 3
+stick 3 0
+run 2
+stick 4 0
+run 1
+stick 5 0
+run 2
+stick 6 0
+run 2
+stick 7 0
+run 6
+stick 6 0
+run 2
+stick 7 0
+run 5
+stick 6 0
+run 3
+stick 7 0
+run 4
+stick 6 0
+run 4
+stick 7 0
+run 3
+stick 6 0
+run 14
+stick 7 0
+run 2
+stick 6 0
+run 2
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 13
+stick 7 0
+run 4
+stick 6 0
+run 3
+stick 7 0
+run 3
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 8
+stick 5 0
+run 5
+stick 4 0
+run 1
+stick 5 0
+run 1
+stick 4 0
+run 1
+stick 3 0
+run 1
+stick 4 0
+run 1
+stick 3 0
+run 2
+stick 2 0
+run 1
+stick 3 0
+run 1
+stick 2 0
+run 1
+stick 1 0
+run 1
+stick 2 0
+run 1
+stick 1 0
+run 2
+stick 0 0
+run 1
+stick 1 0
+run 1
+stick 0 0
+run 5
+stick -1 0
+run 1
+stick 0 0
+run 1
+stick -1 0
+run 3
+stick -2 0
+run 6
+stick -3 0
+run 3
+stick -4 0
+run 6
+stick -5 0
+run 5
+stick -6 0
+run 8
+stick -7 0
+run 2
+stick -6 0
+run 9
+stick -7 0
+run 2
+stick -6 0
+run 15
+stick -5 0
+run 5
+stick -4 0
+run 5
+stick -3 0
+run 6
+stick -2 0
+run 4
+stick -1 0
+run 3
+stick 0 0
+run 7
+stick 1 0
+run 4
+stick 2 0
+run 5
+stick 3 0
+run 32
+stick 4 0
+run 3
+stick 5 0
+run 4
+stick 6 0
+run 2
+stick 7 0
+run 3
+stick 6 0
+run 1
+stick 5 0
+run 2
+stick 6 0
+run 3
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 1
+stick 5 0
+run 4
+stick 6 0
+run 9
+stick 7 0
+run 2
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 29
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 2
+stick 4 0
+run 2
+stick 3 0
+run 9
+stick 4 0
+run 6
+stick 5 0
+run 6
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 5
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 12
+stick 7 0
+run 2
+stick 6 0
+run 9
+stick 26 0
+run 1
+stick 27 0
+run 1
+stick 25 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 20 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 14 0
+run 2
+stick 12 0
+run 1
+release
+stick 0 0
+screenshot ta_retry_1
+release
+hold A
+stick 10 0
+run 1
+stick 9 0
+run 1
+stick 8 0
+run 1
+stick 6 0
+run 2
+stick 5 0
+run 2
+stick 4 0
+run 1
+stick 3 0
+run 2
+stick 2 0
+run 2
+stick 1 0
+run 1
+stick 0 0
+run 4
+stick -2 0
+run 1
+stick -3 0
+run 2
+stick -4 0
+run 2
+stick -5 0
+run 1
+stick -6 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 2
+stick -9 0
+run 3
+stick -8 0
+run 4
+stick -7 0
+run 3
+stick -6 0
+run 7
+stick -5 0
+run 1
+stick -6 0
+run 1
+stick -5 0
+run 5
+stick -4 0
+run 1
+stick -3 0
+run 2
+stick -2 0
+run 2
+stick -1 0
+run 1
+stick 0 0
+run 4
+stick 1 0
+run 3
+stick 2 0
+run 2
+stick 3 0
+run 4
+stick 4 0
+run 2
+stick 5 0
+run 3
+stick 6 0
+run 2
+stick 7 0
+run 1
+stick 8 0
+run 2
+stick 9 0
+run 1
+stick 8 0
+run 1
+stick 9 0
+run 6
+stick 8 0
+run 3
+stick 7 0
+run 6
+stick 6 0
+run 2
+stick 7 0
+run 5
+stick 8 0
+run 2
+stick 9 0
+run 1
+stick 10 0
+run 2
+stick 11 0
+run 2
+stick 12 0
+run 1
+stick 11 0
+run 1
+stick 12 0
+run 2
+stick 13 0
+run 1
+stick 15 0
+run 1
+stick 14 0
+run 1
+stick 15 0
+run 2
+stick 16 0
+run 2
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 25 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 29 0
+run 1
+stick 27 0
+run 1
+stick 30 0
+run 1
+stick 28 0
+run 1
+stick 31 0
+run 1
+stick 30 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 33 0
+run 1
+stick 32 0
+run 1
+stick 35 0
+run 1
+stick 33 0
+run 1
+stick 36 0
+run 1
+stick 34 0
+run 1
+stick 37 0
+run 1
+stick 35 0
+run 1
+stick 38 0
+run 1
+stick 36 0
+run 1
+stick 38 0
+run 1
+stick 37 0
+run 1
+stick 39 0
+run 1
+stick 37 0
+run 1
+stick 40 0
+run 1
+stick 43 0
+run 1
+stick 41 0
+run 1
+stick 43 0
+run 1
+stick 41 0
+run 1
+stick 43 0
+run 1
+stick 41 0
+run 1
+stick 45 0
+run 1
+stick 41 0
+run 2
+stick 37 0
+run 2
+stick 34 0
+run 2
+stick 31 0
+run 2
+stick 28 0
+run 2
+stick 26 0
+run 2
+stick 24 0
+run 1
+stick 23 0
+run 2
+stick 22 0
+run 1
+stick 21 0
+run 3
+stick 20 0
+run 1
+stick 19 0
+run 2
+stick 18 0
+run 5
+stick 17 0
+run 5
+stick 16 0
+run 8
+stick 15 0
+run 2
+stick 16 0
+run 2
+stick 15 0
+run 1
+stick 16 0
+run 2
+stick 15 0
+run 1
+stick 16 0
+run 2
+stick 15 0
+run 1
+stick 16 0
+run 3
+stick 17 0
+run 2
+stick 16 0
+run 1
+stick 17 0
+run 6
+stick 16 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 6
+stick 14 0
+run 1
+stick 15 0
+run 1
+stick 14 0
+run 2
+stick 15 0
+run 1
+stick 14 0
+run 6
+stick 13 0
+run 3
+stick 12 0
+run 3
+stick 11 0
+run 2
+stick 10 0
+run 5
+stick 9 0
+run 9
+stick 8 0
+run 3
+stick 7 0
+run 5
+stick 6 0
+run 2
+stick 7 0
+run 1
+stick 6 0
+run 2
+stick 7 0
+run 1
+stick 6 0
+run 2
+stick 4 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 2
+stick 6 0
+run 1
+stick 4 0
+run 1
+stick 5 0
+run 2
+stick 4 0
+run 2
+stick 5 0
+run 1
+stick 3 0
+run 2
+stick 1 0
+run 1
+stick 2 0
+run 2
+stick 0 0
+run 2
+stick -1 0
+run 2
+stick -3 0
+run 2
+stick -5 0
+run 3
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -9 0
+run 1
+stick -8 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 2
+stick -9 0
+run 1
+stick -10 0
+run 2
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 8
+stick -10 0
+run 4
+stick -9 0
+run 2
+stick -8 0
+run 1
+stick -7 0
+run 3
+stick -6 0
+run 4
+stick -7 0
+run 3
+stick -6 0
+run 7
+stick -7 0
+run 2
+stick -6 0
+run 9
+stick -5 0
+run 5
+stick -4 0
+run 4
+stick -3 0
+run 2
+stick -2 0
+run 2
+stick 0 0
+run 4
+stick 1 0
+run 2
+stick 3 0
+run 2
+stick 4 0
+run 2
+stick 6 0
+run 3
+stick 8 0
+run 2
+stick 9 0
+run 2
+stick 10 0
+run 2
+stick 13 0
+run 2
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 25 0
+run 1
+stick 24 0
+run 1
+stick 27 0
+run 1
+stick 25 0
+run 1
+stick 28 0
+run 1
+stick 27 0
+run 1
+stick 29 0
+run 1
+stick 28 0
+run 1
+stick 30 0
+run 1
+stick 29 0
+run 1
+stick 31 0
+run 1
+stick 30 0
+run 1
+stick 32 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 34 0
+run 1
+stick 33 0
+run 1
+stick 34 0
+run 1
+stick 33 0
+run 1
+stick 34 0
+run 1
+stick 36 0
+run 1
+stick 34 0
+run 1
+stick 38 0
+run 1
+stick 37 0
+run 1
+stick 38 0
+run 2
+stick 37 0
+run 1
+stick 36 0
+run 1
+stick 34 0
+run 1
+stick 33 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 29 0
+run 1
+stick 28 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 24 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 2
+stick 18 0
+run 4
+stick 17 0
+run 4
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 18 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 19 0
+run 2
+stick 20 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 23 0
+run 1
+stick 25 0
+run 1
+stick 24 0
+run 1
+stick 26 0
+run 1
+stick 28 0
+run 1
+stick 27 0
+run 1
+stick 29 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 33 0
+run 1
+stick 32 0
+run 1
+stick 34 0
+run 1
+stick 37 0
+run 1
+stick 35 0
+run 1
+stick 37 0
+run 1
+stick 40 0
+run 1
+stick 38 0
+run 1
+stick 40 0
+run 1
+stick 39 0
+run 1
+stick 41 0
+run 1
+stick 43 0
+run 1
+stick 41 0
+run 1
+stick 43 0
+run 1
+stick 45 0
+run 1
+stick 43 0
+run 1
+stick 45 0
+run 1
+stick 47 0
+run 1
+stick 45 0
+run 1
+stick 46 0
+run 1
+stick 47 0
+run 1
+stick 45 0
+run 1
+stick 46 0
+run 1
+stick 47 0
+run 1
+stick 44 0
+run 1
+stick 45 0
+run 1
+stick 46 0
+run 1
+stick 44 0
+run 3
+stick 42 0
+run 3
+stick 40 0
+run 3
+stick 38 0
+run 1
+stick 37 0
+run 2
+stick 35 0
+run 1
+stick 34 0
+run 2
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 30 0
+run 1
+stick 29 0
+run 1
+stick 28 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 25 0
+run 1
+stick 24 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 17 0
+run 2
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 14 0
+run 2
+stick 13 0
+run 1
+stick 12 0
+run 3
+stick 11 0
+run 1
+stick 10 0
+run 4
+stick 9 0
+run 2
+stick 8 0
+run 5
+stick 7 0
+run 4
+stick 6 0
+run 1
+stick 7 0
+run 6
+stick 6 0
+run 3
+stick 7 0
+run 4
+stick 6 0
+run 3
+stick 7 0
+run 5
+stick 6 0
+run 3
+stick 7 0
+run 4
+stick 6 0
+run 3
+stick 7 0
+run 2
+stick 6 0
+run 3
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 9
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 5
+stick 7 0
+run 2
+stick 6 0
+run 7
+stick 7 0
+run 2
+stick 6 0
+run 7
+stick 7 0
+run 2
+stick 6 0
+run 12
+stick 7 0
+run 2
+stick 6 0
+run 5
+stick 7 0
+run 2
+stick 6 0
+run 5
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 9
+stick 4 0
+run 4
+stick 3 0
+run 1
+stick 4 0
+run 1
+stick 3 0
+run 3
+stick 2 0
+run 4
+stick 1 0
+run 2
+stick 0 0
+run 1
+stick 1 0
+run 1
+stick 0 0
+run 3
+stick -1 0
+run 4
+stick -2 0
+run 2
+stick -3 0
+run 2
+stick -4 0
+run 2
+stick -5 0
+run 2
+stick -6 0
+run 2
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 6
+stick -8 0
+run 1
+stick -7 0
+run 8
+stick -6 0
+run 1
+stick -7 0
+run 5
+stick -6 0
+run 1
+stick -7 0
+run 10
+stick -6 0
+run 1
+stick -7 0
+run 21
+stick -8 0
+run 5
+stick -9 0
+run 1
+stick -8 0
+run 1
+stick -9 0
+run 1
+stick -8 0
+run 1
+stick -9 0
+run 6
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 3
+stick -11 0
+run 2
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 4
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 2
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 2
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 4
+stick -14 0
+run 1
+stick -15 0
+run 2
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 4
+stick -13 0
+run 1
+stick -14 0
+run 2
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 4
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 2
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 2
+stick -11 0
+run 3
+stick -10 0
+run 6
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 4
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 4
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 2
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 2
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 2
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 2
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 2
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 2
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 2
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 2
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 4
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 2
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 4
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 2
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 2
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 4
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 8
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 5
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 2
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 3
+stick -21 0
+run 3
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -24 0
+run 2
+stick -25 0
+run 1
+stick -24 0
+run 3
+stick -23 0
+run 3
+stick -22 0
+run 2
+stick -21 0
+run 1
+stick -22 0
+run 2
+stick -21 0
+run 3
+stick -20 0
+run 1
+release
+stick 0 0
+screenshot ta_retry_2
+release
+hold A
+stick -20 0
+run 2
+stick -19 0
+run 3
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 3
+stick -17 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 2
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 2
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 2
+stick -22 0
+run 1
+stick -21 0
+run 2
+stick -20 0
+run 1
+stick -19 0
+run 2
+stick -18 0
+run 3
+stick -17 0
+run 2
+stick -18 0
+run 1
+stick -17 0
+run 3
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 10
+stick -15 0
+run 1
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -27 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -26 0
+run 2
+stick -27 0
+run 1
+stick -26 0
+run 2
+stick -25 0
+run 1
+stick -26 0
+run 2
+stick -25 0
+run 2
+stick -26 0
+run 1
+stick -25 0
+run 2
+stick -23 0
+run 1
+stick -24 0
+run 2
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 3
+stick -20 0
+run 2
+stick -19 0
+run 2
+stick -18 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 2
+stick -15 0
+run 2
+stick -14 0
+run 1
+stick -13 0
+run 3
+stick -12 0
+run 2
+stick -11 0
+run 2
+stick -10 0
+run 3
+stick -9 0
+run 3
+stick -8 0
+run 8
+stick -7 0
+run 1
+stick -8 0
+run 4
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 9
+stick -6 0
+run 3
+stick -7 0
+run 5
+stick -6 0
+run 3
+stick -7 0
+run 3
+stick -6 0
+run 3
+stick -7 0
+run 3
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 6
+stick -7 0
+run 2
+stick -6 0
+run 7
+stick -7 0
+run 2
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 3
+stick -7 0
+run 3
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 3
+stick -7 0
+run 2
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 14
+stick -5 0
+run 4
+stick -4 0
+run 4
+stick -3 0
+run 1
+stick -2 0
+run 4
+stick -1 0
+run 2
+stick 0 0
+run 5
+stick 1 0
+run 3
+stick 2 0
+run 2
+stick 3 0
+run 3
+stick 4 0
+run 1
+stick 5 0
+run 2
+stick 6 0
+run 3
+stick 7 0
+run 7
+stick 6 0
+run 2
+stick 7 0
+run 4
+stick 6 0
+run 3
+stick 7 0
+run 3
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 10
+stick 7 0
+run 2
+stick 6 0
+run 2
+stick 5 0
+run 1
+stick 6 0
+run 4
+stick 5 0
+run 1
+stick 6 0
+run 7
+stick 7 0
+run 3
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 11
+stick 7 0
+run 3
+stick 6 0
+run 3
+stick 7 0
+run 4
+stick 6 0
+run 5
+stick 7 0
+run 2
+stick 6 0
+run 2
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 5
+stick 4 0
+run 1
+stick 5 0
+run 1
+stick 4 0
+run 3
+stick 3 0
+run 2
+stick 2 0
+run 1
+stick 3 0
+run 1
+stick 2 0
+run 4
+stick 1 0
+run 1
+stick 0 0
+run 1
+stick 1 0
+run 1
+stick 0 0
+run 5
+stick -1 0
+run 4
+stick -2 0
+run 1
+stick -1 0
+run 1
+stick -2 0
+run 3
+stick -3 0
+run 4
+stick -4 0
+run 5
+stick -5 0
+run 4
+stick -6 0
+run 1
+stick -5 0
+run 1
+stick -6 0
+run 3
+stick -7 0
+run 1
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 9
+stick -7 0
+run 1
+stick -6 0
+run 8
+stick -7 0
+run 2
+stick -6 0
+run 1
+stick -5 0
+run 1
+stick -6 0
+run 1
+stick -5 0
+run 7
+stick -4 0
+run 4
+stick -3 0
+run 5
+stick -2 0
+run 4
+stick -1 0
+run 4
+stick 0 0
+run 7
+stick 1 0
+run 4
+stick 2 0
+run 4
+stick 3 0
+run 3
+stick 4 0
+run 8
+stick 5 0
+run 27
+stick 6 0
+run 2
+stick 7 0
+run 3
+stick 6 0
+run 2
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 1
+stick 5 0
+run 10
+stick 6 0
+run 12
+stick 7 0
+run 2
+stick 6 0
+run 17
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 2
+stick 4 0
+run 1
+stick 5 0
+run 1
+stick 4 0
+run 2
+stick 3 0
+run 2
+stick 2 0
+run 1
+stick 3 0
+run 1
+stick 2 0
+run 9
+stick 3 0
+run 7
+stick 4 0
+run 7
+stick 5 0
+run 6
+stick 6 0
+run 7
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 9
+stick 7 0
+run 2
+stick 6 0
+run 9
+stick 27 0
+run 1
+stick 28 0
+run 1
+stick 25 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 20 0
+run 1
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 15 0
+run 1
+stick 13 0
+run 1
+stick 12 0
+run 1
+stick 10 0
+run 1
+stick 8 0
+run 2
+stick 6 0
+run 2
+stick 5 0
+run 1
+stick 4 0
+run 2
+stick 3 0
+run 2
+stick 2 0
+run 1
+stick 1 0
+run 2
+stick 0 0
+run 3
+stick -1 0
+run 2
+stick -2 0
+run 1
+stick -3 0
+run 1
+stick -4 0
+run 2
+stick -6 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 6
+stick -7 0
+run 3
+stick -6 0
+run 8
+stick -7 0
+run 1
+stick -6 0
+run 1
+stick -5 0
+run 1
+stick -6 0
+run 1
+stick -5 0
+run 3
+stick -4 0
+run 2
+stick -3 0
+run 2
+stick -2 0
+run 1
+stick -3 0
+run 1
+stick -2 0
+run 1
+stick -1 0
+run 2
+stick 0 0
+run 3
+stick 1 0
+run 2
+stick 2 0
+run 4
+stick 3 0
+run 2
+stick 4 0
+run 3
+stick 5 0
+run 4
+stick 6 0
+run 1
+stick 8 0
+run 2
+stick 9 0
+run 8
+stick 8 0
+run 4
+stick 7 0
+run 5
+stick 6 0
+run 2
+stick 7 0
+run 5
+stick 8 0
+run 2
+stick 9 0
+run 1
+stick 10 0
+run 2
+stick 11 0
+run 2
+stick 12 0
+run 1
+stick 11 0
+run 1
+stick 13 0
+run 1
+stick 12 0
+run 1
+stick 13 0
+run 2
+stick 14 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 16 0
+run 2
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 25 0
+run 1
+stick 23 0
+run 1
+stick 26 0
+run 1
+stick 25 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 29 0
+run 1
+stick 32 0
+run 1
+stick 30 0
+run 1
+stick 33 0
+run 1
+stick 31 0
+run 1
+stick 34 0
+run 1
+stick 32 0
+run 1
+stick 35 0
+run 1
+stick 33 0
+run 1
+stick 36 0
+run 1
+stick 34 0
+run 1
+stick 37 0
+run 1
+stick 35 0
+run 1
+stick 38 0
+run 1
+stick 36 0
+run 1
+stick 39 0
+run 1
+stick 37 0
+run 1
+stick 40 0
+run 1
+stick 38 0
+run 1
+stick 40 0
+run 1
+stick 38 0
+run 1
+stick 41 0
+run 1
+stick 39 0
+run 1
+stick 42 0
+run 1
+stick 44 0
+run 1
+stick 42 0
+run 1
+stick 45 0
+run 1
+stick 41 0
+run 1
+stick 42 0
+run 1
+stick 38 0
+run 2
+stick 34 0
+run 2
+stick 31 0
+run 2
+stick 28 0
+run 1
+stick 26 0
+run 2
+stick 25 0
+run 2
+stick 23 0
+run 2
+stick 22 0
+run 2
+stick 21 0
+run 1
+stick 20 0
+run 2
+stick 19 0
+run 3
+stick 18 0
+run 4
+stick 17 0
+run 4
+stick 16 0
+run 8
+stick 15 0
+run 1
+stick 16 0
+run 2
+stick 15 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 2
+stick 16 0
+run 4
+stick 15 0
+run 1
+stick 16 0
+run 2
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 17 0
+run 4
+stick 16 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 6
+stick 15 0
+run 5
+stick 14 0
+run 4
+stick 15 0
+run 1
+stick 14 0
+run 6
+stick 13 0
+run 4
+stick 12 0
+run 2
+stick 11 0
+run 2
+stick 10 0
+run 6
+stick 9 0
+run 5
+stick 8 0
+run 2
+stick 9 0
+run 1
+stick 8 0
+run 3
+stick 7 0
+run 2
+stick 8 0
+run 1
+stick 7 0
+run 3
+stick 6 0
+run 2
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 7 0
+run 1
+stick 6 0
+run 2
+stick 7 0
+run 1
+stick 5 0
+run 2
+stick 6 0
+run 1
+stick 4 0
+run 1
+stick 5 0
+run 1
+stick 4 0
+run 2
+stick 5 0
+run 1
+stick 3 0
+run 1
+stick 4 0
+run 2
+stick 2 0
+run 1
+stick 3 0
+run 2
+stick 1 0
+run 2
+stick 0 0
+run 3
+stick -2 0
+run 2
+stick -4 0
+run 2
+stick -6 0
+run 3
+stick -8 0
+run 2
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 2
+stick -10 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 7
+stick -10 0
+run 3
+stick -9 0
+run 2
+stick -8 0
+run 1
+stick -7 0
+run 2
+stick -6 0
+run 3
+stick -7 0
+run 3
+stick -6 0
+run 6
+stick -7 0
+run 1
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 2
+stick -5 0
+run 1
+stick -6 0
+run 1
+stick -5 0
+run 4
+stick -4 0
+run 4
+stick -3 0
+run 2
+stick -2 0
+run 2
+stick -1 0
+run 2
+stick 0 0
+run 3
+stick 1 0
+run 2
+stick 2 0
+run 2
+stick 4 0
+run 2
+stick 5 0
+run 2
+stick 7 0
+run 2
+stick 8 0
+run 2
+stick 9 0
+run 2
+stick 10 0
+run 1
+stick 9 0
+run 1
+stick 12 0
+run 2
+stick 16 0
+run 1
+stick 15 0
+run 1
+stick 18 0
+run 2
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 24 0
+run 1
+stick 23 0
+run 1
+stick 26 0
+run 1
+stick 25 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 29 0
+run 1
+stick 27 0
+run 1
+stick 30 0
+run 1
+stick 28 0
+run 1
+stick 30 0
+run 1
+stick 29 0
+run 1
+stick 31 0
+run 1
+stick 30 0
+run 1
+stick 32 0
+run 1
+stick 30 0
+run 1
+stick 32 0
+run 1
+stick 31 0
+run 1
+stick 33 0
+run 1
+stick 31 0
+run 1
+stick 33 0
+run 1
+stick 35 0
+run 1
+stick 33 0
+run 1
+stick 35 0
+run 1
+stick 33 0
+run 1
+stick 35 0
+run 1
+stick 33 0
+run 1
+stick 38 0
+run 1
+stick 39 0
+run 1
+stick 37 0
+run 1
+stick 38 0
+run 1
+stick 37 0
+run 1
+stick 35 0
+run 1
+stick 34 0
+run 1
+stick 33 0
+run 1
+stick 32 0
+run 1
+stick 30 0
+run 1
+stick 29 0
+run 1
+stick 27 0
+run 1
+stick 26 0
+run 1
+stick 25 0
+run 1
+stick 24 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 2
+release
+stick 0 0
+screenshot ta_retry_3
+release
+hold A
+stick 18 0
+run 1
+stick 17 0
+run 4
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 18 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 19 0
+run 1
+stick 20 0
+run 2
+stick 21 0
+run 1
+stick 23 0
+run 1
+stick 22 0
+run 1
+stick 24 0
+run 1
+stick 27 0
+run 1
+stick 25 0
+run 1
+stick 28 0
+run 1
+stick 30 0
+run 1
+stick 29 0
+run 1
+stick 31 0
+run 1
+stick 30 0
+run 1
+stick 33 0
+run 1
+stick 35 0
+run 1
+stick 34 0
+run 1
+stick 36 0
+run 1
+stick 39 0
+run 1
+stick 37 0
+run 1
+stick 39 0
+run 1
+stick 38 0
+run 1
+stick 40 0
+run 1
+stick 42 0
+run 1
+stick 40 0
+run 1
+stick 42 0
+run 1
+stick 45 0
+run 1
+stick 43 0
+run 1
+stick 44 0
+run 1
+stick 46 0
+run 1
+stick 44 0
+run 1
+stick 46 0
+run 1
+stick 47 0
+run 1
+stick 45 0
+run 1
+stick 46 0
+run 1
+stick 47 0
+run 1
+stick 45 0
+run 1
+stick 46 0
+run 2
+stick 44 0
+run 1
+stick 45 0
+run 2
+stick 43 0
+run 3
+stick 41 0
+run 3
+stick 39 0
+run 2
+stick 38 0
+run 1
+stick 37 0
+run 1
+stick 36 0
+run 1
+stick 35 0
+run 1
+stick 34 0
+run 1
+stick 33 0
+run 1
+stick 31 0
+run 2
+stick 30 0
+run 1
+stick 28 0
+run 2
+stick 26 0
+run 1
+stick 25 0
+run 2
+stick 23 0
+run 2
+stick 22 0
+run 1
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 19 0
+run 1
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 16 0
+run 1
+stick 15 0
+run 2
+stick 14 0
+run 1
+stick 13 0
+run 2
+stick 12 0
+run 1
+stick 11 0
+run 2
+stick 10 0
+run 3
+stick 9 0
+run 5
+stick 8 0
+run 3
+stick 7 0
+run 6
+stick 6 0
+run 1
+stick 7 0
+run 3
+stick 6 0
+run 2
+stick 7 0
+run 5
+stick 6 0
+run 3
+stick 7 0
+run 4
+stick 6 0
+run 3
+stick 7 0
+run 5
+stick 6 0
+run 4
+stick 7 0
+run 3
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 9
+stick 7 0
+run 2
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 5
+stick 7 0
+run 2
+stick 6 0
+run 7
+stick 7 0
+run 2
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 12
+stick 7 0
+run 2
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 7
+stick 7 0
+run 1
+stick 6 0
+run 15
+stick 5 0
+run 3
+stick 4 0
+run 6
+stick 3 0
+run 4
+stick 2 0
+run 3
+stick 1 0
+run 2
+stick 0 0
+run 1
+stick 1 0
+run 1
+stick 0 0
+run 4
+stick -1 0
+run 3
+stick -2 0
+run 2
+stick -3 0
+run 2
+stick -4 0
+run 2
+stick -5 0
+run 2
+stick -6 0
+run 2
+stick -7 0
+run 2
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 4
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 15
+stick -6 0
+run 1
+stick -7 0
+run 7
+stick -6 0
+run 1
+stick -7 0
+run 14
+stick -6 0
+run 1
+stick -7 0
+run 3
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 6
+stick -9 0
+run 1
+stick -8 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 4
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 2
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 2
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 2
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 8
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 4
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 2
+stick -15 0
+run 1
+stick -14 0
+run 4
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 7
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 6
+stick -13 0
+run 7
+stick -12 0
+run 2
+stick -11 0
+run 3
+stick -10 0
+run 3
+stick -9 0
+run 1
+stick -10 0
+run 1
+stick -9 0
+run 1
+stick -10 0
+run 2
+stick -9 0
+run 1
+stick -10 0
+run 6
+stick -11 0
+run 1
+stick -10 0
+run 1
+stick -11 0
+run 2
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 2
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 2
+stick -15 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 2
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 2
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 2
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 2
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 2
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 2
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 2
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 4
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 4
+stick -16 0
+run 1
+stick -17 0
+run 1
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 4
+stick -14 0
+run 1
+stick -15 0
+run 1
+stick -14 0
+run 4
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 4
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 1
+stick -13 0
+run 1
+stick -12 0
+run 6
+stick -13 0
+run 1
+stick -12 0
+run 4
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 1
+stick -11 0
+run 1
+stick -12 0
+run 3
+stick -13 0
+run 4
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -13 0
+run 1
+stick -14 0
+run 1
+stick -15 0
+run 2
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 2
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -24 0
+run 1
+stick -25 0
+run 2
+stick -24 0
+run 2
+stick -23 0
+run 2
+stick -24 0
+run 1
+stick -23 0
+run 3
+stick -22 0
+run 3
+stick -21 0
+run 3
+stick -20 0
+run 2
+stick -19 0
+run 1
+stick -20 0
+run 2
+stick -19 0
+run 3
+stick -18 0
+run 2
+stick -17 0
+run 2
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -17 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 2
+stick -19 0
+run 3
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -19 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -20 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -22 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 3
+stick -22 0
+run 2
+stick -21 0
+run 1
+stick -20 0
+run 2
+stick -19 0
+run 3
+stick -18 0
+run 3
+stick -17 0
+run 3
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 2
+stick -17 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -16 0
+run 2
+stick -15 0
+run 1
+stick -16 0
+run 5
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -15 0
+run 1
+stick -16 0
+run 1
+stick -17 0
+run 2
+stick -18 0
+run 1
+stick -19 0
+run 1
+stick -18 0
+run 1
+stick -19 0
+run 2
+stick -20 0
+run 1
+stick -21 0
+run 2
+stick -22 0
+run 1
+stick -21 0
+run 1
+stick -22 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -23 0
+run 1
+stick -24 0
+run 1
+stick -26 0
+run 1
+stick -24 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -26 0
+run 2
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -27 0
+run 1
+stick -25 0
+run 1
+stick -26 0
+run 1
+stick -25 0
+run 2
+stick -26 0
+run 1
+stick -25 0
+run 3
+stick -24 0
+run 2
+stick -23 0
+run 3
+stick -22 0
+run 2
+stick -21 0
+run 1
+stick -20 0
+run 2
+stick -19 0
+run 2
+stick -18 0
+run 2
+stick -17 0
+run 1
+stick -16 0
+run 2
+stick -15 0
+run 2
+stick -14 0
+run 2
+stick -13 0
+run 2
+stick -12 0
+run 2
+stick -11 0
+run 2
+stick -10 0
+run 2
+stick -9 0
+run 5
+stick -8 0
+run 9
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 1
+stick -8 0
+run 2
+stick -7 0
+run 1
+stick -8 0
+run 1
+stick -7 0
+run 6
+stick -6 0
+run 2
+stick -7 0
+run 5
+stick -6 0
+run 3
+stick -7 0
+run 4
+stick -6 0
+run 4
+stick -7 0
+run 3
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 6
+stick -7 0
+run 2
+stick -6 0
+run 7
+stick -7 0
+run 2
+stick -6 0
+run 7
+stick -7 0
+run 3
+stick -6 0
+run 4
+stick -7 0
+run 3
+stick -6 0
+run 5
+stick -7 0
+run 2
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 4
+stick -7 0
+run 2
+stick -6 0
+run 11
+stick -5 0
+run 5
+stick -4 0
+run 2
+stick -3 0
+run 3
+stick -2 0
+run 3
+stick -1 0
+run 1
+stick 0 0
+run 6
+stick 1 0
+run 4
+stick 2 0
+run 1
+stick 3 0
+run 2
+stick 4 0
+run 2
+stick 5 0
+run 2
+stick 6 0
+run 3
+stick 7 0
+run 8
+stick 6 0
+run 2
+stick 7 0
+run 4
+stick 6 0
+run 3
+stick 7 0
+run 3
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 12
+stick 7 0
+run 1
+stick 6 0
+run 11
+stick 7 0
+run 3
+stick 6 0
+run 14
+stick 7 0
+run 2
+stick 6 0
+run 2
+stick 7 0
+run 3
+stick 6 0
+run 3
+stick 7 0
+run 3
+stick 6 0
+run 6
+stick 7 0
+run 1
+stick 6 0
+run 5
+stick 5 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 3
+stick 4 0
+run 1
+stick 5 0
+run 1
+stick 4 0
+run 3
+stick 3 0
+run 4
+stick 2 0
+run 4
+stick 1 0
+run 3
+stick 0 0
+run 7
+stick -1 0
+run 6
+stick -2 0
+run 3
+stick -3 0
+run 6
+stick -4 0
+run 3
+stick -5 0
+run 1
+stick -4 0
+run 1
+stick -5 0
+run 5
+stick -6 0
+run 6
+release
+stick 0 0
+screenshot ta_retry_4
+release
+hold A
+stick -6 0
+run 2
+stick -7 0
+run 2
+stick -6 0
+run 9
+stick -7 0
+run 2
+stick -6 0
+run 12
+stick -5 0
+run 6
+stick -4 0
+run 4
+stick -3 0
+run 6
+stick -2 0
+run 4
+stick -1 0
+run 4
+stick 0 0
+run 7
+stick 1 0
+run 4
+stick 2 0
+run 4
+stick 3 0
+run 34
+stick 4 0
+run 2
+stick 5 0
+run 3
+stick 6 0
+run 3
+stick 7 0
+run 3
+stick 6 0
+run 1
+stick 5 0
+run 2
+stick 6 0
+run 3
+stick 7 0
+run 2
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 6 0
+run 4
+stick 7 0
+run 2
+stick 6 0
+run 1
+stick 5 0
+run 3
+stick 6 0
+run 9
+stick 7 0
+run 2
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 12
+stick 7 0
+run 1
+stick 6 0
+run 16
+stick 5 0
+run 4
+stick 4 0
+run 2
+stick 3 0
+run 4
+stick 2 0
+run 6
+stick 3 0
+run 7
+stick 4 0
+run 7
+stick 5 0
+run 6
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 6
+stick 7 0
+run 2
+stick 6 0
+run 8
+stick 7 0
+run 2
+stick 6 0
+run 14
+stick 27 0
+run 2
+stick 26 0
+run 1
+stick 24 0
+run 1
+stick 21 0
+run 1
+stick 20 0
+run 1
+stick 18 0
+run 1
+stick 17 0
+run 1
+stick 15 0
+run 1
+stick 13 0
+run 2
+stick 11 0
+run 1
+stick 9 0
+run 1
+stick 8 0
+run 1
+stick 7 0
+run 1
+stick 6 0
+run 1
+stick 5 0
+run 1
+stick 4 0
+run 2
+stick 3 0
+run 2
+stick 2 0
+run 1
+stick 0 0
+run 1
+stick 1 0
+run 1
+stick 0 0
+run 2
+stick -1 0
+run 1
+stick -2 0
+run 2
+stick -3 0
+run 2
+stick -4 0
+run 2
+release
+stick 0 0
+run 300
+release
+stick 0 0
+screenshot ta_retry_5
+checkpoint end
+savefile pre_reset
+reset
+run 120
+screenshot reset_boot_2s
+run 480
+screenshot reset_boot_10s
+run 600
+screenshot reset_title_20s
+pulse START 60 20       # Start pressed 3 times over 1 s (some titles ignore the first press)
+run 570
+screenshot reset_after_start_10s
+pulse START 60 20       # again: gets past "press start" menus that need two presses
+press A 5 25
+run 540
+screenshot reset_after_start_20s
+press DR 5 90
+screenshot reset_mode_ta
+press A 5 90
+press DD 5 60
+screenshot reset_records_menu
+press A 5 120
+screenshot reset_records_cup
+press A 5 120
+screenshot reset_records_mute_city
+run 120
+screenshot reset_records_mute_city2
+press A 5 150
+screenshot reset_records_ok
+press A 5 150
+screenshot reset_records_table
+savefile post_reset
+checkpoint save_end

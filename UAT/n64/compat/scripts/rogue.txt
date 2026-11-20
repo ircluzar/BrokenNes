@@ -1,0 +1,215 @@
+# rogue: boot -> Factor 5 logo -> title (hi-res interlaced) -> new game (name AAA) -> Ambush at Mos Eisley -> X-wing (f5_boot lane)
+# Frame counts are VI fields (60/s NTSC). Needs the V_CURRENT field bit (COR64_F5BOOT_VIFIELD, default on).
+run 600
+screenshot boot_10s
+run 1800
+screenshot factor5_40s
+run 1800
+screenshot title_70s
+press START 5 90
+press A 5 115
+press A 5 115
+screenshot select_game
+press A 5 115
+press A 5 115
+press A 5 115
+screenshot enter_name
+press START 5 115
+press START 5 115
+press START 5 115
+screenshot select_level
+press START 5 115
+press START 5 115
+press START 5 115
+run 120
+press START 10 170      # level -> available craft
+press A 10 170          # -> hangar / select your craft
+run 600
+screenshot select_craft
+press START 10 170      # launch
+run 1200
+screenshot crawl
+run 3600
+screenshot intro
+run 3600
+screenshot flight_start
+run 600
+savestate speed
+screenshot gameplay
+stick 0 60
+run 300
+screenshot fly
+stick 0 0
+press Z 10 50
+stick 60 0
+run 240
+stick 0 0
+run 600
+screenshot gameplay_2
+checkpoint end
+# [session_leak] ~5 minutes of play after the gameplay savestate (certification point 3)
+# play cycle 1
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_1
+# play cycle 2
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_2
+# play cycle 3
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_3
+# play cycle 4
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_4
+# play cycle 5
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_5
+# play cycle 6
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_6
+# play cycle 7
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_7
+# play cycle 8
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_8
+# play cycle 9
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_9
+# play cycle 10
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_10
+# play cycle 11
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_11
+# play cycle 12
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_12
+checkpoint play_end
+# [session_leak] certification point 5: the profile made at name entry must survive reset
+release
+stick 0 0
+savefile pre_reset
+reset
+run 600
+run 1800
+run 1800
+screenshot reset_title
+press START 5 90
+press A 5 115
+press A 5 115
+run 300
+screenshot reset_after_start
+press START 5 115
+press A 5 115
+run 300
+screenshot reset_select_game
+savefile post_reset
+checkpoint save_end

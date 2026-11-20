@@ -1,0 +1,11 @@
+NLog
+Newtonsoft.Json
+ELFSharp
+glfw-net
+CommandLineParser
+ImGui.NET
+Veldrid
+OpenTK
+Veldrid.ImGui
+CppSharp
+IronPython

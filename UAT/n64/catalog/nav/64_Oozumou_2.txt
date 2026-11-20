@@ -1,0 +1,176 @@
+# nav2 64_Oozumou_2: boot -> story -> name -> rikishi edit (D-pad ignored by this menu; stick moves tabs; START jumps to owari, A opens confirm, stick left = hai) -> story mode
+run 600
+screenshot b0
+run 600
+press START 6 20
+run 130
+screenshot b1
+press A 6 20
+run 130
+screenshot b2
+press START 6 20
+run 130
+screenshot b3
+press A 6 20
+run 130
+screenshot b4
+press START 6 20
+run 130
+screenshot b5
+press A 6 20
+run 130
+screenshot b6
+press START 6 20
+run 130
+screenshot b7
+press A 6 20
+run 130
+screenshot b8
+press START 6 20
+run 130
+screenshot b9
+press A 6 20
+run 130
+screenshot b10
+press START 6 20
+run 130
+screenshot b11
+press A 6 20
+run 130
+screenshot b12
+press START 6 20
+run 130
+screenshot b13
+press A 6 20
+run 130
+screenshot b14
+press START 6 20
+run 130
+screenshot b15
+press A 6 20
+run 130
+screenshot b16
+press B 8 40
+stick 100 0
+run 10
+stick 0 0
+run 30
+stick 100 0
+run 10
+stick 0 0
+run 30
+screenshot edit_owari
+press A 8 150
+press A 8 150
+press A 8 150
+press A 8 150
+press A 8 150
+screenshot stats
+press START 8 90
+press A 8 120
+stick -100 0
+run 10
+stick 0 0
+run 30
+screenshot confirm
+press A 8 150
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g1
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g2
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g3
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g4
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g5
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g6
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g7
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g8
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g9
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g10
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g11
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g12
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g13
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g14
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g15
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g16
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g17
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g18
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g19
+press A 8 60
+press A 8 60
+press A 8 60
+press A 8 60
+screenshot g20

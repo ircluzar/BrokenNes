@@ -175,4 +175,7 @@
     <Message Importance="high" Text="BrokenNes2 plugin DLL not found ($(PluginDll)): this build has no FL Studio plugin to install and no standalone synth. Run Plugin\build-dist.ps1 first to bundle it." />
   </Target>
 
+  <!-- Nintendo 64: NesEmulator\n64 compiles by default here; the core is cor64 (cer64plus, MIT) from $(Cor64Root). -->
+  <PropertyGroup><Cor64Root Condition="'$(Cor64Root)' == ''">$(MSBuildThisFileDirectory)..\third_party\cor64\</Cor64Root></PropertyGroup>
+  <ItemGroup><ProjectReference Include="$(Cor64Root)src\cor64\cor64.csproj" /></ItemGroup>
 </Project>

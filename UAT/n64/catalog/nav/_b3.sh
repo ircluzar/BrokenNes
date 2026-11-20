@@ -1,0 +1,3 @@
+cd /c/Users/philt/Desktop/cer64plus/lanes/catalog_nav1/cor64/catalog
+t() { bash nav/try.sh $1 nav/$2.txt; mv runs_v2_nav_try/$1 runs_v2_nav_try/${1}_$3; }
+for g in Knockout_Kings_2000 WCW_vs_nWo_World_Tour Hot_Wheels_Turbo_Racing Jeopardy Michael_Owens_WLS_2000 Power_League_Baseball_64 Toukon_Road_2_The_Next_Generation Carmageddon_64 64_Oozumou_2 Cruis_n_USA Mahjong_64 Getter_Love_Cho_Renai_Party_Game Space_Invaders Turok_Rage_Wars Snowboard_Kids Robotech_Crystal_Dreams Pocket_Monsters_Stadium Choro_Q_64_II Dezaemon_3D F1_Racing_Championship F_1_World_Grand_Prix_II Premier_Manager_64 Battlezone_Rise_of_the_Black_Dogs; do t $g step_dpad dp; done

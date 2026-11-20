@@ -1,0 +1,343 @@
+# pstad2: boot -> Expansion Pak / title -> Game Pak Check -> Please Select -> Stadium -> Poke Cup (Poke Ball) ->
+# Rental Only (D-pad right twice: the stick does not move this cursor) -> six rentals with A -> OK -> Battle 1 vs Nelson ->
+# pick three with B / C-left / A -> battle; then ~5 minutes of move choices (A/B/C buttons). Lane scripts_speed. Real VI.
+# Needs COR64_SCRIPTS_SPEED_CAPCLAMP (default on): without it the frame capture crashed the process early in the intro.
+# Checkpoints: b25 title, s1 Game Pak Check, a1/s2 Please Select, e* cup menus, f* rentals, g* battle (in-game).
+run 300
+screenshot b05
+run 300
+screenshot b10
+run 300
+screenshot b15
+run 300
+screenshot b20
+run 300
+screenshot b25
+run 300
+screenshot b30
+pulse START 60 20
+run 240
+screenshot s1
+pulse A 60 20
+run 240
+screenshot a1
+checkpoint x1
+pulse START 60 20
+run 240
+screenshot s2
+pulse A 60 20
+run 240
+screenshot a2
+checkpoint x2
+stick -60 0
+run 10
+stick 0 0
+run 60
+screenshot e0
+press A 5 60
+run 200
+screenshot e1
+press A 5 60
+run 200
+screenshot e2
+press A 5 60
+run 200
+screenshot e3
+press A 5 60
+run 200
+screenshot e4
+press A 5 60
+run 200
+screenshot e5
+press A 5 60
+run 200
+screenshot e6
+press A 5 60
+run 200
+screenshot e7
+press A 5 60
+run 200
+screenshot e8
+press A 5 60
+run 200
+screenshot e9
+press A 5 60
+run 200
+screenshot e10
+press A 5 60
+run 200
+screenshot e11
+press A 5 60
+run 200
+screenshot e12
+checkpoint e
+press B 5 90
+press DR 6 40
+press DR 6 40
+screenshot f1
+press A 5 60
+run 100
+screenshot f2
+press A 5 60
+run 100
+screenshot f3
+press A 5 60
+run 100
+screenshot f4
+press A 5 60
+run 100
+screenshot f5
+press A 5 60
+run 100
+screenshot f6
+press A 5 60
+run 100
+screenshot f7
+press A 5 60
+run 100
+screenshot f8
+press A 5 60
+run 100
+screenshot f9
+press A 5 60
+run 100
+screenshot f10
+press A 5 60
+run 100
+screenshot f11
+press A 5 60
+run 100
+screenshot f12
+press A 5 60
+run 100
+screenshot f13
+press A 5 60
+run 100
+screenshot f14
+press A 5 60
+run 100
+screenshot f15
+press A 5 60
+run 100
+screenshot f16
+press A 5 60
+run 100
+screenshot f17
+press A 5 60
+run 100
+screenshot f18
+press A 5 60
+run 100
+screenshot f19
+press A 5 60
+run 100
+screenshot f20
+press A 5 60
+run 100
+screenshot f21
+press A 5 60
+run 100
+screenshot f22
+press A 5 60
+run 100
+screenshot f23
+press A 5 60
+run 100
+screenshot f24
+checkpoint f
+press B 5 40
+press CL 5 40
+press A 5 40
+screenshot g0
+press A 5 60
+run 140
+screenshot g1
+press A 5 60
+run 140
+screenshot g2
+press A 5 60
+run 140
+screenshot g3
+press A 5 60
+run 140
+screenshot g4
+press A 5 60
+run 140
+screenshot g5
+press A 5 60
+run 140
+screenshot g6
+press A 5 60
+run 140
+screenshot g7
+press A 5 60
+run 140
+screenshot g8
+press A 5 60
+run 140
+screenshot g9
+press A 5 60
+run 140
+screenshot g10
+press A 5 60
+run 140
+screenshot g11
+press A 5 60
+run 140
+screenshot g12
+press A 5 60
+run 140
+screenshot g13
+press A 5 60
+run 140
+screenshot g14
+press A 5 60
+run 140
+screenshot g15
+press A 5 60
+run 140
+screenshot g16
+savestate speed
+press A 5 60
+run 200
+press CL 5 60
+run 200
+press CD 5 60
+run 200
+press B 5 60
+run 200
+press A 5 60
+run 200
+press CU 5 60
+run 200
+screenshot play_1
+press A 5 60
+run 200
+press CL 5 60
+run 200
+press CD 5 60
+run 200
+press B 5 60
+run 200
+press A 5 60
+run 200
+press CU 5 60
+run 200
+screenshot play_2
+press A 5 60
+run 200
+press CL 5 60
+run 200
+press CD 5 60
+run 200
+press B 5 60
+run 200
+press A 5 60
+run 200
+press CU 5 60
+run 200
+screenshot play_3
+press A 5 60
+run 200
+press CL 5 60
+run 200
+press CD 5 60
+run 200
+press B 5 60
+run 200
+press A 5 60
+run 200
+press CU 5 60
+run 200
+screenshot play_4
+press A 5 60
+run 200
+press CL 5 60
+run 200
+press CD 5 60
+run 200
+press B 5 60
+run 200
+press A 5 60
+run 200
+press CU 5 60
+run 200
+screenshot play_5
+press A 5 60
+run 200
+press CL 5 60
+run 200
+press CD 5 60
+run 200
+press B 5 60
+run 200
+press A 5 60
+run 200
+press CU 5 60
+run 200
+screenshot play_6
+press A 5 60
+run 200
+press CL 5 60
+run 200
+press CD 5 60
+run 200
+press B 5 60
+run 200
+press A 5 60
+run 200
+press CU 5 60
+run 200
+screenshot play_7
+press A 5 60
+run 200
+press CL 5 60
+run 200
+press CD 5 60
+run 200
+press B 5 60
+run 200
+press A 5 60
+run 200
+press CU 5 60
+run 200
+screenshot play_8
+press A 5 60
+run 200
+press CL 5 60
+run 200
+press CD 5 60
+run 200
+press B 5 60
+run 200
+press A 5 60
+run 200
+press CU 5 60
+run 200
+screenshot play_9
+press A 5 60
+run 200
+press CL 5 60
+run 200
+press CD 5 60
+run 200
+press B 5 60
+run 200
+press A 5 60
+run 200
+press CU 5 60
+run 200
+screenshot play_10
+checkpoint end
+# [cert_scripts] certification point 5: the save survives a reset (tools/savecheck.py compares the .sav files)
+release
+stick 0 0
+savefile pre_reset
+reset
+run 1500
+screenshot reset_title
+pulse START 60 20
+run 600
+screenshot reset_menu
+savefile post_reset
+checkpoint save_end

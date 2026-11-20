@@ -1,0 +1,69 @@
+# nav2 Cruis_n_USA (visp_fix2, COR64_VISPFIX2_CAP CU=6): intro pairs to the car select, pick, race with Z (gas) held
+run 600
+screenshot o00
+run 150
+screenshot o01
+run 150
+screenshot o02
+run 150
+screenshot o03
+run 150
+screenshot o04
+run 150
+screenshot o05
+run 150
+screenshot o06
+press START 6 20
+run 130
+screenshot o10
+press A 6 20
+run 130
+screenshot o11
+press START 6 20
+run 130
+screenshot o12
+press A 6 20
+run 130
+screenshot o13
+press START 6 20
+run 130
+screenshot o14
+press A 6 20
+run 130
+screenshot o15
+press START 6 20
+run 130
+screenshot o16
+press A 6 20
+run 130
+screenshot o17
+press START 6 20
+run 130
+screenshot o18
+press A 6 20
+run 130
+screenshot o19
+savestate car
+press A 30 300
+screenshot p1
+run 600
+screenshot p2
+run 600
+screenshot p3
+screenshot p4
+run 600
+screenshot p5
+hold Z
+run 300
+screenshot g1
+stick 40 0
+run 300
+screenshot g2
+stick 0 0
+run 300
+screenshot g3
+stick -40 0
+run 300
+screenshot g4
+release
+stick 0 0

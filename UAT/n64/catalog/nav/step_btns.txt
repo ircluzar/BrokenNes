@@ -1,0 +1,33 @@
+mirror 4
+press CD 8 30
+run 100
+screenshot c1
+press CR 8 30
+run 100
+screenshot c2
+press Z 8 30
+run 100
+screenshot c3
+press R 8 30
+run 100
+screenshot c4
+press L 8 30
+run 100
+screenshot c5
+press CU 8 30
+run 100
+screenshot c6
+press CL 8 30
+run 100
+screenshot c7
+press A 8 30
+run 100
+screenshot c8
+press START 8 30
+run 100
+screenshot c9
+press A 20 30
+run 100
+screenshot c10
+pulse A 120 20
+screenshot c11

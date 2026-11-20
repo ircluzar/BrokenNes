@@ -1,0 +1,194 @@
+# pd: boot -> N64 logo -> intro (Carrington building, dataDyne) -> title -> Choose Your Reality -> New Agent -> name
+# "Da" (A on the keyboard, then OK) -> Game Pak location -> Perfect Menu -> Carrington Institute (first-person, in-game);
+# then ~5 minutes of walking (stick), Z and A. Start opens the Perfect Menu, so play does not press it. Lane scripts_speed.
+# Real VI pace (run_game.sh). Slow: 40-130 ms/frame in the menus and the institute.
+# Checkpoints: b10 N64 logo, b20-b50 intro, b60 title, s1 Choose Your Reality, a1 name entry, s2 location, a2 agent,
+# s3 Perfect Menu, a3 Carrington Institute (in-game), play_*.
+run 600
+screenshot b10
+run 600
+screenshot b20
+run 600
+screenshot b30
+run 600
+screenshot b40
+run 600
+screenshot b50
+run 600
+screenshot b60
+pulse START 60 20
+run 540
+screenshot s1
+pulse A 60 20
+run 540
+screenshot a1
+checkpoint x1
+pulse START 60 20
+run 540
+screenshot s2
+pulse A 60 20
+run 540
+screenshot a2
+checkpoint x2
+pulse START 60 20
+run 540
+screenshot s3
+pulse A 60 20
+run 540
+screenshot a3
+checkpoint x3
+savestate speed
+stick 0 60
+run 300
+stick 60 0
+run 60
+stick 0 60
+run 300
+stick -60 0
+run 120
+stick 0 0
+pulse Z 120 20
+press A 5 60
+stick 0 -60
+run 300
+screenshot play_1
+stick 0 60
+run 300
+stick 60 0
+run 60
+stick 0 60
+run 300
+stick -60 0
+run 120
+stick 0 0
+pulse Z 120 20
+press A 5 60
+stick 0 -60
+run 300
+screenshot play_2
+stick 0 60
+run 300
+stick 60 0
+run 60
+stick 0 60
+run 300
+stick -60 0
+run 120
+stick 0 0
+pulse Z 120 20
+press A 5 60
+stick 0 -60
+run 300
+screenshot play_3
+stick 0 60
+run 300
+stick 60 0
+run 60
+stick 0 60
+run 300
+stick -60 0
+run 120
+stick 0 0
+pulse Z 120 20
+press A 5 60
+stick 0 -60
+run 300
+screenshot play_4
+stick 0 60
+run 300
+stick 60 0
+run 60
+stick 0 60
+run 300
+stick -60 0
+run 120
+stick 0 0
+pulse Z 120 20
+press A 5 60
+stick 0 -60
+run 300
+screenshot play_5
+stick 0 60
+run 300
+stick 60 0
+run 60
+stick 0 60
+run 300
+stick -60 0
+run 120
+stick 0 0
+pulse Z 120 20
+press A 5 60
+stick 0 -60
+run 300
+screenshot play_6
+stick 0 60
+run 300
+stick 60 0
+run 60
+stick 0 60
+run 300
+stick -60 0
+run 120
+stick 0 0
+pulse Z 120 20
+press A 5 60
+stick 0 -60
+run 300
+screenshot play_7
+stick 0 60
+run 300
+stick 60 0
+run 60
+stick 0 60
+run 300
+stick -60 0
+run 120
+stick 0 0
+pulse Z 120 20
+press A 5 60
+stick 0 -60
+run 300
+screenshot play_8
+stick 0 60
+run 300
+stick 60 0
+run 60
+stick 0 60
+run 300
+stick -60 0
+run 120
+stick 0 0
+pulse Z 120 20
+press A 5 60
+stick 0 -60
+run 300
+screenshot play_9
+stick 0 60
+run 300
+stick 60 0
+run 60
+stick 0 60
+run 300
+stick -60 0
+run 120
+stick 0 0
+pulse Z 120 20
+press A 5 60
+stick 0 -60
+run 300
+screenshot play_10
+stick 0 0
+checkpoint end
+# [cert_scripts] certification point 5: the save survives a reset (tools/savecheck.py compares the .sav files)
+release
+stick 0 0
+savefile pre_reset
+reset
+run 1500
+screenshot reset_title
+pulse START 60 20
+run 600
+screenshot reset_menu
+savefile post_reset
+checkpoint save_end

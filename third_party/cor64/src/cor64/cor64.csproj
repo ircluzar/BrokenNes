@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>../../bin</OutputPath>
+  </PropertyGroup>
+  <!-- [cer64plus] The core's required build configuration lives here, so any consumer (RunN64, SessionProbe, a
+       BrokenNes host referencing this project) builds it the same way. Do not override DefineConstants globally.
+       Cor64Debugger=true keeps the per-instruction debugger checks (drops OPTIMAL); Cor64FasterVi=false retires
+       the FASTER_VI timing hack; Cor64ExtraDefines adds experiment defines. -->
+  <PropertyGroup>
+    <Cor64FasterVi Condition="'$(Cor64FasterVi)'==''">true</Cor64FasterVi>
+    <DefineConstants>$(DefineConstants);HOST_LITTLE_ENDIAN;LITTLE_ENDIAN_EXECUTION;CPU_ALWAYS_64</DefineConstants>
+    <DefineConstants Condition="'$(Cor64Debugger)'!='true'">$(DefineConstants);OPTIMAL</DefineConstants>
+    <DefineConstants Condition="'$(Cor64FasterVi)'=='true'">$(DefineConstants);FASTER_VI</DefineConstants>
+    <DefineConstants Condition="'$(Cor64ExtraDefines)'!=''">$(DefineConstants);$(Cor64ExtraDefines)</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- parallel-rdp (Vulkan) renderer; flows to every project that references the core -->
+    <None Include="../../native/prdp/build/Release/cor64_prdp.dll" Condition="Exists('../../native/prdp/build/Release/cor64_prdp.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <Link>cor64_prdp.dll</Link>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="BassSharp\Table\*.md" />
+    <EmbeddedResource Include="BassSharp\Table\*.arch" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="NLog" Version="5.0" />
+  </ItemGroup>
+</Project>

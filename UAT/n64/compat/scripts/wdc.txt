@@ -1,0 +1,493 @@
+# World Driver Championship [cert_scripts10]: needs COR64_PIF_PAK=controller (pak image <crc>_p1.mpk in the run folder).
+# Boot -> Main -> Championship -> New Game -> name -> team offers -> sign with Speedcraft ('97 Stallion) -> Driver menu
+# -> SAVE GAME slot 1 ("DATA SAVED", pak note NWOE "WORLDDRIVER") -> Event Select -> Novice Cup -> Rome A race drive.
+# Reset -> Main -> Championship -> LOAD GAME shows slot 1 DRIVER rank 30 (the pak save survives). No cheats.
+run 450
+press A 5 145
+run 300
+press START 5 145
+run 150
+screenshot main_menu
+press DD 5 20
+press A 5 120
+screenshot new_load
+press A 5 120
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot driver_menu
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot accept_offer
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot signed
+press B 5 90
+press DD 5 20
+screenshot save_sel
+press A 5 120
+screenshot save_slots
+press A 5 120
+screenshot data_saved
+savefile after_save
+checkpoint pak_saved
+press A 5 120
+press A 5 120
+press A 5 120
+press A 5 120
+press A 5 120
+press A 5 300
+screenshot race_grid
+savestate gameplay
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+savestate speed
+screenshot drive_1
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+hold A
+stick 0 0
+run 150
+stick -60 0
+run 120
+stick 30 0
+run 60
+release
+stick 0 0
+hold Z
+run 60
+release
+checkpoint end
+release
+stick 0 0
+reset
+run 450
+press A 5 145
+run 300
+press START 5 145
+run 150
+screenshot reset_main
+press DD 5 20
+press A 5 120
+press DD 5 20
+press A 5 150
+screenshot reset_load_slot1
+checkpoint save_end
