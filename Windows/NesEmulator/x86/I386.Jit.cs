@@ -156,12 +156,15 @@ public sealed partial class I386
                     if (!JitStats) return code.Fn(this, en.K);
                     return JitRunCounted(code, en.K);
                 }
+                if (PcMachine.TimeProbe) _jtWhy = 1;
                 return JitInvalidated(en);
             }
-            if (en.Failed || en.Pending) return JIT_DECLINE;
-            if (++en.Visits >= JitHot) JitCompile(en);
+            if (en.Failed || en.Pending) { if (PcMachine.TimeProbe) _jtWhy = en.Failed ? 2 : 3; return JIT_DECLINE; }
+            if (++en.Visits >= JitHot) { if (PcMachine.TimeProbe) _jtWhy = 4; JitCompile(en); }
+            else if (PcMachine.TimeProbe) _jtWhy = 5;
             return JIT_DECLINE;
         }
+        if (PcMachine.TimeProbe) _jtWhy = 6;
         return JitVisit(paddr);
     }
 
