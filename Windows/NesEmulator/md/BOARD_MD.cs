@@ -150,6 +150,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         Array.Clear(Ram);
         Vdp.Reset();
         Sound.Reset();
+        Cart.Svp?.Reset();
         Cpu.Power();
         Cpu.Reset();
     }
@@ -221,6 +222,17 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         return c;
     }
 
+    /// <summary>The SVP runs its per-line budget once for every scanline the VDP starts (Genplus-gx: ssp1601_run(SVP_cycles) at each line).</summary>
+    private void RunSvp(MdSvp svp)
+    {
+        long mark = Vdp.Frames * (Region == SegaRegion.Pal ? 313 : 262) + Vdp.Line;
+        if (mark == svp.LineMark) return;
+        long n = mark - svp.LineMark;
+        svp.LineMark = mark;
+        if (n < 0 || n > 1000) n = 1;     // a DMA can hold the 68000 for many lines: the SVP runs every one of them
+        for (; n > 0; n--) svp.Run(MdSvp.CyclesPerLine);
+    }
+
     private int StepCpu()
     {
         if (M68k<MdBus>.BranchIplMask != 0) iplAtStart = Vdp.IplAt(t);
@@ -233,6 +245,8 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         }
         int cycles = Cpu.Step();
         iplAtStart = 0;
+        var svp = Cart.Svp;
+        if (svp != null) RunSvp(svp);
         return cycles;
     }
 
@@ -440,6 +454,8 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     {
         if (address < 0x400000)
         {
+            if (Cart.Svp != null && address >= 0x300000 && Cart.Svp.ReadWord(address, out ushort sv)) return sv;
+            if (Cart.JCart && MdCartridge.IsJCartAddress(address)) return Cart.ReadJCart();
             ushort cv = Cart.ReadWord(address);
             if (CartTrace != null && address >= 0x200000) CartTrace($"cart read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {cv:X4}");
             return cv;
@@ -465,6 +481,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         // the RESET register reads back whether the line is released (bit 8; oracle-derived: BlastEm shows it, hardware not verified), the rest of the word is the bus's
         if (address == 0xA11200) return (ushort)(lastOpenBus & 0xFEFF | (Sound.IsInReset ? 0x0000 : 0x0100));
         if (address >= 0xA130F0 && address < 0xA13100) return 0xFFFF;
+        if (Cart.Svp != null && address >= 0xA15000 && address < 0xA15100 && Cart.Svp.ReadReg(address, out ushort sr)) return sr;
         OpenBusReads++; LastOpenBusAddress = address;
         return lastOpenBus;
     }
@@ -473,7 +490,9 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     {
         if (address < 0x400000)
         {
+            if (Cart.Svp != null && address >= 0x300000 && Cart.Svp.Write(address, upper, lower, data)) return;
             if (CartTrace != null && address >= 0x200000) CartTrace($"cart write ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} = {data:X4}");
+            if (Cart.JCart && MdCartridge.IsJCartAddress(address)) { Cart.JCartTh = ((lower ? data : data >> 8) & 1) != 0; return; }
             if (upper) Cart.WriteByte(address, (byte)(data >> 8));
             if (lower) Cart.WriteByte(address | 1, (byte)data);
             return;
@@ -519,6 +538,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             if (lower) { WriteTrace?.Invoke($"mapper ${address | 1:X6} = {(byte)data:X2}"); Cart.WriteMapper(address | 1, (byte)data); }
             return;
         }
+        if (Cart.Svp != null && address >= 0xA15000 && address < 0xA15100 && Cart.Svp.WriteReg(address, data)) return;
         if (address >= 0xA14000 && address < 0xA14004) { TmssWrites++; TmssWords[(address - 0xA14000) >> 1] = data; return; }
         // everything else: ignored (counted for the sweep)
         UnclaimedWrites++; LastUnclaimedWrite = address;
@@ -599,7 +619,9 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     {
         uint a = address & 0xFFFFFE;
         ushort w;
-        if (a < 0x400000) w = Cart.ReadWord(a);
+        // the SVP's DRAM reaches the VDP a word late (Genplus-gx / PicoDrive: a DMA from it starts with the word before the source)
+        if (Cart.Svp != null && a >= 0x300000 && a < 0x400000 && Cart.Svp.ReadWord(a - 2, out ushort sw)) w = sw;
+        else if (a < 0x400000) w = Cart.ReadWord(a);
         else if (a >= 0xE00000) { int i = (int)(a & 0xFFFE); w = (ushort)(Ram[i] << 8 | Ram[i + 1]); }
         else w = 0xFFFF;      // a DMA source in I/O or the Z80's space reads open bus
         var tap = DebugTap;

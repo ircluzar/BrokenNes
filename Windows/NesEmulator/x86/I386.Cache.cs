@@ -26,18 +26,21 @@ public sealed partial class I386
     private const byte DK_SLOW = 0, DK_MOVEG = 1, DK_MOVGE = 2, DK_ALUEG = 3, DK_ALUGE = 4, DK_ALUAI = 5, DK_GRP1 = 6, DK_GRP2 = 7,
         DK_TESTEG = 8, DK_G3TEST = 9, DK_GRP3 = 10, DK_MOVEI = 11, DK_LEA = 12, DK_MOVRI = 13, DK_INC = 14, DK_DEC = 15, DK_PUSH = 16,
         DK_POP = 17, DK_JCC = 18, DK_JMP = 19, DK_CALL = 20, DK_RET = 21,
-        DK_INTERP = 22, DK_MOVX = 23, DK_CBW = 24, DK_SETCC = 25, DK_IMUL = 26, DK_GRP5 = 27, DK_LEAVE = 28, DK_STOS = 29, DK_MOVSR = 30, DK_SRMOV = 31, DK_STR = 32, DK_REPSTR = 33, DK_FPU = 34, DK_XCHG = 35, DK_FLAGOP = 36, DK_STKOP = 37;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
+        DK_INTERP = 22, DK_MOVX = 23, DK_CBW = 24, DK_SETCC = 25, DK_IMUL = 26, DK_GRP5 = 27, DK_LEAVE = 28, DK_STOS = 29, DK_MOVSR = 30, DK_SRMOV = 31, DK_STR = 32, DK_REPSTR = 33, DK_FPU = 34, DK_XCHG = 35, DK_FLAGOP = 36, DK_STKOP = 37, DK_MMX = 38;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
 
     /// <summary>Decode the instruction at <paramref name="paddr"/> (in a fast-fetch code page) into <paramref name="e"/>; Kind 0 if it is not
     /// one of the cached forms.</summary>
+    private static readonly ulong KindOff = ulong.TryParse(Environment.GetEnvironmentVariable("X86_JITKINDOFF"), System.Globalization.NumberStyles.HexNumber, null, out ulong ko) ? ko : 0;
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void DcDecode(ref DEntry e, uint paddr)
     {
         DcDecodeFast(ref e, paddr);
+        if (e.Kind != DK_SLOW && (KindOff >> e.Kind & 1) != 0) e.Kind = DK_SLOW;   // (X86_JITKINDOFF: those kinds out of line, a cost-parity hunt)
         if (e.Kind != DK_SLOW) return;
         int len = DcLength(paddr, out bool noFall);
         if (len <= 0) return;
         e = default;
+        if ((KindOff >> DK_INTERP & 1) != 0) return;   // (bit 22: out-of-line instructions end the region instead)
         e.Kind = DK_INTERP; e.Len = (byte)len; e.Op = (byte)(noFall ? 1 : 0); e.Mod = (byte)(DcNoWrite(paddr) ? 0 : 1);
         e.Rm = (byte)(DcKeepsSegs(paddr) ? 1 : 0);
     }
@@ -277,8 +280,10 @@ public sealed partial class I386
             case 0xd1: kind = DK_GRP2; modrm = true; op = 1; break;
             case 0xd2: kind = DK_GRP2; bits = 8; modrm = true; op = 2; break;
             case 0xd3: kind = DK_GRP2; modrm = true; op = 2; break;
+            case 0x68 when !NoPushI: kind = DK_PUSH; op = 8; immBits = v; break;                       // PUSH imm16/32 (Op 8: the immediate, not a register)
+            case 0x6a when !NoPushI: kind = DK_PUSH; op = 8; immBits = 8; immSext8 = true; break;     // PUSH imm8 (sign-extended)
             case 0xc3: kind = DK_RET; break;
-            case 0xc2: kind = DK_RET; immBits = 16; break;   // RET imm16 (Win32 stdcall returns: StarCraft's hottest interpreted op)
+            case 0xc2 when !NoRetImm: kind = DK_RET; immBits = 16; break;   // RET imm16 (Win32 stdcall returns: StarCraft's hottest interpreted op)
             case 0xc6: kind = DK_MOVEI; bits = 8; modrm = true; immBits = 8; break;
             case 0xc7: kind = DK_MOVEI; modrm = true; immBits = v; break;
             case 0xe8: kind = DK_CALL; immBits = v; break;
@@ -291,7 +296,8 @@ public sealed partial class I386
                 if ((b & 0xf0) == 0x80) { kind = DK_JCC; op = (int)b; immBits = v; break; }
                 if (b is 0xb6 or 0xb7 or 0xbe or 0xbf) { kind = DK_MOVX; bits = (b & 1) == 0 ? 8 : 16; op = b >= 0xbe ? 1 : 0; modrm = true; break; }   // MOVZX / MOVSX: Bits = the source's
                 if ((b & 0xf0) == 0x90) { kind = DK_SETCC; bits = 8; op = (int)b; modrm = true; break; }
-                if (b == 0xaf) { kind = DK_IMUL; modrm = true; op = 0; break; }   // IMUL r, rm
+                if (b == 0xaf) { kind = DK_IMUL; modrm = true; op = 0; break; }
+                if (_hasMmx && b != 0x77 && MmxOpcode(b) && !NoMmxJit) { kind = DK_MMX; op = (int)b; modrm = true; if (b is >= 0x71 and <= 0x73) immBits = 8; break; }   // MMX: MmxBody through a helper (StarCraft's menu / video code; X86_NOMMXJIT: off)   // IMUL r, rm
                 if (b is 0xa0 or 0xa8 && !NoHelperOps && !NoStkOp && (StkMask & 8) != 0) { kind = DK_STKOP; op = b == 0xa0 ? 0xf0 : 0xf8; break; }   // (Op is a byte: F0h = PUSH FS, F8h = PUSH GS)   // PUSH FS / GS
                 return;
             case 0x69: kind = DK_IMUL; modrm = true; immBits = v; op = 1; break;   // IMUL r, rm, imm

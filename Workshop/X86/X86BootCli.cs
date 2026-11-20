@@ -63,6 +63,7 @@ internal static class X86BootCli
         }
     }
     private static AllocListener? _allocs;
+    private static readonly int SampleFrom = int.TryParse(Environment.GetEnvironmentVariable("X86_SAMPLEFROM"), out int sf) ? sf : 0, SampleSlice = int.TryParse(Environment.GetEnvironmentVariable("X86_SAMPLESLICE"), out int ss) ? ss : 997;
 
     public static int Boot(string[] args)
     {
@@ -326,10 +327,11 @@ internal static class X86BootCli
         if (Arg(args, "--sample") is string smp)
             for (int k = 0; k < int.Parse(smp); k++)
             {
-                m.RunClock(997);
+                if (k < SampleFrom) { m.RunClock(997); continue; }   // (X86_SAMPLEFROM: run to there in 997-unit slices, quietly; then X86_SAMPLESLICE units)
+                m.RunClock(k == SampleFrom ? 0 : SampleSlice);
                 uint lin = m.Cpu.SegBase[1] + m.Cpu.Ip;
                 var bytes = LinBytes(m, lin, 12);
-                Console.WriteLine($"  {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} lin {lin:X8} EAX {m.Cpu.R[0]:X8} ECX {m.Cpu.R[1]:X8} EDX {m.Cpu.R[2]:X8} ESP {m.Cpu.R[4]:X8} IF {(m.Cpu.Flags >> 9) & 1} | {bytes}");
+                Console.WriteLine($"  cyc {m.Cpu.Cycle} {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} lin {lin:X8} EAX {m.Cpu.R[0]:X8} ECX {m.Cpu.R[1]:X8} EDX {m.Cpu.R[2]:X8} ESP {m.Cpu.R[4]:X8} IF {(m.Cpu.Flags >> 9) & 1} | {bytes}");
             }
         foreach (var pg in Args(args, "--physgrep"))   // --physgrep "B1 B2 ..": where physical memory holds these bytes (with 24 bytes before and after)
         {
@@ -367,10 +369,24 @@ internal static class X86BootCli
         if (lanLink != null) Console.WriteLine($"lan: sent {lanLink.Sent} (IPX {lanLink.SentIpx}), received {lanLink.Received} (IPX {lanLink.ReceivedIpx}){(lanLink.Members > 0 ? $", members {lanLink.Members}" : "")}");
         if (m.Ata != null && m.Pci != null) Console.WriteLine($"ide: PCI cmd {m.Pci.ConfigRead(0, PciBus.IdeDevFn, 4) & 0xffff:X4} BAR4 {m.Pci.ConfigRead(0, PciBus.IdeDevFn, 0x20):X8} IDETIM {m.Pci.ConfigRead(0, PciBus.IdeDevFn, 0x40):X8} UDMA {m.Pci.ConfigRead(0, PciBus.IdeDevFn, 0x48):X8}; bus-master register accesses {m.Ata.Primary.BmAccesses}/{m.Ata.Secondary.BmAccesses}");
         if (m.Ata != null) Console.WriteLine($"ide: bus-master DMA transfers {m.Ata.Primary.DmaTransfers + m.Ata.Secondary.DmaTransfers}, {(m.Ata.Primary.DmaBytes + m.Ata.Secondary.DmaBytes) / 1024} KB");
-        if (m.Nic != null) Console.WriteLine($"nic: sent {m.Nic.FramesSent} frames, received {m.Nic.FramesReceived}; BAR0 {m.Pci!.NicFn!.Read32(0x10):X8} cmd {m.Pci.NicFn.Cfg[4]:X2} line {m.Pci.NicFn.Cfg[0x3c]} PIRQB {m.Pci.Isa.Cfg[0x61]:X2}");
+        if (m.Nic != null && m.Pci?.NicFn != null) Console.WriteLine($"nic: sent {m.Nic.FramesSent} frames, received {m.Nic.FramesReceived}; BAR0 {m.Pci!.NicFn!.Read32(0x10):X8} cmd {m.Pci.NicFn.Cfg[4]:X2} line {m.Pci.NicFn.Cfg[0x3c]} PIRQB {m.Pci.Isa.Cfg[0x61]:X2}");
         if (args.Contains("--jitstat")) Console.WriteLine($"jit: compiled {m.Cpu.JitCompiled} reused {m.Cpu.JitReused} variant-hits {m.Cpu.JitVariantHits} runs {m.Cpu.JitRuns} invalid {m.Cpu.JitInvalid} cycle {m.Cpu.Cycle} compiled-instrs {m.Cpu.JitInstrsTotal} ({100.0 * m.Cpu.JitInstrsTotal / Math.Max(1, m.Cpu.Cycle):F1}%) (set X86_JITSTAT for the per-block counts)");
         if (args.Contains("--jitstat")) Console.WriteLine($"jit: declined at entry {m.Cpu.JitDeclines} (unusable segment at the time: {string.Join(" ", m.Cpu.JitDeclineSeg)}); why: {string.Join(" ", Enumerable.Range(0, 64).Where(i => m.Cpu.DeclineWhy[i] > 0).Select(i => $"{i}={m.Cpu.DeclineWhy[i]}"))}");
-        if (args.Contains("--jitstat")) foreach (var l in m.Cpu.JitTop(25)) Console.WriteLine("  blk " + l);
+        if (args.Contains("--jitstat")) foreach (var l in m.Cpu.JitTop(int.TryParse(Environment.GetEnvironmentVariable("X86_JITTOP"), out int jtn) ? jtn : 25)) Console.WriteLine("  blk " + l);
+        if (PcMachine.TimeProbe) Console.WriteLine($"timeprobe: cpu batches {m.TicksCpu * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms (Exec1 {m.Cpu.TicksExec1 * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms), between batches {m.TicksDevices * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms, batches {m.Batches}");
+        if (PcMachine.TimeProbe) Console.WriteLine($"timeprobe: out-of-line instructions {m.Cpu.OolCalls}, {m.Cpu.TicksOol * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms inside them");
+        if (PcMachine.TimeProbe) Console.WriteLine($"timeprobe: compiled block runs {m.Cpu.JitTimedRuns}, {m.Cpu.TicksJit * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms inside them (out-of-line included); Exec1 steps {m.Cpu.Step1Calls}");
+        if (PcMachine.TimeProbe)
+        {
+            double tf = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            Console.WriteLine($"timeprobe: steps without a compiled block {m.Cpu.InterpCount.Sum()}, {m.Cpu.InterpTicks.Sum() * tf:F0} ms; top by time (first byte, 100 = fetch off the cached page):");
+            foreach (int i in Enumerable.Range(0, 257).OrderByDescending(i => m.Cpu.InterpTicks[i]).Take(16))
+                Console.WriteLine($"  {(i == 256 ? "page" : i.ToString("X2"))}: {m.Cpu.InterpCount[i]} steps, {m.Cpu.InterpTicks[i] * tf:F0} ms, {m.Cpu.InterpTicks[i] * tf * 1e6 / Math.Max(1, m.Cpu.InterpCount[i]):F0} ns each");
+        }
+        if (args.Contains("--jitstat")) Console.WriteLine($"  exec1 steps {m.Cpu.Step1Calls} of which compiled-block entries {m.Cpu.Step1Jit}; halt batches {m.HaltBatches}");
+        if (args.Contains("--jitstat")) Console.WriteLine("  linkpage nopg/pageend/limit/notlb/notag/io/ok: " + string.Join(" ", m.Cpu.LinkPageWhy));
+        if (args.Contains("--jitstat")) Console.WriteLine("  linkwhy budget/depth/linked/nocode/otherpage: " + string.Join(" ", m.Cpu.LinkWhy));
+        if (args.Contains("--jitstat")) foreach (var l in m.Cpu.InterpModes()) Console.WriteLine("  interpmode " + l);
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.InterpTop(40)) Console.WriteLine("  interp " + l);
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.InterpAt.OrderByDescending(x => x.Value).Take(30)) Console.WriteLine($"  interpat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))} [{m.Cpu.JitWhy(kv.Key)}]");
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.OolAt.OrderByDescending(x => x.Value).Take(40)) Console.WriteLine($"  oolat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))}");

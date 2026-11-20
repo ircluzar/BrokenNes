@@ -30,3 +30,11 @@ Re-run `t1.py regrade --console md` after merge, then sort what is still Jank:
 4. Use the fleet for comparison sweeps (C:\BrokenNes-work\fleet\HOWTO.md); heavy local work only in heavy slot1/slot2.
 
 Park the long tail (the remaining ~500 MD Jank) until round 2's causes are fixed and the regrade has run.
+
+## SEGA-01: the 71 Jank (2026-11-20, main 087a97c7)
+- Merged: J-Cart (Micro Machines II 3/4-player menu) + t1 md ladder maps all 15 shadow/highlight levels. md battery ALL GREEN (120 golden, 145 scenarios, fuzz, replay).
+- Recount on the deep runs: 20 already deep-OK + 7 more with the 15-level ladder (Sub-Terrania, Marsupilami, Jim Power, DJ Boy, Toughman, Fatal Fury, Rambo III) = 27 harness artifacts; 32 still deep-Jank; 10 deep "Not tested" (cmdline error 11-19) + 2 never run.
+- Targeted re-grade of those 40 (+MM II): keeper entry md_sj1_regrade (only-list C:\BrokenNes-work\md_sj1_regrade.json, --force ingest so grades can rise), Workshop C:\brokennes\ws_sj1, kit t1.py updated on all PCs.
+- Raiden Trad probe: without input BrokenNes matches BizHawk's attract (BN ~2 frames ahead at 180, ~5 at 540: slow drift). Start held 8 frames at 180 or at 420: BrokenNes takes it, BizHawk ignores it both times. 6-button vs 3-button pad on BN changes nothing. The game reads the pad 4 NOPs after each TH write ($00ABF6); suspect Genplus's TH-transition latency model. Needs a third opinion (BlastEm, in C:\BrokenNes-tools\sega\oracles) before changing MdPads.
+- md_sj1_regrade DONE: 33 of the 40 now OK (incl. Micro Machines II); md Jank 71 -> 39 (OK 716). Still Jank from the list: Super Bubble Bobble, World Trophy Soccer, V.R Fighter vs Taken2, Gauntlet, Trouble Shooter, Blood Shot, Twinkle Tale.
+- Probes (no input vs input, BN vs BizHawk): Raiden = no Start bug; the attract demo matches but BN drifts ahead (~2 frames at 180, ~7 at 600: fewer lag frames, a CPU/VDP timing gap), so presses land at different moments. PGA European Tour now matches through Start (the Jank came from an older build; re-grade it). Gaiares = REAL: frame-exact to 840, then from ~870 (after the second Start at 840) the player ship sprite is missing in BN while the beam is drawn; suspect the sprite attribute cache/masking (MdVdpRender.cs ~527, ~57). S3&K / S&K+S2 probes did not run (bad shell quoting); redo.

@@ -42,7 +42,7 @@ public static class SegaRomFormat
             bool sega = head[..4].SequenceEqual("SEGA"u8) || head.Slice(1, 4).SequenceEqual("SEGA"u8);
             if (sega)
             {
-                bool unsupported = head.IndexOf("32X"u8) >= 0 || head.IndexOf("PICO"u8) >= 0 || IsSvpCartridge(md);
+                bool unsupported = head.IndexOf("32X"u8) >= 0 || head.IndexOf("PICO"u8) >= 0;
                 return unsupported ? null : ConsoleKind.Genesis;
             }
         }
@@ -71,8 +71,8 @@ public static class SegaRomFormat
     }
 
     /// <summary>
-    /// A cartridge with the SVP chip (a Samsung SSP1601 signal processor next to the ROM that draws the 3D view): Virtua Racing, the only game that has one, serial MK-1229. The chip is not emulated, so the cartridge is
-    /// not accepted (run as a plain ROM the game shows its menus and HUD with a broken 3D view, which would look like a bug of the games rather than a missing chip).
+    /// A cartridge with the SVP chip (a Samsung SSP1601 signal processor next to the ROM that draws the 3D view): Virtua Racing, the only game that has one, serial MK-1229. Emulated by <see cref="MdSvp"/>
+    /// (a port of Genesis Plus GX's SVP), which <see cref="MdCartridge"/> attaches when this is true.
     /// </summary>
     public static bool IsSvpCartridge(byte[] md) => md.Length >= 0x190 && md.AsSpan(0x180, 14).IndexOf("GM MK-1229"u8) == 0;
 

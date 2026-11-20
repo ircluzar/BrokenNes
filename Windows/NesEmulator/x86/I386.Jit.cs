@@ -37,7 +37,7 @@ public sealed partial class I386
         public int[] RunAt = Array.Empty<int>(), RunLen = Array.Empty<int>();   // the byte ranges Bytes holds
         public uint[] Addrs = Array.Empty<uint>();   // the instructions, by address (entry k = Addrs[k])
         public bool C16, Pg;   // compiled for this code size, and with paging on or off (the memory accesses differ)
-        public long Runs, Instrs, Ticks;
+        public long Runs, Instrs, Ticks, Retired;
         public uint[] Pages = Array.Empty<uint>(), Gens = Array.Empty<uint>();   // the 4 KB pages Bytes come from, and their code write generations when last checked
         public uint Epoch = 0xffffffff;   // _memEpoch when last checked (FFFFFFFF: never: compare the bytes)
     }
@@ -60,6 +60,11 @@ public sealed partial class I386
     /// <summary>X86_NOKEEPSEGS: reload the segments after every out-of-line instruction (A/B of DcKeepsSegs).</summary>
     private static readonly bool NoKeepSegs = Environment.GetEnvironmentVariable("X86_NOKEEPSEGS") != null;
     /// <summary>X86_NOHELPEROPS: flag ops and stack ops out of line again (A/B).</summary>
+    private static readonly bool NoRetImm = Environment.GetEnvironmentVariable("X86_NORETIMM") != null, NoPushI = Environment.GetEnvironmentVariable("X86_NOPUSHI") != null, NoRdSeg = Environment.GetEnvironmentVariable("X86_NORDSEG") != null;
+    /// <summary>X86_NOPAGEMISS: the old fetch-page miss path (the target's first instruction always interpreted, fetched byte by byte through
+    /// the slow path, no CMP + Jcc fold there). Default since 2026-11-20: the miss path caches the page, tries the compiled block, and fetches fast.</summary>
+    private static readonly bool NoPageMissJit = Environment.GetEnvironmentVariable("X86_NOPAGEMISS") != null;
+    private static readonly bool NoMmxJit = Environment.GetEnvironmentVariable("X86_NOMMXJIT") != null;
     private static readonly bool NoHelperOps = Environment.GetEnvironmentVariable("X86_NOHELPEROPS") != null;
     private static readonly bool NoStkOp = Environment.GetEnvironmentVariable("X86_NOSTKOP") != null, NoFlagOp = Environment.GetEnvironmentVariable("X86_NOFLAGOP") != null;
     private static readonly int StkMask = int.TryParse(Environment.GetEnvironmentVariable("X86_STKMASK"), out int sm) ? sm : 15;   // (bit 3 PUSH Sreg: was broken by an Op truncation, PUSH FS pushed GS: Win98 fatal 0D at boot)
@@ -83,14 +88,34 @@ public sealed partial class I386
     public int JitCompiled { get; private set; }
     public long JitRuns, JitInvalid, JitDeclines;
     public readonly long[] JitDeclineSeg = new long[6];
-    public IEnumerable<string> JitTop(int n) => _jitAll.OrderByDescending(b => b.Instrs).Take(n)
-        .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} ns/instr {b.Ticks * 1e9 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, b.Instrs):F2} | {Convert.ToHexString(b.Bytes)}");
+    public IEnumerable<string> JitTop(int n) => _jitAll.OrderByDescending(b => b.Ticks).Take(n)
+        .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} retired {b.Retired} ns/retired {b.Ticks * 1e9 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, b.Retired):F2} | {Convert.ToHexString(b.Bytes)}");
     private readonly long[] _interpOps = new long[65536];
     public readonly Dictionary<uint, long> InterpAt = new();
     /// <summary>JITSTAT: why an interpreted address is not compiled: its entry's state.</summary>
     public string JitWhy(uint pa) { var en = _je[JitIndex(pa)]; return en == null ? "no entry" : en.Start != pa ? $"slot holds {en.Start:X8}" : $"c16 {en.C16} pg {en.Pg} visits {en.Visits} failed {en.Failed} pending {en.Pending} code {(en.Code != null)}"; }
+    /// <summary>JITSTAT: interpreted instructions by mode (VM / 16-bit code / ring 0) and by the address's JIT entry state.</summary>
+    private readonly long[,] _interpMode = new long[8, 6];
+    public IEnumerable<string> InterpModes()
+    {
+        string[] st = { "no entry", "other start", "warming", "failed", "pending", "has code" };
+        for (int md = 0; md < 8; md++)
+        {
+            long t = 0; for (int s = 0; s < 6; s++) t += _interpMode[md, s];
+            if (t == 0) continue;
+            yield return $"{((md & 4) != 0 ? "V86" : (md & 2) != 0 ? "16-bit" : "32-bit")} {((md & 1) != 0 ? "ring0" : "ring>0")}: {t}  (" + string.Join(", ", Enumerable.Range(0, 6).Where(s => _interpMode[md, s] > 0).Select(s => $"{st[s]} {_interpMode[md, s]}")) + ")";
+        }
+    }
+    private void JitCountInterp(uint pa)
+    {
+        int md = ((Flags & VM) != 0 ? 4 : 0) | (Code16 ? 2 : 0) | (Cpl == 0 ? 1 : 0);
+        var en = _je[JitIndex(pa)];
+        int s = en == null ? 0 : en.Start != pa ? 1 : en.Failed ? 3 : en.Pending ? 4 : en.Code != null ? 5 : 2;
+        _interpMode[md, s]++;
+        JitCountInterp0(pa);
+    }
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void JitCountInterp(uint pa) { InterpAt[pa] = InterpAt.GetValueOrDefault(pa) + 1; if (pa + 2 < MemSize) { int k = Mem[pa] << 8 | Mem[pa + 1]; if (++_interpOps[k] == 100000 && JitWatch == k) Console.Error.WriteLine($"jw: op {k:X4} at {pa:X8}"); } }
+    private void JitCountInterp0(uint pa) { InterpAt[pa] = InterpAt.GetValueOrDefault(pa) + 1; if (pa + 2 < MemSize) { int k = Mem[pa] << 8 | Mem[pa + 1]; if (++_interpOps[k] == 100000 && JitWatch == k) Console.Error.WriteLine($"jw: op {k:X4} at {pa:X8}"); } }
     private readonly long[] _oolOps = new long[65536];
     /// <summary>The out-of-line instructions inside compiled blocks (JInterp), by first two bytes.</summary>
     public IEnumerable<string> OutOfLineTop(int n) => Enumerable.Range(0, 65536).Where(i => _oolOps[i] > 0).OrderByDescending(i => _oolOps[i]).Take(n)
@@ -119,6 +144,7 @@ public sealed partial class I386
                 if (JitSame(code))
                 {
                     _jitCur = code;
+                    if (PcMachine.TimeProbe) return JitRunTimed(code, en.K);
                     if (!JitStats) return code.Fn(this, en.K);
                     return JitRunCounted(code, en.K);
                 }
@@ -141,11 +167,22 @@ public sealed partial class I386
         Console.Error.WriteLine(en == null ? "jw: no entry" : $"jw: start {en.Start:X8} c16 {en.C16}/{_c16} visits {en.Visits} failed {en.Failed} pending {en.Pending} code {(en.Code == null ? "-" : en.Code.Start.ToString("X8") + " same " + JitSame(en.Code))} k {en.K} cr0 {Cr0:X} segs " +
             string.Join(",", Enumerable.Range(0, 6).Select(s => JSegOk(s) ? "1" : "0")));
     }
+    /// <summary>X86_TIMEPROBE: wall ticks inside compiled blocks (out-of-line instructions included) and the block runs.</summary>
+    public long TicksJit, JitTimedRuns;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int JitRunTimed(JitCode code, int k)
+    {
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        int rc = code.Fn(this, k);
+        TicksJit += System.Diagnostics.Stopwatch.GetTimestamp() - t0; JitTimedRuns++;
+        return rc;
+    }
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JitRunCounted(JitCode code, int k)
     {
-        long c0 = Cycle, t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        long c0 = Cycle, s0 = _steps, t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         int rc = code.Fn(this, k);
+        if (rc == OK) code.Retired += s0 - _steps + 1;   // (steps the block and the blocks it linked to retired; a skipped spin counts once)
         code.Ticks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
         JitRuns++; code.Runs++; code.Instrs += Cycle - c0;
         if (rc == JIT_DECLINE)
@@ -202,12 +239,35 @@ public sealed partial class I386
     // expand-down data segments (Win98's flat Win32 DS / ES / SS is one: 0167h, limit EE60h, B = 1): valid offsets are limit + 1 .. FFFFh / FFFFFFFFh.
     // The compiled limit check is (off - lo) <= span - (size - 1): lo = 0, span = limit for the usual kind; lo = limit + 1, span = top - lo here
     /// <summary>Usable for reads only: a readable code segment (a CS: override, jump tables in 16-bit code; Win98's ring-0 code reads through CS too).</summary>
-    private bool JSegRdOk(int seg) => JSegOk(seg) || (Cr0 & 1) != 0 && (Flags & VM) == 0 && ((SegFlags[seg] & 0x1a) == 0x1a || (SegFlags[seg] & 0x1e) == 0x10) && SegLimit[seg] >= 3;   // (+ read-only data, expand-up: Win98's 0123h, limit 3 - StarCraft's GS: / 16-bit ES:)
+    private bool JSegRdOk(int seg) => JSegOk(seg) || (Cr0 & 1) != 0 && (Flags & VM) == 0 && ((SegFlags[seg] & 0x1a) == 0x1a || !NoRdSeg && (SegFlags[seg] & 0x1e) == 0x10) && SegLimit[seg] >= 3;   // (+ read-only data, expand-up: Win98's 0123h, limit 3 - StarCraft's GS: / 16-bit ES:)
     private bool ExpandDown(int seg) => (Cr0 & 1) != 0 && (Flags & VM) == 0 && (SegFlags[seg] & 0x1c) == 0x14;
-    [MethodImpl(MethodImplOptions.NoInlining)] private uint JSegLo(int seg) => ExpandDown(seg) ? SegLimit[seg] + 1 : 0;
-    [MethodImpl(MethodImplOptions.NoInlining)] private uint JSegSpan(int seg) => ExpandDown(seg) ? ((SegFlags[seg] & 0x4000) != 0 ? 0xffffffffu : 0xffffu) - (SegLimit[seg] + 1) : SegLimit[seg];
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegLo(int seg) => ExpandDown(seg) ? SegLimit[seg] + 1 : 0;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegSpan(int seg) => ExpandDown(seg) ? ((SegFlags[seg] & 0x4000) != 0 ? 0xffffffffu : 0xffffu) - (SegLimit[seg] + 1) : SegLimit[seg];
     private static readonly bool NoExpandDown = Environment.GetEnvironmentVariable("X86_NOEXPANDDOWN") != null;
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegLim(int seg) => SegLimit[seg];
+    // a compiled block's prologue (and the reload after an out-of-line instruction): every segment it uses in ONE call - the same
+    // JSegOk / JSegRdOk / JSegBase / JSegSpan / JSegLo values, read back through inlined getters (was up to 8 calls per segment)
+    private readonly uint[] _jsBase = new uint[6], _jsSpan = new uint[6], _jsLo = new uint[6];
+    private int _jsOk, _jsRd;
+    private static readonly bool NoSegLoad = Environment.GetEnvironmentVariable("X86_NOSEGLOAD") != null;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void JSegLoad(int mask)
+    {
+        int ok = 0, rd = 0;
+        for (int s = 0; s < 6; s++)
+        {
+            if ((mask >> s & 1) == 0) continue;
+            if (JSegOk(s)) { ok |= 1 << s; rd |= 1 << s; }
+            else if (JSegRdOk(s)) rd |= 1 << s;
+            _jsBase[s] = SegBase[s]; _jsSpan[s] = JSegSpan(s); _jsLo[s] = JSegLo(s);
+        }
+        _jsOk = ok; _jsRd = rd;
+    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JSOk(int s) => (_jsOk >> s & 1) != 0;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JSRd(int s) => (_jsRd >> s & 1) != 0;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSBase(int s) => _jsBase[s];
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSSpan(int s) => _jsSpan[s];
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSLo(int s) => _jsLo[s];
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegBase(int seg) => SegBase[seg];
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JCond(uint c) => Cond(c);
     [MethodImpl(MethodImplOptions.NoInlining)] private uint JAlu(int op, int bits, uint a, uint b) => Alu(op, bits, a, b);
@@ -285,8 +345,14 @@ public sealed partial class I386
     {
         Cycle = cyc; _steps = st; NextIp = ip;
         if (JitStats && _jitCur != null) { uint pa = (_jitCur.Start & ~0xfffu) | ((SegBase[SEG_CS] + ip) & 0xfff); if (pa + 2 < MemSize) { _oolOps[Mem[pa] << 8 | Mem[pa + 1]]++; JitOolAt(pa); } }   // (the region never leaves its 4 KB page)
-        return Step1(false);
+        if (!PcMachine.TimeProbe) return Step1(false);
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        int r = Step1(false);
+        TicksOol += System.Diagnostics.Stopwatch.GetTimestamp() - t0; OolCalls++;
+        return r;
     }
+    /// <summary>X86_TIMEPROBE: wall ticks inside out-of-line instructions (JInterp) and their count.</summary>
+    public long TicksOol, OolCalls;
     /// <summary>After an out-of-line instruction: can the compiled code go on (the same code size, paging still off, the fetch still
     /// on this code page, every segment it uses still usable)? Leaves _spm as Exec1's next iteration would.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -348,14 +414,32 @@ public sealed partial class I386
 
     /// <summary>Block linking (X86_NOLINK turns it off): leave as JExitOk, but when the next instruction starts a valid compiled block
     /// that Exec1's next iteration would run (the same fetch-page test, entry lookup and code check as Step1), run it from here.</summary>
+    private int JFpuNmRefund() => (Cr0 & 0xc) != 0 ? _memCost : 0;
+    private static readonly bool NoPageLink = Environment.GetEnvironmentVariable("X86_PAGELINK") == null;   // opt-in: links 7M -> 23M per 10 s in StarCraft but no wall-clock gain (A/B 2026-11-20)
+    /// <summary>Block linking across pages: what Peek8 would do at the next fetch, without a page walk or fault - only when the TLB already
+    /// holds a read translation for this CPL (paging on), the target is 16+ bytes inside its page and the CS limit, and the page is plain RAM.</summary>
+    public readonly long[] LinkPageWhy = new long[7];
+    private void LPW(int i) { if (JitStats) LinkPageWhy[i]++; }
+    private void LinkPage(uint laddr, uint ip)
+    {
+        if ((Cr0 & CR0_PG) == 0) { LPW(0); return; } if ((laddr & 0xfff) >= 4096 - 16) { LPW(1); return; } if ((ulong)ip + 16 > SegLimit[SEG_CS]) { LPW(2); return; }
+        uint lpg = laddr >> 12; int e = (int)(lpg % TlbSize);
+        if (_tlbLpgno[e] != lpg) { LPW(3); return; } if (PteLookup[_tlbLookup[e] * 4 + (Cpl == 3 ? 2 : 0)] != 0) { LPW(4); return; }   // (a read at this CPL: the page walk's own check)
+        uint pa = _tlbXaddr[e] ^ laddr;
+        if (MemSize <= 4096 || pa >= MemSize - 4096 || InIoMem(pa) || InIoMem(pa + 16)) { LPW(5); return; } LPW(6);
+        _ifLaddr = laddr & ~4095ul; _ifXaddr = pa ^ laddr;
+    }
+    /// <summary>JITSTAT: block exits - 0 step budget out, 1 link depth, 2 linked, 3 no compiled block at the target, 4 target on another fetch page.</summary>
+    public readonly long[] LinkWhy = new long[5];
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JExitLink(uint ip, uint nextIp, long cyc, int st)
     {
         Ip = ip; NextIp = nextIp; Cycle = cyc; _steps = st + 1;
-        if (st <= 0 || !JitLink || _linkDepth >= 64) return OK;   // (each link nests a call: at most 64 deep)
+        if (st <= 0 || !JitLink || _linkDepth >= 64) { if (JitStats) LinkWhy[st <= 0 ? 0 : 1]++; return OK; }   // (each link nests a call: at most 64 deep)
         _steps = st;   // (Exec1's loop step for the block that just ran)
         _c16 = Code16; _spm = SpMask;
         uint laddr = SegBase[SEG_CS] + nextIp;
+        if (((ulong)laddr ^ _ifLaddr) >= 4096 - 16 && !NoPageLink) LinkPage(laddr, nextIp);   // a target on another page: cache its fetch page when the TLB already allows it
         if (((ulong)laddr ^ _ifLaddr) < 4096 - 16)
         {
             uint paddr = _ifXaddr ^ laddr;
@@ -367,12 +451,14 @@ public sealed partial class I386
                 _linkDepth++;
                 int rc = code.Fn(this, en.K);
                 _linkDepth--;
+                if (JitStats) LinkWhy[2]++;
                 if (rc != JIT_DECLINE) return rc;
                 // (declined in its prologue, nothing changed: back to Exec1, which would interpret the caller's start address again
                 // if this returned JIT_DECLINE)
                 Ip = ip; Cycle = cyc;
             }
         }
+        if (JitStats) LinkWhy[((ulong)(SegBase[SEG_CS] + nextIp) ^ _ifLaddr) < 4096 - 16 ? 3 : 4]++;
         _steps = st + 1;
         return OK;
     }
@@ -403,7 +489,7 @@ public sealed partial class I386
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JCodeSame", "JCall", "JRet",
+        foreach (var n in new[] { "JRam", "JSegLoad", "JSOk", "JSRd", "JSBase", "JSSpan", "JSLo", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JFpuNmRefund", "JMmx", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
                      "JXlat", "JFlagOp", "JStk", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
@@ -797,32 +883,34 @@ public sealed partial class I386
         // instruction: decline, the interpreter runs it and raises what it must); the rest of the region still runs compiled (X86_SEGLAZY=0: decline)
         var segOkL = new LocalBuilder?[6]; var segRdL = new LocalBuilder?[6];
         var ran = il.DeclareLocal(typeof(bool));
+        int segMask = 0;
+        foreach (int s in usedSegs) segMask |= 1 << s;
+        bool segLoad = !NoSegLoad && segMask != 0;
+        if (segLoad) { Ld0(); I4(segMask); Call("JSegLoad"); }
         foreach (int s in usedSegs)
         {
             if (SegLazy)
             {
                 segOkL[s] = il.DeclareLocal(typeof(bool));
-                Ld0(); I4(s); Call("JSegOk"); Stl(segOkL[s]!);
+                Ld0(); I4(s); Call(segLoad ? "JSOk" : "JSegOk"); Stl(segOkL[s]!);
                 segRdL[s] = il.DeclareLocal(typeof(bool));
-                Ld0(); I4(s); Call("JSegRdOk"); Stl(segRdL[s]!);
+                Ld0(); I4(s); Call(segLoad ? "JSRd" : "JSegRdOk"); Stl(segRdL[s]!);
             }
             else
             {
                 var ok = il.DefineLabel();
-                Ld0(); I4(s); Call("JSegOk"); il.Emit(OpCodes.Brtrue, ok);
+                Ld0(); I4(s); Call(segLoad ? "JSOk" : "JSegOk"); il.Emit(OpCodes.Brtrue, ok);
                 Ld0(); I4(10 + s); il.Emit(OpCodes.Stfld, FDeclWhy);
                 I4(JIT_DECLINE); il.Emit(OpCodes.Ret);
                 il.MarkLabel(ok);
             }
             sb[s] = il.DeclareLocal(typeof(uint));
-            Ld0(); I4(s); Call("JSegBase"); il.Emit(OpCodes.Stloc, sb[s]!);
+            Ld0(); I4(s); Call(segLoad ? "JSBase" : "JSegBase"); il.Emit(OpCodes.Stloc, sb[s]!);
             sl[s] = il.DeclareLocal(typeof(uint));
-            Ld0(); I4(s); Call("JSegSpan"); il.Emit(OpCodes.Stloc, sl[s]!);
+            Ld0(); I4(s); Call(segLoad ? "JSSpan" : "JSegSpan"); il.Emit(OpCodes.Stloc, sl[s]!);
             slo[s] = il.DeclareLocal(typeof(uint));
-            Ld0(); I4(s); Call("JSegLo"); il.Emit(OpCodes.Stloc, slo[s]!);
+            Ld0(); I4(s); Call(segLoad ? "JSLo" : "JSegLo"); il.Emit(OpCodes.Stloc, slo[s]!);
         }
-        int segMask = 0;
-        foreach (int s in usedSegs) segMask |= 1 << s;
         Ld0(); Call("JCycle"); il.Emit(OpCodes.Stloc, cyc);
         Ld0(); Call("JSteps"); il.Emit(OpCodes.Stloc, st);
         LdF(FR); I4(0); il.Emit(OpCodes.Ldelema, typeof(uint)); Stl(rref);
@@ -945,7 +1033,8 @@ public sealed partial class I386
                 Ld0(); Bool(c16); Bool(pg); U4(pa); I4(segMask); Bool(e.Mod != 0); Call("JStill"); il.Emit(OpCodes.Brfalse, leaveG);
                 if (e.Rm == 0 || NoKeepSegs)   // (DcKeepsSegs: segments, SS size and CPL stay as they were: nothing to reload)
                 {
-                    foreach (int s in usedSegs) { Ld0(); I4(s); Call("JSegBase"); Stl(sb[s]!); Ld0(); I4(s); Call("JSegSpan"); Stl(sl[s]!); Ld0(); I4(s); Call("JSegLo"); Stl(slo[s]!); }
+                    if (segLoad) { Ld0(); I4(segMask); Call("JSegLoad"); foreach (int s in usedSegs) { Ld0(); I4(s); Call("JSBase"); Stl(sb[s]!); Ld0(); I4(s); Call("JSSpan"); Stl(sl[s]!); Ld0(); I4(s); Call("JSLo"); Stl(slo[s]!); } }
+                    else foreach (int s in usedSegs) { Ld0(); I4(s); Call("JSegBase"); Stl(sb[s]!); Ld0(); I4(s); Call("JSegSpan"); Stl(sl[s]!); Ld0(); I4(s); Call("JSegLo"); Stl(slo[s]!); }
                     Ld0(); Call("JSpm"); Stl(spm);
                     if (pg) LdPerm();   // (an out-of-line instruction may have changed the CPL)
                 }
@@ -988,7 +1077,7 @@ public sealed partial class I386
                 if (e.Index < 8) { LdReg(32, e.Index); if (e.Scale != 0) { I4(e.Scale); il.Emit(OpCodes.Shl); } il.Emit(OpCodes.Add); }
                 if (e.A16) { I4(0xffff); il.Emit(OpCodes.And); }
                 il.Emit(OpCodes.Stloc, ea);
-                if (e.Kind is not (DK_LEA or DK_FPU))   // (an ESC: the helper checks the limit after #NM, as the interpreter)
+                if (e.Kind is not (DK_LEA or DK_FPU or DK_MMX))   // (an ESC: the helper checks the limit after #NM, as the interpreter)
                 {
                     LimitCheck(k, e.Seg, ea, Math.Max(1, bits / 8));
                     il.Emit(OpCodes.Ldloc, sb[e.Seg]!); il.Emit(OpCodes.Ldloc, ea); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, la);
@@ -1219,7 +1308,7 @@ public sealed partial class I386
                 {
                     // Push(bits, R[reg]): la = SS base + ((sp - n) & spm); SetSp(sp - n); store
                     int pb = e.O16 ? 16 : 32;
-                    LdReg(pb, op); Stl(t);
+                    if (op == 8) U4(e.Imm); else LdReg(pb, op); Stl(t);   // (Op 8: PUSH imm)
                     LdReg(32, 4); I4(pb / 8); Op(OpCodes.Sub); Stl(A);
                     Ld(A); Ld(spm); Op(OpCodes.And); Stl(ea); LimitCheck(k, SEG_SS, ea, pb / 8);
                     il.Emit(OpCodes.Ldloc, sb[SEG_SS]!); Ld(A); Ld(spm); Op(OpCodes.And); Op(OpCodes.Add); Stl(la);
@@ -1406,8 +1495,24 @@ public sealed partial class I386
                     }
                     break;
                 }
+                case DK_MMX:
+                {
+                    Prep();
+                    Ld0(); I4(op); I4(op is >= 0x71 and <= 0x73 ? (int)e.Imm : -1); Call("JMmx"); FailIfFalse();
+                    if (mem && op is 0x7e or 0x7f)
+                    {   // a store: it may have written to this code, leave right after it
+                        var same = il.DefineLabel();
+                        Ld0(); Call("JCodeSame"); il.Emit(OpCodes.Brtrue, same);
+                        StDec(); LeaveAfter(k, () => IpAt(pe));
+                        il.MarkLabel(same);
+                    }
+                    break;
+                }
                 case DK_FPU:
                 {
+                    // #NM (CR0.EM / TS: Win98's lazy FPU switch) comes before the interpreter decodes the ModR/M, so it charges no memory
+                    // operand then: take back the cost the instruction was charged with (savestates: JIT == interpreter)
+                    if (mem) { il.Emit(OpCodes.Ldloc, cyc); Ld0(); Call("JFpuNmRefund"); il.Emit(OpCodes.Conv_I8); il.Emit(OpCodes.Sub); il.Emit(OpCodes.Stloc, cyc); }
                     Prep();
                     Ld0(); I4(op); Call("JFpu"); FailIfFalse();
                     bool load = op is 0 or 2 or 4 or 6 || (op == 1 && e.Reg is 0 or 4 or 5) || (op == 3 && e.Reg is 0 or 5) || (op == 5 && e.Reg is 0 or 4)
@@ -1453,5 +1558,5 @@ public sealed partial class I386
     private static readonly bool SegLazy = Environment.GetEnvironmentVariable("X86_SEGLAZY") != "0";
 
     private static bool DcHasModrm(byte kind) => kind is DK_MOVEG or DK_MOVGE or DK_ALUEG or DK_ALUGE or DK_GRP1 or DK_GRP2 or DK_TESTEG
-        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU;
+        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU or DK_MMX;
 }

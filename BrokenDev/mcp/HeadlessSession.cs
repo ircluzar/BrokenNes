@@ -1139,9 +1139,59 @@ internal sealed partial class HeadlessSession : Session
         return o;
     }
 
+    /// <summary>Genesis: the sprite table walked by its link list as the VDP walks it (Y, size and link from the attribute cache, the rest from VRAM), each entry's cached and VRAM first words
+    /// (a mismatch is a sprite the hardware places other than the table in VRAM says), and the VDP registers.</summary>
+    private ToolOut MdSprites(NesEmulator.Sega.MdSession md, bool draw, int scale)
+    {
+        var v = md.Board.Vdp;
+        bool h40 = v.H40;
+        int sat = (v.Reg[5] & (h40 ? 0x7E : 0x7F)) << 9;
+        int max = h40 ? 80 : 64;
+        var list = new JsonArray();
+        var boxes = new List<DebugPictures.SpriteInfo>();
+        int idx = 0, mismatches = 0;
+        var seen = new HashSet<int>();
+        for (int n = 0; n < max && seen.Add(idx); n++)
+        {
+            int a = sat + idx * 8, c = idx * 4;
+            int VR(int o) => v.Vram[a + o & 0xFFFF];
+            int cy = (v.SpriteCache[c] << 8 | v.SpriteCache[c + 1]) & 0x3FF, csize = v.SpriteCache[c + 2], clink = v.SpriteCache[c + 3] & 0x7F;
+            int vy = (VR(0) << 8 | VR(1)) & 0x3FF, vsize = VR(2), vlink = VR(3) & 0x7F;
+            int attr = VR(4) << 8 | VR(5), x = (VR(6) << 8 | VR(7)) & 0x1FF;
+            int w = (csize >> 2 & 3) + 1, h = (csize & 3) + 1;
+            bool diff = cy != vy || csize != vsize || clink != vlink;
+            if (diff) mismatches++;
+            var e = new JsonObject
+            {
+                ["index"] = idx, ["x"] = x - 128, ["y"] = (cy & 0x1FF) - 128, ["w"] = w * 8, ["h"] = h * 8, ["tile"] = Num.Hex(attr & 0x7FF, 3), ["palette"] = attr >> 13 & 3,
+                ["priority"] = attr >> 15 & 1, ["flipX"] = (attr & 0x800) != 0, ["flipY"] = (attr & 0x1000) != 0, ["link"] = clink,
+            };
+            if (diff) e["vram"] = $"y={(vy & 0x1FF) - 128} size={Num.Hex(vsize)} link={vlink} (cache differs)";
+            list.Add(e);
+            boxes.Add(new DebugPictures.SpriteInfo { Index = idx, X = x - 128, Y = (cy & 0x1FF) - 128, Width = w * 8, Height = h * 8 });
+            idx = clink;
+            if (idx == 0 || idx >= 80) break;
+        }
+        var regs = new JsonArray();
+        for (int i = 0; i < 24; i++) regs.Add(Num.Hex(v.Reg[i]));
+        var o = new ToolOut(new JsonObject
+        {
+            ["sprites"] = list, ["count"] = list.Count, ["frame"] = Frames, ["sat"] = Num.Hex(sat, 4), ["h40"] = h40, ["cacheMismatches"] = mismatches, ["vdpRegisters"] = regs,
+            ["note"] = "the link list from sprite 0 as the VDP walks it (Y/size/link from the attribute cache); x, y are screen pixels (table value - 128); vdpRegisters are R0-R23",
+        });
+        if (draw)
+        {
+            var (px, pw, ph) = Picture();
+            DebugPictures.DrawBoxes(px, pw, ph, boxes);
+            o.Pngs.Add(Png.FromArgb(px, pw, ph, scale));
+        }
+        return o;
+    }
+
     public override ToolOut Sprites(bool draw, int scale)
     {
         // one decoder with the desktop's Sprites window (BrokenDev D8): NesEmulator.Debugging.DebugPictures
+        if ((cs is NesEmulator.Mix.SegaPictureSession sp ? sp.Inner : cs) is NesEmulator.Sega.MdSession md) return MdSprites(md, draw, scale);
         if (M == null || !(nes != null || cs is GbSession || cs is SnesSession))
             throw new ToolError($"the sprite list covers the NES, SNES, WideMess and Game Boy; not the {Consoles.DisplayName(console)} yet");
         List<DebugPictures.SpriteInfo> sprites;

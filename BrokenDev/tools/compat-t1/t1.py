@@ -35,6 +35,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "catalog"))
 import catalog  # noqa: E402
 
+# md is graded as T1_VERSION + MD_VERSION (t1_version). md2: Genesis Start presses held START_HOLD["md"] = 40 frames (was 8):
+# boot-timing differences vs Genplus-gx (S3&K, S&K+S2, Gaiares, Raiden Trad) made an 8-frame press land in frames one emulator
+# reads the pad and the other does not; a 40-frame hold is read on both. Every other console keeps 8 and its version string.
+MD_VERSION = "-md2"
+START_HOLD = {"md": 40}
 T1_VERSION = "t1-4"   # (md: BrokenNes pictures mapped onto Genplus-gx's colour ladder before comparing, see MD_LADDER) t1-4: NES input latch line241 (was line240 in t1-3: Lunar Pool / Death Race / Classic Concentration poll $4016 near 240:140 and read the next step early; line241 matches Mesen's inputPolled). t1-3: input latched at the same point on both sides + NES picture window fixed
 LATCH = os.environ.get("BNT1_LATCH", "line241")   # "frame" = the t1-2 behaviour (a frame of input skew vs Mesen)
 HEAVY = os.environ.get("BNT1_HEAVY", r"C:\BrokenNes-work\heavy")
@@ -198,16 +203,21 @@ def ranks(l):
 # Genesis colour: BrokenNes outputs the measured (non-linear) DAC ladder 0,49,87,119,146,174,206,255 per 3-bit level; BizHawk's
 # Genplus-gx outputs the linear 0,34,...,238. Same picture, different brightness: ~0.05-0.08 on picdiff's edge term, which made
 # whole title screens "close, not same" (Streets of Rage, Mortal Kombat, Earthworm Jim...). Map BrokenNes's MD pictures onto the
-# reference ladder before comparing them with BizHawk's. Nearest level, so shadow/highlight mid-levels land on a neighbour.
+# reference ladder before comparing them with BizHawk's.
+# Shadow/highlight (SEGA-01, 2026-11-19): both emulators output 15 levels, BrokenNes its measured ladder (MdVdpRender.Levels15),
+# Genplus-gx 17*k (shadow = level/2, highlight = 119 + level/2). The old 8-level map pushed every shadowed pixel onto a neighbour
+# (Marsupilami's whole menu scored 0.13 "differs"), so map all 15 levels.
 MD_LADDER = False
 _MD_BN = np.array([0, 49, 87, 119, 146, 174, 206, 255])
 _MD_GP = np.array([0, 34, 68, 102, 136, 170, 204, 238])
+_MD_BN15 = np.array([0, 27, 49, 71, 87, 103, 119, 130, 146, 157, 174, 190, 206, 228, 255])
+_MD_GP15 = np.arange(15) * 17
 
 
 def to_ref_ladder(img):
     if not MD_LADDER or img is None:
         return img
-    return _MD_GP[np.abs(img[..., None] - _MD_BN).argmin(-1)].astype(np.int32)
+    return _MD_GP15[np.abs(img[..., None] - _MD_BN15).argmin(-1)].astype(np.int32)
 
 
 def picdiff(a, b):
@@ -290,14 +300,18 @@ def t2_movie_steps(path):
     return steps, frames
 
 
-def generic_script(start, minutes, prefix=None):
+def t1_version(console):
+    return T1_VERSION + MD_VERSION if console == "md" else T1_VERSION
+
+
+def generic_script(start, minutes, prefix=None, hold=8):
     """Start twice (some titles need a second press after a fade, or a menu confirm), then a walk-right/jump/fire loop with a
     little of everything (menus react to A/Start/Down). Frame numbers are absolute; a step holds its buttons until the next."""
     if prefix:   # the T2 movie up to its end, then the play loop straight away (no Start presses: they would pause the game)
         s = [st for st in prefix if st[0] < start] + [(start, "")]
         f = start + 30
     else:
-        s = [(start, "Start"), (start + 8, ""), (start + 240, "Start"), (start + 248, ""), (start + 420, "A"), (start + 428, "")]
+        s = [(start, "Start"), (start + hold, ""), (start + 240, "Start"), (start + 240 + hold, ""), (start + 420, "A"), (start + 428, "")]
         f = start + 480
     end = f + int(minutes * 3600)
     loop = [(120, "Right"), (20, "Right+A"), (50, "Right"), (16, "Right+B"), (40, "Right"), (24, "A"), (30, ""),
@@ -312,7 +326,7 @@ def generic_script(start, minutes, prefix=None):
     return ",".join(f"{a}:{b}" for a, b in s), end
 
 
-def plan_script(rec, title, minutes, res):
+def plan_script(rec, title, minutes, res, console=None):
     """-> (start, script, end frame, checkpoints). A deep run of a title with a Haiku T2 movie replays the movie from power-on and
     then plays the generic loop from the movie's end (res["input"] = "t2+generic-v1 ..."); otherwise the generic script from
     the title screen. With a movie, checkpoints also fall inside it (every 600 frames), and "start" is the movie's end, so the
@@ -329,9 +343,10 @@ def plan_script(rec, title, minutes, res):
         res["t2movie"] = os.path.basename(mv)
         return start, script, end, cps
     start = (title if title is not None else 600) + 30
-    script, end = generic_script(start, minutes)
+    hold = START_HOLD.get(console, 8)
+    script, end = generic_script(start, minutes, hold=hold)
     cps = sorted(set([max(1, start - 30), start + 120, start + 300, start + 470] + list(range(start + 480 + 1200, end, 1200)) + [end]))
-    res["input"] = "generic-v1 start@%d" % start
+    res["input"] = "generic-v1 start@%d" % start + ("" if hold == 8 else " hold%d" % hold)
     return start, script, end, cps
 
 
@@ -615,7 +630,7 @@ def check_console(rec, console, minutes, keep_dir):
     work = os.path.join(SCRATCH, rec["sha1"])
     shutil.rmtree(work, ignore_errors=True)
     os.makedirs(work)
-    res = dict(version=T1_VERSION, at=catalog.now(), console=console)
+    res = dict(version=t1_version(console), at=catalog.now(), console=console)
     p1 = con_run(rom, console, PROBE_FRAMES, range(PROBE_STEP, PROBE_FRAMES + 1, PROBE_STEP), os.path.join(work, "probe"))
     res["probe"] = dict(exit=p1["code"], secs=p1["secs"], timeout=p1["timeout"])
     if launch_failed(p1):
@@ -632,7 +647,7 @@ def check_console(rec, console, minutes, keep_dir):
         return grade_result(res, "Broken", ["crash"], f"console-run exit {p1['code']}: {txt[-200:]}")
     title, how = find_title(p1["pngs"])
     res["title"] = dict(frame=title, how=how)
-    start, script, end, cps = plan_script(rec, title, minutes, res)
+    start, script, end, cps = plan_script(rec, title, minutes, res, console)
     res.update(frames=end, start=start, tas=None)
     os.makedirs(keep_dir, exist_ok=True)
     p2 = con_run(rom, console, end + 1, cps, os.path.join(work, "bn"), script)
@@ -827,7 +842,7 @@ def cmd_run(a):
         if rec.get("revisionOf"):
             continue
         rec = catalog.get(a.console, rec["sha1"]) or rec
-        if not a.force and ((rec.get("extra") or {}).get("t1") or {}).get("version") == T1_VERSION:
+        if not a.force and ((rec.get("extra") or {}).get("t1") or {}).get("version") == t1_version(a.console):
             continue
         n += 1
         t = time.time()
@@ -1029,7 +1044,7 @@ def cmd_ingest(a):
         if getattr(a, "deep_add", False):
             deep_add(a.console, rec, json.load(open(rj, encoding="utf-8")), os.path.join(a.results, sha), dcounts)
             continue
-        if not a.force and ((rec.get("extra") or {}).get("t1") or {}).get("version") == T1_VERSION:
+        if not a.force and ((rec.get("extra") or {}).get("t1") or {}).get("version") == t1_version(a.console):
             skipped += 1; continue
         res = json.load(open(rj, encoding="utf-8"))
         kd = keep_dir_for(a.console, sha)
