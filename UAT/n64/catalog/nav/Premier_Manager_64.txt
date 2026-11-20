@@ -1,0 +1,30 @@
+# title_fix3 Premier_Manager_64 (E): name entry (A clears Player One, DR -> X, A A types Xx, DD -> enter, A), team select (A Leeds, A continue), main menu -> Squad & Formation. GameDb ViCap PM=3 (COR64_TITLE3_CAP)
+run 600
+press A 8 80
+press A 8 80
+press DR 2 40
+press A 4 40
+press A 4 40
+screenshot u1
+press DD 2 40
+screenshot u2
+press A 6 120
+press A 6 120
+screenshot w0
+press DR 2 40
+press DR 2 40
+press DR 2 40
+press DR 2 40
+press DR 2 40
+press DR 2 40
+screenshot w1
+press DD 2 40
+screenshot w2
+press A 6 200
+screenshot m0
+press DR 2 40
+screenshot k1
+press A 6 200
+screenshot k2
+run 600
+screenshot k3

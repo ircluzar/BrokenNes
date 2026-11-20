@@ -8,7 +8,9 @@ namespace BrokenNes.Mcp;
 /// </summary>
 internal static partial class Tools
 {
-    private static HeadlessSession Headless(Session s) => s as HeadlessSession ?? throw new ToolError("this tool drives a headless session (open_rom / open_project), not a live one");
+    private static HeadlessSession Headless(Session s) => s as HeadlessSession ?? throw new ToolError(s is N64HeadlessSession
+        ? "this tool (agent loop, AutoTAS state files, movies, Timeflow) does not cover the Nintendo 64 session yet: use save_state / load_state by name, run, input and screenshot"
+        : "this tool drives a headless session (open_rom / open_project), not a live one");
 
     private static void AgentLoopTools(Action<string, string, JsonObject, Func<Args, ToolOut>, bool> add)
     {

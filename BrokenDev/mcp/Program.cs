@@ -22,6 +22,8 @@ internal static class Program
         if (Opt("repo") is { Length: > 0 } repo) BrokenDevBridge.RepoOverride = Path.GetFullPath(repo);
         // the hosts that run WideMess turn it on at start-up (the desktop app and Workshop do the same)
         Consoles.WideMessEnabled = true;
+        // the Nintendo 64 (cor64, third_party/cor64): ROM detection, the menus and open_rom's N64 sessions
+        NesEmulator.N64.N64Host.Register();
 
         if (Flag("client-test")) return ClientTest.Run(args, ClientTest.Suite.Client);
         if (Flag("demo")) return ClientTest.Run(args, ClientTest.Suite.Demo);
@@ -47,7 +49,7 @@ internal static class Program
 
     private const string Instructions =
         "BrokenNes, driven directly. HEADLESS sessions (open_rom, open_project) are BrokenNes's own emulator inside this server: invisible, deterministic, many at once, every console " +
-        "(NES, SNES, WideMess, Game Boy / Color, Master System, Game Gear, Genesis); the debugger (breakpoints, mirror-aware watches, stepping, call stack, trace, symbols) covers every console (NES, SNES with its SPC700, WideMess, Game Boy, Master System and Game Gear (Z80), Genesis (68000 and its sound Z80)); " +
+        "(NES, SNES, WideMess, Game Boy / Color, Master System, Game Gear, Genesis, Nintendo 64); the debugger (breakpoints, mirror-aware watches, stepping, call stack, trace, symbols) covers every console (NES, SNES with its SPC700, WideMess, Game Boy, Master System and Game Gear (Z80), Genesis (68000 and its sound Z80)); " +
         "the D4 hardware checks and the profiler run with checks:true (NES, SNES, WideMess, Game Boy). Debug games here, not on Mesen (Mesen is for cross-checks). " +
         "LIVE sessions (attach_live) read the user's running desktop app: read freely; open with control:true only when the user asked in chat to control their game (and the app must have enableDebuggerControl on); " +
         "a live session never saves, never touches progression and never stops the process. SESSION IDS ARE PRIVATE: this one server is shared by every agent of a Claude Code session and cannot tell them apart, so a session belongs to the caller that opened it: its full id (h3-9f2c41ab, ending in a random secret) is returned only to that caller and is the key; list_sessions always masks ids, short, masked or mistyped ids are refused with a clear error, and an id you did not open is never yours to drive. Results are JSON (pictures as images). Typical: open_rom with checks:true, run 600, checks report, then breakpoint_add on what a finding names, run, call_stack, trace. " +

@@ -1,0 +1,276 @@
+# title_fix2 Super_Robot_Taisen_64: intro, scenario select (Super Robot, はい), hero name: fill with A (ア), D-up wraps to the
+# bottom row, D-right x4 to 決定, A; rival keeps its default name (differs), same D-up/D-right x4/A; then dialogue and the map.
+run 600
+screenshot o00
+run 150
+screenshot o01
+run 150
+screenshot o02
+run 150
+screenshot o03
+run 150
+screenshot o04
+run 150
+screenshot o05
+run 150
+screenshot o06
+press START 6 20
+run 130
+screenshot o10
+press A 6 20
+run 130
+screenshot o11
+press START 6 20
+run 130
+screenshot o12
+press A 6 20
+run 130
+screenshot o13
+press START 6 20
+run 130
+screenshot o14
+press A 6 20
+run 130
+screenshot o15
+press START 6 20
+run 130
+screenshot o16
+press A 6 20
+run 130
+screenshot o17
+press START 6 20
+run 130
+screenshot o18
+press A 6 20
+run 130
+screenshot o19
+press START 6 20
+run 130
+screenshot o20
+press A 6 20
+run 130
+screenshot o21
+press START 6 20
+run 130
+screenshot o22
+press A 6 20
+run 130
+screenshot o23
+press START 6 20
+run 130
+screenshot o24
+press A 6 20
+run 130
+screenshot o25
+press START 6 20
+run 130
+screenshot o26
+press A 6 20
+run 130
+screenshot o27
+press START 6 20
+run 130
+screenshot o28
+press A 6 20
+run 130
+screenshot o29
+press START 6 20
+run 130
+screenshot o30
+press A 6 20
+run 130
+screenshot o31
+press START 6 20
+run 130
+screenshot o32
+press A 6 20
+run 130
+screenshot o33
+press START 6 20
+run 130
+screenshot o34
+press DD 8 30
+run 30
+screenshot d1a
+press A 8 30
+run 120
+screenshot d1b
+press DD 8 30
+run 30
+screenshot d2a
+press A 8 30
+run 120
+screenshot d2b
+press A 20 150
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press A 10 30
+press DU 10 40
+press DR 10 40
+press DR 10 40
+press DR 10 40
+press DR 10 40
+press A 20 150
+screenshot n1
+press DU 10 40
+press DR 10 40
+press DR 10 40
+press DR 10 40
+press DR 10 40
+press A 20 150
+screenshot n2
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot q15
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot q30
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot q45
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot q60
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot q75
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot q90
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot q105
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot q120

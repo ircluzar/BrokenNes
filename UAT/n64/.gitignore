@@ -1,0 +1,4 @@
+n64.local.json
+goldens/states/
+catalog/nav/states/
+*.state

@@ -1,0 +1,97 @@
+using System.Buffers;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace cor64.IO
+{
+    // TODO: Implement stream access for this class
+
+    public class UnmanagedBuffer : IDisposable
+    {
+        private IntPtr m_Ptr;
+        private bool m_Disposed = false;
+        private readonly Memory<byte> m_MemoryBlock;
+        private readonly UnmanagedBuffer m_Parent;
+
+        // [cer64plus] Buffers of 1 MB or more are 64 KB aligned, so RDRAM can be imported as Vulkan host memory (parallel-rdp).
+        private const int AlignedThreshold = 1 << 20;
+        private readonly bool m_Aligned;
+
+        public unsafe UnmanagedBuffer(int size)
+        {
+            Size = size;
+            if (size >= AlignedThreshold) {
+                m_Aligned = true;
+                m_Ptr = (IntPtr)NativeMemory.AlignedAlloc((nuint)size, 65536);
+            }
+            else {
+                m_Ptr = Marshal.AllocHGlobal(size);
+            }
+            Clear();
+        }
+
+        public UnmanagedBuffer(UnmanagedBuffer parent, int offset, int size) {
+            Size = size;
+            m_Parent = parent;
+            m_Ptr = parent.m_Ptr.Offset(offset);
+        }
+
+        public unsafe void Clear()
+        {
+            new Span<byte>((void*)m_Ptr, Size).Clear();
+        }
+
+        public void CopyTo(Memory<byte> destination) {
+            m_MemoryBlock.CopyTo(destination);
+        }
+
+        public void CopyInto(byte[] buffer)
+        {
+            Marshal.Copy(buffer, 0, m_Ptr, buffer.Length);
+        }
+
+        public IntPtr GetPointer()
+        {
+            return m_Ptr;
+        }
+
+        public int Size { get; }
+
+        public UnmanagedBuffer ParentBuffer => m_Parent;
+
+        public bool IsDisposed => m_Disposed || (m_Parent?.m_Disposed == true);
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!IsDisposed)
+            {
+                if (m_Parent == null) {
+                    if (m_Aligned) unsafe { NativeMemory.AlignedFree((void*)m_Ptr); }
+                    else Marshal.FreeHGlobal(m_Ptr);
+                }
+
+                if (disposing)
+                {
+                    m_Ptr = IntPtr.Zero;
+                }
+
+                m_Disposed = true;
+            }
+        }
+
+        ~UnmanagedBuffer()
+        {
+            Dispose(false);
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+    }
+}

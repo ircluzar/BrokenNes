@@ -526,6 +526,8 @@ def gap(b, r, cfg, pkg, ch, a):
     line = sorted((s_ for s_ in r["subs"].items() if "inputs" in s_[1] and s_[1]["inputs"] == r["log"][:len(s_[1]["inputs"])]),
                   key=lambda t: -t[1]["frames"])
     starts = [None] + [n for n, _ in line[:3]]
+    start_frames, start_log = r["frames"], [x[:] for x in r["log"]]
+    start_sub = os.path.join(wdir(pkg, ch), "_gap_start.state"); b.call("save_state", session=r["session"], path=start_sub)
     import time
     t0 = time.time()
     for st in starts:
@@ -547,7 +549,9 @@ def gap(b, r, cfg, pkg, ch, a):
                 mid = r["frames"]; search(b, r, cfg, pkg, ch, a2)
                 if r["frames"] != mid: print("gap: SOLVED (slow landing, wait, jump) - save a checkpoint"); return
                 seek(b, r, cfg, pkg, ch, before)
-    print("gap: no wait + jump crossed it from here or the last 3 checkpoints (the log is at the oldest one tried: `resume`/`seek` as needed)")
+    if start_frames is not None and r["frames"] != start_frames:   # put the player back where gap started (not at the oldest checkpoint tried)
+        if start_sub: b.call("load_state", session=r["session"], path=start_sub); r["log"] = [x[:] for x in start_log]; r["frames"] = start_frames; store(pkg, ch, r)
+    print("gap: no wait + jump crossed it from here or the last 3 checkpoints (back where it started)")
 
 
 def roam(b, r, cfg, pkg, ch, a):
@@ -592,7 +596,8 @@ def roam(b, r, cfg, pkg, ch, a):
     try:
         while frontier and not found and n < limit and time.time() - t0 < 420:
             frontier.sort(key=lambda t: (int(t[2]["x"]), -len(t[1])))
-            st, path, ram0 = frontier.pop()   # the farthest-right spot first, then the rest
+            # both branches: alternately the right-most and the left-most spot (a maze's way on is often back left or down)
+            st, path, ram0 = frontier.pop() if n % 2 == 0 else frontier.pop(0)
             n += 1
             plans = plans_from(st)
             texts = [" ".join(("+".join(bt) or "none") + f":{k}" for bt, k in p) + " none:30" for p in plans]

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>../../bin</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="*.ASM" />
+    <EmbeddedResource Include="*.INC" />
+    <EmbeddedResource Include="*.BIN" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\cor64\cor64.csproj" />
+  </ItemGroup>
+
+
+</Project>

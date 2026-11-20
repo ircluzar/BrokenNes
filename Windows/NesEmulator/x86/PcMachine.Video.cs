@@ -418,7 +418,7 @@ public sealed partial class PcMachine
         int mode = (int)AL, fn = (int)AH;
         // a mode set replays EVERY standard register and the whole DAC: the VDD's copy for this VM is not the card's (the GUI's) state, so a diff
         // against the card left registers the C# set to the card's old value unwritten (a full-screen DOS box got AR 07h = 00h: grey text drawn black)
-        bool all = fn == 0x00 || AX == 0x4f02;
+        bool all = (fn == 0x00 || AX == 0x4f02) && Environment.GetEnvironmentVariable("X86_REPLAYDIFF") == null;
         _v86Video = true;
         try { Int10Core(); }
         finally { _v86Video = false; }

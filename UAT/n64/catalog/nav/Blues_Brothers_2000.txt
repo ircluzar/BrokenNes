@@ -1,0 +1,103 @@
+# nav2 Blues_Brothers_2000 (visp_fix2): intro pairs to the Rumble Pak screen, B = continue without, then walk
+run 600
+screenshot o00
+run 150
+screenshot o01
+run 150
+screenshot o02
+run 150
+screenshot o03
+run 150
+screenshot o04
+run 150
+screenshot o05
+run 150
+screenshot o06
+press START 6 20
+run 130
+screenshot o10
+press A 6 20
+run 130
+screenshot o11
+press START 6 20
+run 130
+screenshot o12
+press A 6 20
+run 130
+screenshot o13
+press START 6 20
+run 130
+screenshot o14
+press A 6 20
+run 130
+screenshot o15
+press START 6 20
+run 130
+screenshot o16
+press A 6 20
+run 130
+screenshot o17
+press START 6 20
+run 130
+screenshot o18
+press A 6 20
+run 130
+screenshot o19
+press START 6 20
+run 130
+screenshot o20
+press A 6 20
+run 130
+screenshot o21
+press START 6 20
+run 130
+screenshot o22
+press A 6 20
+run 130
+screenshot o23
+press START 6 20
+run 130
+screenshot o24
+press A 6 20
+run 130
+screenshot o25
+press START 6 20
+run 130
+screenshot o26
+press A 6 20
+run 130
+screenshot o27
+savestate rumble
+press B 30 300
+screenshot p1
+run 300
+screenshot p2
+press START 30 300
+screenshot p3
+run 300
+screenshot p4
+press A 30 300
+screenshot p5
+run 600
+screenshot p6
+savestate lvl
+stick 0 90
+run 300
+screenshot g1
+stick 90 0
+run 150
+stick 0 90
+run 300
+screenshot g2
+stick 0 0
+press A 20 100
+screenshot g3
+stick -90 0
+run 300
+screenshot g4
+stick 0 -90
+run 300
+screenshot g5
+stick 0 0
+run 300
+screenshot g6

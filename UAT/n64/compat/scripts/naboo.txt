@@ -1,0 +1,210 @@
+# naboo: boot -> LucasArts/Factor 5 intro -> title -> new game (name AAA) -> Escape from Theed briefing -> level 1 (f5_boot lane)
+# Frame counts are VI fields (60/s NTSC). Needs the V_CURRENT field bit (COR64_F5BOOT_VIFIELD, default on).
+run 600
+screenshot boot_10s
+run 1200
+screenshot lucasarts_30s
+run 2400
+screenshot title_70s
+press START 5 90
+press A 5 115
+screenshot select_game
+press A 5 115
+press A 5 115
+press A 5 115
+press A 5 115
+press A 5 115
+screenshot name_sure
+press A 5 115
+press A 5 115
+run 600
+screenshot briefing
+press A 5 115
+screenshot b1
+press A 5 115
+press A 5 115           # select: opening crawl starts
+run 3000
+screenshot crawl
+run 4000
+screenshot select_craft
+press A 10 170          # Flash Speeder
+run 600
+press START 10 170
+run 900
+screenshot level_start
+run 900
+savestate speed
+screenshot gameplay
+stick 0 60
+run 300
+screenshot fly
+stick 0 0
+press A 10 50
+stick 60 0
+run 240
+stick 0 0
+run 600
+screenshot gameplay_2
+checkpoint end
+# [session_leak] ~5 minutes of play after the gameplay savestate (certification point 3)
+# play cycle 1
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_1
+# play cycle 2
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_2
+# play cycle 3
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_3
+# play cycle 4
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_4
+# play cycle 5
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_5
+# play cycle 6
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_6
+# play cycle 7
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_7
+# play cycle 8
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_8
+# play cycle 9
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_9
+# play cycle 10
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_10
+# play cycle 11
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_11
+# play cycle 12
+stick 0 60
+run 300
+stick 60 0
+run 200
+press A 10 50
+stick -60 0
+run 200
+stick 0 0
+pulse A 120 20
+run 600
+screenshot play_12
+checkpoint play_end
+# [session_leak] certification point 5: the profile made at name entry must survive reset
+release
+stick 0 0
+savefile pre_reset
+reset
+run 600
+run 1200
+run 2400
+screenshot reset_title
+press START 5 90
+press A 5 115
+# [cert_scripts4] the slots slide in ~60 frames after Select Game appears: wait before the screenshot
+run 240
+screenshot reset_select_game
+savefile post_reset
+checkpoint save_end

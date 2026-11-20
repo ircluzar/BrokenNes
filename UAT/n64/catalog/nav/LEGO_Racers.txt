@@ -1,0 +1,137 @@
+# nav2 LEGO_Racers: slow logos; language OK; main menu DD x2 = SINGLE RACE; A through track/racer; racer select confirmed with START; pak prompt -> continue; hold A = drive
+run 600
+run 300
+screenshot p1
+run 300
+screenshot p2
+run 300
+screenshot p3
+press START 8 90
+screenshot p4
+press A 8 90
+screenshot p5
+press START 8 90
+screenshot p6
+press A 8 90
+screenshot p7
+press START 8 90
+screenshot p8
+press A 8 90
+screenshot p9
+press START 8 90
+screenshot p10
+press A 8 90
+screenshot p11
+press START 8 90
+screenshot p12
+press A 8 90
+screenshot p13
+press START 8 90
+screenshot p14
+press A 8 90
+screenshot p15
+press A 8 120
+screenshot p16
+press A 8 120
+screenshot p17
+press A 8 120
+screenshot p18
+press A 8 120
+screenshot p19
+press A 8 120
+screenshot p20
+run 400
+screenshot q1
+run 400
+screenshot q2
+run 400
+screenshot q3
+run 400
+screenshot q4
+run 400
+screenshot q5
+run 400
+screenshot q6
+press START 8 90
+press A 8 90
+screenshot q7
+press START 8 90
+press A 8 90
+screenshot q8
+press START 8 90
+press A 8 90
+screenshot q9
+press START 8 90
+press A 8 90
+screenshot q10
+press START 8 90
+press A 8 90
+screenshot q11
+press START 8 90
+press A 8 90
+screenshot q12
+press START 8 90
+press A 8 90
+screenshot q13
+press START 8 90
+press A 8 90
+screenshot q14
+press START 8 90
+press A 8 90
+screenshot q15
+press START 8 90
+press A 8 90
+screenshot q16
+run 1600
+screenshot menu
+press DD 8 40
+press DD 8 40
+screenshot single
+press A 8 100
+screenshot r3
+press A 8 100
+screenshot r4
+press A 8 100
+screenshot r5
+press A 8 100
+screenshot r6
+press A 8 100
+screenshot r7
+press A 8 100
+screenshot r8
+press A 8 100
+screenshot r9
+press A 8 100
+screenshot r10
+press A 8 100
+screenshot r11
+press A 8 100
+screenshot r12
+press A 8 100
+screenshot r13
+press A 8 100
+screenshot r14
+press A 8 100
+screenshot r15
+press A 8 100
+screenshot r16
+press START 8 120
+screenshot s1
+press START 8 120
+screenshot s2
+press START 8 200
+screenshot s3
+hold A
+run 200
+screenshot g4
+run 200
+screenshot g5
+run 200
+screenshot g6
+run 200
+screenshot g7
+run 200
+screenshot g8
+run 200
+screenshot g9
+release

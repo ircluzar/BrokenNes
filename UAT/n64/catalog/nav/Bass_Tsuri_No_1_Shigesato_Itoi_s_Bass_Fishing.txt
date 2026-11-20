@@ -1,0 +1,161 @@
+# nav2 Bass_Tsuri_No_1_Shigesato_Itoi_s_Bass_Fishing (visp_fix2, COR64_VISPFIX2_CAP IB=1): title, club house, name entry, dialog
+run 600
+screenshot o00
+run 150
+screenshot o01
+run 150
+screenshot o02
+run 150
+screenshot o03
+run 150
+screenshot o04
+run 150
+screenshot o05
+run 150
+screenshot o06
+savestate x
+press A 30 200
+screenshot p1
+press A 30 200
+screenshot p2
+press START 30 200
+screenshot p3
+press START 30 200
+screenshot p4
+press DD 20 100
+screenshot p5
+press A 30 200
+screenshot p6
+press B 30 200
+screenshot p7
+press Z 30 200
+screenshot p8
+press A 60 300
+screenshot p9
+run 600
+screenshot q1
+press A 30 200
+screenshot q2
+press A 30 200
+screenshot q3
+press A 30 200
+screenshot q4
+press A 30 200
+screenshot q5
+press START 30 200
+screenshot q6
+run 600
+screenshot q7
+savestate y
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot r02
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot r05
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot r08
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot r11
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot r14
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot r17
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot r20
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot r23
+run 600
+screenshot s0
+stick 0 90
+run 300
+screenshot s1
+stick 0 0
+press A 30 300
+screenshot s2
+run 600
+screenshot s3
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m02
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m05
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m08
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m11
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m14
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m17
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m20
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m23
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m26
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m29
+press START 30 300
+screenshot n0
+run 900
+screenshot n1
+press A 30 300
+screenshot n2
+stick 0 90
+run 300
+screenshot n3
+stick 0 0
+# title_fix2: B B leaves the talk menu -> 'fish alone today? はい', A -> lakeside field (clock runs)
+press B 30 200
+press B 30 200
+press A 30 300
+screenshot f1
+press A 30 300
+press A 30 300
+screenshot f2
+stick 0 90
+run 400
+stick 0 0
+screenshot f3
+stick 90 0
+run 200
+stick 0 0
+screenshot f4
+press A 60 400
+screenshot f5
+press B 30 300
+screenshot f6

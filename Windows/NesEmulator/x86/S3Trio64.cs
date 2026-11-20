@@ -112,6 +112,7 @@ public sealed class S3Trio64
     /// <summary>CR58 bits 1-0: the linear window's size. The 64 KB one (at A0000) is still banked.</summary>
     public int LfbSize => (_v.Cr[0x58] & 3) switch { 0 => 0x10000, 1 => 0x100000, 2 => 0x200000, _ => 0x400000 };
     private bool Window64K => LinearOn && LfbSize == 0x10000;
+    public long VgaMmioWrites;   // diagnostics
     public bool OldMmio => (_v.Cr[0x53] & 0x10) != 0;
     public int BytesPerPixel => (_v.Cr[0x67] >> 4) switch { 0x3 or 0x5 => 2, 0xd => 4, _ => 1 };
 
@@ -121,7 +122,9 @@ public sealed class S3Trio64
         uint off = addr - 0xa0000;
         if (OldMmio && off < 0x10000)
         {
-            if (off < 0x8000) PixelData(v, 8); else EngineOut8((int)(addr & 0xffff), v);
+            if (off < 0x8000) PixelData(v, 8);
+            else if ((addr & 0xffe0) == 0x83c0) { VgaMmioWrites++; _v.Out((int)(addr & 0xffff) - 0x8000, v); }   // the VGA registers 3C0h-3DFh at A83C0h (the DAC: 8-bit palettes)
+            else EngineOut8((int)(addr & 0xffff), v);
             return true;
         }
         if (!Enhanced && !Window64K) return false;
@@ -136,7 +139,12 @@ public sealed class S3Trio64
     {
         uint off = addr - 0xa0000;
         v = 0xff;
-        if (OldMmio && off < 0x10000) { if (off >= 0x8000) v = (byte)EngineIn((int)(addr & 0xfffe), (addr & 1) != 0); return true; }
+        if (OldMmio && off < 0x10000)
+        {
+            if ((addr & 0xffe0) == 0x83c0) v = _v.In((int)(addr & 0xffff) - 0x8000);
+            else if (off >= 0x8000) v = (byte)EngineIn((int)(addr & 0xfffe), (addr & 1) != 0);
+            return true;
+        }
         if (!Enhanced && !Window64K) return false;
         if ((LinearOn && !Window64K) || off >= 0x10000) return true;
         uint a = (uint)(Bank << 16) + off;
@@ -152,6 +160,7 @@ public sealed class S3Trio64
         if (off >= 0x10000) return false;
         if (off < 0x8000) { PixelData(v, bits); return true; }
         int port = (int)(addr & 0xffff);
+        if ((port & 0xffe0) == 0x83c0) { VgaMmioWrites++; for (int i = 0; i < bits / 8; i++) _v.Out(port - 0x8000 + i, (byte)(v >> (8 * i))); return true; }   // VGA registers by MMIO, byte by byte
         if (bits == 32) { EngineOut16(port, (ushort)v); EngineOut16(port + 2, (ushort)(v >> 16)); }
         else EngineOut16(port, (ushort)v);
         return true;

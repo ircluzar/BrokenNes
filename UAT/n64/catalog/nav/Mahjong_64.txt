@@ -1,0 +1,108 @@
+# nav2 Mahjong_64: file -> name grid (stick left wraps to 決定) -> sex/confirm; menu: D-pad down to ゲーム開始 (not ルール設定); A through campus/subject -> 対局開始 -> match
+run 600
+run 300
+screenshot p1
+run 300
+screenshot p2
+run 300
+screenshot p3
+press START 8 90
+screenshot p4
+press A 8 90
+screenshot p5
+press START 8 90
+screenshot p6
+press A 8 90
+screenshot p7
+press START 8 90
+screenshot p8
+press A 8 90
+screenshot p9
+press START 8 90
+screenshot p10
+press A 8 90
+screenshot p11
+press START 8 90
+screenshot p12
+press A 8 90
+screenshot p13
+press START 8 90
+screenshot p14
+press A 8 90
+screenshot p15
+press A 8 120
+screenshot p16
+press A 8 120
+screenshot p17
+press A 8 120
+screenshot p18
+press A 8 120
+screenshot p19
+press A 8 120
+screenshot p20
+stick -100 0
+run 6
+stick 0 0
+run 25
+press A 8 90
+screenshot name_end
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+screenshot rules
+press B 8 150
+press DD 8 40
+stick 0 -100
+run 6
+stick 0 0
+run 25
+screenshot start
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+screenshot subject
+press A 8 150
+screenshot g1
+press A 8 150
+screenshot g2
+press A 8 150
+screenshot g3
+press A 8 150
+screenshot g4
+press A 8 150
+screenshot g5
+press A 8 150
+screenshot g6
+run 300
+screenshot g7
+run 300
+screenshot g8
+run 300
+screenshot g9
+run 300
+screenshot g10
+run 300
+screenshot g11
+run 300
+screenshot g12
