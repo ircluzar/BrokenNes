@@ -14,7 +14,7 @@ $cases = @(
   @{ name = "SRAM addresses past the declared range are ROM instead of mirrors"; file = "$md\MdCartridge.cs"; old = "if (address < (start & ~1u)) return -1;"; new = "if (address < (start & ~1u) || HasSramHeader && address > (SramEnd | 1u)) return -1;" },
   @{ name = "a headerless cartridge's RAM is never mapped by a write"; file = "$md\MdCartridge.cs"; old = "if (SramHeaderless && !SramMapped && (address & 1) != 0 && address >= 0x200000 && address <= 0x3FFFFF) SramMapped = true;"; new = "/* poisoned */" },
   @{ name = "Japan + Europe counts as overseas"; file = "$md\MdCartridge.cs"; old = "return u || e && !j;"; new = "return u || e;" },
-  @{ name = "the SVP cartridge (Virtua Racing) is taken for a plain Genesis game"; file = "Windows\NesEmulator\sega\SegaRomFormat.cs"; old = "|| IsSvpCartridge(md);"; new = ";" },
+  @{ name = "the SVP's DRAM DMA is not a word late"; file = "$md\BOARD_MD.cs"; old = "Cart.Svp.ReadWord(a - 2, out ushort sw)"; new = "Cart.Svp.ReadWord(a, out ushort sw)" },
   @{ name = "NBA Jam (Europe, REV 01) is wired as an Acclaim cartridge"; file = "$md\MdEepromTable.cs"; old = "MdEepromChip.C24C02, MdEepromWiring.Sega, `"NBA Jam (Europe, REV 01)`""; new = "MdEepromChip.C24C02, MdEepromWiring.Acclaim, `"NBA Jam (Europe, REV 01)`"" },
   @{ name = "a Sega-wired EEPROM read leaves bits 1 to 7 to the ROM"; file = "$md\MdCartridge.cs"; old = "case MdEepromWiring.Sega when address == 0x200001: value = (byte)(Eeprom!.SdaLine ? 1 : 0); mask = 0xFF;"; new = "case MdEepromWiring.Sega when address == 0x200001: value = (byte)(Eeprom!.SdaLine ? 1 : 0); mask = 1;" },
   @{ name = "the 93C46 programs without a write enable"; file = "$md\MdMicrowire.cs"; old = "pendingProgram = writeEnabled;"; new = "pendingProgram = true;" },

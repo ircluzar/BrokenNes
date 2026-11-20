@@ -21,6 +21,8 @@ public sealed class MdCartridge
     public readonly int RomLength;
     /// <summary>The battery SRAM image: one byte per byte the cartridge actually holds (odd addresses only: the bytes at $200001, $200003, ...; both: every byte).</summary>
     public readonly byte[] Sram;
+    /// <summary>The SVP chip of Virtua Racing (serial MK-1229), or null.</summary>
+    public readonly MdSvp? Svp;
 
     public readonly string DomesticTitle, OverseasTitle, Serial, Regions, Device, Copyright;
     public readonly ushort HeaderChecksum, ComputedChecksum;
@@ -63,7 +65,7 @@ public sealed class MdCartridge
     }
 
     /// <summary>A short description for status lines.</summary>
-    public string Mapper => Realtec ? "Realtec (8 KB boot block, then the ROM mapped through $400000-$404000)" : Microwire != null ? $"plain ROM + {Microwire.Data.Length} byte 93C46 (three-wire) EEPROM" : SramHeaderless ? $"plain ROM + {Sram.Length / 1024} KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)" : Eeprom != null ? $"plain ROM + {Eeprom.Data.Length} byte EEPROM ({Eeprom.Chip}, {EepromWiring} wiring)" : EepromUnsupported != null ? "plain ROM (" + EepromUnsupported + ")" : bankMapper ? "SSF2 banked (ROM above 4 MB)" : LockedOn ? $"Sonic & Knuckles lock-on image, locked-on game's {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : HasBattery ? $"plain ROM + {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : "plain ROM";
+    public string Mapper => Svp != null ? "SVP (SSP1601 DSP + 128 KB DRAM at $300000)" : Realtec ? "Realtec (8 KB boot block, then the ROM mapped through $400000-$404000)" : Microwire != null ? $"plain ROM + {Microwire.Data.Length} byte 93C46 (three-wire) EEPROM" : SramHeaderless ? $"plain ROM + {Sram.Length / 1024} KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)" : Eeprom != null ? $"plain ROM + {Eeprom.Data.Length} byte EEPROM ({Eeprom.Chip}, {EepromWiring} wiring)" : EepromUnsupported != null ? "plain ROM (" + EepromUnsupported + ")" : bankMapper ? "SSF2 banked (ROM above 4 MB)" : LockedOn ? $"Sonic & Knuckles lock-on image, locked-on game's {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : HasBattery ? $"plain ROM + {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : "plain ROM";
 
     public MdCartridge(byte[] file)
     {
@@ -90,6 +92,7 @@ public sealed class MdCartridge
         }
         uint U32(int at) => (uint)(rom[at] << 24 | rom[at + 1] << 16 | rom[at + 2] << 8 | rom[at + 3]);
 
+        if (SegaRomFormat.IsSvpCartridge(rom)) Svp = new MdSvp(Rom);
         Device = Ascii(0x100, 16);
         Copyright = Ascii(0x110, 16);
         DomesticTitle = Ascii(0x120, 48);
@@ -380,6 +383,7 @@ public sealed class MdCartridge
         w.Write(StrayWrites); w.Write(OtherMapperWrites); w.Write(LastStrayWrite); w.Write(LastOtherMapperWrite);
         w.Write(Eeprom != null); Eeprom?.SaveState(w);
         w.Write(Microwire != null); Microwire?.SaveState(w);
+        Svp?.SaveState(w);
     }
 
     public void LoadState(BinaryReader r)
@@ -398,5 +402,6 @@ public sealed class MdCartridge
         bool hadMicrowire = r.ReadBoolean();
         if (hadMicrowire != (Microwire != null)) throw new InvalidDataException("The state's three-wire EEPROM does not match this cartridge.");
         if (hadMicrowire) Microwire!.LoadState(r);
+        Svp?.LoadState(r);
     }
 }
