@@ -1,0 +1,445 @@
+# oot: boot -> moon/Hyrule field intro -> title (Start) -> file select -> File 1 named "AA" -> Deku Tree prologue
+# (Navi) -> Kokiri forest fly-through -> Link's house (wake-up dialogue) -> control of Link; then ~5 minutes of walking
+# around with B (sword) and A. Lane scripts_speed. Real VI pace (run_game.sh). Checkpoints: b05-b30 intro, s1/a1 title
+# and file select, a2/s3 name entry and prologue, o*/p* Deku Tree + forest, q*/r* Link's house, play_* in-game.
+run 300
+screenshot b05
+run 300
+screenshot b10
+run 300
+screenshot b15
+run 300
+screenshot b20
+run 300
+screenshot b25
+run 300
+screenshot b30
+pulse START 60 20
+run 240
+screenshot s1
+pulse A 60 20
+run 240
+screenshot a1
+checkpoint x1
+pulse START 60 20
+run 240
+screenshot s2
+pulse A 60 20
+run 240
+screenshot a2
+checkpoint x2
+pulse START 60 20
+run 240
+screenshot s3
+pulse A 60 20
+run 240
+screenshot a3
+checkpoint x3
+pulse START 60 20
+run 240
+screenshot s4
+pulse A 60 20
+run 240
+screenshot a4
+checkpoint x4
+pulse START 60 20
+run 240
+screenshot s5
+pulse A 60 20
+run 240
+screenshot a5
+checkpoint x5
+pulse START 60 20
+run 240
+screenshot s6
+pulse A 60 20
+run 240
+screenshot a6
+checkpoint x6
+pulse A 40 20
+run 400
+screenshot o1
+checkpoint o1
+pulse A 40 20
+run 400
+screenshot o2
+checkpoint o2
+pulse A 40 20
+run 400
+screenshot o3
+checkpoint o3
+pulse A 40 20
+run 400
+screenshot o4
+checkpoint o4
+pulse A 40 20
+run 400
+screenshot o5
+checkpoint o5
+pulse A 40 20
+run 400
+screenshot o6
+checkpoint o6
+pulse A 40 20
+run 400
+screenshot o7
+checkpoint o7
+pulse A 40 20
+run 400
+screenshot o8
+checkpoint o8
+pulse A 40 20
+run 400
+screenshot o9
+checkpoint o9
+pulse A 40 20
+run 400
+screenshot o10
+checkpoint o10
+pulse A 40 20
+run 400
+screenshot o11
+checkpoint o11
+pulse A 40 20
+run 400
+screenshot o12
+checkpoint o12
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p1
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p2
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p3
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p4
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p5
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p6
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p7
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p8
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p9
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p10
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p11
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p12
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p13
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p14
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p15
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot p16
+checkpoint p
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot q1
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot q2
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot q3
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot q4
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot q5
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot q6
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot q7
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot q8
+checkpoint q
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot r1
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot r2
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot r3
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot r4
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot r5
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot r6
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot r7
+pulse A 60 20
+pulse B 30 15
+run 150
+screenshot r8
+screenshot cp_links_house
+savestate speed
+stick 0 80
+run 240
+press B 5 30
+press A 5 30
+stick 80 0
+run 240
+press B 5 30
+press A 5 30
+stick 0 -80
+run 240
+press B 5 30
+press A 5 30
+stick -80 0
+run 240
+press B 5 30
+press A 5 30
+stick 0 0
+run 120
+screenshot play_1
+stick 50 50
+run 240
+press B 5 30
+press A 5 30
+stick -50 50
+run 240
+press B 5 30
+press A 5 30
+stick 0 80
+run 240
+press B 5 30
+press A 5 30
+stick 60 -40
+run 240
+press B 5 30
+press A 5 30
+stick 0 0
+run 120
+screenshot play_2
+stick 0 80
+run 240
+press B 5 30
+press A 5 30
+stick 80 0
+run 240
+press B 5 30
+press A 5 30
+stick 0 -80
+run 240
+press B 5 30
+press A 5 30
+stick -80 0
+run 240
+press B 5 30
+press A 5 30
+stick 0 0
+run 120
+screenshot play_3
+stick 50 50
+run 240
+press B 5 30
+press A 5 30
+stick -50 50
+run 240
+press B 5 30
+press A 5 30
+stick 0 80
+run 240
+press B 5 30
+press A 5 30
+stick 60 -40
+run 240
+press B 5 30
+press A 5 30
+stick 0 0
+run 120
+screenshot play_4
+stick 0 80
+run 240
+press B 5 30
+press A 5 30
+stick 80 0
+run 240
+press B 5 30
+press A 5 30
+stick 0 -80
+run 240
+press B 5 30
+press A 5 30
+stick -80 0
+run 240
+press B 5 30
+press A 5 30
+stick 0 0
+run 120
+screenshot play_5
+stick 50 50
+run 240
+press B 5 30
+press A 5 30
+stick -50 50
+run 240
+press B 5 30
+press A 5 30
+stick 0 80
+run 240
+press B 5 30
+press A 5 30
+stick 60 -40
+run 240
+press B 5 30
+press A 5 30
+stick 0 0
+run 120
+screenshot play_6
+stick 0 80
+run 240
+press B 5 30
+press A 5 30
+stick 80 0
+run 240
+press B 5 30
+press A 5 30
+stick 0 -80
+run 240
+press B 5 30
+press A 5 30
+stick -80 0
+run 240
+press B 5 30
+press A 5 30
+stick 0 0
+run 120
+screenshot play_7
+stick 50 50
+run 240
+press B 5 30
+press A 5 30
+stick -50 50
+run 240
+press B 5 30
+press A 5 30
+stick 0 80
+run 240
+press B 5 30
+press A 5 30
+stick 60 -40
+run 240
+press B 5 30
+press A 5 30
+stick 0 0
+run 120
+screenshot play_8
+stick 0 80
+run 240
+press B 5 30
+press A 5 30
+stick 80 0
+run 240
+press B 5 30
+press A 5 30
+stick 0 -80
+run 240
+press B 5 30
+press A 5 30
+stick -80 0
+run 240
+press B 5 30
+press A 5 30
+stick 0 0
+run 120
+screenshot play_9
+stick 50 50
+run 240
+press B 5 30
+press A 5 30
+stick -50 50
+run 240
+press B 5 30
+press A 5 30
+stick 0 80
+run 240
+press B 5 30
+press A 5 30
+stick 60 -40
+run 240
+press B 5 30
+press A 5 30
+stick 0 0
+run 120
+screenshot play_10
+checkpoint end
+# save block (lane cert_scripts3): SRAM after reset; File 1 "AA" (written at name entry) must show on the file select
+release
+stick 0 0
+savefile pre_reset
+reset
+run 1800
+screenshot reset_boot
+pulse START 60 20
+run 240
+screenshot reset_fileselect
+press DD 5 30
+press DU 5 30
+run 60
+screenshot reset_file1
+savefile post_reset
+checkpoint save_end

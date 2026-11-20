@@ -1,0 +1,94 @@
+# nav2 Tom_Clancy_s_Rainbow_Six (visp_fix2): title, stick down to New Campaign (Quick Start needs a saved campaign), briefing, mission
+run 600
+screenshot o00
+run 150
+screenshot o01
+run 150
+screenshot o02
+run 150
+screenshot o03
+run 150
+screenshot o04
+run 150
+screenshot o05
+run 150
+screenshot o06
+press START 6 20
+run 130
+screenshot o10
+press A 6 20
+run 130
+screenshot o11
+press START 6 20
+run 130
+screenshot o12
+press A 6 20
+run 130
+screenshot o13
+run 1300
+screenshot t0
+savestate title
+run 1200
+screenshot ta
+stick 0 -90
+run 5
+stick 0 0
+run 150
+screenshot t1
+screenshot t2
+press A 30 300
+screenshot u0
+press A 30 300
+screenshot u1
+press A 30 300
+screenshot u2
+press A 30 300
+screenshot u3
+press A 30 300
+screenshot u4
+press A 30 300
+screenshot u5
+press A 30 300
+screenshot u6
+press A 30 300
+screenshot u7
+press A 30 300
+screenshot u8
+press A 30 300
+screenshot u9
+run 900
+screenshot v0
+savestate m
+press START 30 300
+screenshot w0
+press A 30 300
+screenshot x0
+press START 30 300
+screenshot w1
+press A 30 300
+screenshot x1
+press START 30 300
+screenshot w2
+press A 30 300
+screenshot x2
+press START 30 300
+screenshot w3
+press A 30 300
+screenshot x3
+press START 30 300
+screenshot w4
+press A 30 300
+screenshot x4
+press START 30 300
+screenshot w5
+press A 30 300
+screenshot x5
+run 900
+screenshot y0
+stick 0 90
+run 300
+screenshot g1
+stick 90 0
+run 200
+screenshot g2
+stick 0 0

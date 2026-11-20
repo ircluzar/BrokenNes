@@ -95,6 +95,8 @@
     <Compile Include="$(NesRoot)md\**\*.cs"     LinkBase="NesEmulator\md" />
     <!-- x86 console (pool card P3): an isolated system, the i386 core ported from tiny386. -->
     <Compile Include="$(NesRoot)x86\**\*.cs"    LinkBase="NesEmulator\x86" />
+    <!-- Nintendo 64: the adapter (NesEmulator\n64), the core cor64 (cer64plus, MIT) as a project reference from $(Cor64Root) (docs/projects/n64-cor64.md). -->
+    <Compile Include="$(NesRoot)n64\**\*.cs"    LinkBase="NesEmulator\n64" />
     <Compile Include="$(NesRoot)corruption\**\*.cs" LinkBase="NesEmulator\corruption" />
     <!-- The debugger engine (BrokenDev milestone D1): breakpoints, watches, stepping, call stack, trace, symbols. The plugin and Lite
          compile only its hooks (in board\Bus.cs, snes\SnesDebugHooks.cs, gb\GbDebugHooks.cs), never this folder. -->
@@ -204,4 +206,6 @@
     <Compile Remove="bin\**;obj\**;bin-cli\**;obj-cli\**" />
   </ItemGroup>
 
+  <PropertyGroup><Cor64Root Condition="'$(Cor64Root)' == ''">$(MSBuildThisFileDirectory)..\third_party\cor64\</Cor64Root></PropertyGroup>
+  <ItemGroup><ProjectReference Include="$(Cor64Root)src\cor64\cor64.csproj" /></ItemGroup>
 </Project>

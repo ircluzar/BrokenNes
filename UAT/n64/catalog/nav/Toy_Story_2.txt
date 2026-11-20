@@ -1,0 +1,91 @@
+# nav2 Toy_Story_2 (visp_fix2, COR64_VISPFIX2_CAP TH=6): title, Play Game, Etch A Sketch level select, intro, Andy's House
+run 600
+screenshot o00
+run 150
+screenshot o01
+run 150
+screenshot o02
+run 150
+screenshot o03
+run 150
+screenshot o04
+run 150
+screenshot o05
+run 150
+screenshot o06
+press START 6 20
+run 130
+screenshot o10
+press A 6 20
+run 130
+screenshot o11
+press START 6 20
+run 130
+screenshot o12
+press A 6 20
+run 130
+screenshot o13
+press START 6 20
+run 130
+screenshot o14
+press A 6 20
+run 130
+screenshot o15
+press START 6 20
+run 130
+screenshot o16
+press A 6 20
+run 130
+screenshot o17
+press START 6 20
+run 130
+screenshot o18
+press A 6 20
+run 130
+screenshot o19
+press START 6 20
+run 130
+screenshot o20
+savestate x
+press A 30 200
+screenshot p1
+run 300
+screenshot p2
+press A 30 300
+screenshot p3
+press A 30 300
+screenshot p4
+press A 30 300
+screenshot p5
+press START 30 300
+screenshot p6
+press A 30 300
+screenshot p7
+press A 30 300
+screenshot p8
+press A 30 300
+screenshot p9
+press A 30 300
+screenshot q1
+press A 30 300
+screenshot q2
+press START 30 300
+screenshot q3
+run 600
+screenshot q4
+savestate lvl
+stick 0 90
+run 300
+screenshot g1
+stick 90 0
+run 100
+stick 0 90
+run 300
+screenshot g2
+stick 0 0
+press A 20 100
+screenshot g3
+stick -90 0
+run 300
+screenshot g4
+stick 0 0

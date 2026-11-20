@@ -1,0 +1,260 @@
+# re2: boot -> legal/gore card -> title (Start presses) -> DD + A: NEW GAME -> A through NORMAL / LEON / violence / blood
+# -> intro FMV -> Start presses skip the FMV clips -> Leon in the Raccoon City street (gameplay), ~5 minutes of walking.
+# [cert_scripts14] retimed after emu_fix5 (FMV decodes and plays at full length) and speed_c1 (CPU batch 512):
+# A presses 2 s apart through the menus/FMV, then 5 Start presses 2 s apart reach the street.
+# Cheats (US addresses, community GameShark codes): health held at 200 (0x800E1322 = 00C8, "Infinite Health");
+# inventory slot 3 (0x800E8ED0, 4 bytes id/qty) = Ink Ribbon x5 (id 0x1E); "Save Anywhere" (0x800E8928 = 80074110) opens
+# the game's own typewriter save: "It's an old typewriter" -> "Will you use the Ink Ribbon? Yes" -> Saved games -> slot 1.
+# The save is a real SRAM save (one ribbon used); after reset LOAD GAME lists it ("LeonA / 01 / ...").
+run 280
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 10
+screenshot title_menu
+hold DD
+run 5
+release
+run 30
+press A 5 115
+press A 5 115
+press A 5 115
+press A 5 115
+press A 5 115
+press A 5 115
+press A 5 115
+press A 5 115
+press A 5 115
+press A 5 115
+press A 5 115
+press A 5 115
+press A 5 115
+press A 5 115
+screenshot intro_fmv
+press START 10 110
+press START 10 110
+press START 10 110
+press START 10 110
+press START 10 110
+run 60
+screenshot street
+checkpoint gameplay
+savestate speed
+pokehold 800E1322 00C8
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_00
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_01
+stick 80 0
+run 400
+stick 0 0
+run 200
+screenshot play_02
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_03
+stick -80 0
+run 400
+stick 0 0
+run 200
+screenshot play_04
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_05
+stick 0 -80
+run 400
+stick 0 0
+run 200
+screenshot play_06
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_07
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_08
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_09
+stick 80 0
+run 400
+stick 0 0
+run 200
+screenshot play_10
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_11
+stick -80 0
+run 400
+stick 0 0
+run 200
+screenshot play_12
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_13
+stick 0 -80
+run 400
+stick 0 0
+run 200
+screenshot play_14
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_15
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_16
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_17
+stick 80 0
+run 400
+stick 0 0
+run 200
+screenshot play_18
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_19
+stick -80 0
+run 400
+stick 0 0
+run 200
+screenshot play_20
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_21
+stick 0 -80
+run 400
+stick 0 0
+run 200
+screenshot play_22
+stick 0 80
+run 400
+stick 0 0
+run 200
+screenshot play_23
+checkpoint end
+stick 0 0
+release
+poke 800E8ED0 1E050000
+run 30
+poke 800E8928 80074110
+run 180
+screenshot typewriter
+press A 5 85
+press A 5 85
+press A 5 85
+press A 5 85
+screenshot ink_ribbon_yes
+press A 5 85
+screenshot saved_games
+press A 5 85
+run 600
+screenshot saved_slot1
+press A 5 85
+run 300
+screenshot after_save
+pokeoff
+savefile pre_reset
+reset
+run 600
+screenshot reset_gore
+run 600
+press START 10 120
+screenshot reset_title
+press START 10 120
+press START 10 120
+screenshot reset_title_menu
+press A 5 115
+run 120
+screenshot reset_load_game_slot1
+savefile post_reset
+checkpoint save_end

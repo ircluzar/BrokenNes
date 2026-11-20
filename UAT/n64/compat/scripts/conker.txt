@@ -1,0 +1,611 @@
+# conker: boot -> mature card -> Nintendo/Rare intro -> Start presses pick GAME 1 (new game) -> opening cutscenes
+# (A presses advance the speech) -> Hungover gameplay at ~frame 32000. Inputs recorded with the pilot (lane cert_scripts8).
+# Then ~2 minutes of stick play, savestate speed, save block (reset -> game select shows GAME 1).
+# ---- segment game_select_newgame
+run 280
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 10
+screenshot game_select_newgame
+# ---- segment credits
+run 280
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 290
+hold START
+run 10
+release
+run 10
+screenshot credits
+# ---- segment throne_intro
+run 280
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 10
+screenshot throne_intro
+# ---- segment berri_phone
+run 280
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 10
+screenshot berri_phone
+# ---- segment bar_night
+run 280
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 10
+screenshot bar_night
+# ---- segment castle_king
+run 280
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 10
+screenshot castle_king
+# ---- segment hungover_gameplay
+run 280
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 290
+hold A
+run 10
+release
+run 10
+screenshot hungover_gameplay
+release
+checkpoint gameplay
+savestate speed
+stick 0 80
+run 200
+press A 5 40
+stick 60 40
+run 200
+press A 5 40
+screenshot play_1
+stick 80 0
+run 200
+press A 5 40
+stick 40 -60
+run 200
+press A 5 40
+screenshot play_3
+stick 0 -80
+run 200
+press A 5 40
+stick -60 -40
+run 200
+press A 5 40
+screenshot play_5
+stick -80 0
+run 200
+press A 5 40
+stick -40 60
+run 200
+press A 5 40
+screenshot play_7
+stick 0 80
+run 200
+press A 5 40
+stick 60 40
+run 200
+press A 5 40
+screenshot play_9
+stick 80 0
+run 200
+press A 5 40
+stick 40 -60
+run 200
+press A 5 40
+screenshot play_11
+stick 0 -80
+run 200
+press A 5 40
+stick -60 -40
+run 200
+press A 5 40
+screenshot play_13
+stick -80 0
+run 200
+press A 5 40
+stick -40 60
+run 200
+press A 5 40
+screenshot play_15
+stick 0 0
+release
+run 120
+checkpoint end
+savefile pre_reset
+# [emu_fix4] the save block never issued `reset` (the game kept running Hungover): not an emulator bug.
+reset
+run 280
+screenshot reset_00
+hold START
+run 10
+release
+run 10
+run 280
+screenshot reset_01
+hold START
+run 10
+release
+run 10
+run 280
+screenshot reset_02
+hold START
+run 10
+release
+run 10
+run 280
+screenshot reset_03
+hold START
+run 10
+release
+run 10
+run 280
+screenshot reset_04
+hold START
+run 10
+release
+run 10
+run 280
+screenshot reset_05
+hold START
+run 10
+release
+run 10
+run 280
+screenshot reset_06
+hold START
+run 10
+release
+run 10
+run 280
+screenshot reset_07
+hold START
+run 10
+release
+run 10
+run 280
+screenshot reset_08
+# [prenmi_on] warm NMI reset: Conker skips the long intro, so the presses below enter GAME 1 and the game
+# rewrites its slot (play time). The save is captured while the GAME1 select (0:06:03) is on screen.
+savefile post_reset
+hold START
+run 10
+release
+run 10
+run 280
+screenshot reset_09
+hold START
+run 10
+release
+run 10
+run 280
+screenshot reset_10
+hold START
+run 10
+release
+run 10
+screenshot reset_continue
+run 300
+screenshot reset_paused
+checkpoint save_end

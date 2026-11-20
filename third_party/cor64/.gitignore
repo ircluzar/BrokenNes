@@ -1,0 +1,34 @@
+bin
+obj
+packages
+package-lock.json
+dist
+paket-files
+mono_crash.mem*
+.nuke/temp
+.tmp/
+build/CMakeFiles
+build/.cmake
+build/build.ninja
+build/cmake_install.cmake
+build/CMakeCache.txt
+build/compile_commands.json
+.cache
+
+build/rules.ninja
+
+# cer64plus local run output
+last_run_console.txt
+scratch.txt
+scratch/
+
+# savestates
+*.cor64state
+bin/st/
+
+# native build output
+native/prdp/build/
+bin_A/
+bin_aot*/
+bin_sf/
+bin_rt/

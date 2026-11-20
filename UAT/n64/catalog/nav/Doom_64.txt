@@ -1,0 +1,133 @@
+# nav2 Doom_64 (visp_fix2): intro pairs to o19 reach E1M1; then walk/turn/fire (no START, which pauses)
+run 600
+screenshot o00
+run 150
+screenshot o01
+run 150
+screenshot o02
+run 150
+screenshot o03
+run 150
+screenshot o04
+run 150
+screenshot o05
+run 150
+screenshot o06
+press START 6 20
+run 130
+screenshot o10
+press A 6 20
+run 130
+screenshot o11
+press START 6 20
+run 130
+screenshot o12
+press A 6 20
+run 130
+screenshot o13
+press START 6 20
+run 130
+screenshot o14
+press A 6 20
+run 130
+screenshot o15
+press START 6 20
+run 130
+screenshot o16
+press A 6 20
+run 130
+screenshot o17
+press START 6 20
+run 130
+screenshot o18
+press A 6 20
+run 130
+screenshot o19
+press START 6 20
+run 130
+screenshot o20
+savestate play
+stick 0 90
+hold Z
+run 150
+release
+stick 0 0
+run 10
+screenshot g00
+stick 0 90
+hold Z
+run 150
+release
+stick 0 0
+run 10
+screenshot g01
+stick 90 0
+hold Z
+run 150
+release
+stick 0 0
+run 10
+screenshot g02
+stick 0 90
+hold Z
+run 150
+release
+stick 0 0
+run 10
+screenshot g03
+stick 0 90
+hold Z
+run 150
+release
+stick 0 0
+run 10
+screenshot g04
+stick 90 0
+hold Z
+run 150
+release
+stick 0 0
+run 10
+screenshot g05
+stick 0 90
+hold Z
+run 150
+release
+stick 0 0
+run 10
+screenshot g06
+stick 0 90
+hold Z
+run 150
+release
+stick 0 0
+run 10
+screenshot g07
+stick 90 0
+hold Z
+run 150
+release
+stick 0 0
+run 10
+screenshot g08
+stick 0 90
+hold Z
+run 150
+release
+stick 0 0
+run 10
+screenshot g09
+stick 0 90
+hold Z
+run 150
+release
+stick 0 0
+run 10
+screenshot g10
+stick 90 0
+hold Z
+run 150
+release
+stick 0 0
+run 10
+screenshot g11

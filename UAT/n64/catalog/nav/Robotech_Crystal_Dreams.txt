@@ -1,0 +1,190 @@
+# nav1 Robotech_Crystal_Dreams: best attempt (did not reach gameplay at COR64_VI_SPEEDUP=11, see FINDINGS): prefix + D-pad walk + A-walk
+run 600
+screenshot o00
+run 150
+screenshot o01
+run 150
+screenshot o02
+run 150
+screenshot o03
+run 150
+screenshot o04
+run 150
+screenshot o05
+run 150
+screenshot o06
+press START 6 20
+run 130
+screenshot o10
+press A 6 20
+run 130
+screenshot o11
+press START 6 20
+run 130
+screenshot o12
+press A 6 20
+run 130
+screenshot o13
+press START 6 20
+run 130
+screenshot o14
+press A 6 20
+run 130
+screenshot o15
+press START 6 20
+run 130
+screenshot o16
+press DD 8 30
+run 30
+screenshot d1a
+press A 8 30
+run 120
+screenshot d1b
+press DD 8 30
+run 30
+screenshot d2a
+press A 8 30
+run 120
+screenshot d2b
+press DU 8 30
+run 30
+screenshot d3a
+press A 8 30
+run 120
+screenshot d3b
+press DR 8 30
+run 30
+screenshot d4a
+press A 8 30
+run 120
+screenshot d4b
+press DL 8 30
+run 30
+screenshot d5a
+press A 8 30
+run 120
+screenshot d5b
+stick 0 -80
+run 10
+stick 0 0
+run 30
+screenshot d6a
+press A 8 30
+run 120
+screenshot d6b
+stick 80 0
+run 10
+stick 0 0
+run 30
+screenshot d7a
+press A 8 30
+run 120
+screenshot d7b
+press B 8 30
+run 120
+screenshot d9
+press A 8 30
+run 120
+screenshot e1
+press A 8 30
+run 120
+screenshot e2
+press A 8 30
+run 120
+screenshot e3
+press A 8 30
+run 120
+screenshot e4
+press A 8 30
+run 120
+screenshot e5
+press A 8 30
+run 120
+screenshot e6
+press START 8 30
+run 200
+screenshot e7
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w3
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w6
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w9
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w12
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w15
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w18
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w21
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w24
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w27
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w30
+hold A
+stick 0 80
+run 300
+screenshot x1
+run 300
+screenshot x2
+run 300
+screenshot x3
+run 300
+screenshot x4
+run 300
+screenshot x5
+run 300
+screenshot x6

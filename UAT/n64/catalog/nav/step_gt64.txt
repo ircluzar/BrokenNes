@@ -1,0 +1,44 @@
+press DD 8 30
+press DD 8 30
+screenshot g0
+press A 8 30
+press A 8 30
+run 150
+screenshot g1
+press A 8 30
+run 150
+screenshot g2
+press A 8 30
+run 150
+screenshot g3
+press A 8 30
+run 150
+screenshot g4
+press A 8 30
+run 150
+screenshot g5
+press A 8 30
+run 150
+screenshot g6
+press A 8 30
+run 150
+screenshot g7
+press A 8 30
+run 150
+screenshot g8
+press A 8 30
+run 150
+screenshot g9
+press A 8 30
+run 150
+screenshot g10
+hold A
+stick 0 60
+run 300
+screenshot x1
+run 300
+screenshot x2
+run 300
+screenshot x3
+run 300
+screenshot x4

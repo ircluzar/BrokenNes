@@ -22,6 +22,7 @@ public static class ConsoleSessions
         ConsoleKind.WideMess => new SnesSession(rom, cpu, ppu, apu, loadFirmware, wideMess: true),
         ConsoleKind.GameBoy or ConsoleKind.GameBoyColor => new GbSession(rom, console, cpu, ppu, apu),
         ConsoleKind.MasterSystem or ConsoleKind.GameGear or ConsoleKind.Genesis => CreateSega(console, rom, cpu, ppu, apu, fileName, sega),
+        ConsoleKind.N64 => Consoles.IsAvailable(ConsoleKind.N64) ? N64Factory!(rom, fileName, ppu, apu) : throw new NotSupportedException("the Nintendo 64 is not built into this app"),
         ConsoleKind.Pc => Consoles.IsAvailable(ConsoleKind.Pc) ? new NesEmulator.X86.PcSession(rom, fileName, apu, cpu, ppu, machine: pcMachine) : throw new NotSupportedException("the x86 console is not offered here"),
         _ => throw new ArgumentException("The NES runs on the NES class, not a console session"),
     };
@@ -47,6 +48,14 @@ public static class ConsoleSessions
             throw new NotSupportedException($"{Consoles.DisplayName(console)} is not supported yet");
         return new NesEmulator.Sega.SegaPlaceholderSession(console, rom, cpu, ppu, apu);
     }
+
+    /// <summary>
+    /// The N64 session maker (rom, fileName, ppu, apu), set at start-up by the hosts that reference cor64 (NesEmulator.N64.N64Host.Register). Null elsewhere (Lite, the plugin, Core): the console
+    /// is then not offered, and Create refuses it with a reason. Core never names cor64's types, so the AOT plugin build does not change.
+    /// </summary>
+    public static Func<byte[], string, string, string, IConsoleSession>? N64Factory { get; set; }
+    /// <summary>Whether an N64 picture core can run on this machine (PRDP needs Vulkan), set with <see cref="N64Factory"/>.</summary>
+    public static Func<string, bool>? N64PpuAvailable { get; set; }
 
     internal static string Sha1(byte[] data) => Convert.ToHexString(SHA1.HashData(data)).ToLowerInvariant();
 

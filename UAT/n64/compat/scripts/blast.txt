@@ -1,0 +1,6590 @@
+# blast: boot -> title -> ENTER NAME -> Simian Acres -> [cert_scripts12] closed-loop pilot (dev/bn4.py: reads the
+# player matrix 0x801ABCB8 and carrier 0x801D22B8, sweeps the carrier lane ahead of it with the Ramdozer) clears the
+# level: MISSION COMPLETE, gold medal, EXIT -> the game writes the level result to EEPROM. No cheats. Inputs recorded
+# by the pilot and replayed here from power-on. Then reset and the name file shows the progress.
+run 400
+screenshot t0
+press START 5 100
+screenshot t1
+press A 5 100
+run 200
+screenshot t2
+press A 5 100
+run 200
+screenshot t3
+press A 5 100
+run 200
+screenshot t4
+press A 5 100
+run 200
+screenshot t5
+press A 5 100
+run 200
+screenshot t6
+press A 5 100
+run 200
+screenshot t7
+press A 5 100
+run 200
+screenshot t8
+press A 5 100
+run 200
+screenshot t9
+press A 5 100
+run 200
+screenshot t10
+press A 5 100
+run 200
+screenshot t11
+press A 5 100
+run 200
+screenshot t12
+press A 5 100
+run 200
+screenshot t13
+press A 5 100
+run 200
+screenshot t14
+checkpoint t
+press A 5 100
+stick 60 0
+run 6
+stick 0 0
+press START 5 100
+run 2000
+screenshot late_1
+press A 5 100
+stick 60 0
+run 6
+stick 0 0
+press START 5 100
+run 2000
+screenshot late_2
+press A 5 60
+press A 5 60
+press A 5 60
+press START 5 60
+screenshot level
+# [cert_scripts12] closed-loop pilot from here (bn4.py)
+hold START
+run 5
+release
+run 60
+hold A
+run 5
+release
+run 60
+hold A
+run 5
+release
+run 20
+# level unpaused
+screenshot level
+savestate speed
+hold A
+stick -9 0
+run 20
+stick -10 0
+run 10
+stick 0 0
+run 10
+stick 2 0
+run 30
+stick 10 0
+run 10
+stick 15 0
+run 10
+stick 11 0
+run 10
+stick 3 0
+run 20
+stick 4 0
+run 20
+stick 5 0
+run 10
+stick 7 0
+run 10
+stick 11 0
+run 10
+stick 17 0
+run 10
+stick 80 0
+run 10
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 51 0
+run 1
+hold A
+run 9
+release
+stick 25 0
+run 1
+hold A
+run 9
+release
+stick 0 0
+run 1
+hold A
+run 9
+release
+stick -1 0
+run 1
+hold A
+run 9
+release
+stick -5 0
+run 1
+hold A
+run 9
+release
+stick -11 0
+run 1
+hold A
+run 9
+release
+stick -27 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -64 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -10 0
+run 1
+hold A
+run 9
+release
+stick -3 0
+run 1
+hold A
+run 9
+release
+stick 5 0
+run 1
+hold A
+run 9
+release
+stick 25 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 35 0
+run 1
+hold A
+run 9
+release
+stick 19 0
+run 1
+hold A
+run 9
+release
+stick 0 0
+run 1
+hold A
+run 9
+release
+stick -2 0
+run 1
+hold A
+run 9
+release
+stick -13 0
+run 1
+hold A
+run 9
+release
+stick -40 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -47 0
+run 1
+hold A
+run 9
+release
+stick -18 0
+run 1
+hold A
+run 9
+release
+stick 1 0
+run 1
+hold A
+run 9
+release
+stick 2 0
+run 1
+hold A
+run 9
+release
+stick 5 0
+run 1
+hold A
+run 9
+release
+stick 10 0
+run 1
+hold A
+run 9
+release
+stick 28 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick -40 0
+run 1
+hold A
+run 9
+release
+stick -48 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick 70 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 59 0
+run 1
+hold A
+run 9
+release
+stick 41 0
+run 1
+hold A
+run 9
+release
+stick 42 0
+run 1
+hold A
+run 9
+release
+stick 44 0
+run 1
+hold A
+run 9
+release
+stick 46 0
+run 1
+hold A
+run 9
+release
+stick 47 0
+run 1
+hold A
+run 9
+release
+stick 46 0
+run 1
+hold A
+run 9
+screenshot pilot_01
+release
+stick 41 0
+run 1
+hold A
+run 9
+release
+stick 39 0
+run 1
+hold A
+run 9
+release
+stick 35 0
+run 1
+hold A
+run 9
+release
+stick 31 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -47 0
+run 1
+hold A
+run 9
+release
+stick -16 0
+run 1
+hold A
+run 9
+release
+stick -17 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -42 0
+run 1
+hold A
+run 9
+release
+stick -32 0
+run 1
+hold A
+run 9
+release
+stick -17 0
+run 1
+hold A
+run 9
+release
+stick -11 0
+run 1
+hold A
+run 9
+release
+stick 0 0
+run 1
+hold A
+run 9
+release
+stick 16 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 74 0
+run 1
+hold A
+run 9
+release
+stick 53 0
+run 1
+hold A
+run 9
+release
+stick 54 0
+run 1
+hold A
+run 9
+release
+stick 57 0
+run 1
+hold A
+run 9
+release
+stick 56 0
+run 1
+hold A
+run 9
+release
+stick 64 0
+run 1
+hold A
+run 9
+release
+stick 72 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 78 0
+run 1
+hold A
+run 9
+release
+stick 56 0
+run 1
+hold A
+run 9
+release
+stick 37 0
+run 1
+hold A
+run 9
+release
+stick 36 0
+run 1
+hold A
+run 9
+release
+stick 34 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 35 0
+run 1
+hold A
+run 9
+release
+stick 37 0
+run 1
+hold A
+run 9
+release
+stick 39 0
+run 1
+hold A
+run 9
+release
+stick 40 0
+run 1
+hold A
+run 9
+release
+stick 46 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 35 0
+run 1
+hold A
+run 9
+release
+stick 31 0
+run 1
+hold A
+run 9
+release
+stick 17 0
+run 1
+hold A
+run 9
+release
+stick 5 0
+run 1
+hold A
+run 9
+release
+stick 2 0
+run 1
+hold A
+run 9
+release
+stick 1 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 0 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -2 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -69 0
+run 1
+hold A
+run 9
+release
+stick -49 0
+run 1
+hold A
+run 9
+release
+stick -46 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 71 0
+run 1
+hold A
+run 9
+release
+stick 28 0
+run 1
+hold A
+run 9
+release
+stick 8 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -74 0
+run 1
+hold A
+run 9
+release
+stick -39 0
+run 1
+hold A
+run 9
+release
+stick -4 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -3 0
+run 1
+hold A
+run 9
+release
+stick 0 0
+run 1
+hold A
+run 9
+release
+stick 67 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 65 0
+run 1
+hold A
+run 9
+release
+stick 57 0
+run 1
+hold A
+run 9
+release
+stick 40 0
+run 1
+hold A
+run 9
+release
+stick 41 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -55 0
+run 1
+hold A
+run 9
+release
+stick -36 0
+run 1
+hold A
+run 9
+release
+stick -22 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -25 0
+run 1
+hold A
+run 9
+release
+stick -27 0
+run 1
+hold A
+run 9
+release
+stick -11 0
+run 1
+hold A
+run 9
+release
+stick -6 0
+run 1
+hold A
+run 9
+release
+stick -7 0
+run 1
+hold A
+run 9
+release
+stick -9 0
+run 1
+hold A
+run 9
+release
+stick -16 0
+run 1
+hold A
+run 9
+release
+stick -15 0
+run 1
+hold A
+run 9
+release
+stick -25 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+screenshot pilot_02
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -54 0
+run 1
+hold A
+run 9
+release
+stick -34 0
+run 1
+hold A
+run 9
+release
+stick -35 0
+run 1
+hold A
+run 9
+release
+stick -39 0
+run 1
+hold A
+run 9
+release
+stick -40 0
+run 1
+hold A
+run 9
+release
+stick -44 0
+run 1
+hold A
+run 9
+release
+stick -46 0
+run 1
+hold A
+run 9
+release
+stick -52 0
+run 1
+hold A
+run 9
+release
+stick -53 0
+run 1
+hold A
+run 9
+release
+stick -52 0
+run 1
+hold A
+run 9
+release
+stick -50 0
+run 1
+hold A
+run 9
+release
+stick -43 0
+run 1
+hold A
+run 9
+release
+stick -41 0
+run 1
+hold A
+run 9
+release
+stick -40 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -52 0
+run 1
+hold A
+run 9
+release
+stick -69 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -74 0
+run 1
+hold A
+run 9
+release
+stick -50 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -48 0
+run 1
+hold A
+run 9
+release
+stick -43 0
+run 1
+hold A
+run 9
+release
+stick -40 0
+run 1
+hold A
+run 9
+release
+stick -35 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -32 0
+run 1
+hold A
+run 9
+release
+stick -30 0
+run 1
+hold A
+run 9
+release
+stick -29 0
+run 1
+hold A
+run 9
+release
+stick -30 0
+run 1
+hold A
+run 9
+release
+stick -34 0
+run 1
+hold A
+run 9
+release
+stick -38 0
+run 1
+hold A
+run 9
+release
+stick -49 0
+run 1
+hold A
+run 9
+release
+stick -64 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -69 0
+run 1
+hold A
+run 9
+release
+stick -46 0
+run 1
+hold A
+run 9
+release
+stick -25 0
+run 1
+hold A
+run 9
+release
+stick -24 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick 69 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -69 0
+run 1
+hold A
+run 9
+release
+stick -37 0
+run 1
+hold A
+run 9
+release
+stick -5 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -4 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -1 0
+run 1
+hold A
+run 9
+release
+stick 5 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 37 0
+run 1
+hold A
+run 9
+release
+stick 25 0
+run 1
+hold A
+run 9
+release
+stick 12 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick -51 0
+run 1
+hold A
+run 9
+release
+stick -16 0
+run 1
+hold A
+run 9
+release
+stick 3 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 4 0
+run 1
+hold A
+run 9
+release
+stick 9 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -72 0
+run 1
+hold A
+run 9
+release
+stick -59 0
+run 1
+hold A
+run 9
+release
+stick -74 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 59 0
+run 1
+hold A
+run 9
+release
+stick 12 0
+run 1
+hold A
+run 9
+release
+stick 9 0
+run 1
+hold A
+run 9
+release
+stick 10 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+stick -71 0
+run 1
+hold A
+run 9
+release
+stick -25 0
+run 1
+hold A
+run 9
+release
+stick -31 0
+run 1
+hold A
+run 9
+release
+stick 63 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick -54 0
+run 1
+hold A
+run 9
+release
+stick -48 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 65 0
+run 1
+hold A
+run 9
+release
+stick 16 0
+run 1
+hold A
+run 9
+release
+stick 15 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+screenshot pilot_03
+release
+stick 15 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick 15 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick 15 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick 25 0
+run 1
+hold A
+run 9
+release
+stick 18 0
+run 1
+hold A
+run 9
+release
+stick 13 0
+run 1
+hold A
+run 9
+release
+stick 11 0
+run 1
+hold A
+run 9
+release
+stick 4 0
+run 1
+hold A
+run 9
+release
+stick 5 0
+run 1
+hold A
+run 9
+release
+stick 20 0
+run 1
+hold A
+run 9
+release
+stick 9 0
+run 1
+hold A
+run 9
+release
+stick 7 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 9 0
+run 1
+hold A
+run 9
+release
+stick 5 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 6 0
+run 1
+hold A
+run 9
+release
+stick 3 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 4 0
+run 1
+hold A
+run 9
+release
+stick 5 0
+run 1
+hold A
+run 9
+release
+stick 2 0
+run 1
+hold A
+run 9
+release
+stick 3 0
+run 1
+hold A
+run 9
+release
+stick 4 0
+run 1
+hold A
+run 9
+release
+stick 1 0
+run 1
+hold A
+run 9
+release
+stick 2 0
+run 1
+hold A
+run 9
+release
+stick 0 0
+run 1
+hold A
+run 9
+release
+stick -23 0
+run 1
+hold A
+run 9
+release
+stick -24 0
+run 1
+hold A
+run 9
+release
+stick -20 0
+run 1
+hold A
+run 9
+release
+stick -23 0
+run 1
+hold A
+run 9
+release
+stick -20 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -21 0
+run 1
+hold A
+run 9
+release
+stick -22 0
+run 1
+hold A
+run 9
+release
+stick -24 0
+run 1
+hold A
+run 9
+release
+stick -25 0
+run 1
+hold A
+run 9
+release
+stick -27 0
+run 1
+hold A
+run 9
+release
+stick -29 0
+run 1
+hold A
+run 9
+release
+stick -31 0
+run 1
+hold A
+run 9
+release
+stick -29 0
+run 1
+hold A
+run 9
+release
+stick -63 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -72 0
+run 1
+hold A
+run 9
+release
+stick -55 0
+run 1
+hold A
+run 9
+release
+stick -41 0
+run 1
+hold A
+run 9
+release
+stick -39 0
+run 1
+hold A
+run 9
+release
+stick -32 0
+run 1
+hold A
+run 9
+release
+stick -30 0
+run 1
+hold A
+run 9
+release
+stick -48 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+stick -67 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 36 0
+run 1
+hold A
+run 9
+release
+stick 27 0
+run 1
+hold A
+run 9
+release
+stick 19 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 22 0
+run 1
+hold A
+run 9
+release
+stick 29 0
+run 1
+hold A
+run 9
+release
+stick 35 0
+run 1
+hold A
+run 9
+release
+stick 34 0
+run 1
+hold A
+run 9
+release
+stick 26 0
+run 1
+hold A
+run 9
+release
+stick 15 0
+run 1
+hold A
+run 9
+release
+stick 3 0
+run 1
+hold A
+run 9
+release
+stick 5 0
+run 1
+hold A
+run 9
+release
+stick 16 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 64 0
+run 1
+hold A
+run 9
+release
+stick 35 0
+run 1
+hold A
+run 9
+release
+stick 32 0
+run 1
+hold A
+run 9
+release
+stick 36 0
+run 1
+hold A
+run 9
+release
+stick 59 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 57 0
+run 1
+hold A
+run 9
+release
+stick 24 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 23 0
+run 1
+hold A
+run 9
+release
+stick 20 0
+run 1
+hold A
+run 9
+release
+stick 14 0
+run 1
+hold A
+run 9
+release
+stick 6 0
+run 1
+hold A
+run 9
+release
+stick 2 0
+run 1
+hold A
+run 9
+release
+stick -3 0
+run 1
+hold A
+run 9
+release
+stick -46 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -71 0
+run 1
+hold A
+run 9
+release
+stick -58 0
+run 1
+hold A
+run 9
+release
+stick -43 0
+run 1
+hold A
+run 9
+release
+stick -25 0
+run 1
+hold A
+run 9
+release
+stick -16 0
+run 1
+hold A
+run 9
+release
+stick -8 0
+run 1
+hold A
+run 9
+release
+stick -26 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -35 0
+run 1
+hold A
+run 9
+release
+stick -37 0
+run 1
+hold A
+run 9
+release
+stick -38 0
+run 1
+hold A
+run 9
+release
+stick -34 0
+run 1
+hold A
+run 9
+release
+stick -29 0
+run 1
+hold A
+run 9
+release
+stick -28 0
+run 1
+hold A
+run 9
+release
+stick -7 0
+run 1
+hold A
+run 9
+release
+stick -4 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+screenshot pilot_04
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 73 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick 57 0
+run 1
+hold A
+run 9
+release
+stick 5 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 4 0
+run 1
+hold A
+run 9
+release
+stick 14 0
+run 1
+hold A
+run 9
+release
+stick 16 0
+run 1
+hold A
+run 9
+release
+stick 14 0
+run 1
+hold A
+run 9
+release
+stick 10 0
+run 1
+hold A
+run 9
+release
+stick 6 0
+run 1
+hold A
+run 9
+release
+stick 4 0
+run 1
+hold A
+run 9
+release
+stick 3 0
+run 1
+hold A
+run 9
+release
+stick 2 0
+run 1
+hold A
+run 9
+release
+stick 1 0
+run 1
+hold A
+run 9
+release
+stick -3 0
+run 1
+hold A
+run 9
+release
+stick -8 0
+run 1
+hold A
+run 9
+release
+stick -33 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -26 0
+run 1
+hold A
+run 9
+release
+stick -16 0
+run 1
+hold A
+run 9
+release
+stick -3 0
+run 1
+hold A
+run 9
+release
+stick -5 0
+run 1
+hold A
+run 9
+release
+stick -11 0
+run 1
+hold A
+run 9
+release
+stick -14 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -41 0
+run 1
+hold A
+run 9
+release
+stick -25 0
+run 1
+hold A
+run 9
+release
+stick -10 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+screenshot pilot_05
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -52 0
+run 1
+hold A
+run 9
+release
+stick -36 0
+run 1
+hold A
+run 9
+release
+stick -39 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -31 0
+run 1
+hold A
+run 9
+release
+stick -13 0
+run 1
+hold A
+run 9
+release
+stick 2 0
+run 1
+hold A
+run 9
+release
+stick 5 0
+run 1
+hold A
+run 9
+release
+stick 11 0
+run 1
+hold A
+run 9
+release
+stick 12 0
+run 1
+hold A
+run 9
+release
+stick 17 0
+run 1
+hold A
+run 9
+release
+stick 34 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 42 0
+run 1
+hold A
+run 9
+release
+stick 28 0
+run 1
+hold A
+run 9
+release
+stick 29 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -72 0
+run 1
+hold A
+run 9
+release
+stick -41 0
+run 1
+hold A
+run 9
+release
+stick -13 0
+run 1
+hold A
+run 9
+release
+stick -17 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 46 0
+run 1
+hold A
+run 9
+release
+stick 39 0
+run 1
+hold A
+run 9
+release
+stick 33 0
+run 1
+hold A
+run 9
+release
+stick 32 0
+run 1
+hold A
+run 9
+release
+stick 11 0
+run 1
+hold A
+run 9
+release
+stick 8 0
+run 1
+hold A
+run 9
+release
+stick 18 0
+run 1
+hold A
+run 9
+release
+stick 24 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick 40 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 75 0
+run 1
+hold A
+run 9
+release
+stick 46 0
+run 1
+hold A
+run 9
+release
+stick 22 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 10 0
+run 1
+hold A
+run 9
+release
+stick 6 0
+run 1
+hold A
+run 9
+release
+stick 8 0
+run 1
+hold A
+run 9
+release
+stick 12 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 17 0
+run 1
+hold A
+run 9
+release
+stick 27 0
+run 1
+hold A
+run 9
+release
+stick 64 0
+run 1
+hold A
+run 9
+release
+stick 58 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -65 0
+run 1
+hold A
+run 9
+release
+stick -46 0
+run 1
+hold A
+run 9
+release
+stick -29 0
+run 1
+hold A
+run 9
+release
+stick -28 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -37 0
+run 1
+hold A
+run 9
+release
+stick -33 0
+run 1
+hold A
+run 9
+release
+stick -36 0
+run 1
+hold A
+run 9
+release
+stick -31 0
+run 1
+hold A
+run 9
+release
+stick -35 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+screenshot pilot_06
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+stick -26 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+stick -61 0
+run 1
+hold A
+run 9
+release
+stick -39 0
+run 1
+hold A
+run 9
+release
+stick -22 0
+run 1
+hold A
+run 9
+release
+stick -23 0
+run 1
+hold A
+run 9
+release
+stick -8 0
+run 1
+hold A
+run 9
+release
+stick -12 0
+run 1
+hold A
+run 9
+release
+stick -9 0
+run 1
+hold A
+run 9
+release
+stick -15 0
+run 1
+hold A
+run 9
+release
+stick -16 0
+run 1
+hold A
+run 9
+release
+stick -22 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -62 0
+run 1
+hold A
+run 9
+release
+stick -38 0
+run 1
+hold A
+run 9
+release
+stick -20 0
+run 1
+hold A
+run 9
+release
+stick -21 0
+run 1
+hold A
+run 9
+release
+stick -22 0
+run 1
+hold A
+run 9
+release
+stick -24 0
+run 1
+hold A
+run 9
+release
+stick -26 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -29 0
+run 1
+hold A
+run 9
+release
+stick -26 0
+run 1
+hold A
+run 9
+release
+stick -16 0
+run 1
+hold A
+run 9
+release
+stick -13 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 69 0
+run 1
+hold A
+run 9
+release
+stick 67 0
+run 1
+hold A
+run 9
+release
+stick 72 0
+run 1
+hold A
+run 9
+release
+stick 78 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 79 0
+run 1
+hold A
+run 9
+release
+stick 67 0
+run 1
+hold A
+run 9
+release
+stick 49 0
+run 1
+hold A
+run 9
+release
+stick 48 0
+run 1
+hold A
+run 9
+release
+stick 46 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 54 0
+run 1
+hold A
+run 9
+release
+stick 73 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 62 0
+run 1
+hold A
+run 9
+release
+stick 42 0
+run 1
+hold A
+run 9
+release
+stick 25 0
+run 1
+hold A
+run 9
+release
+stick 12 0
+run 1
+hold A
+run 9
+release
+stick 0 0
+run 1
+hold A
+run 9
+release
+stick -4 0
+run 1
+hold A
+run 9
+release
+stick -14 0
+run 1
+hold A
+run 9
+release
+stick -21 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -24 0
+run 1
+hold A
+run 9
+release
+stick 7 0
+run 1
+hold A
+run 9
+release
+stick 8 0
+run 1
+hold A
+run 9
+release
+stick 11 0
+run 1
+hold A
+run 9
+release
+stick 8 0
+run 1
+hold A
+run 9
+release
+stick 15 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 62 0
+run 1
+hold A
+run 9
+release
+stick 53 0
+run 1
+hold A
+run 9
+release
+stick 76 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 67 0
+run 1
+hold A
+run 9
+release
+stick 47 0
+run 1
+hold A
+run 9
+release
+stick 41 0
+run 1
+hold A
+run 9
+release
+stick 37 0
+run 1
+hold A
+run 9
+release
+stick 38 0
+run 1
+hold A
+run 9
+release
+stick 36 0
+run 1
+hold A
+run 9
+release
+stick 34 0
+run 1
+hold A
+run 9
+release
+stick 32 0
+run 1
+hold A
+run 9
+release
+stick 27 0
+run 1
+hold A
+run 9
+release
+stick 22 0
+run 1
+hold A
+run 9
+release
+stick 28 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+screenshot pilot_07
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -50 0
+run 1
+hold A
+run 9
+release
+stick -25 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -24 0
+run 1
+hold A
+run 9
+release
+stick -25 0
+run 1
+hold A
+run 9
+release
+stick -24 0
+run 1
+hold A
+run 9
+release
+stick -25 0
+run 1
+hold A
+run 9
+release
+stick -29 0
+run 1
+hold A
+run 9
+release
+stick -32 0
+run 1
+hold A
+run 9
+release
+stick -46 0
+run 1
+hold A
+run 9
+release
+stick -65 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -78 0
+run 1
+hold A
+run 9
+release
+stick -51 0
+run 1
+hold A
+run 9
+release
+stick -27 0
+run 1
+hold A
+run 9
+release
+stick -25 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick 66 0
+run 1
+hold A
+run 9
+release
+stick 1 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -30 0
+run 1
+hold A
+run 9
+release
+stick -15 0
+run 1
+hold A
+run 9
+release
+stick 0 0
+run 1
+hold A
+run 9
+release
+stick 1 0
+run 1
+hold A
+run 9
+release
+stick 8 0
+run 1
+hold A
+run 9
+release
+stick 17 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick 65 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -42 0
+run 1
+hold A
+run 9
+release
+stick -34 0
+run 1
+hold A
+run 9
+release
+stick -30 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+stick -74 0
+run 1
+hold A
+run 9
+release
+stick -44 0
+run 1
+hold A
+run 9
+release
+stick -20 0
+run 1
+hold A
+run 9
+release
+stick -19 0
+run 1
+hold A
+run 9
+release
+stick 9 0
+run 1
+hold A
+run 9
+release
+stick 32 0
+run 1
+hold A
+run 9
+release
+stick 19 0
+run 1
+hold A
+run 9
+release
+stick 15 0
+run 1
+hold A
+run 9
+release
+stick 13 0
+run 1
+hold A
+run 9
+release
+stick 34 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 51 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 73 0
+run 1
+hold A
+run 9
+release
+stick 48 0
+run 1
+hold A
+run 9
+release
+stick 27 0
+run 1
+hold A
+run 9
+release
+stick 65 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -17 0
+run 1
+hold A
+run 9
+release
+stick -11 0
+run 1
+hold A
+run 9
+release
+stick -13 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -60 0
+run 1
+hold A
+run 9
+release
+stick -53 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 56 0
+run 1
+hold A
+run 9
+release
+stick 36 0
+run 1
+hold A
+run 9
+release
+stick -53 0
+run 1
+hold A
+run 9
+release
+stick -35 0
+run 1
+hold A
+run 9
+release
+stick -25 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -74 0
+run 1
+hold A
+run 9
+release
+stick -38 0
+run 1
+hold A
+run 9
+release
+stick -6 0
+run 1
+hold A
+run 9
+release
+stick -9 0
+run 1
+hold A
+run 9
+release
+stick -25 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -73 0
+run 1
+hold A
+run 9
+release
+stick -34 0
+run 1
+hold A
+run 9
+release
+stick -6 0
+run 1
+hold A
+run 9
+release
+stick -8 0
+run 1
+hold A
+run 9
+release
+stick -25 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick 55 0
+run 1
+hold A
+run 9
+release
+stick 36 0
+run 1
+hold A
+run 9
+release
+stick 68 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -58 0
+run 1
+hold A
+run 9
+release
+stick -44 0
+run 1
+hold A
+run 9
+release
+stick -30 0
+run 1
+hold A
+run 9
+release
+stick -24 0
+run 1
+hold A
+run 9
+release
+stick -7 0
+run 1
+hold A
+run 9
+release
+stick -9 0
+run 1
+hold A
+run 9
+release
+stick -27 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+screenshot pilot_08
+release
+run 1
+hold A
+run 9
+release
+stick -59 0
+run 1
+hold A
+run 9
+release
+stick -36 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -37 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -36 0
+run 1
+hold A
+run 9
+release
+stick -37 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -32 0
+run 1
+hold A
+run 9
+release
+stick -22 0
+run 1
+hold A
+run 9
+release
+stick -10 0
+run 1
+hold A
+run 9
+release
+stick -17 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -68 0
+run 1
+hold A
+run 9
+release
+stick -51 0
+run 1
+hold A
+run 9
+release
+stick -55 0
+run 1
+hold A
+run 9
+release
+stick -61 0
+run 1
+hold A
+run 9
+release
+stick -62 0
+run 1
+hold A
+run 9
+release
+stick -65 0
+run 1
+hold A
+run 9
+release
+stick -69 0
+run 1
+hold A
+run 9
+release
+stick -68 0
+run 1
+hold A
+run 9
+release
+stick -63 0
+run 1
+hold A
+run 9
+release
+stick -49 0
+run 1
+hold A
+run 9
+release
+stick -42 0
+run 1
+hold A
+run 9
+release
+stick -36 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -37 0
+run 1
+hold A
+run 9
+release
+stick -33 0
+run 1
+hold A
+run 9
+release
+stick -11 0
+run 1
+hold A
+run 9
+release
+stick -5 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 69 0
+run 1
+hold A
+run 9
+release
+stick 77 0
+run 1
+hold A
+run 9
+release
+stick 71 0
+run 1
+hold A
+run 9
+release
+stick 51 0
+run 1
+hold A
+run 9
+release
+stick 40 0
+run 1
+hold A
+run 9
+release
+stick 46 0
+run 1
+hold A
+run 9
+release
+stick 65 0
+run 1
+hold A
+run 9
+release
+stick 76 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 58 0
+run 1
+hold A
+run 9
+release
+stick 31 0
+run 1
+hold A
+run 9
+release
+stick 44 0
+run 1
+hold A
+run 9
+release
+stick 51 0
+run 1
+hold A
+run 9
+release
+stick 40 0
+run 1
+hold A
+run 9
+release
+stick 31 0
+run 1
+hold A
+run 9
+release
+stick 39 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 55 0
+run 1
+hold A
+run 9
+release
+stick 25 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 23 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 16 0
+run 1
+hold A
+run 9
+release
+stick 12 0
+run 1
+hold A
+run 9
+release
+stick 2 0
+run 1
+hold A
+run 9
+release
+stick 0 0
+run 1
+hold A
+run 9
+release
+stick -12 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -79 0
+run 1
+hold A
+run 9
+release
+stick -49 0
+run 1
+hold A
+run 9
+release
+stick -19 0
+run 1
+hold A
+run 9
+release
+stick -14 0
+run 1
+hold A
+run 9
+release
+stick -7 0
+run 1
+hold A
+run 9
+release
+stick -14 0
+run 1
+hold A
+run 9
+release
+stick -50 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -61 0
+run 1
+hold A
+run 9
+release
+stick -39 0
+run 1
+hold A
+run 9
+release
+stick -38 0
+run 1
+hold A
+run 9
+release
+stick -46 0
+run 1
+hold A
+run 9
+release
+stick -55 0
+run 1
+hold A
+run 9
+release
+stick -60 0
+run 1
+hold A
+run 9
+release
+stick -65 0
+run 1
+hold A
+run 9
+release
+stick -60 0
+run 1
+hold A
+run 9
+release
+stick -24 0
+run 1
+hold A
+run 9
+release
+stick -21 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -33 0
+run 1
+hold A
+run 9
+release
+stick -19 0
+run 1
+hold A
+run 9
+release
+stick -6 0
+run 1
+hold A
+run 9
+release
+stick -14 0
+run 1
+hold A
+run 9
+release
+stick -7 0
+run 1
+hold A
+run 9
+release
+stick -9 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+screenshot pilot_09
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 70 0
+run 1
+hold A
+run 9
+release
+stick 42 0
+run 1
+hold A
+run 9
+release
+stick 16 0
+run 1
+hold A
+run 9
+release
+stick 21 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 55 0
+run 1
+hold A
+run 9
+release
+stick 51 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 76 0
+run 1
+hold A
+run 9
+release
+stick 48 0
+run 1
+hold A
+run 9
+release
+stick 16 0
+run 1
+hold A
+run 9
+release
+stick 15 0
+run 1
+hold A
+run 9
+release
+stick 42 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick 66 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -57 0
+run 1
+hold A
+run 9
+release
+stick -55 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 53 0
+run 1
+hold A
+run 9
+release
+stick 25 0
+run 1
+hold A
+run 9
+release
+stick 56 0
+run 1
+hold A
+run 9
+release
+stick -80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick -78 0
+run 1
+hold A
+run 9
+release
+stick -43 0
+run 1
+hold A
+run 9
+release
+stick -14 0
+run 1
+hold A
+run 9
+release
+stick -19 0
+run 1
+hold A
+run 9
+release
+stick -45 0
+run 1
+hold A
+run 9
+release
+stick 80 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+stick 78 0
+run 1
+hold A
+run 9
+release
+stick 48 0
+run 1
+hold A
+run 9
+release
+stick 15 0
+run 1
+hold A
+run 9
+release
+stick 11 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick 11 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+release
+stick 11 0
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+run 1
+hold A
+run 9
+release
+hold B
+stick 0 0
+run 25
+# mission complete
+screenshot mission_complete
+release
+run 600
+screenshot results
+hold A
+run 5
+release
+run 300
+screenshot map_after_exit
+checkpoint end
+# [cert_scripts12] certification point 5: Simian Acres result must survive reset
+release
+stick 0 0
+savefile pre_reset
+reset
+run 400
+screenshot reset_title
+press START 5 100
+screenshot reset_start
+press A 5 100
+run 200
+screenshot reset_name
+press A 5 100
+run 300
+screenshot reset_after_name
+savefile post_reset
+checkpoint save_end

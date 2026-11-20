@@ -1,0 +1,155 @@
+mirror 4
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot m2
+press A 8 30
+run 100
+press START 8 30
+run 100
+screenshot m4
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot m6
+press A 8 30
+run 100
+press START 8 30
+run 100
+screenshot m8
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot m10
+press A 8 30
+run 100
+press START 8 30
+run 100
+screenshot m12
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot m14
+press A 8 30
+run 100
+press START 8 30
+run 100
+screenshot m16
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot m18
+press A 8 30
+run 100
+press START 8 30
+run 100
+screenshot m20
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot m22
+press A 8 30
+run 100
+press START 8 30
+run 100
+screenshot m24
+hold A
+stick 0 80
+run 300
+screenshot x1
+run 300
+screenshot x2
+run 300
+screenshot x3
+run 300
+screenshot x4
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w3
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w6
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w9
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w12
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w15
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w18
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w21
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w24
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w27
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w30
+hold A
+stick 0 80
+run 300
+screenshot x1
+run 300
+screenshot x2
+run 300
+screenshot x3
+run 300
+screenshot x4
+run 300
+screenshot x5
+run 300
+screenshot x6

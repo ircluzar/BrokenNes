@@ -1,0 +1,376 @@
+# [cert_scripts2] after the new-game intro: START/B/A cycles skip the cutscenes and dialogue into Spiral Mountain,
+# then ~2.5 min of walking/jumping/attacking (stick, A, B); speed savestate at gameplay; then the save-after-reset block.
+# bt: boot -> (Rare / N64 logos, intro, title) with Start/A rounds every 10 s for 3 minutes. Lane scripts_speed. Real VI.
+# KNOWN ISSUE (emulation): every screenshot through frame 10800 is black with only a small jigsaw-piece icon (99% one
+# colour), with audio on and off and the CPU alternating busy (40-80 ms/frame) and idle (~3 ms/frame). The game seems to
+# run (it reacts to Start) but draws nothing else. The earlier boot-script run (cpu_diff lane) showed the intro sky.
+# Checkpoints: b10-b60 boot, s*/a* Start/A rounds.
+run 600
+screenshot b10
+run 600
+screenshot b20
+run 600
+screenshot b30
+run 600
+screenshot b40
+run 600
+screenshot b50
+run 600
+screenshot b60
+pulse START 60 20
+run 540
+screenshot s1
+pulse A 60 20
+run 540
+screenshot a1
+checkpoint x1
+pulse START 60 20
+run 540
+screenshot s2
+pulse A 60 20
+run 540
+screenshot a2
+checkpoint x2
+pulse START 60 20
+run 540
+screenshot s3
+pulse A 60 20
+run 540
+screenshot a3
+checkpoint x3
+pulse START 60 20
+run 540
+screenshot s4
+pulse A 60 20
+run 540
+screenshot a4
+checkpoint x4
+pulse START 60 20
+run 540
+screenshot s5
+pulse A 60 20
+run 540
+screenshot a5
+checkpoint x5
+pulse START 60 20
+run 540
+screenshot s6
+pulse A 60 20
+run 540
+screenshot a6
+checkpoint x6
+pulse START 60 20
+pulse B 60 20
+pulse A 60 20
+run 120
+pulse START 60 20
+pulse B 60 20
+pulse A 60 20
+run 120
+pulse START 60 20
+pulse B 60 20
+pulse A 60 20
+run 120
+screenshot skip_1
+pulse START 60 20
+pulse B 60 20
+pulse A 60 20
+run 120
+pulse START 60 20
+pulse B 60 20
+pulse A 60 20
+run 120
+pulse START 60 20
+pulse B 60 20
+pulse A 60 20
+run 120
+screenshot skip_2
+pulse START 60 20
+pulse B 60 20
+pulse A 60 20
+run 120
+pulse START 60 20
+pulse B 60 20
+pulse A 60 20
+run 120
+pulse START 60 20
+pulse B 60 20
+pulse A 60 20
+run 120
+screenshot skip_3
+pulse START 60 20
+pulse B 60 20
+pulse A 60 20
+run 120
+pulse START 60 20
+pulse B 60 20
+pulse A 60 20
+run 120
+pulse START 60 20
+pulse B 60 20
+pulse A 60 20
+run 120
+screenshot skip_4
+savestate speed
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+screenshot play_1
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+screenshot play_2
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+screenshot play_3
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+screenshot play_4
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+screenshot play_5
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+screenshot play_6
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+screenshot play_7
+stick 0 70
+run 90
+press A 5 30
+stick 70 30
+run 60
+press B 5 30
+stick -70 -30
+run 90
+stick 0 0
+run 30
+checkpoint end
+# [cert_scripts3] save: pause -> Save and Quit (third entry), confirm
+release
+stick 0 0
+run 60
+press START 5 90
+screenshot pause_menu
+stick 0 -80
+run 6
+stick 0 0
+run 30
+stick 0 -80
+run 6
+stick 0 0
+run 30
+screenshot pause_save
+press A 5 120
+screenshot save_1
+press A 5 300
+screenshot save_2
+# [cert_scripts2] certification point 5
+release
+stick 0 0
+savefile pre_reset
+reset
+run 3600
+screenshot reset_title
+pulse START 60 20
+run 540
+screenshot reset_start
+pulse A 60 20
+run 540
+screenshot reset_file
+savefile post_reset
+checkpoint save_end

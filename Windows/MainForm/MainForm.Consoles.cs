@@ -618,6 +618,8 @@ namespace BrokenNes.Windows
             ConsoleKind.Genesis => Path.Combine(SaveRoot, "MdSaves", s.GameId + ".srm"),
             // the x86 console: the disk image as DOS left it (its battery is the whole disk), by the original image's id
             ConsoleKind.Pc => Path.Combine(SaveRoot, "PcDisks", s.GameId + ".img"),
+            // the N64: the cartridge's EEPROM / SRAM / FlashRAM as raw bytes, sized by its type
+            ConsoleKind.N64 => Path.Combine(SaveRoot, "N64Saves", s.GameId + ".sav"),
             _ => Path.Combine(SaveRoot, "GbSaves", s.GameId + ".sav"),
         };
 

@@ -1,0 +1,124 @@
+# nav1 International_Track_Field_2000: observe prefix to shot o22, then step_mix
+run 600
+screenshot o00
+run 150
+screenshot o01
+run 150
+screenshot o02
+run 150
+screenshot o03
+run 150
+screenshot o04
+run 150
+screenshot o05
+run 150
+screenshot o06
+press START 6 20
+run 130
+screenshot o10
+press A 6 20
+run 130
+screenshot o11
+press START 6 20
+run 130
+screenshot o12
+press A 6 20
+run 130
+screenshot o13
+press START 6 20
+run 130
+screenshot o14
+press A 6 20
+run 130
+screenshot o15
+press START 6 20
+run 130
+screenshot o16
+press A 6 20
+run 130
+screenshot o17
+press START 6 20
+run 130
+screenshot o18
+press A 6 20
+run 130
+screenshot o19
+press START 6 20
+run 130
+screenshot o20
+press A 6 20
+run 130
+screenshot o21
+press START 6 20
+run 130
+screenshot o22
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot m2
+press A 8 30
+run 100
+press START 8 30
+run 100
+screenshot m4
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot m6
+press A 8 30
+run 100
+press START 8 30
+run 100
+screenshot m8
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot m10
+press A 8 30
+run 100
+press START 8 30
+run 100
+screenshot m12
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot m14
+press A 8 30
+run 100
+press START 8 30
+run 100
+screenshot m16
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot m18
+press A 8 30
+run 100
+press START 8 30
+run 100
+screenshot m20
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot m22
+press A 8 30
+run 100
+press START 8 30
+run 100
+screenshot m24
+hold A
+stick 0 80
+run 300
+screenshot x1
+run 300
+screenshot x2
+run 300
+screenshot x3
+run 300
+screenshot x4

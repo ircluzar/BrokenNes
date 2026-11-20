@@ -1,0 +1,191 @@
+# ssb: boot -> intro (room, Samus, Link) -> title -> (Start/A rounds) -> 1P Game character select -> cursor up to
+# Yoshi, A, Start -> Stage 1 (Yoshi vs Link, Peach's Castle) -> ~5 minutes of fighting (stick + A/B/Z).
+# Lane scripts_speed. Real VI pace (run_game.sh). Checkpoints: b05-b30 intro, s1..a6 title/menus, d1 character select,
+# d3 VS screen, d4 GO (in-game), play_* fight.
+run 300
+screenshot b05
+run 300
+screenshot b10
+run 300
+screenshot b15
+run 300
+screenshot b20
+run 300
+screenshot b25
+run 300
+screenshot b30
+pulse START 60 20
+run 240
+screenshot s1
+pulse A 60 20
+run 240
+screenshot a1
+checkpoint x1
+pulse START 60 20
+run 240
+screenshot s2
+pulse A 60 20
+run 240
+screenshot a2
+checkpoint x2
+pulse START 60 20
+run 240
+screenshot s3
+pulse A 60 20
+run 240
+screenshot a3
+checkpoint x3
+pulse START 60 20
+run 240
+screenshot s4
+pulse A 60 20
+run 240
+screenshot a4
+checkpoint x4
+pulse START 60 20
+run 240
+screenshot s5
+pulse A 60 20
+run 240
+screenshot a5
+checkpoint x5
+pulse START 60 20
+run 240
+screenshot s6
+pulse A 60 20
+run 240
+screenshot a6
+checkpoint x6
+stick 0 60
+run 28
+stick 0 0
+run 20
+screenshot d1
+press A 5 60
+screenshot d2
+press START 5 200
+screenshot d3
+run 600
+screenshot d4
+savestate speed
+run 600
+screenshot d5
+stick 60 0
+pulse B 600 20
+screenshot d6
+stick -60 0
+pulse A 600 20
+screenshot d7
+stick 60 0
+pulse A 300 20
+stick -60 0
+pulse B 300 20
+stick 0 60
+press A 5 30
+stick 0 0
+pulse A 600 30
+press Z 5 30
+screenshot play_1
+stick 60 0
+pulse A 300 20
+stick -60 0
+pulse B 300 20
+stick 0 60
+press A 5 30
+stick 0 0
+pulse A 600 30
+press Z 5 30
+screenshot play_2
+stick 60 0
+pulse A 300 20
+stick -60 0
+pulse B 300 20
+stick 0 60
+press A 5 30
+stick 0 0
+pulse A 600 30
+press Z 5 30
+screenshot play_3
+stick 60 0
+pulse A 300 20
+stick -60 0
+pulse B 300 20
+stick 0 60
+press A 5 30
+stick 0 0
+pulse A 600 30
+press Z 5 30
+screenshot play_4
+stick 60 0
+pulse A 300 20
+stick -60 0
+pulse B 300 20
+stick 0 60
+press A 5 30
+stick 0 0
+pulse A 600 30
+press Z 5 30
+screenshot play_5
+stick 60 0
+pulse A 300 20
+stick -60 0
+pulse B 300 20
+stick 0 60
+press A 5 30
+stick 0 0
+pulse A 600 30
+press Z 5 30
+screenshot play_6
+stick 60 0
+pulse A 300 20
+stick -60 0
+pulse B 300 20
+stick 0 60
+press A 5 30
+stick 0 0
+pulse A 600 30
+press Z 5 30
+screenshot play_7
+stick 60 0
+pulse A 300 20
+stick -60 0
+pulse B 300 20
+stick 0 60
+press A 5 30
+stick 0 0
+pulse A 600 30
+press Z 5 30
+screenshot play_8
+stick 60 0
+pulse A 300 20
+stick -60 0
+pulse B 300 20
+stick 0 60
+press A 5 30
+stick 0 0
+pulse A 600 30
+press Z 5 30
+screenshot play_9
+stick 60 0
+pulse A 300 20
+stick -60 0
+pulse B 300 20
+stick 0 60
+press A 5 30
+stick 0 0
+pulse A 600 30
+press Z 5 30
+screenshot play_10
+checkpoint end
+# [cert_scripts] certification point 5: the save survives a reset (tools/savecheck.py compares the .sav files)
+release
+stick 0 0
+savefile pre_reset
+reset
+run 1500
+screenshot reset_title
+pulse START 60 20
+run 600
+screenshot reset_menu
+savefile post_reset
+checkpoint save_end

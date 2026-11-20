@@ -1,0 +1,208 @@
+# nav2 Getter_Love_Cho_Renai_Party_Game (visp_fix2, COR64_VISPFIX2_CAP GL=6): intro text, title START, menu Game Start, save note, board
+run 600
+screenshot o00
+run 150
+screenshot o01
+run 150
+screenshot o02
+run 150
+screenshot o03
+run 150
+screenshot o04
+run 150
+screenshot o05
+run 150
+screenshot o06
+savestate x
+run 600
+screenshot p0
+press START 30 300
+screenshot p1
+press START 30 300
+screenshot p2
+press A 30 300
+screenshot p3
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot r02
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot r05
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot r08
+press START 30 300
+screenshot n1
+press A 30 300
+screenshot n2
+press START 30 300
+screenshot n3
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m02
+press START 30 300
+screenshot k1
+press A 30 300
+screenshot k2
+press START 30 300
+screenshot k3
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m05
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m08
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m11
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m14
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m17
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m20
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot m23
+run 600
+screenshot s0
+press A 30 300
+screenshot s1
+run 600
+screenshot s3
+# title_fix2 (COR64_TITLE2_CAP GL=1): four players: mirror 4, one char + START each, confirm, speech ending, personality picks, board
+mirror 4
+press A 30 200
+screenshot t1
+press START 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot t2
+press START 30 200
+press START 30 200
+press START 30 200
+press START 30 200
+press START 30 200
+press START 30 200
+screenshot t3
+press A 30 300
+press A 30 300
+press A 30 300
+press A 30 300
+press A 30 300
+press A 30 300
+screenshot t4
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot a8
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot a16
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot a24
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot a32
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot a40
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot a48
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot a56
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot a64
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot a72
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+press A 30 200
+screenshot a80

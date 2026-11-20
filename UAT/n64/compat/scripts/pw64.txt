@@ -1,0 +1,264 @@
+# pw64: intro -> title (A) -> Select File (File 1, new) -> Hang Glider Beginner -> Lark -> Test 1 Albatross Nest -> fly
+# (stick weave, A advances result screens -> Replay) for 5+ minutes; then the save-after-reset block. Lane cert_scripts2.
+run 1200
+screenshot t0
+press A 5 100
+screenshot m1
+press A 5 100
+screenshot m2
+press A 5 100
+screenshot m3
+press A 5 100
+screenshot m4
+press A 5 100
+screenshot m5
+press A 5 100
+screenshot m6
+savestate speed
+# [cert_scripts3] play loop: each test attempt ends on the results screen (Check photo/Replay/Next): down+A = Next,
+# then the bronze-badge screen (Retry/Quit): down+A = Quit -> vehicle select; A x3 (class, pilot, island) -> test brief.
+# Even a failed attempt writes File 1 (pilot record) to EEPROM.
+press A 5 30
+stick -20 -10
+run 250
+screenshot air_1
+run 250
+stick 0 0
+run 600
+screenshot fly_1
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+screenshot result_1
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot brief_1
+press A 5 30
+stick 20 -10
+run 250
+screenshot air_2
+run 250
+stick 0 0
+run 600
+screenshot fly_2
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+screenshot result_2
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot brief_2
+press A 5 30
+stick -20 -10
+run 250
+screenshot air_3
+run 250
+stick 0 0
+run 600
+screenshot fly_3
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+screenshot result_3
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot brief_3
+press A 5 30
+stick 20 -10
+run 250
+screenshot air_4
+run 250
+stick 0 0
+run 600
+screenshot fly_4
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+screenshot result_4
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot brief_4
+press A 5 30
+stick -20 -10
+run 250
+screenshot air_5
+run 250
+stick 0 0
+run 600
+screenshot fly_5
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+screenshot result_5
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot brief_5
+press A 5 30
+stick 20 -10
+run 250
+screenshot air_6
+run 250
+stick 0 0
+run 600
+screenshot fly_6
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+screenshot result_6
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot brief_6
+press A 5 30
+stick -20 -10
+run 250
+screenshot air_7
+run 250
+stick 0 0
+run 600
+screenshot fly_7
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+screenshot result_7
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot brief_7
+press A 5 30
+stick 20 -10
+run 250
+screenshot air_8
+run 250
+stick 0 0
+run 600
+screenshot fly_8
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+screenshot result_8
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot brief_8
+press A 5 30
+stick -20 -10
+run 250
+screenshot air_9
+run 250
+stick 0 0
+run 600
+screenshot fly_9
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+screenshot result_9
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot brief_9
+press A 5 30
+stick 20 -10
+run 250
+screenshot air_10
+run 250
+stick 0 0
+run 600
+screenshot fly_10
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+screenshot result_10
+stick 0 -80
+run 6
+stick 0 0
+run 30
+press A 5 120
+press A 5 120
+press A 5 120
+press A 5 120
+screenshot brief_10
+checkpoint end
+# [cert_scripts2] certification point 5: File 1 survives a reset (Select File must not show it as New)
+release
+stick 0 0
+savefile pre_reset
+reset
+run 1200
+screenshot reset_intro
+press A 5 100
+screenshot reset_title
+press A 5 100
+screenshot reset_file
+savefile post_reset
+checkpoint save_end

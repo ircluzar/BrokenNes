@@ -1,0 +1,730 @@
+# excite: Controller Pak notice -> N64 Sports -> Expansion notice -> title -> Season -> Novice -> Bronze Round (START x12)
+# -> Kyoto, Japan (A x4) -> race with A held + stick weave, A taps advance result screens; ~5 min of racing,
+# speed savestate at the start line; then the save-after-reset block (EEPROM 16K). Lane cert_scripts2.
+run 1200
+screenshot t0
+press START 5 90
+screenshot e1
+press START 5 90
+screenshot e2
+press START 5 90
+screenshot e3
+press START 5 90
+screenshot e4
+press START 5 90
+screenshot e5
+press START 5 90
+screenshot e6
+press START 5 90
+screenshot e7
+press START 5 90
+screenshot e8
+press START 5 90
+screenshot e9
+press START 5 90
+screenshot e10
+press START 5 90
+screenshot e11
+press START 5 90
+screenshot e12
+press A 5 90
+screenshot f1
+press A 5 90
+screenshot f2
+press A 5 90
+screenshot f3
+press A 5 90
+screenshot f4
+run 300
+screenshot f5
+savestate speed
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+screenshot race_1
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+screenshot race_2
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+screenshot race_3
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+screenshot race_4
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+screenshot race_5
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+screenshot race_6
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+screenshot race_7
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+screenshot race_8
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+screenshot race_9
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+screenshot race_10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+hold A
+stick 20 30
+run 60
+stick -20 30
+run 60
+stick 20 30
+run 60
+stick -20 30
+run 60
+release
+stick 0 0
+press A 5 10
+screenshot race_11
+checkpoint end
+# [cert_scripts2] certification point 5
+release
+stick 0 0
+savefile pre_reset
+reset
+run 1200
+screenshot reset_boot
+press START 5 90
+press START 5 90
+press START 5 90
+press START 5 90
+press START 5 90
+screenshot reset_menu
+press START 5 90
+press START 5 90
+screenshot reset_season
+savefile post_reset
+checkpoint save_end

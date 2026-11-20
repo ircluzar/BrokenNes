@@ -1,0 +1,1330 @@
+# drmario: boot -> title (PRESS ANY BUTTON) -> Select a Mode (One Player) -> Classic setup -> start a match
+# (single presses are ignored: the menus need pulses) -> ~5 minutes of moves/rotations. Lane scripts_speed. Real VI pace.
+# [cert_scripts2] Classic setup: virus level 0, speed LOW (saved to EEPROM), then capsules steered to columns
+# across the bottle and dropped (DD); GAME OVER -> A = Replay; then the save-after-reset block.
+run 300
+screenshot b05
+run 300
+screenshot b10
+run 300
+screenshot b15
+run 300
+screenshot b20
+run 300
+screenshot b25
+run 300
+screenshot b30
+pulse START 60 20
+run 240
+screenshot s1
+pulse A 60 20
+run 240
+screenshot a1
+press DL 4 8
+press DL 4 8
+press DL 4 8
+press DL 4 8
+press DL 4 8
+press DL 4 8
+press DL 4 8
+press DL 4 8
+press DL 4 8
+press DL 4 8
+press DD 4 12
+press DL 4 12
+press DL 4 12
+screenshot setup
+press A 4 30
+run 120
+press START 4 30
+run 120
+screenshot match
+savestate speed
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_1
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_2
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_3
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_4
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_5
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_7
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_8
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_9
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_10
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_11
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_12
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_13
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_14
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_15
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_16
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_17
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_18
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DL 4 6
+press DL 4 6
+press DL 4 6
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+hold DD
+run 50
+release
+run 30
+press A 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+press DR 4 6
+hold DD
+run 50
+release
+run 30
+screenshot play_19
+checkpoint end
+# [cert_scripts2] certification point 5: settings survive a reset (Classic setup must show LV 00 / LOW again)
+release
+stick 0 0
+savefile pre_reset
+reset
+run 1800
+pulse START 60 20
+run 240
+screenshot reset_mode
+pulse A 60 20
+run 240
+screenshot reset_classic
+savefile post_reset
+checkpoint save_end

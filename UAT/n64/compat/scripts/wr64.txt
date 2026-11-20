@@ -1,0 +1,224 @@
+# wr64: boot -> attract (Dolphin Park demo) -> title (Start) -> Championship -> watercraft select -> Dolphin Park
+# warm-up -> Sunny Beach round 1 race (the Start rounds pause/unpause it once) -> ~5 minutes of racing (A held, stick).
+# Lane scripts_speed. Real VI pace (run_game.sh). No crash after Start any more (was 'Failed to execute 0x00000FCC').
+# [cert_scripts2] after race 1 the results screens are advanced (GAME OVER -> RESTART CIRCUIT) and 3 more races run, so
+# play is continuous (no idling on RACE RESULTS); then the save-after-reset block.
+# Checkpoints: b05-b30 attract, s1 title, a1 warm-up, s2 watercraft select, a2-s4 course screens, a4/a6 racing (in-game).
+run 300
+screenshot b05
+run 300
+screenshot b10
+run 300
+screenshot b15
+run 300
+screenshot b20
+run 300
+screenshot b25
+run 300
+screenshot b30
+pulse START 60 20
+run 240
+screenshot s1
+pulse A 60 20
+run 240
+screenshot a1
+checkpoint x1
+pulse START 60 20
+run 240
+screenshot s2
+pulse A 60 20
+run 240
+screenshot a2
+checkpoint x2
+pulse START 60 20
+run 240
+screenshot s3
+pulse A 60 20
+run 240
+screenshot a3
+checkpoint x3
+pulse START 60 20
+run 240
+screenshot s4
+pulse A 60 20
+run 240
+screenshot a4
+checkpoint x4
+pulse START 60 20
+run 240
+screenshot s5
+pulse A 60 20
+run 240
+screenshot a5
+checkpoint x5
+pulse START 60 20
+run 240
+screenshot s6
+pulse A 60 20
+run 240
+screenshot a6
+checkpoint x6
+savestate speed
+hold A
+stick 0 0
+run 240
+stick 40 0
+run 240
+stick -40 0
+run 240
+stick 0 0
+run 240
+stick 60 20
+run 240
+stick -60 20
+run 240
+screenshot play_1
+stick 0 0
+run 240
+stick 40 0
+run 240
+stick -40 0
+run 240
+stick 0 0
+run 240
+stick 60 20
+run 240
+stick -60 20
+run 240
+screenshot play_2
+release
+stick 0 0
+# [cert_scripts2] results -> circuit ranking -> GAME OVER (Hayami retired) -> RESTART CIRCUIT -> Sunny Beach again, 3 more races
+press A 5 60
+press A 5 60
+press A 5 60
+press A 5 120
+press A 5 120
+press A 5 240
+press A 5 240
+run 240
+press A 5 240
+press A 5 240
+screenshot r2_start
+hold A
+stick 0 0
+run 240
+stick 40 0
+run 240
+stick -40 0
+run 240
+stick 0 0
+run 240
+stick 60 20
+run 240
+stick -60 20
+run 240
+screenshot r2_mid
+stick 0 0
+run 240
+stick 40 0
+run 240
+stick -40 0
+run 240
+stick 0 0
+run 240
+stick 60 20
+run 240
+stick -60 20
+run 240
+release
+stick 0 0
+screenshot r2_end
+press A 5 60
+press A 5 60
+press A 5 60
+press A 5 120
+press A 5 120
+press A 5 240
+press A 5 240
+run 240
+press A 5 240
+press A 5 240
+screenshot r3_start
+hold A
+stick 0 0
+run 240
+stick 40 0
+run 240
+stick -40 0
+run 240
+stick 0 0
+run 240
+stick 60 20
+run 240
+stick -60 20
+run 240
+screenshot r3_mid
+stick 0 0
+run 240
+stick 40 0
+run 240
+stick -40 0
+run 240
+stick 0 0
+run 240
+stick 60 20
+run 240
+stick -60 20
+run 240
+release
+stick 0 0
+screenshot r3_end
+press A 5 60
+press A 5 60
+press A 5 60
+press A 5 120
+press A 5 120
+press A 5 240
+press A 5 240
+run 240
+press A 5 240
+press A 5 240
+screenshot r4_start
+hold A
+stick 0 0
+run 240
+stick 40 0
+run 240
+stick -40 0
+run 240
+stick 0 0
+run 240
+stick 60 20
+run 240
+stick -60 20
+run 240
+screenshot r4_mid
+stick 0 0
+run 240
+stick 40 0
+run 240
+stick -40 0
+run 240
+stick 0 0
+run 240
+stick 60 20
+run 240
+stick -60 20
+run 240
+release
+stick 0 0
+screenshot r4_end
+checkpoint end
+# [cert_scripts] certification point 5: the save survives a reset (tools/savecheck.py compares the .sav files)
+release
+stick 0 0
+savefile pre_reset
+reset
+run 1500
+screenshot reset_title
+pulse START 60 20
+run 600
+screenshot reset_menu
+savefile post_reset
+checkpoint save_end
