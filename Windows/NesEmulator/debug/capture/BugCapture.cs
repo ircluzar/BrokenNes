@@ -29,6 +29,11 @@ public sealed class BugCaptureSource
     /// runs, the timing switched) the frames before cannot replay into the ones after, so the history starts again. Null: not watched.
     /// </summary>
     public Func<string>? Machine { get; }
+    /// <summary>
+    /// Optional: the state split in two (a slow machine, the x86 PC): the call copies the payload (between frames), the function it returns
+    /// packs it on a worker thread. Null: <see cref="SaveState"/> is taken whole between frames.
+    /// </summary>
+    public Func<Func<byte[]>>? BeginSaveState { get; init; }
 
     public BugCaptureSource(string consoleKey, Func<byte[]>? saveState, string noStateWhy, Func<ulong> pictureHash, Func<ulong> ramHash, Action<BugPicture> copyPicture, Func<string>? machine = null)
     {
@@ -71,7 +76,10 @@ public sealed class BugCaptureSource
             states ? s.SaveState : null, states ? "" : s.StateUnsupportedReason,
             () => MovieHash.Picture(s.Frame, s.FrameWidth * s.FrameHeight),
             () => MovieHash.Ram(domains),
-            p => p.FromArgb(s.Frame, s.FrameWidth, s.FrameHeight), machine);
+            p => p.FromArgb(s.Frame, s.FrameWidth, s.FrameHeight), machine)
+        {
+            BeginSaveState = states && s is NesEmulator.X86.PcSession pc ? pc.BeginSaveState : null,
+        };
     }
 }
 
@@ -132,7 +140,18 @@ public sealed class BugCaptureRing
     private sealed class Slot
     {
         public long Frame = -1;          // frames run when taken (the state is the start of that frame)
-        public byte[]? State;
+        private byte[]? state;
+        public System.Threading.Tasks.Task<byte[]>? Packing;   // a state still being packed on a worker (BeginSaveState)
+        public byte[]? State
+        {
+            get
+            {
+                var t = Packing;
+                if (t != null) { try { state = t.Result; } catch { state = null; } Packing = null; }
+                return state;
+            }
+            set { state = value; Packing = null; }
+        }
         public ulong Picture, Ram;       // keyframe hashes after Frame frames
         public long AudioPos;            // sound samples queued before it
         public readonly BugPicture Shot = new();
@@ -275,6 +294,8 @@ public sealed class BugCaptureRing
         audioPos += count;
     }
 
+    private System.Threading.Tasks.Task<byte[]>? lastPack;
+
     private Slot Newest => slots[(slotHead + slotCount - 1) % slots.Length];
 
     private void TakeSlot(BugCaptureSource s)
@@ -288,11 +309,20 @@ public sealed class BugCaptureRing
         if (s.SaveState != null && StateError.Length == 0)
         {
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-            try { slot.State = s.SaveState(); }
+            try
+            {
+                if (s.BeginSaveState != null)
+                {
+                    // the previous pack's buffer is reused by the one after this: it must be finished first (it takes ~0.1 s of the 1 s between)
+                    if (lastPack != null) { try { LastStateBytes = lastPack.Result.Length; } catch (Exception e) { StateError = $"no states after frame {frame}: {e.Message}"; } }
+                    var pack = s.BeginSaveState();
+                    slot.Packing = lastPack = System.Threading.Tasks.Task.Run(pack);
+                }
+                else { slot.State = s.SaveState(); LastStateBytes = slot.State?.Length ?? 0; }
+            }
             catch (Exception e) when (e is NotSupportedException or InvalidOperationException or InvalidDataException) { StateError = $"no states after frame {frame}: {e.Message}"; }
             LastStateMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             if (LastStateMs > MaxStateMs) MaxStateMs = LastStateMs;
-            LastStateBytes = slot.State?.Length ?? 0;
         }
         slot.Picture = s.PictureHash();
         slot.Ram = s.RamHash();
