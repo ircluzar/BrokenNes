@@ -67,7 +67,16 @@ public sealed partial class I386
     private JitCode? _jitCur;   // the block running now
     private readonly JitEntry?[] _je = new JitEntry?[1 << JitBits];
     private readonly List<JitCode> _jitAll = new();
-    private readonly Dictionary<ulong, JitCode> _jitCodes = new();   // every block compiled, by start address and code size: a block evicted from the table is not compiled twice
+    private readonly Dictionary<ulong, JitCode[]> _jitCodes = new();   // every block compiled, by start address and code size: a block evicted from the table is not compiled twice;
+    // up to JitVariants versions per address (code a program rewrites in place, Win98's GDI blit code, comes back to the same few byte patterns)
+    private static readonly int JitVariants = int.TryParse(Environment.GetEnvironmentVariable("X86_JITVARIANTS"), out int jv) ? Math.Clamp(jv, 1, 64) : 8;
+    public long JitVariantHits;
+    private JitCode? JitFindVariant(ulong key)
+    {
+        if (!_jitCodes.TryGetValue(key, out var vs)) return null;
+        foreach (var v in vs) if (v != null && JitSame(v)) return v;
+        return null;
+    }
     public int JitReused { get; private set; }
 
     // statistics (Workshop --x86boot --jitstat)
@@ -150,8 +159,16 @@ public sealed partial class I386
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JitInvalidated(JitEntry en)
-    {   // the block's bytes changed: interpret, and compile again once hot again
+    {   // the block's bytes changed: a version compiled earlier from these very bytes runs at once; else interpret, and compile again once hot again
         JitInvalid++;
+        ulong key = en.Start | (en.C16 ? 1UL << 32 : 0) | (en.Pg ? 1UL << 33 : 0);
+        if (JitVariants > 1 && JitFindVariant(key) is JitCode v && v.Start == en.Start)
+        {
+            JitVariantHits++;
+            JitRegister(v);
+            var e2 = _je[JitIndex(en.Start)];
+            if (e2 != null && e2.Code == v) { _jitCur = v; return v.Fn(this, e2.K); }
+        }
         en.Code = null; en.Visits = 0; en.Failed = false; en.Pending = false;
         return JIT_DECLINE;
     }
@@ -451,7 +468,7 @@ public sealed partial class I386
         uint start = en.Start;
         bool pg = (Cr0 & CR0_PG) != 0;
         ulong key = start | (_c16 ? 1UL << 32 : 0) | (pg ? 1UL << 33 : 0);
-        if (_jitCodes.TryGetValue(key, out var old) && JitSame(old))
+        if (JitFindVariant(key) is JitCode old)
         {
             JitReused++;
             JitRegister(old);
@@ -534,7 +551,8 @@ public sealed partial class I386
         JitCompiled++;
         if (JitStats) _jitAll.Add(code);
         if (_jitCodes.Count >= JitKeep) _jitCodes.Clear();   // a long session that has run a lot of different code: let the old code go
-        _jitCodes[key] = code;
+        if (!_jitCodes.TryGetValue(key, out var vs) || vs.Length != JitVariants) _jitCodes[key] = vs = new JitCode[JitVariants];
+        Array.Copy(vs, 0, vs, 1, vs.Length - 1); vs[0] = code;   // (newest first; the oldest falls off)
         JitRegister(code);
     }
 
