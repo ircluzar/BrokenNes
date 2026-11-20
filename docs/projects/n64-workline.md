@@ -40,6 +40,35 @@ This is the handoff from the cer64 climb to the N64 workline inside BrokenNes. I
 9. **Certify more games with savestate test lists.** There are 30 certified today. Agents play the games (cheats OK), save states and add checks.
 10. **Fix well-known per-game quirks** (polish bar), for example the MK64 jumbotron.
 
+## Fleet: parallel tests for N64 agents (agent tier)
+
+The 10 fleet PCs run N64 jobs on a prebuilt kit (`C:\brokennes\n64` on each PC: Git bash, 7z, `UAT/n64` + the cor64 `bin`/`bin_rt`
+that `C:\BrokenNes-work\n64\n64_provision.py` last pushed, the SM64 ROM + states, the 40 compat ROMs, krom). There is no SDK on the PCs:
+for a code change, build here (`bash UAT/n64/build.sh`), point `SRC` in `n64_provision.py` at your checkout, re-run it, then submit.
+
+Tests an agent is waiting on are **agent tier**: the keeper starts them within about a minute and takes PCs from sweeps (sweeps stop
+taking new batches there; running sweep jobs finish, sweep batches are short). Submit with the script, never by editing
+`keeper_backlog.json` (run from `C:\BrokenNes-work\fleet`):
+
+```
+# one job per item, each on its own PC, all at once; heavy = only on a PC with no other fleet job (use it for speed A/B)
+python -I submit.py n64 ab_myflag --spec C:\path\items.json
+#   items.json: [{"id": "on",  "cmds": ["COR64_MYFLAG=1 bash UAT/n64/ab30.sh"], "heavy": true, "wall": 60},
+#                {"id": "off", "cmds": ["COR64_MYFLAG=0 bash UAT/n64/ab30.sh"], "heavy": true, "wall": 60}]
+# COMPAT_TWICE batch across games (one game per PC):
+#   [{"id": "sm64", "cmds": ["d=$(COMPAT_TWICE=1 bash UAT/n64/compat/tools/run_game.sh sm64 | tail -1); python -I UAT/n64/compat/check_report.py \"$d\" --twice"]}, ...]
+# the same lines N times (repeats for noise):
+python -I submit.py n64 ab_rep --cmd "COR64_MYFLAG=1 bash UAT/n64/ab30.sh" --repeat 5 --heavy
+python -I submit.py status ab_myflag        # keeper status, items done, each result's last log lines
+```
+
+- Lines run in bash in `C:\brokennes\n64\repo` with `N64_WORK` = that job's own folder. An item's `"lib": ["Game.7z", ...]` copies those
+  library archives with the job (`N64_LIBRARY_DIR` points at them), so `catalog/run_one.sh` works on any PC, not only STONE.
+- Results come back to `C:\BrokenNes-work\n64\fleet\<name>\<item id>\<PC>\` (`job.log` + the work folder).
+  `python -I C:\BrokenNes-work\n64\fleet\summarize.py` rewrites `SUMMARY.md` there (pass/fail and numbers per job).
+- QUARTZ cannot start parallel-rdp (no Vulkan): give an item `"pc": "<other PC>"` or use `COR64_RDP=software` when it matters.
+- `--tier sweep` is for regression / status runs (they only fill spare capacity). Rule: agent tests first, sweeps fill the rest.
+
 ## Reference
 
 - Known issues: `KNOWN_ISSUES.md`
