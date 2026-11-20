@@ -65,6 +65,8 @@ public sealed class PcSession : IConsoleSession
         _m.Speaker.Enabled = true;
         _m.Opl.Enabled = true;
         InsertDisk(image);   // the base: never written (DiskImage is copy-on-write), so no copy
+        // a second hard disk (X86-02: StarCraft's 1.2 GB install does not fit next to Win98 on a 1 GB C:): BROKENNES_X86_HDD2 = an image (primary slave)
+        if (!_floppy && Environment.GetEnvironmentVariable("BROKENNES_X86_HDD2") is { Length: > 0 } hdd2 && File.Exists(hdd2) && _m.Ata != null) _m.Hdd[1] = new DiskImage(File.ReadAllBytes(hdd2), false);
         // the CD drive's disc (X86-02): BROKENNES_X86_CD = an .iso, .cue or .bin (IDE machines; read from the file, never written)
         if (Environment.GetEnvironmentVariable("BROKENNES_X86_CD") is { Length: > 0 } cdPath && File.Exists(cdPath)) InsertCd(CdImage.Open(cdPath));
         if (!PcSound.Apply(_m, apu)) throw new ArgumentException($"the x86 PC has no sound card '{apu}'");

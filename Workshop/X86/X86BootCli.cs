@@ -389,6 +389,7 @@ internal static class X86BootCli
             foreach (var l in excRing) Console.WriteLine("  " + l);
         }
         if (Arg(args, "--save") is string save && m.Hdd[0] != null) File.WriteAllBytes(save, m.Hdd[0]!.ToArray());
+        if (Arg(args, "--save2") is string save2 && m.Hdd[1] != null) File.WriteAllBytes(save2, m.Hdd[1]!.ToArray());   // the second disk (primary slave)
         foreach (var g in Args(args, "--get"))
         {
             int i = g.IndexOf('=');
