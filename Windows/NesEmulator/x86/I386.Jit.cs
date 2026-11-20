@@ -90,8 +90,28 @@ public sealed partial class I386
     public readonly Dictionary<uint, long> InterpAt = new();
     /// <summary>JITSTAT: why an interpreted address is not compiled: its entry's state.</summary>
     public string JitWhy(uint pa) { var en = _je[JitIndex(pa)]; return en == null ? "no entry" : en.Start != pa ? $"slot holds {en.Start:X8}" : $"c16 {en.C16} pg {en.Pg} visits {en.Visits} failed {en.Failed} pending {en.Pending} code {(en.Code != null)}"; }
+    /// <summary>JITSTAT: interpreted instructions by mode (VM / 16-bit code / ring 0) and by the address's JIT entry state.</summary>
+    private readonly long[,] _interpMode = new long[8, 6];
+    public IEnumerable<string> InterpModes()
+    {
+        string[] st = { "no entry", "other start", "warming", "failed", "pending", "has code" };
+        for (int md = 0; md < 8; md++)
+        {
+            long t = 0; for (int s = 0; s < 6; s++) t += _interpMode[md, s];
+            if (t == 0) continue;
+            yield return $"{((md & 4) != 0 ? "V86" : (md & 2) != 0 ? "16-bit" : "32-bit")} {((md & 1) != 0 ? "ring0" : "ring>0")}: {t}  (" + string.Join(", ", Enumerable.Range(0, 6).Where(s => _interpMode[md, s] > 0).Select(s => $"{st[s]} {_interpMode[md, s]}")) + ")";
+        }
+    }
+    private void JitCountInterp(uint pa)
+    {
+        int md = ((Flags & VM) != 0 ? 4 : 0) | (Code16 ? 2 : 0) | (Cpl == 0 ? 1 : 0);
+        var en = _je[JitIndex(pa)];
+        int s = en == null ? 0 : en.Start != pa ? 1 : en.Failed ? 3 : en.Pending ? 4 : en.Code != null ? 5 : 2;
+        _interpMode[md, s]++;
+        JitCountInterp0(pa);
+    }
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void JitCountInterp(uint pa) { InterpAt[pa] = InterpAt.GetValueOrDefault(pa) + 1; if (pa + 2 < MemSize) { int k = Mem[pa] << 8 | Mem[pa + 1]; if (++_interpOps[k] == 100000 && JitWatch == k) Console.Error.WriteLine($"jw: op {k:X4} at {pa:X8}"); } }
+    private void JitCountInterp0(uint pa) { InterpAt[pa] = InterpAt.GetValueOrDefault(pa) + 1; if (pa + 2 < MemSize) { int k = Mem[pa] << 8 | Mem[pa + 1]; if (++_interpOps[k] == 100000 && JitWatch == k) Console.Error.WriteLine($"jw: op {k:X4} at {pa:X8}"); } }
     private readonly long[] _oolOps = new long[65536];
     /// <summary>The out-of-line instructions inside compiled blocks (JInterp), by first two bytes.</summary>
     public IEnumerable<string> OutOfLineTop(int n) => Enumerable.Range(0, 65536).Where(i => _oolOps[i] > 0).OrderByDescending(i => _oolOps[i]).Take(n)
@@ -1220,7 +1240,7 @@ public sealed partial class I386
                 {
                     // Push(bits, R[reg]): la = SS base + ((sp - n) & spm); SetSp(sp - n); store
                     int pb = e.O16 ? 16 : 32;
-                    LdReg(pb, op); Stl(t);
+                    if (op == 8) U4(e.Imm); else LdReg(pb, op); Stl(t);   // (Op 8: PUSH imm)
                     LdReg(32, 4); I4(pb / 8); Op(OpCodes.Sub); Stl(A);
                     Ld(A); Ld(spm); Op(OpCodes.And); Stl(ea); LimitCheck(k, SEG_SS, ea, pb / 8);
                     il.Emit(OpCodes.Ldloc, sb[SEG_SS]!); Ld(A); Ld(spm); Op(OpCodes.And); Op(OpCodes.Add); Stl(la);

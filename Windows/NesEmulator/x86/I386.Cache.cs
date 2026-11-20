@@ -277,6 +277,8 @@ public sealed partial class I386
             case 0xd1: kind = DK_GRP2; modrm = true; op = 1; break;
             case 0xd2: kind = DK_GRP2; bits = 8; modrm = true; op = 2; break;
             case 0xd3: kind = DK_GRP2; modrm = true; op = 2; break;
+            case 0x68: kind = DK_PUSH; op = 8; immBits = v; break;                       // PUSH imm16/32 (Op 8: the immediate, not a register)
+            case 0x6a: kind = DK_PUSH; op = 8; immBits = 8; immSext8 = true; break;     // PUSH imm8 (sign-extended)
             case 0xc3: kind = DK_RET; break;
             case 0xc2: kind = DK_RET; immBits = 16; break;   // RET imm16 (Win32 stdcall returns: StarCraft's hottest interpreted op)
             case 0xc6: kind = DK_MOVEI; bits = 8; modrm = true; immBits = 8; break;
