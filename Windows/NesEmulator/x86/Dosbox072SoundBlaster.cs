@@ -656,13 +656,9 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
     }
 
     /// <summary>The mixer's levels (0-31 each, left/right) for diagnostics.</summary>
-    public string MixerSummary => $"master {mixer_master[0]}/{mixer_master[1]} voice {mixer_dac[0]}/{mixer_dac[1]} fm {mixer_fm[0]}/{mixer_fm[1]} cd {mixer_cda[0]}/{mixer_cda[1]} enabled {mixer_enabled}";
+    public string MixerSummary => $"master {mixer_master[0]}/{mixer_master[1]} voice {mixer_dac[0]}/{mixer_dac[1]} fm {mixer_fm[0]}/{mixer_fm[1]} cd {mixer_cda[0]}/{mixer_cda[1]} enabled {mixer_enabled} gain 41h/42h {mixer_unhandled[0x41]:X2}/{mixer_unhandled[0x42]:X2}";
 
     private static float CALCVOL(int v) => (float)Math.Pow(10.0f, (31 - v) * -1.3f / 20);
-
-    /// <summary>Diagnostics: the mixer's volumes as the program set them (5-bit, 31 = full) and the 3Bh-47h storage (gains).</summary>
-    public string MixerSummary() => $"master {mixer_master[0]}/{mixer_master[1]} voice {mixer_dac[0]}/{mixer_dac[1]} fm {mixer_fm[0]}/{mixer_fm[1]} cd {mixer_cda[0]}/{mixer_cda[1]} line {mixer_lin[0]}/{mixer_lin[1]} enabled {mixer_enabled} " +
-        $"3B-47 {Convert.ToHexString(mixer_unhandled, 0x3b, 0x0d)}";
 
     private void CTMIXER_UpdateVolumes()
     {

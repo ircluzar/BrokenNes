@@ -394,7 +394,6 @@ internal static class X86BootCli
                 Console.WriteLine($"latency: try {t} {(idle ? "screen idle before" : "screen was changing")}: first change after {ln} frame(s)");
             }
         }
-        if (m.Card is Dosbox072SoundBlaster sbm) Console.WriteLine("sbmixer: " + sbm.MixerSummary());
         if (PcMachine.AllocProbe) Console.WriteLine($"allocprobe: devices {m.AllocDevices / 1048576} MB, cpu {m.AllocCpu / 1048576} MB, render {m.AllocRender / 1048576} MB, total thread {GC.GetAllocatedBytesForCurrentThread() / 1048576} MB");
         if (_allocs != null) lock (_allocs.ByType) foreach (var kv in _allocs.ByType.OrderByDescending(x => x.Value).Take(15)) Console.WriteLine($"  alloc {kv.Value / 1048576,6} MB {kv.Key}");
         if (lanLink != null) Console.WriteLine($"lan: sent {lanLink.Sent} (IPX {lanLink.SentIpx}), received {lanLink.Received} (IPX {lanLink.ReceivedIpx}){(lanLink.Members > 0 ? $", members {lanLink.Members}" : "")}");
