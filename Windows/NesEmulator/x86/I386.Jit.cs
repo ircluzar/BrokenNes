@@ -467,6 +467,8 @@ public sealed partial class I386
     /// <summary>Block linking (X86_NOLINK turns it off): leave as JExitOk, but when the next instruction starts a valid compiled block
     /// that Exec1's next iteration would run (the same fetch-page test, entry lookup and code check as Step1), run it from here.</summary>
     private int JFpuNmRefund() => (Cr0 & 0xc) != 0 ? _memCost : 0;
+    /// <summary>The same for a compiled MMX instruction: #UD / #NM / #MF come before the interpreter decodes the ModR/M (MmxExec).</summary>
+    private int JMmxNmRefund() => (Cr0 & 0xc) != 0 || (_fsw & FSW_ES) != 0 && (Cr0 & 0x20) != 0 ? _memCost : 0;
     private static readonly bool NoPageLink = Environment.GetEnvironmentVariable("X86_PAGELINK") == null;   // opt-in: links 7M -> 23M per 10 s in StarCraft but no wall-clock gain (A/B 2026-11-20)
     /// <summary>Block linking across pages: what Peek8 would do at the next fetch, without a page walk or fault - only when the TLB already
     /// holds a read translation for this CPL (paging on), the target is 16+ bytes inside its page and the CS limit, and the page is plain RAM.</summary>
@@ -541,7 +543,7 @@ public sealed partial class I386
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JGetCF", "JSegLoad", "JSSame", "JSSameLive", "JSpecFail", "JSOk", "JSRd", "JSBase", "JSSpan", "JSLo", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JFpuNmRefund", "JMmx", "JCodeSame", "JCall", "JRet",
+        foreach (var n in new[] { "JRam", "JGetCF", "JSegLoad", "JSSame", "JSSameLive", "JSpecFail", "JSOk", "JSRd", "JSBase", "JSSpan", "JSLo", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JFpuNmRefund", "JMmxNmRefund", "JMmx", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
                      "JXlat", "JFlagOp", "JStk", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
@@ -1248,7 +1250,7 @@ public sealed partial class I386
                     LdBase(e.Seg); il.Emit(OpCodes.Ldloc, ea); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, la);
                     // (the forms that run through a helper translate there themselves)
                     bool helper = e.Kind is DK_GRP3 or DK_GRP5 || (e.Kind == DK_GRP2 && e.Reg is not (4 or 5 or 6 or 7));
-                    bool write = e.Kind is DK_MOVEG or DK_MOVSR or DK_MOVEI or DK_SETCC or DK_GRP2 ||
+                    bool write = e.Kind is DK_MOVEG or DK_MOVSR or DK_MOVEI or DK_SETCC or DK_GRP2 or DK_XCHG ||
                                  (e.Kind == DK_ALUEG && e.Op != 7) || (e.Kind == DK_GRP1 && e.Reg != 7);
                     if (!helper) Xlat(k, Math.Max(1, bits / 8), write);
                 }
@@ -1341,6 +1343,11 @@ public sealed partial class I386
                     if (op is 0xfa or 0x9b) Prep();   // (CLI / FWAIT may fault)
                     Ld0(); I4(op); Call("JFlagOp");
                     if (op is 0xfa or 0x9b) FailIfFalse(); else Op(OpCodes.Pop);
+                    break;
+                case DK_XCHG when mem:   // with memory (as the interpreter: the register gets E, then E gets the old register; no flags)
+                    LdReg(bits, e.Reg); Stl(t);
+                    LdMem(bits, la); StReg(bits, e.Reg, () => Ld(V));
+                    WriteET();
                     break;
                 case DK_XCHG:   // register with register (Mod 3): no memory, no flags
                     LdReg(bits, e.Rm); Stl(t);
@@ -1708,7 +1715,8 @@ public sealed partial class I386
                     break;
                 }
                 case DK_MMX:
-                {
+                {   // (a fault before the ModR/M: no memory operand cost, as the interpreter - Age of Empires' JIT parity, 2026-11-20)
+                    if (mem) { il.Emit(OpCodes.Ldloc, cyc); Ld0(); Call("JMmxNmRefund"); il.Emit(OpCodes.Conv_I8); il.Emit(OpCodes.Sub); il.Emit(OpCodes.Stloc, cyc); }
                     Prep();
                     Ld0(); I4(op); I4(op is >= 0x71 and <= 0x73 ? (int)e.Imm : -1); Call("JMmx"); FailIfFalse();
                     if (mem && op is 0x7e or 0x7f)
@@ -1799,6 +1807,8 @@ public sealed partial class I386
     private static readonly bool SegLazy = Environment.GetEnvironmentVariable("X86_SEGLAZY") != "0";
 
     private static bool DcHasModrm(byte kind) => kind is DK_MOVEG or DK_MOVGE or DK_ALUEG or DK_ALUGE or DK_GRP1 or DK_GRP2 or DK_TESTEG
-        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU or DK_MMX;
+        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU or DK_MMX or DK_XCHG;
+    /// <summary>X86_XCHGMEM: compile XCHG r, mem inline (opt-in: Garage2 A/B 2026-11-20 StarCraft -0.6%, AoE +2.1%, within noise).</summary>
+    private static readonly bool NoXchgMem = Environment.GetEnvironmentVariable("X86_XCHGMEM") == null;
 }
 

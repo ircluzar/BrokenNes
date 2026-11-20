@@ -655,6 +655,9 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
         return read_data_last;
     }
 
+    /// <summary>The mixer's levels (0-31 each, left/right) for diagnostics.</summary>
+    public string MixerSummary => $"master {mixer_master[0]}/{mixer_master[1]} voice {mixer_dac[0]}/{mixer_dac[1]} fm {mixer_fm[0]}/{mixer_fm[1]} cd {mixer_cda[0]}/{mixer_cda[1]} enabled {mixer_enabled}";
+
     private static float CALCVOL(int v) => (float)Math.Pow(10.0f, (31 - v) * -1.3f / 20);
 
     private void CTMIXER_UpdateVolumes()

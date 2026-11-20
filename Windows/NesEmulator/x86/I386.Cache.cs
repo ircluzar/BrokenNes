@@ -321,7 +321,7 @@ public sealed partial class I386
             case 0x9b: if (NoHelperOps || NoFlagOp || NoFwaitOp) return; kind = DK_FLAGOP; op = 0x9b; break;   // FWAIT: #NM / #MF checks only (games run it around every x87 control-word switch)
             case 0xf5: case 0xf8: case 0xf9: case 0xfa: case 0xfc: case 0xfd: if (NoHelperOps || NoFlagOp) return; kind = DK_FLAGOP; op = (int)b; break;   // CMC CLC STC CLI CLD STD (STI: out of line, it opens the interrupt window)
             case >= 0x91 and <= 0x97: kind = DK_XCHG; op = (int)(b & 7); e.Mod = 3; e.Reg = 0; e.Rm = (byte)(b & 7); e.Base = 8; e.Index = 8; e.Seg = -1; break;   // XCHG eAX, r
-            case 0x86: kind = DK_XCHG; bits = 8; modrm = true; break;   // XCHG r, r only (a memory operand: the ordinary path, it is locked)
+            case 0x86: kind = DK_XCHG; bits = 8; modrm = true; break;   // XCHG r, E (only the compiled code uses these forms)
             case 0x87: kind = DK_XCHG; modrm = true; break;                // NOP: a jump to the next instruction (F3 90 PAUSE: the REP path above returns)
             case 0xa0: case 0xa1: kind = DK_MOVGE; bits = (b & 1) == 0 ? 8 : v; moffs = true; break;   // MOV AL/eAX, moffs
             case 0xa2: case 0xa3: kind = DK_MOVEG; bits = (b & 1) == 0 ? 8 : v; moffs = true; break;   // MOV moffs, AL/eAX
@@ -334,7 +334,7 @@ public sealed partial class I386
             e.Mod = (byte)mod; e.Reg = (byte)reg; e.Rm = (byte)rm;
             if (kind == DK_MOVSR) { if (reg > 5) return; if (mod != 3) bits = 16; }
             if (kind == DK_SRMOV && (reg is SEG_CS or SEG_SS || reg > 5)) return;
-            if (kind == DK_XCHG && mod != 3) return;
+            if (kind == DK_XCHG && mod != 3 && NoXchgMem) return;   // (XCHG with memory: compiled inline with X86_XCHGMEM, opt-in)
             e.Base = 8; e.Index = 8; e.Scale = 0;
             uint disp = 0;
             int s = seg;

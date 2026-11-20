@@ -24,6 +24,13 @@ public sealed class AtaChannel
     private readonly bool[] _mediaChanged = new bool[2];
     /// <summary>A disc went in or out while the machine runs: the drive answers its next command with UNIT ATTENTION (not saved: a state reload keeps the disc it is given).</summary>
     public void MediaChanged(int d) => _mediaChanged[d] = true;   // an ATAPI drive is wired even without a disc in it
+    /// <summary>Forgets a pending disc change (the machine state just loaded was saved with this disc already in the drive).</summary>
+    public void ClearMediaChanged(int d) => _mediaChanged[d] = false;
+    /// <summary>A disc change the guest has not yet been told about (saved in the state's "CDMC" block; a state without it had none).</summary>
+    public bool AnyMediaChanged => _mediaChanged[0] || _mediaChanged[1];
+    public void SaveMediaChanged(BinaryWriter w) { w.Write(_mediaChanged[0]); w.Write(_mediaChanged[1]); }
+    public void LoadMediaChanged(BinaryReader r) { _mediaChanged[0] = r.ReadBoolean(); _mediaChanged[1] = r.ReadBoolean(); }
+    public void ClearAllMediaChanged() { _mediaChanged[0] = _mediaChanged[1] = false; }
 
     // task file (one copy: the ATA registers are shared by both devices; per-device CHS translation below)
     private byte _feature, _count, _sector, _cylLo, _cylHi, _drvHead = 0xa0, _status, _error, _devCtl;

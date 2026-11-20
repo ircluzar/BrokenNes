@@ -166,6 +166,9 @@ public sealed class PcSession : IConsoleSession
         {
             _stateHookUsed = true;
             _m.LoadState(File.ReadAllBytes(ms));
+            // the disc was put in at creation (InsertCd: UNIT ATTENTION) but the state was saved with it already in: without this Win98 saw a new disc, AutoPlay opened the
+            // disc's autorun window over the running game and a 256-colour game (Age of Empires) lost its palette to the desktop's (the scrambled-colours bug)
+            _m.Ata?.Secondary.ClearMediaChanged(0);
         }
     }
 
@@ -289,6 +292,32 @@ public sealed class PcSession : IConsoleSession
         return file;
     }
     private MemoryStream? _stateBuf;
+
+    /// <summary>
+    /// The bug capture's state, split: the machine's payload is copied now (between frames, under the emulation lock: ~70 ms of Win98 RAM,
+    /// video memory and disk diff), the packing (CRC + deflate, ~115 ms) is returned to run on any thread. Two payload buffers alternate, so
+    /// the caller must finish one pack before it begins the next-but-one (the ring waits on the previous pack before it takes a slot).
+    /// </summary>
+    public Func<byte[]> BeginSaveState()
+    {
+        if (!_powered) { FirstPowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); }
+        _deferFlip ^= 1;
+        var ms = _deferBuf[_deferFlip] ??= new MemoryStream();
+        ms.SetLength(0);
+        _m.SaveState(ms);
+        WriteSoundOutput(ms);
+        var units = StateUnits(); string game = GameId, title = Title;
+        var seg = new ArraySegment<byte>(ms.GetBuffer(), 0, (int)ms.Length);
+        int flip = _deferFlip;
+        return () =>
+        {
+            var file = ConsoleStateFile.Wrap(Console, game, title, units, seg);
+            if (ms.Capacity > 512 << 20) _deferBuf[flip] = null;
+            return file;
+        };
+    }
+    private readonly MemoryStream?[] _deferBuf = new MemoryStream?[2];
+    private int _deferFlip;
 
     // FA-ST-3: the sound already drawn but not yet read (the speaker, the AdLib, the card) follows the machine as a trailer: [machine][PCAU section][its length][PCAU].
     // The machine state is unchanged; a state without the trailer (older) loads as before: the drawn samples are dropped and the sound carries on from the present.
