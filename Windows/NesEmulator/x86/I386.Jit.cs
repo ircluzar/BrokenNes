@@ -467,6 +467,8 @@ public sealed partial class I386
     /// <summary>Block linking (X86_NOLINK turns it off): leave as JExitOk, but when the next instruction starts a valid compiled block
     /// that Exec1's next iteration would run (the same fetch-page test, entry lookup and code check as Step1), run it from here.</summary>
     private int JFpuNmRefund() => (Cr0 & 0xc) != 0 ? _memCost : 0;
+    /// <summary>The same for a compiled MMX instruction: #UD / #NM / #MF come before the interpreter decodes the ModR/M (MmxExec).</summary>
+    private int JMmxNmRefund() => (Cr0 & 0xc) != 0 || (_fsw & FSW_ES) != 0 && (Cr0 & 0x20) != 0 ? _memCost : 0;
     private static readonly bool NoPageLink = Environment.GetEnvironmentVariable("X86_PAGELINK") == null;   // opt-in: links 7M -> 23M per 10 s in StarCraft but no wall-clock gain (A/B 2026-11-20)
     /// <summary>Block linking across pages: what Peek8 would do at the next fetch, without a page walk or fault - only when the TLB already
     /// holds a read translation for this CPL (paging on), the target is 16+ bytes inside its page and the CS limit, and the page is plain RAM.</summary>
@@ -541,7 +543,7 @@ public sealed partial class I386
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JGetCF", "JSegLoad", "JSSame", "JSSameLive", "JSpecFail", "JSOk", "JSRd", "JSBase", "JSSpan", "JSLo", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JFpuNmRefund", "JMmx", "JCodeSame", "JCall", "JRet",
+        foreach (var n in new[] { "JRam", "JGetCF", "JSegLoad", "JSSame", "JSSameLive", "JSpecFail", "JSOk", "JSRd", "JSBase", "JSSpan", "JSLo", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JFpuNmRefund", "JMmxNmRefund", "JMmx", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
                      "JXlat", "JFlagOp", "JStk", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
@@ -1713,7 +1715,8 @@ public sealed partial class I386
                     break;
                 }
                 case DK_MMX:
-                {
+                {   // (a fault before the ModR/M: no memory operand cost, as the interpreter - Age of Empires' JIT parity, 2026-11-20)
+                    if (mem) { il.Emit(OpCodes.Ldloc, cyc); Ld0(); Call("JMmxNmRefund"); il.Emit(OpCodes.Conv_I8); il.Emit(OpCodes.Sub); il.Emit(OpCodes.Stloc, cyc); }
                     Prep();
                     Ld0(); I4(op); I4(op is >= 0x71 and <= 0x73 ? (int)e.Imm : -1); Call("JMmx"); FailIfFalse();
                     if (mem && op is 0x7e or 0x7f)
