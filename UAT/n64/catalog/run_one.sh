@@ -6,6 +6,7 @@
 # Pass check (map, not a gate): probe rc=0 and error null (python -I ../compat/check_report.py <run dir>); class is set by eye
 # from the PNGs (TITLE / INGAME ...), compare with catalog/CATALOG.tsv.
 . "$(dirname "$0")/../lib/n64env.sh"
+. "$N64_UAT/lib/probe_lock.sh"; probe_lock
 CAT=$(cd "$(dirname "$0")" && pwd); A="$1"; ROMDIR="$N64_LIBRARY_DIR"; SEVENZ=${SEVENZ:-"/c/Program Files/7-Zip/7z.exe"}
 ID=$(echo "$A" | sed -E 's/\.(7z|zip|z64|v64|n64)$//; s/[^A-Za-z0-9]+/_/g; s/^_|_$//g' | cut -c1-48)
 OUT="$N64_WORK/catalog/runs${RUNSUFFIX}/$ID"; rm -rf "$OUT"; mkdir -p "$OUT"; TMP="$N64_WORK/catalog/roms/$ID"; rm -rf "$TMP"; mkdir -p "$TMP/x"
