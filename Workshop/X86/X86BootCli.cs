@@ -294,7 +294,8 @@ internal static class X86BootCli
         if (Arg(args, "--traceat") is string ta)
         {
             var tp = ta.Split('-'); uint lo = Convert.ToUInt32(tp[0], 16), hi = Convert.ToUInt32(tp[1], 16); long sl = 0; int tslice = int.Parse(Arg(args, "--traceslice") ?? "1");
-            while (sl++ < 400_000_000) { uint l = m.Cpu.SegBase[1] + m.Cpu.Ip; if (l >= lo && l < hi) break; m.RunClock(tslice); }
+            int thits = int.Parse(Arg(args, "--tracehit") ?? "1"), th = 0; bool inR = false;   // --tracehit N: the Nth entry into the range (not the first)
+            while (sl++ < 400_000_000) { uint l = m.Cpu.SegBase[1] + m.Cpu.Ip; bool r = l >= lo && l < hi; if (r && !inR && ++th >= thits) break; inR = r; m.RunClock(tslice); }
             Console.WriteLine($"traceat: at {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} after {sl} slices");
         }
         if (Arg(args, "--trace") is string trc)   // one instruction at a time: where a hang loops
