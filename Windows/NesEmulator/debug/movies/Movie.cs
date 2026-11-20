@@ -240,7 +240,8 @@ public sealed class Movie
         {
             if (StartState == null) throw new InvalidOperationException("a movie that starts from a state needs the state");
             using var ms = new MemoryStream();
-            using (var gz = new GZipStream(ms, CompressionLevel.Optimal, true)) gz.Write(StartState, 0, StartState.Length);
+            // a big state is already packed (an x86 state >= 16 MB is deflated by ConsoleStateFile.Wrap): gzip it stored, not again at Optimal (seconds for nothing)
+            using (var gz = new GZipStream(ms, StartState.Length >= 8 << 20 ? CompressionLevel.NoCompression : CompressionLevel.Optimal, true)) gz.Write(StartState, 0, StartState.Length);
             L("state", Convert.ToBase64String(ms.ToArray()));
         }
         foreach (var i in Inputs)

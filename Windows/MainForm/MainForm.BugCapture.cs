@@ -197,6 +197,13 @@ namespace BrokenNes.Windows
             {
                 BugCaptureData data;
                 var meta = new BugMeta { RomName = bugRomName, Rom = bugRom ?? Array.Empty<byte>(), RomPath = currentRomPath ?? "", App = AppBuild(), CapturedUtc = DateTime.UtcNow, CapturedLocal = DateTime.Now };
+                if (session is NesEmulator.X86.PcSession)
+                {
+                    // the PC's disks by reference (a 1 GB C: copied per capture took 10-17 s): C: = the loaded image, D: and the CD as the session took them
+                    if (!string.IsNullOrEmpty(currentRomPath)) meta.DiskRefs.Add(("C", currentRomPath));
+                    if (Environment.GetEnvironmentVariable("BROKENNES_X86_HDD2") is { Length: > 0 } d2) meta.DiskRefs.Add(("D", d2));
+                    if (Environment.GetEnvironmentVariable("BROKENNES_X86_CD") is { Length: > 0 } cd) meta.DiskRefs.Add(("CD", cd));
+                }
                 var job = RunOnEmulationThreadAsync(() =>
                 {
                     if (Interlocked.Exchange(ref bugPendingBreak, null) is { } why) bugRing.Break(why);
