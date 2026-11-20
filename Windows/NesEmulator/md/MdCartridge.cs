@@ -134,6 +134,7 @@ public sealed class MdCartridge
         // Sonic & Knuckles on its own (the 2 MB dump): nothing is locked on, so $200000-$3FFFFF holds no cartridge. Mirrored there,
         // its own "SEGA" header looked like an unknown locked-on game and the cart went to the "NO WAY?" screen (md-fix-r2).
         SkAlone = Serial.StartsWith("GM MK-1563") && rom.Length == 0x200000;
+        JCart = IsJCart(Serial, HeaderChecksum, rom.Length);
 
         // Serial EEPROM: the header can say a cartridge has one (the SRAM header's type word $E840) but not which chip or how its two lines are wired, and several carts that have one say nothing at all;
         // MdEepromTable (by serial, header checksum and size) knows the ones this emulator has been checked against. A header that declares an EEPROM nobody can place is reported, not mapped as SRAM.
@@ -245,6 +246,23 @@ public sealed class MdCartridge
 
     /// <summary>The Realtec mapper (see the constructor): boot mode until the first $400000 write with a size set.</summary>
     public readonly bool Realtec;
+    /// <summary>
+    /// Codemasters' J-Cart: two more pad ports on the cartridge, read as one word at $38FFFE (low byte player 3's lines with TH in bit 6, high byte player 4's six lines) and TH for both written in
+    /// bit 0 of $38FFFE. Micro Machines 2 shows its 3- and 4-player modes only when it finds the ports (Genplus-gx's J-Cart list: by serial T-120096 / T-120106, or the Codemasters "00000000"
+    /// carts Micro Machines Military and 96 by checksum). The pads behind it are idle 3-button pads.
+    /// </summary>
+    public readonly bool JCart;
+    private static bool IsJCart(string serial, ushort checksum, int size)
+    {
+        if (serial.Contains("T-120096") || serial.Contains("T-120106") || serial.Contains("T-120146")) return true;
+        return serial.Contains("00000000") && checksum is 0x168B or 0x2C41;   // Micro Machines Military, Micro Machines 96
+    }
+    /// <summary>J-Cart TH, as last written (pulled up at power-on).</summary>
+    public bool JCartTh = true;
+    /// <summary>The J-Cart word: idle pads' lines for the current TH (TH=1: C B R L D U released + TH; TH=0: Start A released, the two zero bits, D U released).</summary>
+    public ushort ReadJCart() { byte lines = JCartTh ? (byte)0x7F : (byte)0x33; return (ushort)((lines & 0x3F) << 8 | lines & 0x7F); }
+    public static bool IsJCartAddress(uint address) => (address & 0x3FFFFE) == 0x38FFFE;
+
     /// <summary>A Sonic &amp; Knuckles cartridge with nothing locked on (see the constructor).</summary>
     public readonly bool SkAlone;
     private int realtecOffset, realtecSize;
@@ -358,6 +376,7 @@ public sealed class MdCartridge
         w.Write(Sram.Length); w.Write(Sram); w.Write(SramMapped); w.Write(SramWriteProtected);
         foreach (int b in banks) w.Write(b);
         if (Realtec) { w.Write(realtecOffset); w.Write(realtecSize); w.Write(realtecMapped); }
+        if (JCart) w.Write(JCartTh);
         w.Write(StrayWrites); w.Write(OtherMapperWrites); w.Write(LastStrayWrite); w.Write(LastOtherMapperWrite);
         w.Write(Eeprom != null); Eeprom?.SaveState(w);
         w.Write(Microwire != null); Microwire?.SaveState(w);
@@ -371,6 +390,7 @@ public sealed class MdCartridge
         SramMapped = r.ReadBoolean(); SramWriteProtected = r.ReadBoolean();
         for (int i = 0; i < banks.Length; i++) banks[i] = r.ReadInt32();
         if (Realtec) { realtecOffset = r.ReadInt32(); realtecSize = r.ReadInt32(); realtecMapped = r.ReadBoolean(); }
+        if (JCart) JCartTh = r.ReadBoolean();
         StrayWrites = r.ReadInt64(); OtherMapperWrites = r.ReadInt64(); LastStrayWrite = r.ReadUInt32(); LastOtherMapperWrite = r.ReadUInt32();
         bool hadEeprom = r.ReadBoolean();
         if (hadEeprom != (Eeprom != null)) throw new InvalidDataException("The state's EEPROM does not match this cartridge.");
