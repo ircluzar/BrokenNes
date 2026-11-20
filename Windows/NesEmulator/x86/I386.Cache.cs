@@ -318,6 +318,7 @@ public sealed partial class I386
                 kind = DK_G3TEST; bits = b == 0xa8 ? 8 : v; immBits = bits; e.Mod = 3; e.Reg = 0; e.Rm = 0; e.Base = 8; e.Index = 8; e.Seg = -1; break;
             case 0x90: kind = DK_JMP; immBits = 0; break;
             case 0x9c: case 0x60: case 0x61: case 0x06: case 0x0e: case 0x16: case 0x1e: if (NoHelperOps || NoStkOp || (StkMask & (b == 0x9c ? 1 : b == 0x60 ? 2 : b == 0x61 ? 4 : 8)) == 0) return; kind = DK_STKOP; op = (int)b; break;   // PUSHF PUSHA POPA PUSH Sreg: the interpreter's own code through JStk
+            case 0x9b: if (NoHelperOps || NoFlagOp || NoFwaitOp) return; kind = DK_FLAGOP; op = 0x9b; break;   // FWAIT: #NM / #MF checks only (games run it around every x87 control-word switch)
             case 0xf5: case 0xf8: case 0xf9: case 0xfa: case 0xfc: case 0xfd: if (NoHelperOps || NoFlagOp) return; kind = DK_FLAGOP; op = (int)b; break;   // CMC CLC STC CLI CLD STD (STI: out of line, it opens the interrupt window)
             case >= 0x91 and <= 0x97: kind = DK_XCHG; op = (int)(b & 7); e.Mod = 3; e.Reg = 0; e.Rm = (byte)(b & 7); e.Base = 8; e.Index = 8; e.Seg = -1; break;   // XCHG eAX, r
             case 0x86: kind = DK_XCHG; bits = 8; modrm = true; break;   // XCHG r, r only (a memory operand: the ordinary path, it is locked)

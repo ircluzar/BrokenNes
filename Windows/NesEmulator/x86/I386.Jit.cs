@@ -67,6 +67,7 @@ public sealed partial class I386
     private static readonly bool NoMmxJit = Environment.GetEnvironmentVariable("X86_NOMMXJIT") != null;
     private static readonly bool NoHelperOps = Environment.GetEnvironmentVariable("X86_NOHELPEROPS") != null;
     private static readonly bool NoStkOp = Environment.GetEnvironmentVariable("X86_NOSTKOP") != null, NoFlagOp = Environment.GetEnvironmentVariable("X86_NOFLAGOP") != null;
+    private static readonly bool NoFwaitOp = Environment.GetEnvironmentVariable("X86_NOFWAITOP") != null;
     private static readonly int StkMask = int.TryParse(Environment.GetEnvironmentVariable("X86_STKMASK"), out int sm) ? sm : 15;   // (bit 3 PUSH Sreg: was broken by an Op truncation, PUSH FS pushed GS: Win98 fatal 0D at boot)
     private static readonly int JitHot = int.TryParse(Environment.GetEnvironmentVariable("X86_JITHOT"), out int jh) ? jh : 32;
     private JitCode? _jitCur;   // the block running now
@@ -309,6 +310,7 @@ public sealed partial class I386
             case 0xf8: _ccMask &= ~CF; Flags &= ~CF; return true;
             case 0xf9: _ccMask &= ~CF; Flags |= CF; return true;
             case 0xfa: if (GetIOPL() < Cpl) return Throw(EX_GP, 0); Flags &= ~IF; return true;
+            case 0x9b: if ((Cr0 & 0xa) == 0xa) return Throw0(EX_NM); return !_hasFpu || FWaitCheck() == OK;   // FWAIT, as the interpreter
             case 0xfc: Flags &= ~DF; return true;
             default: Flags |= DF; return true;
         }
@@ -344,15 +346,19 @@ public sealed partial class I386
     private int JInterp(uint ip, long cyc, int st)
     {
         Cycle = cyc; _steps = st; NextIp = ip;
-        if (JitStats && _jitCur != null) { uint pa = (_jitCur.Start & ~0xfffu) | ((SegBase[SEG_CS] + ip) & 0xfff); if (pa + 2 < MemSize) { _oolOps[Mem[pa] << 8 | Mem[pa + 1]]++; JitOolAt(pa); } }   // (the region never leaves its 4 KB page)
+        uint opa = 0xffffffff;
+        if (JitStats && _jitCur != null) { uint pa = (_jitCur.Start & ~0xfffu) | ((SegBase[SEG_CS] + ip) & 0xfff); if (pa + 2 < MemSize) { _oolOps[Mem[pa] << 8 | Mem[pa + 1]]++; JitOolAt(pa); opa = pa; } }   // (the region never leaves its 4 KB page)
         if (!PcMachine.TimeProbe) return Step1(false);
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         int r = Step1(false);
-        TicksOol += System.Diagnostics.Stopwatch.GetTimestamp() - t0; OolCalls++;
+        long dt = System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+        TicksOol += dt; OolCalls++;
+        if (opa != 0xffffffff) OolTicksAt[opa] = OolTicksAt.GetValueOrDefault(opa) + dt;   // (JITSTAT + TIMEPROBE: which out-of-line instructions cost the time)
         return r;
     }
     /// <summary>X86_TIMEPROBE: wall ticks inside out-of-line instructions (JInterp) and their count.</summary>
     public long TicksOol, OolCalls;
+    public readonly Dictionary<uint, long> OolTicksAt = new();
     /// <summary>After an out-of-line instruction: can the compiled code go on (the same code size, paging still off, the fetch still
     /// on this code page, every segment it uses still usable)? Leaves _spm as Exec1's next iteration would.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1174,9 +1180,9 @@ public sealed partial class I386
                     }
                     break;
                 case DK_FLAGOP:
-                    if (op == 0xfa) Prep();   // (CLI may fault)
+                    if (op is 0xfa or 0x9b) Prep();   // (CLI / FWAIT may fault)
                     Ld0(); I4(op); Call("JFlagOp");
-                    if (op == 0xfa) FailIfFalse(); else Op(OpCodes.Pop);
+                    if (op is 0xfa or 0x9b) FailIfFalse(); else Op(OpCodes.Pop);
                     break;
                 case DK_XCHG:   // register with register (Mod 3): no memory, no flags
                     LdReg(bits, e.Rm); Stl(t);

@@ -441,6 +441,7 @@ public sealed class S3Trio64
                 if (cpuData && (_cmd & 0x10) != 0) { _waitCpu = true; return; }
                 if ((_cmd & 0x10) == 0) return;
                 int dx = (_cmd & 0x20) != 0 ? 1 : -1, dy = (_cmd & 0x80) != 0 ? 1 : -1;
+                if (op == 2 && !S3Slow && FastFill(dx, dy)) { _curY += _ph * dy; break; }
                 for (int j = 0; j < _ph; j++)
                     for (int i = 0; i < _pw; i++)
                     {
@@ -463,6 +464,7 @@ public sealed class S3Trio64
                 int w = _majPcnt + 1, h = _minPcnt + 1;
                 int dx = (_cmd & 0x20) != 0 ? 1 : -1, dy = (_cmd & 0x80) != 0 ? 1 : -1;
                 if (cpuData) { _pw = w; _ph = h; _px = _destX; _py = _destY; _cntX = _cntY = 0; _waitCpu = true; return; }
+                if (!S3Slow && FastCopy(w, h, dx, dy)) { _curY += h * dy; _destY += h * dy; break; }
                 for (int j = 0; j < h; j++)
                     for (int i = 0; i < w; i++)
                     {
@@ -474,6 +476,44 @@ public sealed class S3Trio64
                 break;
             }
         }
+    }
+
+    private static readonly bool S3Slow = Environment.GetEnvironmentVariable("X86_S3SLOW") == "1";
+    /// <summary>Is the rectangle (x0..x0+(w-1)*dx, y0..) inside the scissor and video memory? Then no pixel is clipped.</summary>
+    private bool Inside(int x0, int y0, int w, int h, int dx, int dy, bool scissor)
+    {
+        int xl = dx > 0 ? x0 : x0 - w + 1, xr = xl + w - 1, yt = dy > 0 ? y0 : y0 - h + 1, yb = yt + h - 1;
+        if (xl < 0 || yt < 0 || xr >= Pitch) return false;
+        if (scissor && (xl < _scLeft || xr > _scRight || yt < _scTop || yb > _scBottom)) return false;
+        return ((long)yb * Pitch + xr + 1) * BytesPerPixel <= VramBytes;
+    }
+    /// <summary>BitBLT display memory -> display memory with the plain source mix and every plane written: whole rows (memmove), exactly
+    /// what the pixel loop gives (it falls back when a row overlaps itself in the direction the loop would smear).</summary>
+    private bool FastCopy(int w, int h, int dx, int dy)
+    {
+        if (PixSel == 3 || (_fgMix & 0x7f) != 0x67 || (_wrtMask & PixMask) != PixMask) return false;   // (source = display memory, mix = S)
+        if (!Inside(_curX, _curY, w, h, dx, dy, false) || !Inside(_destX, _destY, w, h, dx, dy, true)) return false;
+        int bpp = BytesPerPixel, pitch = Pitch, sxl = dx > 0 ? _curX : _curX - w + 1, txl = dx > 0 ? _destX : _destX - w + 1;
+        for (int j = 0; j < h; j++)
+        {
+            int sy = _curY + j * dy, ty = _destY + j * dy;
+            if (sy == ty && sxl != txl && Math.Abs(sxl - txl) < w && (dx > 0) == (sxl < txl)) return false;
+        }
+        for (int j = 0; j < h; j++)
+        {
+            int sy = _curY + j * dy, ty = _destY + j * dy;
+            Array.Copy(_v.Ram, (sy * pitch + sxl) * bpp, _v.Ram, (ty * pitch + txl) * bpp, w * bpp);
+        }
+        return true;
+    }
+    /// <summary>Rectangle fill with the foreground colour (mix = S, every plane written) at 8 bpp: whole rows.</summary>
+    private bool FastFill(int dx, int dy)
+    {
+        if (BytesPerPixel != 1 || PixSel != 0 || (_fgMix & 0x7f) != 0x27 || (_wrtMask & 0xff) != 0xff) return false;
+        if (!Inside(_curX, _curY, _pw, _ph, dx, dy, true)) return false;
+        int xl = dx > 0 ? _curX : _curX - _pw + 1;
+        for (int j = 0; j < _ph; j++) Array.Fill(_v.Ram, (byte)_fgColor, (_curY + j * dy) * Pitch + xl, _pw);
+        return true;
     }
 
     private void Line()
