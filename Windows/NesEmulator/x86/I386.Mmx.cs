@@ -57,7 +57,7 @@ public sealed partial class I386
         if ((Cr0 & 4) != 0) { K(Throw0(EX_UD)); return false; }
         if ((Cr0 & 8) != 0) { K(Throw0(EX_NM)); return false; }
         if ((_fsw & FSW_ES) != 0 && (Cr0 & 0x20) != 0) { K(Throw0(EX_MF)); return false; }
-        if (_mod != 3) Cycle += _memCost;   // (as DecodeModrm)
+        // (no _memCost here: the compiled code already charged it with the instruction, JitExtraCost)
         _jMmxImm = imm; int rc = MmxBody((uint)b1); _jMmxImm = -1;
         return rc != FAIL;
     }

@@ -63,6 +63,7 @@ internal static class X86BootCli
         }
     }
     private static AllocListener? _allocs;
+    private static readonly int SampleFrom = int.TryParse(Environment.GetEnvironmentVariable("X86_SAMPLEFROM"), out int sf) ? sf : 0, SampleSlice = int.TryParse(Environment.GetEnvironmentVariable("X86_SAMPLESLICE"), out int ss) ? ss : 997;
 
     public static int Boot(string[] args)
     {
@@ -326,10 +327,11 @@ internal static class X86BootCli
         if (Arg(args, "--sample") is string smp)
             for (int k = 0; k < int.Parse(smp); k++)
             {
-                m.RunClock(997);
+                if (k < SampleFrom) { m.RunClock(997); continue; }   // (X86_SAMPLEFROM: run to there in 997-unit slices, quietly; then X86_SAMPLESLICE units)
+                m.RunClock(k == SampleFrom ? 0 : SampleSlice);
                 uint lin = m.Cpu.SegBase[1] + m.Cpu.Ip;
                 var bytes = LinBytes(m, lin, 12);
-                Console.WriteLine($"  {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} lin {lin:X8} EAX {m.Cpu.R[0]:X8} ECX {m.Cpu.R[1]:X8} EDX {m.Cpu.R[2]:X8} ESP {m.Cpu.R[4]:X8} IF {(m.Cpu.Flags >> 9) & 1} | {bytes}");
+                Console.WriteLine($"  cyc {m.Cpu.Cycle} {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} lin {lin:X8} EAX {m.Cpu.R[0]:X8} ECX {m.Cpu.R[1]:X8} EDX {m.Cpu.R[2]:X8} ESP {m.Cpu.R[4]:X8} IF {(m.Cpu.Flags >> 9) & 1} | {bytes}");
             }
         foreach (var pg in Args(args, "--physgrep"))   // --physgrep "B1 B2 ..": where physical memory holds these bytes (with 24 bytes before and after)
         {
