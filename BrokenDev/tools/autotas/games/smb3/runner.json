@@ -2,7 +2,7 @@
  "note": "lib/run.py config: RAM shown after every step, the level/map expressions, the progress table and the lives byte; lvl = 1 inside a real level (mode 7 = Toad house, 15 = spade/bonus panel are not levels)",
  "ram": [
   "mode=[$070A]",
-  "lvl=([$070A] != 0 && [$070A] != 7 && [$070A] != 15)",
+  "lvl=([$070A] != 0 && [$070A] != 7 && [$070A] != 15 && [$070A] != 16)",
   "world=[$0727]",
   "lives=[$0736]",
   "pow=[$00ED]",
@@ -17,7 +17,7 @@
   "coins=[$7DA2]",
   "boss=[$0083]"
  ],
- "in_level": "[$070A] != 0 && [$070A] != 7 && [$070A] != 15",
+ "in_level": "[$070A] != 0 && [$070A] != 7 && [$070A] != 15 && [$070A] != 16",
  "on_map": "[$070A] == 0 && [$0729] == $0D",
  "progress_table": {
   "addr": 32000,
