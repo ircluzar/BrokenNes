@@ -31,3 +31,4 @@ gg   | X:\EMULATION\Sega Game Gear\Columns (U) [!].gg | Columns (GG)
 md   | X:\EMULATION\Sega Genesis\Gunstar Heroes (E) [!].bin | Gunstar Heroes
 md   | X:\EMULATION\Sega Genesis\Columns (JU) (REV 00).bin | Columns (Genesis)
 md   | X:\EMULATION\Sega Genesis\Contra - Hard Corps (U) [!].bin | Contra Hard Corps
+md   | X:\EMULATION\Sega Genesis\Virtua Racing (U).bin | Virtua Racing (SVP)

@@ -364,6 +364,52 @@
       }
     },
     {
+      "id": "sega-md-virtuaracing-svp",
+      "description": "Virtua Racing: the SVP chip (SSP1601) draws the 3D; menus, then a Beginner race to frame 3000 at full throttle.",
+      "kind": "session",
+      "rom": "{md}/Virtua Racing (U).bin",
+      "frames": 3000,
+      "input": "400:Start,406:,700:Start,706:,900:Start,906:,1100:Start,1106:,1300:Start,1306:,1800:B",
+      "tags": [
+        "sega",
+        "md",
+        "own",
+        "svp"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "81CD227498820F84",
+        "audioHash": "5F700B98F48560AB",
+        "framesRun": 3000,
+        "distinctColors": 146,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-md-virtuaracing-svp-state",
+      "description": "Virtua Racing save state mid-race (SVP DSP, DRAM and registers included): saved after frame 2200, loaded back after 2500; must end on the straight run hashes.",
+      "kind": "session",
+      "rom": "{md}/Virtua Racing (U).bin",
+      "frames": 3000,
+      "input": "400:Start,406:,700:Start,706:,900:Start,906:,1100:Start,1106:,1300:Start,1306:,1800:B",
+      "rewind": "2200:2500",
+      "tags": [
+        "sega",
+        "md",
+        "own",
+        "svp",
+        "state"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "81CD227498820F84",
+        "audioHash": "5F700B98F48560AB",
+        "framesRun": 3000,
+        "distinctColors": 146,
+        "result": "ok"
+      }
+    },
+    {
       "id": "sega-md-sonic1-model2",
       "description": "Sonic on the Model 2 board (no ladder effect in the DAC).",
       "kind": "session",
