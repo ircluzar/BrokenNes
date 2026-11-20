@@ -37,7 +37,7 @@ public sealed partial class I386
         public int[] RunAt = Array.Empty<int>(), RunLen = Array.Empty<int>();   // the byte ranges Bytes holds
         public uint[] Addrs = Array.Empty<uint>();   // the instructions, by address (entry k = Addrs[k])
         public bool C16, Pg;   // compiled for this code size, and with paging on or off (the memory accesses differ)
-        public long Runs, Instrs, Ticks;
+        public long Runs, Instrs, Ticks, Retired;
         public uint[] Pages = Array.Empty<uint>(), Gens = Array.Empty<uint>();   // the 4 KB pages Bytes come from, and their code write generations when last checked
         public uint Epoch = 0xffffffff;   // _memEpoch when last checked (FFFFFFFF: never: compare the bytes)
     }
@@ -86,8 +86,8 @@ public sealed partial class I386
     public int JitCompiled { get; private set; }
     public long JitRuns, JitInvalid, JitDeclines;
     public readonly long[] JitDeclineSeg = new long[6];
-    public IEnumerable<string> JitTop(int n) => _jitAll.OrderByDescending(b => b.Instrs).Take(n)
-        .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} ns/instr {b.Ticks * 1e9 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, b.Instrs):F2} | {Convert.ToHexString(b.Bytes)}");
+    public IEnumerable<string> JitTop(int n) => _jitAll.OrderByDescending(b => b.Ticks).Take(n)
+        .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} retired {b.Retired} ns/retired {b.Ticks * 1e9 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, b.Retired):F2} | {Convert.ToHexString(b.Bytes)}");
     private readonly long[] _interpOps = new long[65536];
     public readonly Dictionary<uint, long> InterpAt = new();
     /// <summary>JITSTAT: why an interpreted address is not compiled: its entry's state.</summary>
@@ -167,8 +167,9 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JitRunCounted(JitCode code, int k)
     {
-        long c0 = Cycle, t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        long c0 = Cycle, s0 = _steps, t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         int rc = code.Fn(this, k);
+        if (rc == OK) code.Retired += s0 - _steps + 1;   // (steps the block and the blocks it linked to retired; a skipped spin counts once)
         code.Ticks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
         JitRuns++; code.Runs++; code.Instrs += Cycle - c0;
         if (rc == JIT_DECLINE)
