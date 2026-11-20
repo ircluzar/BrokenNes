@@ -65,8 +65,14 @@ public sealed partial class I386
                     if (rc == OK) return OK;
                     if (rc == FAIL) return FAIL;
                     if (rc == JIT_END) return END;
-                    if (JitStats) JitCountInterp(paddr);
                 }
+                if (jit && DbOn)
+                {
+                    // a decoded block from here (I386.DCache.cs): code that changes too often to compile
+                    int rd = DbTry(paddr);
+                    if (rd != JIT_DECLINE) return rd;
+                }
+                if (jit && JitOn && JitStats) JitCountInterp(paddr);
                 b1 = U8(paddr);
                 _ifPaddr = paddr + 1;
                 NextIp++;
