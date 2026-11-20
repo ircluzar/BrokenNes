@@ -457,7 +457,14 @@ public sealed partial class PcMachine : IX86Bus
     public byte[] SaveState()
     {
         var ms = new MemoryStream();
-        using (var w = new BinaryWriter(ms))
+        SaveState(ms);
+        return ms.ToArray();
+    }
+
+    /// <summary>The state written to <paramref name="stream"/> (left open): the same bytes as <see cref="SaveState()"/> (the bug capture's state a second reuses one buffer).</summary>
+    public void SaveState(Stream stream)
+    {
+        using (var w = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
         {
             w.Write(0x33384350); // "PC83"
             w.Write(S3 != null ? 5 : 4);   // 5: an S3 Trio64 board (its 4 MB video memory, the SVGA block at the end); 2: the AdLib after the VGA; 3: the DMA controllers and the sound card after the AdLib; 4: the AdLib engine's own state (FA-ST-1)
@@ -514,7 +521,6 @@ public sealed partial class PcMachine : IX86Bus
                 d?.SaveDiff(w);
             }
         }
-        return ms.ToArray();
     }
 
     /// <summary>Loads a state; a state that does not fit this machine (another video card) throws and leaves the machine as it was.</summary>
