@@ -30,6 +30,7 @@ marks the milestone and writes the raw state FILE. So retries (`back`) never lea
   python -I run.py map --ch 1-2 [WIDTH] [--cell 16]  the level map stitched from every grid seen so far
   python -I run.py gap --ch 1-2 [FAMILY] [--want EXPR]  GAP SOLVER: long waits (0-400) before jumps, from here and 3 earlier checkpoints
   python -I run.py exits --ch 1-2 [--vals Down,Up,A] [--apply]   EXIT FINDER: pipes/doors/warps near you (walk, stop, hold Down/Up)
+  python -I run.py nodes --ch 1-2 [HOLD] --key mapx,mapy   MAP NODES: every reachable place and what pressing A there does (LEVEL / room / nothing)
   python -I run.py tree --ch 1-2                     checkpoints as a branch tree (which ones are on the current line)
   python -I run.py finish --ch 1-2 [--note TEXT]     replay -> seg/<ch>.bnm + state/<ch>.raw.state + thumb
   python -I run.py close --ch 1-2                    drop the session (no output)
@@ -221,6 +222,8 @@ def run_cmd(a, pkg, ch):
         do_script(b, r, cfg, pkg, ch, a)
     elif a.cmd == "discover":
         discover(b, r, cfg, pkg, ch, a)
+    elif a.cmd == "nodes":
+        nodes(b, r, cfg, pkg, ch, a)
     elif a.cmd == "explore":
         explore(b, r, cfg, pkg, ch, a)
     elif a.cmd == "probe":
@@ -539,6 +542,58 @@ def gap(b, r, cfg, pkg, ch, a):
                 if r["frames"] != mid: print("gap: SOLVED (slow landing, wait, jump) - save a checkpoint"); return
                 seek(b, r, cfg, pkg, ch, before)
     print("gap: no wait + jump crossed it from here or the last 3 checkpoints (the log is at the oldest one tried: `resume`/`seek` as needed)")
+
+
+def nodes(b, r, cfg, pkg, ch, a):
+    """Map-node finder (any game with an overworld): explores every place the d-pad reaches (like explore, keyed by --key),
+    then at each one presses the enter button (default A) and reports what that does: a LEVEL (runner.json in_level true),
+    another room/bonus (the picture or mode changes but it is not a level), or nothing (a path tile or a cleared level).
+    Nothing is logged; take one with explore --want on its key values, or the printed path with `do`.
+    nodes [HOLD] --key mapx,mapy [--vals Up,Down,Left,Right] [--then A]"""
+    import io, contextlib
+    a2 = argparse.Namespace(**vars(a)); a2.want = None; a2.apply = False
+    if not a2.vals: a2.vals = "Up,Down,Left,Right"
+    with contextlib.redirect_stdout(io.StringIO()): pass
+    d = os.path.join(wdir(pkg, ch), "_explore")
+    hold = int(a.args[0]) if a.args else 8
+    keys = (a.key or "mapx,mapy").split(",")
+    m = dict(e.split("=", 1) for e in cfg["ram"])
+    kram = [f"{k}={m[k]}" if k in m else f"{k}={k}" for k in keys]
+    enter = btns(a.then if a.then and a.then != "none" else "A")
+    root = os.path.join(wdir(pkg, ch), "_nodes0.state"); b.call("save_state", session=r["session"], path=root)
+    def settle():
+        prev, still, n = None, 0, 0
+        while n < 400 and still < 6:
+            v = b.call("play_step", session=r["session"], frames=8, scale=0, ram=kram)["ram"]; n += 8
+            still = still + 1 if v == prev else 0; prev = v
+        return n, tuple(prev.values())
+    k0 = tuple(b.call("play_step", session=r["session"], frames=0, scale=0, ram=kram)["ram"].values())
+    seen = {k0: (root, [])}; queue = [k0]
+    try:
+        while queue and len(seen) <= 40:
+            k = queue.pop(0); st, path = seen[k]
+            for mv in a2.vals.split(","):
+                b.call("load_state", session=r["session"], path=st)
+                b.call("play_step", session=r["session"], buttons=btns(mv), frames=hold, scale=0)
+                n, k2 = settle()
+                if k2 not in seen:
+                    f = os.path.join(wdir(pkg, ch), f"_node{len(seen)}.state"); b.call("save_state", session=r["session"], path=f)
+                    seen[k2] = (f, path + [[btns(mv), hold], [[], n]]); queue.append(k2)
+        inl = cfg.get("in_level")
+        print(f"nodes: {len(seen)} places reached; pressing {'+'.join(enter)} at each:")
+        for kk, (f, path) in seen.items():
+            b.call("load_state", session=r["session"], path=f)
+            before = b.call("play_step", session=r["session"], frames=0, scale=0, ram=cfg["ram"])["ram"]
+            res = b.call("play_step", session=r["session"], buttons=enter, frames=8, scale=0)
+            after = b.call("play_step", session=r["session"], frames=150, scale=0, ram=cfg["ram"] + (["_lvl=" + inl] if inl else []))["ram"]
+            lvl = after.pop("_lvl", None)
+            changed = {x: (before.get(x), v) for x, v in after.items() if before.get(x) != v and x not in keys}
+            what = "LEVEL" if lvl else ("another room / bonus" if any(x in changed for x in ("mode", "lvl")) else "nothing")
+            ps = " ".join(f"{'+'.join(x[0]) or 'none'}:{x[1]}" for x in path) or "(here)"
+            print(f"  {dict(zip(keys, kk))}: {what}" + (f" (" + " ".join(f"{x}={v[1]}" for x, v in list(changed.items())[:4]) + ")" if what != "nothing" else "") + f"   path: {ps}")
+    finally:
+        b.call("load_state", session=r["session"], path=root)
+    print("(nodes: machine put back, nothing logged; enter one: do \"<path> A:8\" or explore --want on its key values + level flag)")
 
 
 def explore(b, r, cfg, pkg, ch, a):

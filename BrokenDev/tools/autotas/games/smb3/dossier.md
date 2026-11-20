@@ -42,3 +42,6 @@ World change expected at `$0727` 0 -> 1 (unverified).
 - P-meter reads 0 while airborne: read it on the ground.
 - Power-up sprite on the map and card slots only refresh on the next level entry after RAM writes.
 - Hand-edited inventory (e.g. P-wing) is research only, never a TAS route.
+
+## Level kinds by $070A (mode) on entry
+4 = sky (1-4), 2 = fortress, 1/3/14 = plains/hills/other; 7, 15, 16 = Toad house / bonus panel rooms (not levels).
