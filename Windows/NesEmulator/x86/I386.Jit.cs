@@ -1248,7 +1248,7 @@ public sealed partial class I386
                     LdBase(e.Seg); il.Emit(OpCodes.Ldloc, ea); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, la);
                     // (the forms that run through a helper translate there themselves)
                     bool helper = e.Kind is DK_GRP3 or DK_GRP5 || (e.Kind == DK_GRP2 && e.Reg is not (4 or 5 or 6 or 7));
-                    bool write = e.Kind is DK_MOVEG or DK_MOVSR or DK_MOVEI or DK_SETCC or DK_GRP2 ||
+                    bool write = e.Kind is DK_MOVEG or DK_MOVSR or DK_MOVEI or DK_SETCC or DK_GRP2 or DK_XCHG ||
                                  (e.Kind == DK_ALUEG && e.Op != 7) || (e.Kind == DK_GRP1 && e.Reg != 7);
                     if (!helper) Xlat(k, Math.Max(1, bits / 8), write);
                 }
@@ -1341,6 +1341,11 @@ public sealed partial class I386
                     if (op is 0xfa or 0x9b) Prep();   // (CLI / FWAIT may fault)
                     Ld0(); I4(op); Call("JFlagOp");
                     if (op is 0xfa or 0x9b) FailIfFalse(); else Op(OpCodes.Pop);
+                    break;
+                case DK_XCHG when mem:   // with memory (as the interpreter: the register gets E, then E gets the old register; no flags)
+                    LdReg(bits, e.Reg); Stl(t);
+                    LdMem(bits, la); StReg(bits, e.Reg, () => Ld(V));
+                    WriteET();
                     break;
                 case DK_XCHG:   // register with register (Mod 3): no memory, no flags
                     LdReg(bits, e.Rm); Stl(t);
@@ -1799,6 +1804,8 @@ public sealed partial class I386
     private static readonly bool SegLazy = Environment.GetEnvironmentVariable("X86_SEGLAZY") != "0";
 
     private static bool DcHasModrm(byte kind) => kind is DK_MOVEG or DK_MOVGE or DK_ALUEG or DK_ALUGE or DK_GRP1 or DK_GRP2 or DK_TESTEG
-        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU or DK_MMX;
+        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU or DK_MMX or DK_XCHG;
+    /// <summary>X86_XCHGMEM: compile XCHG r, mem inline (opt-in: Garage2 A/B 2026-11-20 StarCraft -0.6%, AoE +2.1%, within noise).</summary>
+    private static readonly bool NoXchgMem = Environment.GetEnvironmentVariable("X86_XCHGMEM") == null;
 }
 
