@@ -100,6 +100,15 @@ public sealed class DiskImage
         return a;
     }
 
+    /// <summary>The disk as it is now, built later (on another thread): only the written sectors are copied here (cheap), the whole image is built when the function runs.</summary>
+    public Func<byte[]> Snapshot()
+    {
+        var secs = new List<(long s, byte[] d)>(_overlay.Count);
+        foreach (var (s, sec) in _overlay) secs.Add((s, (byte[])sec.Clone()));
+        var b = Base;
+        return () => { var a = (byte[])b.Clone(); foreach (var (s, sec) in secs) sec.CopyTo(a, s * SectorSize); return a; };
+    }
+
     /// <summary>Makes the disk read as <paramref name="full"/> (same length as the base): the overlay becomes their difference.</summary>
     public void SetContent(byte[] full)
     {
