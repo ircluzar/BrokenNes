@@ -5,9 +5,9 @@ namespace NesEmulator
 // Mapper 90 / 209 / 211 family (implemented for mapper ID 90 primary use).
 // Notes:
 // - PRG/CHR banking and mirroring follow BizHawk's Mapper090 logic (simplified to core behaviors).
-// - IRQ features are stubbed; no global IRQ bus hook exists here. Modes that rely on CPU-cycle IRQs are not supported.
+// - IRQ goes out as a level through ICpuClockedMapper (CPU-cycle source 0 clocked per CPU cycle, A12 source 1, PPU-read source 2, CPU-write source 3) as Mesen's JyCompany.
 // - Advanced nametable mapping (mapper 211) isn't supported by this emulator's PPU pipeline; only standard mirroring is applied.
-public class Mapper90 : IMapper
+public class Mapper90 : IMapper, ICpuClockedMapper
 {
     private readonly Cartridge cart;
 
@@ -57,6 +57,10 @@ public class Mapper90 : IMapper
 
     public Mapper90(Cartridge c) { cart = c; }
 
+    // ICpuClockedMapper: source 0 counts CPU cycles; the IRQ is a level held until $C002 / $C000 bit 0 = 0.
+    public void CpuClock(int cpuCycles) { if (irqSource == 0) for (int i = 0; i < cpuCycles; i++) ClockIRQ(); }
+    public bool IrqLine => irqPending;
+
     public void Reset()
     {
     for (int i = 0; i < 4; i++) { prgRegs[i] = 0xFF; ntRegs[i] = 0; }
@@ -102,6 +106,7 @@ public class Mapper90 : IMapper
 
     public void CPUWrite(ushort address, byte value)
     {
+        if (irqSource == 3) ClockIRQ();
         if (address >= 0x6000 && address <= 0x7FFF)
         {
             if (!sramPrg)
@@ -447,7 +452,6 @@ public class Mapper90 : IMapper
                 if (irqCounter == 0xFF) irqPending = irqEnable;
             }
         }
-        // No bus to assert CPU IRQ here; pending flag preserved for save state / debugging.
     }
 
     // State
