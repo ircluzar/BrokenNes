@@ -63,6 +63,7 @@ Buttons: Up Down Left Right A B Start Select. A held longer = higher jump. To ju
 - The grid's last line says AUTO-SCROLL when the screen moves by itself: then platforms beyond the screen edge are not there
   yet; wait (step none) until they appear before searching for a landing. `search` and `advance` then also try waiting
   0-120 frames before each jump by themselves; a gap that no jump crosses usually needs a WAIT (a platform arrives), not a better jump.
+- A pipe or door that leads to another room (dark background, different mode, x reset) is NORMAL level design, not a glitch: keep it and play on (the goal is often in that room).
 - When stuck: `grid --cell 16` FIRST (what is ahead of '@': a wall, a gap, a pipe, a platform that moves?), then `peek` a plan or two,
   then commit it with `step` or a `search`. Use the picture (--shot) only when the grid is unclear.
 - Main loop: `advance 6` -> if stuck: look, `search` past the spot (or `back` to an earlier a<frame> checkpoint and search from there) -> `advance 6` again. At the level end: the card search, then `step none 600`.

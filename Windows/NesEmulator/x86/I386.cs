@@ -914,6 +914,7 @@ public sealed partial class I386
     }
 
     /// <summary>tiny386 cpui386_step: take a pending interrupt, then run up to <paramref name="stepcount"/> instructions; a fault is delivered through the IDT/IVT.</summary>
+    public long TicksExec1;
     public void Step(int stepcount)
     {
         if ((Flags & IF) != 0 && Intr)
@@ -925,7 +926,9 @@ public sealed partial class I386
         }
         if (Halt) return;
         if (!_jitDone.IsEmpty) JitDrain();
+        long tq0 = PcMachine.TimeProbe ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         bool ret = Exec1(stepcount);
+        if (PcMachine.TimeProbe) TicksExec1 += System.Diagnostics.Stopwatch.GetTimestamp() - tq0;
         _ifPaddr = 0;
         if (!ret)
         {

@@ -23,6 +23,8 @@ internal static class Pads
         // Genesis six-button pad (MdSession also maps R -> C, L -> Z, Select -> Mode for the generic layout)
         "md" => Dirs | PadButtons.A | PadButtons.B | PadButtons.C | PadButtons.X | PadButtons.Y | PadButtons.Z | PadButtons.Mode | PadButtons.Start
                 | PadButtons.L | PadButtons.R | PadButtons.Select,
+        // N64 (N64ConsoleSession): L = Z trigger, Select = L shoulder, X/Y/C/Z = C-Up/C-Left/C-Right/C-Down, directions = the stick (the d-pad while Mode is held)
+        "n64" => Dirs | PadButtons.A | PadButtons.B | PadButtons.Start | PadButtons.L | PadButtons.R | PadButtons.Select | PadButtons.X | PadButtons.Y | PadButtons.C | PadButtons.Z | PadButtons.Mode,
         _ => (PadButtons)0x7FFF,
     };
 
@@ -33,6 +35,7 @@ internal static class Pads
         "sms" => "A (=1) B (=2) Pause Reset Up Down Left Right",
         "gg" => "A (=1) B (=2) Start Up Down Left Right",
         "md" => "A B C X Y Z Mode Start Up Down Left Right (L = Z, R = C, Select = Mode)",
+        "n64" => "A B Start Up Down Left Right (the stick; Mode held = d-pad) L (= Z trigger) R Select (= L shoulder) X Y C Z (= C-Up C-Left C-Right C-Down)",
         _ => "A B X Y L R C Z Mode Start Select Up Down Left Right",
     };
 

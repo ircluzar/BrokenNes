@@ -1,0 +1,111 @@
+# nav2 Re_Volt: slow Acclaim logos; pak notice CONTINUE; START/A through select race / mode / name / car / summary; rumble notice; hold A = drive
+run 600
+run 300
+screenshot p1
+run 300
+screenshot p2
+run 300
+screenshot p3
+press START 8 90
+screenshot p4
+press A 8 90
+screenshot p5
+press START 8 90
+screenshot p6
+press A 8 90
+screenshot p7
+press START 8 90
+screenshot p8
+press A 8 90
+screenshot p9
+press START 8 90
+screenshot p10
+press A 8 90
+screenshot p11
+press START 8 90
+screenshot p12
+press A 8 90
+screenshot p13
+press START 8 90
+screenshot p14
+press A 8 90
+screenshot p15
+press A 8 120
+screenshot p16
+press A 8 120
+screenshot p17
+press A 8 120
+screenshot p18
+press A 8 120
+screenshot p19
+press A 8 120
+screenshot p20
+run 400
+screenshot q1
+run 400
+screenshot q2
+run 400
+screenshot q3
+run 400
+screenshot q4
+run 400
+screenshot q5
+press START 8 80
+press A 8 80
+screenshot q6
+press START 8 80
+press A 8 80
+screenshot q7
+press START 8 80
+press A 8 80
+screenshot q8
+press START 8 80
+press A 8 80
+screenshot q9
+press START 8 80
+press A 8 80
+screenshot q10
+press START 8 80
+press A 8 80
+screenshot q11
+press START 8 80
+press A 8 80
+screenshot q12
+press START 8 80
+press A 8 80
+screenshot q13
+press START 8 80
+press A 8 80
+screenshot q14
+press START 8 80
+press A 8 80
+screenshot q15
+press START 8 80
+press A 8 80
+screenshot q16
+hold A
+run 200
+screenshot g1
+run 200
+screenshot g2
+run 200
+screenshot g3
+run 200
+screenshot g4
+run 200
+screenshot g5
+run 200
+screenshot g6
+run 200
+screenshot g7
+run 200
+screenshot g8
+run 200
+screenshot g9
+run 200
+screenshot g10
+run 200
+screenshot g11
+run 200
+screenshot g12
+release

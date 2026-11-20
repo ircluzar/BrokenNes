@@ -1,0 +1,16 @@
+# Boot script (the default for every game until it has its own): ~20 s to the title, Start, ~20 s more.
+# Frame counts are VI fields (60/s NTSC). See compat/README.md for the commands.
+run 120
+screenshot boot_2s
+run 480
+screenshot boot_10s
+run 600
+screenshot title_20s
+pulse START 60 20       # Start pressed 3 times over 1 s (some titles ignore the first press)
+run 570
+screenshot after_start_10s
+pulse START 60 20       # again: gets past "press start" menus that need two presses
+press A 5 25
+run 540
+screenshot after_start_20s
+checkpoint end

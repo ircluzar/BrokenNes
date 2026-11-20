@@ -1,0 +1,247 @@
+# mm [cert_scripts7]: boot -> title -> file select -> new file named A (File 1) -> intro (Skull Kid, Epona) with A/B
+# advancing text -> Link controllable in the Lost Woods -> ~1 minute of walking -> save block (reset -> file select shows File 1 A;
+# [emu_fix4] selecting File 1 opens its info panel, read back from FlashRAM after the COR64_FLASH_DMACONTIG fix).
+run 1200
+screenshot t0
+press START 5 60
+press A 5 60
+run 180
+screenshot m1
+press START 5 60
+press A 5 60
+run 180
+screenshot m2
+press START 5 60
+press A 5 60
+run 180
+screenshot m3
+press START 5 60
+press A 5 60
+run 180
+screenshot m4
+press START 5 60
+press A 5 60
+run 180
+screenshot m5
+press START 5 60
+press A 5 60
+run 180
+screenshot m6
+press START 5 60
+press A 5 60
+run 180
+screenshot m7
+press START 5 60
+press A 5 60
+run 180
+screenshot m8
+press START 5 60
+press A 5 60
+run 180
+screenshot m9
+press START 5 60
+press A 5 60
+run 180
+screenshot m10
+press START 5 60
+press A 5 60
+run 180
+screenshot m11
+press START 5 60
+press A 5 60
+run 180
+screenshot m12
+press START 5 60
+press A 5 60
+run 180
+screenshot m13
+press START 5 60
+press A 5 60
+run 180
+screenshot m14
+press START 5 60
+press A 5 60
+run 180
+screenshot m15
+press START 5 60
+press A 5 60
+run 180
+screenshot m16
+press START 5 60
+press A 5 60
+run 180
+screenshot m17
+press START 5 60
+press A 5 60
+run 180
+screenshot m18
+press START 5 60
+press A 5 60
+run 180
+screenshot m19
+press START 5 60
+press A 5 60
+run 180
+screenshot m20
+press A 5 60
+press B 5 60
+run 120
+screenshot n1
+press A 5 60
+press B 5 60
+run 120
+screenshot n2
+press A 5 60
+press B 5 60
+run 120
+screenshot n3
+press A 5 60
+press B 5 60
+run 120
+screenshot n4
+press A 5 60
+press B 5 60
+run 120
+screenshot n5
+press A 5 60
+press B 5 60
+run 120
+screenshot n6
+press A 5 60
+press B 5 60
+run 120
+screenshot n7
+press A 5 60
+press B 5 60
+run 120
+screenshot n8
+press A 5 60
+press B 5 60
+run 120
+screenshot n9
+press A 5 60
+press B 5 60
+run 120
+screenshot n10
+press A 5 60
+press B 5 60
+run 120
+screenshot n11
+press A 5 60
+press B 5 60
+run 120
+screenshot n12
+press A 5 60
+press B 5 60
+run 120
+screenshot n13
+press A 5 60
+press B 5 60
+run 120
+screenshot n14
+press A 5 60
+press B 5 60
+run 120
+screenshot n15
+press A 5 60
+press B 5 60
+run 120
+screenshot n16
+press A 5 60
+press B 5 60
+run 120
+screenshot n17
+press A 5 60
+press B 5 60
+run 120
+screenshot n18
+press A 5 60
+press B 5 60
+run 120
+screenshot n19
+press A 5 60
+press B 5 60
+run 120
+screenshot n20
+press A 5 60
+press B 5 60
+run 120
+screenshot n21
+press A 5 60
+press B 5 60
+run 120
+screenshot n22
+press A 5 60
+press B 5 60
+run 120
+screenshot n23
+press A 5 60
+press B 5 60
+run 120
+screenshot n24
+press A 5 60
+press B 5 60
+run 120
+screenshot n25
+press A 5 60
+press B 5 60
+run 120
+screenshot n26
+press A 5 60
+press B 5 60
+run 120
+screenshot n27
+press A 5 60
+press B 5 60
+run 120
+screenshot n28
+press A 5 60
+press B 5 60
+run 120
+screenshot n29
+press A 5 60
+press B 5 60
+run 120
+screenshot n30
+savestate speed
+stick 0 80
+run 300
+press B 5 40
+screenshot play_0_80
+stick 80 0
+run 300
+press B 5 40
+screenshot play_80_0
+stick 0 -80
+run 300
+press B 5 40
+screenshot play_0_-80
+stick -80 0
+run 300
+press B 5 40
+screenshot play_-80_0
+stick 50 50
+run 300
+press B 5 40
+screenshot play_50_50
+stick -50 -50
+run 300
+press B 5 40
+screenshot play_-50_-50
+stick 0 0
+release
+run 120
+checkpoint end
+savefile pre_reset
+reset
+run 1200
+screenshot reset_title
+press START 5 60
+press A 5 60
+run 180
+screenshot reset_files
+press A 5 60
+run 60
+screenshot reset_file1_info
+savefile post_reset
+checkpoint save_end

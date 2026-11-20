@@ -1,0 +1,80 @@
+# nav2 Bass_Rush_ECOGEAR_PowerWorm_Championship (clean (J) dump; run_v2 now skips [b1]): intro -> title -> File1 -> name entry
+# name grid ignores the D-pad: stick moves (y<0 = down, 7 rows incl. END), A types; then A through player/mode/lake/point/condition/lure -> boat fishing
+run 600
+run 1200
+screenshot intro
+press START 8 60
+press A 8 60
+press START 8 60
+press A 8 60
+screenshot filesel
+press A 8 120
+screenshot name
+stick 0 -100
+run 6
+stick 0 0
+run 20
+stick 0 -100
+run 6
+stick 0 0
+run 20
+press A 8 40
+stick 100 0
+run 6
+stick 0 0
+run 20
+press A 8 40
+stick 100 0
+run 6
+stick 0 0
+run 20
+press A 8 40
+stick 0 -100
+run 6
+stick 0 0
+run 20
+stick 0 -100
+run 6
+stick 0 0
+run 20
+stick 0 -100
+run 6
+stick 0 0
+run 20
+stick 0 -100
+run 6
+stick 0 0
+run 20
+screenshot name_end
+press A 8 120
+screenshot g1
+press A 8 120
+screenshot g2
+press A 8 120
+screenshot g3
+press A 8 120
+screenshot g4
+press A 8 120
+screenshot g5
+press A 8 120
+screenshot g6
+press A 8 120
+screenshot g7
+press A 8 120
+screenshot g8
+press A 8 120
+screenshot g9
+press A 8 120
+screenshot g10
+press A 8 120
+screenshot g11
+hold A
+run 300
+screenshot f1
+release
+stick 0 -100
+run 300
+screenshot f2
+stick 0 0
+run 300
+screenshot f3

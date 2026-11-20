@@ -1,0 +1,137 @@
+# nav2 Pocket_Monsters_Stadium: no GB cart -> main menu Battle (はい) > Free Battle > opponent select: D-pad down x3 from 2P = COM (2P waits on controller 2) > rental entry > battle
+run 600
+run 300
+screenshot p1
+run 300
+screenshot p2
+run 300
+screenshot p3
+press START 8 90
+screenshot p4
+press A 8 90
+screenshot p5
+press START 8 90
+screenshot p6
+press A 8 90
+screenshot p7
+press START 8 90
+screenshot p8
+press A 8 90
+screenshot p9
+press START 8 90
+screenshot p10
+press A 8 90
+screenshot p11
+press START 8 90
+screenshot p12
+press A 8 90
+screenshot p13
+press START 8 90
+screenshot p14
+press A 8 90
+screenshot p15
+press A 8 120
+screenshot p16
+press A 8 120
+screenshot p17
+press A 8 120
+screenshot p18
+press A 8 120
+screenshot p19
+press A 8 120
+screenshot p20
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+screenshot opp
+press DD 8 40
+press DD 8 40
+press DD 8 40
+screenshot com
+press A 8 150
+screenshot q3
+press A 8 150
+screenshot q4
+press A 8 150
+screenshot q5
+press A 8 150
+screenshot q6
+press A 8 150
+screenshot q7
+press A 8 150
+screenshot q8
+press A 8 150
+screenshot q9
+press A 8 150
+screenshot q10
+press A 8 150
+screenshot q11
+press A 8 150
+screenshot q12
+press A 8 150
+screenshot q13
+press A 8 150
+screenshot q14
+press A 8 150
+screenshot q15
+press A 8 150
+screenshot q16
+press A 8 200
+screenshot g1
+press A 8 200
+screenshot g2
+press A 8 200
+screenshot g3
+press A 8 200
+screenshot g4
+press A 8 200
+screenshot g5
+press A 8 200
+screenshot g6
+# title_fix2: the pick screen wants all six (B A C< C v C^ C>), not three; then はい (A) and the battle. Debugger watch: A reaches the trigger word 800AAF58 and 80116F64 maps it to slot 3 (80116DCC).
+run 120
+press B 8 60
+press A 8 60
+press CL 8 60
+press CD 8 60
+press CU 8 60
+press CR 8 60
+screenshot k1
+press A 8 150
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+screenshot k2
+press A 8 150
+press A 8 150
+run 600
+screenshot k3

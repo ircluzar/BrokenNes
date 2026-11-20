@@ -1,0 +1,40 @@
+# title_fix3 J_League_Tactics_Soccer: no-pak prompt (A x3), title START, mode select 対戦 (DD DD A), defaults with A -> exhibition match vs COM. GameDb ViCap SJ=6 (COR64_TITLE3_CAP)
+run 600
+press A 4 90
+press A 4 90
+press A 4 90
+run 600
+press START 4 90
+press START 4 90
+press START 4 90
+press START 4 90
+press START 4 90
+press START 4 90
+press START 4 90
+press DD 3 40
+press DD 3 40
+press A 4 120
+press A 4 120
+press A 4 120
+press A 4 120
+press A 4 120
+press A 4 120
+press A 4 120
+press A 4 120
+press A 4 120
+press A 4 120
+screenshot m0
+press A 4 120
+press A 4 120
+press A 4 120
+screenshot m00
+run 600
+screenshot m1
+run 600
+screenshot m2
+run 600
+screenshot m3
+run 600
+screenshot m4
+run 600
+screenshot m5

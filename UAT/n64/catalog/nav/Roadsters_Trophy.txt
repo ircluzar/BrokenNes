@@ -1,0 +1,85 @@
+# title_fix3 Roadsters_Trophy (U): boot -> Game type (START x30) -> Quick Race -> defaults -> race; countdown is slow at VI_SPEEDUP=11, then A-held driving
+run 900
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press START 8 60
+press B 8 60
+press DD 6 30
+press DD 6 30
+screenshot g2
+press A 8 90
+screenshot p1
+press A 8 90
+screenshot p2
+press A 8 90
+screenshot p3
+press A 8 90
+screenshot p4
+press A 8 90
+screenshot p5
+press A 8 90
+screenshot p6
+press A 8 90
+screenshot p7
+press A 8 90
+screenshot p8
+press A 8 90
+screenshot p9
+press A 8 90
+screenshot p10
+press A 8 90
+screenshot p11
+press A 8 90
+screenshot p12
+hold A
+stick 0 80
+run 600
+screenshot z1
+run 600
+screenshot z2
+run 600
+screenshot z3
+run 600
+screenshot z4
+run 600
+screenshot z5
+run 600
+screenshot z6
+release
+run 20
+hold A
+run 600
+screenshot w1
+run 600
+screenshot w2
+run 600
+screenshot w3
+run 600
+screenshot w4

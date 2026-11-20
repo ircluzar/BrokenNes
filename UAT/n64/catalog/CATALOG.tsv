@@ -1,0 +1,340 @@
+id	title	region	class	clue	ucodes	save	cic	fps%	run dir
+007_The_World_is_Not_Enough	TWINE	U	TITLE		audio:4E84BBC9A3472C12?,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	196.2	catalog/runs/007_The_World_is_Not_Enough
+1080_Snowboarding	1080 SNOWBOARDIN	E	TITLE	slow: deadline hit at frame 2751 | unknown gfx gfx:5F0C5B471A3837E8 | rc=3	audio:6DF81211F06F2F34?,gfx:5F0C5B471A3837E8?	none	X103/6103/7103	27	catalog/runs/1080_Snowboarding
+64_Oozumou	64 OHZUMOU	J	TITLE	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	54.9	catalog/runs/64_Oozumou
+64_Oozumou_2	64 µµ½ÞÓ³ 2	J	TITLE	stuck on Controller Pak prompt | unknown gfx gfx:5F0C5B471A3837E8 | silent	audio:A7D6C48BB1E215F5,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	58.3	catalog/runs/64_Oozumou_2
+64_Trump_Collection_Alice_no_Wakuwaku_Trump_Worl	64 TRUMP COLLECT	J	INGAME	unknown gfx gfx:6571445B0096A26F	audio:A7D6C48BB1E215F5,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	37.6	catalog/runs/64_Trump_Collection_Alice_no_Wakuwaku_Trump_Worl
+64_de_Hakken_Tamagotchi_Minna_de_Tamagotchi_Worl	ÐÝÅÃÞÀÏºÞ¯ÁÜ°ÙÄÞ	J	TITLE	unknown gfx gfx:1A7E8D86FC9C4264	audio:13FC0758F120BE0F,gfx:1A7E8D86FC9C4264?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	91.3	catalog/runs/64_de_Hakken_Tamagotchi_Minna_de_Tamagotchi_Worl
+AI_Shougi_3	AI¼®³·Þ3	J	TITLE	unknown gfx gfx:474AFD65F9613077 | silent	audio:13FC0758F120BE0F,gfx:474AFD65F9613077?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	132.3	catalog/runs/AI_Shougi_3
+Action_Replay_Pro_64	cAitnoR peal yrP	U	NO-BOOT	cheat device cart, not a game | slow: deadline hit at frame 16 | unimpl: cpu:tlb-exception | no RSP tasks | silent | rc=3		none	Unknown/unknown	0	catalog/runs/Action_Replay_Pro_64
+AeroFighters_Assault	AERO FIGHTERS AS	U	TITLE	slow: deadline hit at frame 2786 | unknown gfx gfx:FCB47727D1A14A21 | rc=3	audio:13FC0758F120BE0F,gfx:FCB47727D1A14A21?	none	X102/6102/7101	27	catalog/runs/AeroFighters_Assault
+AeroGauge_U	AEROGAUGE	U	INGAME	unknown gfx gfx:1409EE9AE294056B	audio:13FC0758F120BE0F,gfx:1409EE9AE294056B?	Eeprom4K	X102/6102/7101	160	catalog/runs/AeroGauge_U
+Aidyn_Chronicles_The_First_Mage	AIDYN_CHRONICLES	U	TITLE	slow: deadline hit at frame 3023 | rc=3	audio:13FC0758F120BE0F,gfx:017A1830EFE46148	none	X102/6102/7101	30	catalog/runs/Aidyn_Chronicles_The_First_Mage
+Airboarder_64	AIR BOARDER 64	E	TITLE	unknown gfx gfx:AB9E06DB209423C8,gfx:E8F5E7B054211C4C	audio:A7D6C48BB1E215F5,gfx:AB9E06DB209423C8?,gfx:E8F5E7B054211C4C?	Eeprom4K	X102/6102/7101	83.2	catalog/runs/Airboarder_64
+All_Star_Baseball_2000	All-Star Basebal	U	TITLE	slow: deadline hit at frame 2231 | rc=3	audio:13FC0758F120BE0F,gfx:10D9A52A0EC45EEC	none	X102/6102/7101	22	catalog/runs/All_Star_Baseball_2000
+All_Star_Baseball_2001	All-Star Basebal	U	INGAME	slow: deadline hit at frame 2597 | rc=3	audio:13FC0758F120BE0F,gfx:10D9A52A0EC45EEC	none	X102/6102/7101	25	catalog/runs/All_Star_Baseball_2001
+All_Star_Baseball_99	All Star Basebal	U	TITLE	slow: deadline hit at frame 2392 | unknown gfx gfx:5694424E7F46E478,gfx:66A0D12F61F9A73F | rc=3	audio:13FC0758F120BE0F,gfx:5694424E7F46E478?,gfx:66A0D12F61F9A73F?	none	X102/6102/7101	23	catalog/runs/All_Star_Baseball_99
+All_Star_Tennis_99	ALL STAR TENNIS	U	TITLE	unknown gfx gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	103.1	catalog/runs/All_Star_Tennis_99
+Armorines_Project_S_W_A_R_M	Armorines Projec	U	TITLE	unknown gfx gfx:AE81B28CB96E4A9F	audio:13FC0758F120BE0F,gfx:AE81B28CB96E4A9F?	Eeprom4K	X102/6102/7101	67.3	catalog/runs/Armorines_Project_S_W_A_R_M
+Army_Men_Air_Combat	ARMYMENAIRCOMBAT	U	INGAME		audio:A7D6C48BB1E215F5,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	42.2	catalog/runs/Army_Men_Air_Combat
+Army_Men_Sarge_s_Heroes	Army Men Sarge	U	TITLE		audio:A7D6C48BB1E215F5,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	46.4	catalog/runs/Army_Men_Sarge_s_Heroes
+Army_Men_Sarge_s_Heroes_2	ARMYMEN SARGE 2	U	TITLE		audio:A7D6C48BB1E215F5,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	73.2	catalog/runs/Army_Men_Sarge_s_Heroes_2
+Asteroids_Hyper_64	Asteroids Hyper	U	TITLE	stuck on Controller Pak screen, input ignored | slow: deadline hit at frame 3039 | frozen picture | rc=3	audio:13FC0758F120BE0F,gfx:15105CF13014B030	none	X102/6102/7101	30	catalog/runs/Asteroids_Hyper_64
+Automobili_Lamborghini	LAMBORGHINI	U	NO-BOOT	black, 6 fps, TLB exception | slow: deadline hit at frame 1102 | unimpl: cpu:tlb-exception | unknown gfx gfx:6571445B0096A26F | silent | rc=3	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	none	X102/6102/7101	11	catalog/runs/Automobili_Lamborghini
+Bakuretsu_Muteki_Bangai_O	BANGAIOH	J	INGAME	unknown gfx gfx:F2683F177175DA14	audio:A7D6C48BB1E215F5,gfx:F2683F177175DA14?	Eeprom4K	X102/6102/7101	87.9	catalog/runs/Bakuretsu_Muteki_Bangai_O
+Bakushou_Jinsei_64_Mezase_Resort_Ou	ÊÞ¸¼®³¼ÞÝ¾²64	J	TITLE		audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	133.4	catalog/runs/Bakushou_Jinsei_64_Mezase_Resort_Ou
+Banjo_Kazooie	Banjo-Kazooie	U	TITLE	unknown gfx gfx:6571445B0096A26F	audio:115D2A0CA14971DB?,gfx:6571445B0096A26F?	Eeprom4K	X103/6103/7103	65.8	catalog/runs/Banjo_Kazooie
+Bass_Rush_ECOGEAR_PowerWorm_Championship	Bass Rush	J	NO-BOOT	silent | frozen picture	audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	34.1	catalog/runs/Bass_Rush_ECOGEAR_PowerWorm_Championship
+Bass_Tsuri_No_1_Shigesato_Itoi_s_Bass_Fishing	BassFishingNo.1	J	TITLE		audio:A7D6C48BB1E215F5,gfx:E38DEB637CB77CBF	Sram32K	X102/6102/7101	214.5	catalog/runs/Bass_Tsuri_No_1_Shigesato_Itoi_s_Bass_Fishing
+Bassmasters_2000	BASSMASTERS2000	U	TITLE		gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	44.8	catalog/runs/Bassmasters_2000
+Batman_Beyond_Return_of_the_Joker	BATMAN BEYOND RE	U	INGAME		audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	63.2	catalog/runs/Batman_Beyond_Return_of_the_Joker
+BattleTanx	BATTLETANX	U	NO-BOOT	slow: deadline hit at frame 2995 | no RSP tasks | silent | frozen picture | rc=3		none	X102/6102/7101	29	catalog/runs/BattleTanx
+BattleTanx_Global_Assault	BATTLETANXGA	U	NO-BOOT	slow: deadline hit at frame 2830 | no RSP tasks | silent | frozen picture | rc=3		none	X102/6102/7101	28	catalog/runs/BattleTanx_Global_Assault
+Battlezone_Rise_of_the_Black_Dogs	BATTLEZONE	U	BOOTS	CPAK-PROMPT stuck: No Controller Pak screen ignores Start/A | silent | frozen picture	audio:13FC0758F120BE0F,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	56.1	catalog/runs/Battlezone_Rise_of_the_Black_Dogs
+Beetle_Adventure_Racing	Beetle Adventure	U	BOOTS	CPAK-PROMPT stuck: No Controller Pak screen ignores Start/A | frozen picture	audio:13FC0758F120BE0F,gfx:61F5813D0D011870	Eeprom4K	X102/6102/7101	138.5	catalog/runs/Beetle_Adventure_Racing
+Big_Mountain_2000	Big Mountain 200	U	INGAME		audio:A7D6C48BB1E215F5,gfx:10D9A52A0EC45EEC,gfx:61F5813D0D011870	Eeprom4K	X102/6102/7101	132.8	catalog/runs/Big_Mountain_2000
+Bio_F_R_E_A_K_S	BIOFREAKS	U	TITLE	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	89.9	catalog/runs/Bio_F_R_E_A_K_S
+Blues_Brothers_2000	BLUES BROTHERS 2	U	BOOTS	CPAK-PROMPT stuck: No Controller Pak screen ignores Start/A | 	audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	177.1	catalog/runs/Blues_Brothers_2000
+Body_Harvest	BODY HARVEST	U	NO-BOOT	slow: deadline hit at frame 2803 | unknown gfx gfx:6571445B0096A26F | silent | frozen picture | rc=3	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	none	X102/6102/7101	27	catalog/runs/Body_Harvest
+Bomberman_64	BOMBERMAN64U	U	INGAME		audio:13FC0758F120BE0F,gfx:F925184A5DCE1F98	Eeprom4K	X102/6102/7101	101.8	catalog/runs/Bomberman_64
+Bomberman_64_Arcade_Edition	BOMBERMAN64	J	NO-BOOT	slow: deadline hit at frame 279 | no RSP tasks | silent | rc=3		none	X102/6102/7101	3	catalog/runs/Bomberman_64_Arcade_Edition
+Bomberman_64_The_Second_Attack	BOMBERMAN64U2	U	TITLE		audio:13FC0758F120BE0F,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	133.2	catalog/runs/Bomberman_64_The_Second_Attack
+Bomberman_Hero	BOMBERMAN HERO	U	TITLE	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	101.6	catalog/runs/Bomberman_Hero
+Bottom_of_the_9th	Bottom of the 9t	U	TITLE		audio:A7D6C48BB1E215F5,gfx:15105CF13014B030,jpeg:7BB96255F387A401?,jpeg:A9800EDC4E2B7E58?	Eeprom4K	X102/6102/7101	211.7	catalog/runs/Bottom_of_the_9th
+Brunswick_Circuit_Pro_Bowling	BRUNSWICKBOWLING	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:66A0D12F61F9A73F | silent | frozen picture	audio:13FC0758F120BE0F,gfx:66A0D12F61F9A73F?	Eeprom4K	X102/6102/7101	108	catalog/runs/Brunswick_Circuit_Pro_Bowling
+Buck_Bumble	BUCK BUMBLE	U	INGAME	unknown gfx gfx:474AFD65F9613077	audio:A7D6C48BB1E215F5,gfx:474AFD65F9613077?	Eeprom4K	X102/6102/7101	80.3	catalog/runs/Buck_Bumble
+Bug_s_Life_A	A Bug's Life	U	NO-BOOT	unimpl: cpu:tlb-exception | no RSP tasks | silent | frozen picture		Eeprom4K	X102/6102/7101	201.3	catalog/runs/Bug_s_Life_A
+Bust_A_Move_2_Arcade_Edition	Bust A Move 2	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:DC3C65D7C985B290	audio:13FC0758F120BE0F,gfx:DC3C65D7C985B290?	Eeprom4K	X102/6102/7101	178.1	catalog/runs/Bust_A_Move_2_Arcade_Edition
+Bust_A_Move_99	Bust A Move '99	U	TITLE	unknown gfx gfx:DC3C65D7C985B290	audio:13FC0758F120BE0F,gfx:DC3C65D7C985B290?	Eeprom4K	X102/6102/7101	194.2	catalog/runs/Bust_A_Move_99
+CD64_Bios	CD64 UPGRADE VER	?	NO-BOOT	CD64 BIOS, not a game | slow: deadline hit at frame 18 | unimpl: cpu:address-error; cpu:tlb-exception | no RSP tasks | silent | rc=3		none	Unknown/unknown	0	catalog/runs/CD64_Bios
+California_Speed	CAL SPEED	U	TITLE	unknown gfx gfx:9DB779CEE421BD37	audio:13FC0758F120BE0F,gfx:9DB779CEE421BD37?	Eeprom4K	X102/6102/7101	124.3	catalog/runs/California_Speed
+Carmageddon_64	CARMAGEDDON64	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:3E2D5743DECDFEB2 | silent	audio:13FC0758F120BE0F,gfx:3E2D5743DECDFEB2?	Eeprom4K	X102/6102/7101	170.6	catalog/runs/Carmageddon_64
+Castlevania	CASTLEVANIA	U	TITLE		audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	209.6	catalog/runs/Castlevania
+Castlevania_Legacy_of_Darkness	CASTLEVANIA2	U	TITLE		audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	173.8	catalog/runs/Castlevania_Legacy_of_Darkness
+Centre_Court_Tennis	CENTRE COURT TEN	E	INGAME	unknown gfx gfx:66A0D12F61F9A73F	audio:13FC0758F120BE0F,gfx:66A0D12F61F9A73F?	Eeprom4K	X102/6102/7101	35.8	catalog/runs/Centre_Court_Tennis
+Chameleon_Twist	Chameleon Twist	U	INGAME	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	88.4	catalog/runs/Chameleon_Twist
+Chameleon_Twist_2	Chameleon Twist2	U	TITLE	unknown gfx gfx:A2F148800F6FAA72	audio:A7D6C48BB1E215F5,gfx:A2F148800F6FAA72?	Eeprom4K	X102/6102/7101	155.2	catalog/runs/Chameleon_Twist_2
+Charlie_Blast_s_Territory	CHARLIE BLAST'S	U	INGAME	unknown gfx gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	143.4	catalog/runs/Charlie_Blast_s_Territory
+Chopper_Attack	CHOPPER_ATTACK	U	INGAME	unknown gfx gfx:B35F0BE738E27CC5	audio:13FC0758F120BE0F,gfx:B35F0BE738E27CC5?	Eeprom4K	X102/6102/7101	131.3	catalog/runs/Chopper_Attack
+Choro_Q_64_II	Á®ÛQ64 2	J	TITLE		audio:A7D6C48BB1E215F5,gfx:15105CF13014B030	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	75.6	catalog/runs/Choro_Q_64_II
+Chou_Kuukan_Night_Pro_Yakyuu_King	PROYAKYUKING	J	INGAME	unknown gfx gfx:F6C489BBB9446CFC	audio:13FC0758F120BE0F,gfx:F6C489BBB9446CFC?	Eeprom4K	X102/6102/7101	161.8	catalog/runs/Chou_Kuukan_Night_Pro_Yakyuu_King
+Clay_Fighter_63_1_3	CLAYFIGHTER 63	U	TITLE	slow: deadline hit at frame 2338 | unknown gfx gfx:07EF1CCC0C7A4DBE | rc=3	audio:13FC0758F120BE0F,gfx:07EF1CCC0C7A4DBE?	none	X102/6102/7101	23	catalog/runs/Clay_Fighter_63_1_3
+Clay_Fighter_Sculptor_s_Cut	Clayfighter SC	U	INGAME	slow: deadline hit at frame 2701 | unknown gfx gfx:07EF1CCC0C7A4DBE | rc=3	audio:13FC0758F120BE0F,gfx:07EF1CCC0C7A4DBE?	none	X102/6102/7101	26	catalog/runs/Clay_Fighter_Sculptor_s_Cut
+Command_Conquer	Command&Conquer	U	TITLE	unknown gfx gfx:7A2E7DC1F4F2BA17	audio:A7D6C48BB1E215F5,gfx:7A2E7DC1F4F2BA17?	FlashRam	X102/6102/7101	58.2	catalog/runs/Command_Conquer
+Cruis_n_Exotica	CruisnExotica	U	TITLE	unknown gfx gfx:5C5E703CB8071A1E	audio:A7D6C48BB1E215F5,gfx:5C5E703CB8071A1E?	Eeprom4K	X102/6102/7101	127.2	catalog/runs/Cruis_n_Exotica
+Cruis_n_USA	Cruis'n USA	U	BOOTS	frozen on copyright screen from 5 s, silent | unknown gfx gfx:62B8759EFEA220E5 | silent | frozen picture	audio:13FC0758F120BE0F,gfx:62B8759EFEA220E5?	Eeprom4K	X102/6102/7101	258.2	catalog/runs/Cruis_n_USA
+Cruis_n_World	CRUIS'N WORLD	U	INGAME	slow: deadline hit at frame 3079 | unimpl: save:eeprom16k | unknown gfx gfx:474AFD65F9613077 | rc=3	audio:13FC0758F120BE0F,gfx:474AFD65F9613077?	none	X106/6106/7106	30	catalog/runs/Cruis_n_World
+Custom_Robo	custom robo	J	INGAME		audio:13FC0758F120BE0F,gfx:017A1830EFE46148,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	93.9	catalog/runs/Custom_Robo
+Custom_Robo_V2	CUSTOMROBOV2	J	TITLE		audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	148.7	catalog/runs/Custom_Robo_V2
+CyberTiger	CyberTiger	U	INGAME	unknown gfx gfx:9DB779CEE421BD37	audio:13FC0758F120BE0F,gfx:9DB779CEE421BD37?	Eeprom4K	X102/6102/7101	156.2	catalog/runs/CyberTiger
+Dance_Dance_Revolution_Disney_Dancing_Museum	DDR DISNEY D MUS	J	TITLE		audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	177.5	catalog/runs/Dance_Dance_Revolution_Disney_Dancing_Museum
+Dark_Rift	DARK RIFT	U	INGAME	unknown gfx gfx:F3D220739E047453,gfx:F476DDAB3DF69E00	audio:13FC0758F120BE0F,gfx:F3D220739E047453?,gfx:F476DDAB3DF69E00?	Eeprom4K	X102/6102/7101	115.6	catalog/runs/Dark_Rift
+Deadly_Arts	DeadlyArts	U	TITLE	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	70.8	catalog/runs/Deadly_Arts
+Densha_de_Go_64	ÃÞÝ¼¬ÃÞGO!64	J	TITLE		audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	168.6	catalog/runs/Densha_de_Go_64
+Derby_Stallion_64	DERBYSTALLION 64	J	TITLE	slow: deadline hit at frame 3239 | rc=3	audio:13FC0758F120BE0F,gfx:C81ACD2C909A4B88	none	X102/6102/7101	32	catalog/runs/Derby_Stallion_64
+Destruction_Derby_64	DESTRUCT DERBY	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | 	audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	249.5	catalog/runs/Destruction_Derby_64
+Dezaemon_3D	DEZAEMON3D	J	TITLE	unknown gfx gfx:DC3C65D7C985B290	audio:13FC0758F120BE0F,gfx:DC3C65D7C985B290?	Sram32K	X102/6102/7101	45.8	catalog/runs/Dezaemon_3D
+Disney_s_Donald_Duck_Goin_Quackers	Donald Duck Goin	U	TITLE	unknown gfx gfx:1409EE9AE294056B	audio:13FC0758F120BE0F,gfx:1409EE9AE294056B?	Eeprom4K	X102/6102/7101	48.2	catalog/runs/Disney_s_Donald_Duck_Goin_Quackers
+Disney_s_Tarzan	TARZAN	U	TITLE		audio:4E84BBC9A3472C12?,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	295.7	catalog/runs/Disney_s_Tarzan
+Doom_64	Doom64	U	TITLE	slow: deadline hit at frame 3192 | unknown gfx gfx:F6C489BBB9446CFC | rc=3	audio:13FC0758F120BE0F,gfx:F6C489BBB9446CFC?	none	X102/6102/7101	31	catalog/runs/Doom_64
+Doraemon_2_Hikari_no_Shinden	ÄÞ×´ÓÝ2 Ë¶ØÉ¼ÝÃÞ	J	NO-BOOT	unknown gfx gfx:A2F148800F6FAA72 | silent | frozen picture	gfx:A2F148800F6FAA72?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	734.4	catalog/runs/Doraemon_2_Hikari_no_Shinden
+Doraemon_3_Nobi_Dai_no_Machi_SOS	ÄÞ×´ÓÝ3 ÉËÞÀÉÏÁS	J	NO-BOOT	silent | frozen picture	audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	468.4	catalog/runs/Doraemon_3_Nobi_Dai_no_Machi_SOS
+Doraemon_Mittsu_no_Seireiseki	ÄÞ×´ÓÝ Ð¯ÂÉ¾²Ú²¾	J	TITLE	unknown gfx gfx:464B1BD12F25F3BE	audio:13FC0758F120BE0F,gfx:464B1BD12F25F3BE?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	122.1	catalog/runs/Doraemon_Mittsu_no_Seireiseki
+Doubutsu_no_Mori	DOUBUTSUNOMORI	J	INGAME	cart RTC + joybus unknown cmd unimplemented | unimpl: cart:rtc; joy:unknown-cmd	audio:6728A14F4A8C3299?,gfx:F5AC1564B6CA8870	FlashRam	X102/6102/7101	55.8	catalog/runs/Doubutsu_no_Mori
+Dual_Heroes	Dual heroes USA	U	TITLE	unknown gfx gfx:6571445B0096A26F	audio:A7D6C48BB1E215F5,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	181.1	catalog/runs/Dual_Heroes
+Duck_Dodgers_Starring_Daffy_Duck	LT DUCK DODGERS	U	TITLE		audio:A7D6C48BB1E215F5,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	95	catalog/runs/Duck_Dodgers_Starring_Daffy_Duck
+Duke_Nukem_64	DUKE NUKEM	U	TITLE	slow: deadline hit at frame 2778 | unknown gfx gfx:464B1BD12F25F3BE | rc=3	audio:13FC0758F120BE0F,gfx:464B1BD12F25F3BE?	none	X102/6102/7101	27	catalog/runs/Duke_Nukem_64
+Duke_Nukem_ZER0_H0UR	DUKE NUKEM ZERO	U	TITLE		audio:13FC0758F120BE0F,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	37.7	catalog/runs/Duke_Nukem_ZER0_H0UR
+ECW_Hardcore_Revolution	ECW Hardcore Rev	U	TITLE	unknown gfx gfx:AF2D0482427B07E0	audio:13FC0758F120BE0F,gfx:017A1830EFE46148,gfx:AF2D0482427B07E0?	Eeprom4K	X102/6102/7101	112.2	catalog/runs/ECW_Hardcore_Revolution
+Earthworm_Jim_3D	EARTHWORM JIM 3D	U	INGAME	unknown gfx gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	140.5	catalog/runs/Earthworm_Jim_3D
+Eikou_no_Saint_Andrews	´²º³É¾ÝÄ±ÝÄÞØ­°½	J	TITLE	unknown gfx gfx:CE9D6CF0B27B9AE9	audio:13FC0758F120BE0F,gfx:CE9D6CF0B27B9AE9?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	79.7	catalog/runs/Eikou_no_Saint_Andrews
+Elmo_s_Letter_Adventure	Elmo's Letter Ad	U	INGAME	unknown gfx gfx:5F0C5B471A3837E8	audio:A7D6C48BB1E215F5,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	61.9	catalog/runs/Elmo_s_Letter_Adventure
+Elmo_s_Number_Journey	Elmo's Number Jo	U	INGAME	unknown gfx gfx:5F0C5B471A3837E8	audio:A7D6C48BB1E215F5,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	97.7	catalog/runs/Elmo_s_Number_Journey
+Extreme_G	extremeg	U	INGAME	unknown gfx gfx:10FCFF0D08AFB52C	audio:13FC0758F120BE0F,gfx:10FCFF0D08AFB52C?	Eeprom4K	X102/6102/7101	120.6	catalog/runs/Extreme_G
+Extreme_G_XG2	Extreme G 2	U	TITLE	unknown gfx gfx:3E2D5743DECDFEB2	audio:13FC0758F120BE0F,gfx:3E2D5743DECDFEB2?	Eeprom4K	X102/6102/7101	145.2	catalog/runs/Extreme_G_XG2
+F1_Racing_Championship	F1RacingChampion	E	BOOTS	stuck on 'Missing Control Data' screen, silent | unknown gfx gfx:474AFD65F9613077 | silent | frozen picture	audio:13FC0758F120BE0F,gfx:474AFD65F9613077?	Eeprom4K	X102/6102/7101	588.5	catalog/runs/F1_Racing_Championship
+FIFA_99	FIFA 99	U	TITLE	unknown gfx gfx:1409EE9AE294056B	audio:13FC0758F120BE0F,gfx:1409EE9AE294056B?	Eeprom4K	X102/6102/7101	51	catalog/runs/FIFA_99
+FIFA_Road_to_World_Cup_98	FIFA: RTWC 98	U	TITLE	unknown gfx gfx:464B1BD12F25F3BE,gfx:B35F0BE738E27CC5	audio:13FC0758F120BE0F,gfx:464B1BD12F25F3BE?,gfx:B35F0BE738E27CC5?	Eeprom4K	X102/6102/7101	47.5	catalog/runs/FIFA_Road_to_World_Cup_98
+FIFA_Soccer_64	FIFA Soccer 64	U	TITLE	unknown gfx gfx:464B1BD12F25F3BE | silent	gfx:464B1BD12F25F3BE?	Eeprom4K	X102/6102/7101	65.9	catalog/runs/FIFA_Soccer_64
+F_1_Pole_Position_64	F1 POLE POSITION	U	INGAME	unknown gfx gfx:7D884B0EBB0839AB	audio:13FC0758F120BE0F,gfx:7D884B0EBB0839AB?	Eeprom4K	X102/6102/7101	72.8	catalog/runs/F_1_Pole_Position_64
+F_1_World_Grand_Prix	F1 WORLD GRAND P	U	INGAME		audio:13FC0758F120BE0F,gfx:F925184A5DCE1F98	Eeprom4K	X102/6102/7101	133.2	catalog/runs/F_1_World_Grand_Prix
+F_1_World_Grand_Prix_II	F1 WORLD GRAND P	E	NO-BOOT	no RSP tasks | silent | frozen picture		Eeprom4K	X102/6102/7101	764.5	catalog/runs/F_1_World_Grand_Prix_II
+Famista_64	Ì§Ð½À 64	J	TITLE	unknown gfx gfx:464B1BD12F25F3BE	audio:A7D6C48BB1E215F5,gfx:464B1BD12F25F3BE?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	264.6	catalog/runs/Famista_64
+Fighter_Destiny_2	FIGHTER DESTINY2	U	INGAME		audio:A7D6C48BB1E215F5,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	323.7	catalog/runs/Fighter_Destiny_2
+Fighter_s_Destiny	Fighter's Destin	U	INGAME		audio:13FC0758F120BE0F,gfx:F925184A5DCE1F98	Eeprom4K	X102/6102/7101	215.9	catalog/runs/Fighter_s_Destiny
+Fighting_Force_64	Fighting Force	U	TITLE	unknown gfx gfx:E8F5E7B054211C4C	gfx:E8F5E7B054211C4C?	Eeprom4K	X102/6102/7101	57.8	catalog/runs/Fighting_Force_64
+Fire_Electric_Pen	ÃÞÝØ­³²×²×ÎÞ³	J	INGAME	unknown gfx gfx:2403F990C3158A19,gfx:6571445B0096A26F	audio:A7D6C48BB1E215F5,gfx:2403F990C3158A19?,gfx:6571445B0096A26F?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	229.7	catalog/runs/Fire_Electric_Pen
+Flying_Dragon	FLYING DRAGON	U	TITLE	unknown gfx gfx:032B72AE40B13D44,gfx:5F0C5B471A3837E8,gfx:6B809811A0E0A3A4,gfx:DC3C65D7C985B290	audio:13FC0758F120BE0F,gfx:032B72AE40B13D44?,gfx:5F0C5B471A3837E8?,gfx:6B809811A0E0A3A4?,gfx:DC3C65D7C985B290?	Eeprom4K	X102/6102/7101	260.5	catalog/runs/Flying_Dragon
+Forsaken_64	Forsaken	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	401.1	catalog/runs/Forsaken_64
+Fox_Sports_College_Hoops_99	Fox Sports Hoops	U	INGAME	unknown gfx gfx:25D7F439E7C35ED7	audio:13FC0758F120BE0F,gfx:25D7F439E7C35ED7?	Eeprom4K	X102/6102/7101	123.8	catalog/runs/Fox_Sports_College_Hoops_99
+Fushigi_no_Dungeon_Fuurai_no_Shiren_2	F3 Ì³×²É¼ÚÝ2	J	TITLE		audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148	Sram32K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	196.1	catalog/runs/Fushigi_no_Dungeon_Fuurai_no_Shiren_2
+GT_64_Championship_Edition	GT64	U	NO-BOOT	silent | frozen picture	audio:13FC0758F120BE0F	Eeprom4K	X102/6102/7101	38.9	catalog/runs/GT_64_Championship_Edition
+GameBooster_64	aGemoBsoet r46v	U	NO-BOOT	GB adapter/cheat device, not a game | slow: deadline hit at frame 29 | unimpl: cpu:tlb-exception | no RSP tasks | silent | rc=3		none	Unknown/unknown	0	catalog/runs/GameBooster_64
+GameShark_Pro	(C) MUSHROOM &NU	U	NO-BOOT	cheat device, not a game | slow: deadline hit at frame 22 | unimpl: cpu:invalid-op | no RSP tasks | silent | rc=3		none	Unknown/unknown	0	catalog/runs/GameShark_Pro
+Ganbare_Goemon_Mononoke_Sugoroku	ºÞ´ÓÝÓÉÉ¹½ºÞÛ¸	J	TITLE		audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Sram32K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	201.1	catalog/runs/Ganbare_Goemon_Mononoke_Sugoroku
+Gauntlet_Legends	GAUNTLET LEGENDS	U	NO-BOOT	slow: deadline hit at frame 345 | no RSP tasks | silent | rc=3		none	X102/6102/7101	3	catalog/runs/Gauntlet_Legends
+Getter_Love_Cho_Renai_Party_Game	Getter Love!!	J	TITLE	unknown gfx gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	193	catalog/runs/Getter_Love_Cho_Renai_Party_Game
+Gex_3_Deep_Cover_Gecko	Gex 3 Deep Cover	U	INGAME		audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	159.6	catalog/runs/Gex_3_Deep_Cover_Gecko
+Gex_3_Deep_Cover_Gecko_U	Gex 3 Deep Cover	U	INGAME		audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	159.8	catalog/runs/Gex_3_Deep_Cover_Gecko_U
+Gex_64_Enter_the_Gecko	GEX: ENTER THE G	U	TITLE	unknown gfx gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	241.5	catalog/runs/Gex_64_Enter_the_Gecko
+Gex_64_Enter_the_Gecko_U	GEX: ENTER THE G	U	TITLE	unknown gfx gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	250.4	catalog/runs/Gex_64_Enter_the_Gecko_U
+Glover	Glover	U	TITLE	unknown gfx gfx:2079B1FF7126AE1C,gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:2079B1FF7126AE1C?,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	176.9	catalog/runs/Glover
+Goemon_s_Great_Adventure	GOEMONS GREAT AD	U	INGAME	unknown gfx gfx:474AFD65F9613077	audio:13FC0758F120BE0F,gfx:474AFD65F9613077?	Eeprom4K	X102/6102/7101	138.5	catalog/runs/Goemon_s_Great_Adventure
+Golden_Nugget_64	GOLDEN NUGGET 64	U	TITLE	unknown gfx gfx:B35F0BE738E27CC5	audio:13FC0758F120BE0F,gfx:B35F0BE738E27CC5?	Eeprom4K	X102/6102/7101	63.5	catalog/runs/Golden_Nugget_64
+Hamster_Monogatari_64	ÊÑ½À°ÓÉ¶ÞÀØ64	J	TITLE	unknown gfx gfx:5F0C5B471A3837E8,gfx:6B809811A0E0A3A4,gfx:F2683F177175DA14	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?,gfx:6B809811A0E0A3A4?,gfx:F2683F177175DA14?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	276.6	catalog/runs/Hamster_Monogatari_64
+Hanafuda_64_Tenshi_no_Yakusoku	64ÊÅÌÀÞ ~ÃÝ¼ÉÔ¸¿	J	INGAME		audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	75.1	catalog/runs/Hanafuda_64_Tenshi_no_Yakusoku
+Harvest_Moon_64	HARVESTMOON64	U	TITLE		audio:A7D6C48BB1E215F5,gfx:15105CF13014B030	Sram32K	X102/6102/7101	40.8	catalog/runs/Harvest_Moon_64
+Heiwa_Pachinko_World_64	HEIWA ÊßÁÝº Ü°ÙÄ	J	INGAME	unknown gfx gfx:128C8A33E5E2CA33,gfx:2403F990C3158A19,gfx:E8F5E7B054211C4C	audio:A7D6C48BB1E215F5,gfx:128C8A33E5E2CA33?,gfx:2403F990C3158A19?,gfx:E8F5E7B054211C4C?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	127.6	catalog/runs/Heiwa_Pachinko_World_64
+Hercules_The_Legendary_Journeys	HERCULES	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | frozen picture	audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	65.6	catalog/runs/Hercules_The_Legendary_Journeys
+Hexen	HEXEN	U	TITLE	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	59.5	catalog/runs/Hexen
+Hey_You_Pikachu	hey you, pikachu	U	TITLE	VRU (voice unit) not connected message | unknown gfx gfx:1E155E3C162B212C,gfx:C647FF761BBFA5B8	audio:A7D6C48BB1E215F5,gfx:1E155E3C162B212C?,gfx:C647FF761BBFA5B8?	Eeprom4K	X102/6102/7101	78.9	catalog/runs/Hey_You_Pikachu
+Hot_Wheels_Turbo_Racing	HOT WHEELS TURBO	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | 	audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	62.5	catalog/runs/Hot_Wheels_Turbo_Racing
+Hybrid_Heaven	HYBRID HEAVEN US	U	TITLE	very slow (20 fps) | slow: deadline hit at frame 2020 | rc=3	audio:13FC0758F120BE0F,gfx:15105CF13014B030	none	X102/6102/7101	20	catalog/runs/Hybrid_Heaven
+Hydro_Thunder	HYDRO THUNDER	U	TITLE		audio:4E84BBC9A3472C12?,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	166.3	catalog/runs/Hydro_Thunder
+Ide_Yosuke_no_Mahjong_Juku	À  ²ÃÞÖ³½¹ÉÏ°¼Þ¬Ý¼Þ	J	TITLE	unknown gfx gfx:485E15903F962171,gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:485E15903F962171?,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	204.3	catalog/runs/Ide_Yosuke_no_Mahjong_Juku
+Iggy_s_Reckin_Balls	Iggy's Reckin' B	U	TITLE	unknown gfx gfx:66A0D12F61F9A73F	audio:13FC0758F120BE0F,gfx:66A0D12F61F9A73F?	Eeprom4K	X102/6102/7101	48.6	catalog/runs/Iggy_s_Reckin_Balls
+In_Fisherman_Bass_Hunter_64	BASS HUNTER 64	U	TITLE	unknown gfx gfx:247607AE4B662615,gfx:9DB779CEE421BD37	audio:13FC0758F120BE0F,gfx:247607AE4B662615?,gfx:9DB779CEE421BD37?	Eeprom4K	X102/6102/7101	168	catalog/runs/In_Fisherman_Bass_Hunter_64
+Indy_Racing_2000	INDY RACING 2000	U	INGAME		audio:A7D6C48BB1E215F5,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	86.6	catalog/runs/Indy_Racing_2000
+International_Superstar_Soccer_2000	I.S.S.2000	U	TITLE		audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	370.2	catalog/runs/International_Superstar_Soccer_2000
+International_Superstar_Soccer_64	I S S 64	U	TITLE	unknown gfx gfx:6571445B0096A26F,gfx:AB9E06DB209423C8	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?,gfx:AB9E06DB209423C8?	Eeprom4K	X102/6102/7101	224.7	catalog/runs/International_Superstar_Soccer_64
+International_Superstar_Soccer_98	I.S.S.98	U	TITLE	unknown gfx gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	326.6	catalog/runs/International_Superstar_Soccer_98
+International_Track_Field_2000	ITF 2000	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | 	audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	180.2	catalog/runs/International_Track_Field_2000
+J_League_Dynamite_Soccer_64	ÀÞ²ÅÏ²Ä»¯¶°64	J	INGAME	unknown gfx gfx:6571445B0096A26F,gfx:AB9E06DB209423C8	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?,gfx:AB9E06DB209423C8?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	203.4	catalog/runs/J_League_Dynamite_Soccer_64
+J_League_Eleven_Beat_1997	J_league 1997	J	TITLE	unknown gfx gfx:128C8A33E5E2CA33	audio:13FC0758F120BE0F,gfx:128C8A33E5E2CA33?,gfx:F925184A5DCE1F98	Eeprom4K	X102/6102/7101	246.1	catalog/runs/J_League_Eleven_Beat_1997
+J_League_Live_64	J LEAGUE LIVE 64	J	TITLE	unknown gfx gfx:815154E17F5B1538	audio:13FC0758F120BE0F,gfx:815154E17F5B1538?	Eeprom4K	X102/6102/7101	61.5	catalog/runs/J_League_Live_64
+J_League_Tactics_Soccer	TACTICS SOCCER	J	TITLE	unknown gfx gfx:A2F148800F6FAA72	audio:13FC0758F120BE0F,gfx:A2F148800F6FAA72?	Eeprom4K	X102/6102/7101	449.3	catalog/runs/J_League_Tactics_Soccer
+Jangou_Simulation_Mahjong_Do_64	Ï°¼Þ¬ÝÄÞ³64	J	TITLE	unknown gfx gfx:128C8A33E5E2CA33,gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:128C8A33E5E2CA33?,gfx:6571445B0096A26F?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	178.4	catalog/runs/Jangou_Simulation_Mahjong_Do_64
+Jeopardy	JEOPARDY!	U	TITLE	unknown gfx gfx:464B1BD12F25F3BE	audio:13FC0758F120BE0F,gfx:464B1BD12F25F3BE?	Eeprom4K	X102/6102/7101	40.7	catalog/runs/Jeopardy
+Jeremy_McGrath_Supercross_2000	Jeremy McGrath S	U	INGAME	unknown gfx gfx:3E2D5743DECDFEB2	audio:13FC0758F120BE0F,gfx:10D9A52A0EC45EEC,gfx:3E2D5743DECDFEB2?,gfx:DF08B63735A9624F	Eeprom4K	X102/6102/7101	45	catalog/runs/Jeremy_McGrath_Supercross_2000
+Jikkyou_G1_Stable	G1STABLE	J	TITLE		audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	124.2	catalog/runs/Jikkyou_G1_Stable
+Jikkyou_J_League_Perfect_Striker	PERFECT STRIKER	J	TITLE	unknown gfx gfx:7D884B0EBB0839AB,gfx:F91131D1F4FA73BD	audio:13FC0758F120BE0F,gfx:7D884B0EBB0839AB?,gfx:F91131D1F4FA73BD?	Eeprom4K	X102/6102/7101	145.3	catalog/runs/Jikkyou_J_League_Perfect_Striker
+Jikkyou_Powerful_Pro_Yakyuu_2000	PAWAPURO 2000	J	TITLE		audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Sram32K	X102/6102/7101	211.2	catalog/runs/Jikkyou_Powerful_Pro_Yakyuu_2000
+Jikkyou_Powerful_Pro_Yakyuu_4	PAWAFURU PUROYAK	J	INGAME	unknown gfx gfx:7D884B0EBB0839AB	audio:13FC0758F120BE0F,gfx:7D884B0EBB0839AB?	Eeprom4K	X102/6102/7101	281.8	catalog/runs/Jikkyou_Powerful_Pro_Yakyuu_4
+Jikkyou_Powerful_Pro_Yakyuu_5	PAWAFURU PUROYAK	J	TITLE	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Sram32K	X102/6102/7101	247.7	catalog/runs/Jikkyou_Powerful_Pro_Yakyuu_5
+Jikkyou_Powerful_Pro_Yakyuu_6	PAWAFURU PUROYAK	J	TITLE		audio:13FC0758F120BE0F,gfx:15105CF13014B030	Sram32K	X102/6102/7101	238.2	catalog/runs/Jikkyou_Powerful_Pro_Yakyuu_6
+Jikkyou_Powerful_Pro_Yakyuu_Basic_Han_2001	PAWAPURO 2001B	J	TITLE		audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Sram32K	X102/6102/7101	142.5	catalog/runs/Jikkyou_Powerful_Pro_Yakyuu_Basic_Han_2001
+Jinsei_Game_64	JINSEI-GAME64	J	TITLE		audio:A7D6C48BB1E215F5,gfx:15105CF13014B030,gfx:F6341AF6AC25AE35	Sram32K	X102/6102/7101	204.2	catalog/runs/Jinsei_Game_64
+John_Romero_s_Daikatana	DAIKATANA	U	INGAME		audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	77.8	catalog/runs/John_Romero_s_Daikatana
+Ken_Griffey_Jr_s_Slugfest	KEN GRIFFEY SLUG	U	TITLE		audio:13FC0758F120BE0F,gfx:10D9A52A0EC45EEC,gfx:15105CF13014B030	FlashRam	X103/6103/7103	79.9	catalog/runs/Ken_Griffey_Jr_s_Slugfest
+Killer_Instinct_Gold	KILLER INSTINCT	U	INGAME	unknown gfx gfx:815154E17F5B1538	audio:13FC0758F120BE0F,gfx:815154E17F5B1538?	Eeprom4K	X102/6102/7101	121.7	catalog/runs/Killer_Instinct_Gold
+Kira_to_Kaiketsu_64_Tanteidan	·×¯Ä¶²¹Â 64ÀÝÃ²À	J	TITLE	unknown gfx gfx:6571445B0096A26F	audio:A7D6C48BB1E215F5,gfx:6571445B0096A26F?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	130.8	catalog/runs/Kira_to_Kaiketsu_64_Tanteidan
+Knife_Edge_Nose_Gunner	KNIFE EDGE	U	INGAME	unknown gfx gfx:A2F148800F6FAA72	audio:13FC0758F120BE0F,gfx:A2F148800F6FAA72?	Eeprom4K	X102/6102/7101	88.7	catalog/runs/Knife_Edge_Nose_Gunner
+Knockout_Kings_2000	Knockout Kings 2	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | frozen picture	audio:13FC0758F120BE0F,gfx:61F5813D0D011870	Eeprom4K	X102/6102/7101	73.7	catalog/runs/Knockout_Kings_2000
+Kobe_Bryant_s_NBA_Courtside	NBA COURTSIDE	U	TITLE	unimpl: save:eeprom16k	gfx:F925184A5DCE1F98	Eeprom4K	X103/6103/7103	196.5	catalog/runs/Kobe_Bryant_s_NBA_Courtside
+Kuiki_Uhabi_Suigou	»²·®³ÊÌÞ¼®³·Þ	J	INGAME	slow: deadline hit at frame 2305 | unknown gfx gfx:EB9C6E3FABFA7C26 | rc=3	audio:13FC0758F120BE0F,gfx:EB9C6E3FABFA7C26?	none	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	23	catalog/runs/Kuiki_Uhabi_Suigou
+LEGO_Racers	   LEGORacers	U	TITLE		audio:A7D6C48BB1E215F5,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	197.5	catalog/runs/LEGO_Racers
+Last_Legion_UX	LASTLEGION UX	J	TITLE	unknown gfx gfx:557BDAB0B68E525F,gfx:E8F5E7B054211C4C	audio:13FC0758F120BE0F,gfx:557BDAB0B68E525F?,gfx:E8F5E7B054211C4C?	Eeprom4K	X102/6102/7101	295.5	catalog/runs/Last_Legion_UX
+Legend_of_Zelda_The_Majora_s_Mask	ZELDA MAJORA'S M	U	TITLE	duplicate archive of a certified game | 	audio:C2B255B769E565EF,boot:non-ostask,gfx:D7F1F695031DF35E	FlashRam	X105/6105/7105	225.1	catalog/runs/Legend_of_Zelda_The_Majora_s_Mask
+Legend_of_Zelda_The_Ocarina_of_Time	THE LEGEND OF ZE	U	TITLE	duplicate archive of a certified game | 	audio:7A8E8228FD24EA52,boot:non-ostask,gfx:6E3226FC229CAEC6,jpeg:F4CD777F0821E6C1	Sram32K	X105/6105/7105	187.1	catalog/runs/Legend_of_Zelda_The_Ocarina_of_Time
+Lode_Runner_3_D	Lode Runner 3D	U	TITLE	unknown gfx gfx:25D7F439E7C35ED7	audio:A7D6C48BB1E215F5,gfx:25D7F439E7C35ED7?	Eeprom4K	X102/6102/7101	35.3	catalog/runs/Lode_Runner_3_D
+MRC_Multi_Racing_Championship	MULTI RACING	U	TITLE		audio:13FC0758F120BE0F,gfx:F925184A5DCE1F98	Eeprom4K	X102/6102/7101	235.1	catalog/runs/MRC_Multi_Racing_Championship
+Mace_The_Dark_Age	MACE	U	INGAME	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	159.9	catalog/runs/Mace_The_Dark_Age
+Madden_Football_64	MADDEN 64	U	TITLE	unknown gfx gfx:6571445B0096A26F	gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	58.8	catalog/runs/Madden_Football_64
+Madden_NFL_2000	Madden NFL 2000	U	INGAME	unknown gfx gfx:6571445B0096A26F	gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	45.9	catalog/runs/Madden_NFL_2000
+Madden_NFL_2001	Madden NFL 2001	U	INGAME	unknown gfx gfx:6571445B0096A26F	gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	52.2	catalog/runs/Madden_NFL_2001
+Madden_NFL_2002	Madden NFL 2002	U	INGAME	unknown gfx gfx:6571445B0096A26F	gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	38.7	catalog/runs/Madden_NFL_2002
+Madden_NFL_99	MADDEN NFL 99	U	TITLE	unknown gfx gfx:6571445B0096A26F	gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	48.5	catalog/runs/Madden_NFL_99
+Magical_Tetris_Challenge	MAGICAL TETRIS	U	TITLE	unknown gfx gfx:F2683F177175DA14	audio:A7D6C48BB1E215F5,gfx:F2683F177175DA14?	Eeprom4K	X102/6102/7101	214.8	catalog/runs/Magical_Tetris_Challenge
+Mahjong_64	MAHJONG64	J	TITLE	unknown gfx gfx:464B1BD12F25F3BE	audio:13FC0758F120BE0F,gfx:464B1BD12F25F3BE?	Eeprom4K	X102/6102/7101	33.4	catalog/runs/Mahjong_64
+Mahjong_Hourouki_Classic	Ï°¼Þ¬ÝÎ³Û³·CLASS	J	TITLE	unknown gfx gfx:464B1BD12F25F3BE	audio:13FC0758F120BE0F,gfx:464B1BD12F25F3BE?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	171.4	catalog/runs/Mahjong_Hourouki_Classic
+Mahjong_Master	Ï°¼Þ¬Ý Ï½À°	J	TITLE	unknown gfx gfx:B35F0BE738E27CC5	audio:13FC0758F120BE0F,gfx:B35F0BE738E27CC5?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	91.3	catalog/runs/Mahjong_Master
+Major_League_Baseball_Featuring_Ken_Griffey_Jr	MLB FEATURING K	U	TITLE	unknown gfx gfx:128C8A33E5E2CA33,gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:128C8A33E5E2CA33?,gfx:6571445B0096A26F?	Sram32K	X103/6103/7103	43.1	catalog/runs/Major_League_Baseball_Featuring_Ken_Griffey_Jr
+Mario_Golf	MarioGolf64	U	INGAME		audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148	Sram32K	X102/6102/7101	90.6	catalog/runs/Mario_Golf
+Mario_Kart_64	MARIOKART64	U	TITLE	duplicate archive of a certified game | 	audio:D89F3316C7F9A7EE,gfx:2A8A082F296302E0	Eeprom4K	X102/6102/7101	164.6	catalog/runs/Mario_Kart_64
+Mario_Party_2	MarioParty2	U	TITLE	unknown gfx gfx:FABFB798D67E6BC9	audio:13FC0758F120BE0F,gfx:017A1830EFE46148,gfx:C81ACD2C909A4B88,gfx:FABFB798D67E6BC9?	Eeprom4K	X102/6102/7101	159.3	catalog/runs/Mario_Party_2
+Mario_Party_3	MarioParty3	U	TITLE		audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148,gfx:C81ACD2C909A4B88	Eeprom16K	X102/6102/7101	126.3	catalog/runs/Mario_Party_3
+Mario_no_Photopie	ÏØµÉÌ«ÄËß°	J	BOOTS	stuck on a message screen (game uses the SmartMedia cart adapter) | unknown gfx gfx:5F0C5B471A3837E8,gfx:F2683F177175DA14	audio:A7D6C48BB1E215F5,gfx:5F0C5B471A3837E8?,gfx:F2683F177175DA14?	FlashRam	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	99.8	catalog/runs/Mario_no_Photopie
+Mega_Man_64	Mega Man 64	U	INGAME		audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148	FlashRam	X102/6102/7101	162.3	catalog/runs/Mega_Man_64
+Mia_Hamm_Soccer_64	Mia Hamm Soccer	U	TITLE	unknown gfx gfx:9395938748B3C6BC	audio:A7D6C48BB1E215F5,gfx:9395938748B3C6BC?	Eeprom4K	X102/6102/7101	193.8	catalog/runs/Mia_Hamm_Soccer_64
+Michael_Owens_WLS_2000	MO WORLD LEAGUE	E	BOOTS	REGION lockout screen: this game is not designed for use on this system (PAL game) | unknown gfx gfx:9395938748B3C6BC | silent | frozen picture	audio:A7D6C48BB1E215F5,gfx:9395938748B3C6BC?	Eeprom4K	X102/6102/7101	419.1	catalog/runs/Michael_Owens_WLS_2000
+Mickey_s_Speedway_USA	MICKEY USA	U	TITLE		audio:E7530AE3B2C45B2C,boot:non-ostask,gfx:2CE24A085554A7B8	Eeprom4K	X105/6105/7105	137.3	catalog/runs/Mickey_s_Speedway_USA
+Micro_Machines_64_Turbo	MICROMACHINES64T	U	INGAME	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	197.8	catalog/runs/Micro_Machines_64_Turbo
+Midway_s_Greatest_Arcade_Hits_Volume_1	MGAH VOL1	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:032B72AE40B13D44 | frozen picture	audio:13FC0758F120BE0F,gfx:032B72AE40B13D44?	Eeprom4K	X102/6102/7101	169.9	catalog/runs/Midway_s_Greatest_Arcade_Hits_Volume_1
+Mike_Piazza_s_Strike_Zone	PIAZZA STRIKEZON	U	TITLE		audio:13FC0758F120BE0F,gfx:F925184A5DCE1F98	Eeprom4K	X102/6102/7101	170.4	catalog/runs/Mike_Piazza_s_Strike_Zone
+Milo_s_Astro_Lanes	Milos_Astro_Lane	U	TITLE	unknown gfx gfx:E8F5E7B054211C4C	audio:13FC0758F120BE0F,gfx:E8F5E7B054211C4C?	Eeprom4K	X102/6102/7101	117.1	catalog/runs/Milo_s_Astro_Lanes
+Mischief_Makers	MISCHIEF MAKERS	U	TITLE	unknown gfx gfx:815154E17F5B1538	audio:13FC0758F120BE0F,gfx:815154E17F5B1538?	Eeprom4K	X102/6102/7101	146.9	catalog/runs/Mischief_Makers
+Mission_Impossible	MISSION IMPOSSIB	U	INGAME		audio:13FC0758F120BE0F,gfx:F925184A5DCE1F98	Eeprom4K	X102/6102/7101	69.7	catalog/runs/Mission_Impossible
+Monaco_Grand_Prix	Monaco Grand Pri	U	INGAME	unimpl: cpu:tlb-exception | unknown gfx gfx:474AFD65F9613077	audio:13FC0758F120BE0F,gfx:474AFD65F9613077?	FlashRam	X102/6102/7101	147.4	catalog/runs/Monaco_Grand_Prix
+Monopoly	monopoly	U	INGAME		audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	56.2	catalog/runs/Monopoly
+Monster_Truck_Madness_64	MTM64	U	TITLE	unknown gfx gfx:9DB779CEE421BD37	audio:A7D6C48BB1E215F5,gfx:9DB779CEE421BD37?	Eeprom4K	X102/6102/7101	158.5	catalog/runs/Monster_Truck_Madness_64
+Morita_Shougi_64	ÓØÀ¼®³·Þ64	J	TITLE	unknown gfx gfx:2D5D893F791A0C8A	audio:13FC0758F120BE0F,gfx:2D5D893F791A0C8A?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	47.3	catalog/runs/Morita_Shougi_64
+Mortal_Kombat_4	MORTAL KOMBAT 4	U	INGAME	unknown gfx gfx:DC3C65D7C985B290	audio:13FC0758F120BE0F,gfx:DC3C65D7C985B290?	Eeprom4K	X102/6102/7101	70.6	catalog/runs/Mortal_Kombat_4
+Mortal_Kombat_Mythologies_Sub_Zero	MK_MYTHOLOGIES	U	INGAME	unknown gfx gfx:AB9E06DB209423C8	audio:13FC0758F120BE0F,gfx:AB9E06DB209423C8?	Eeprom4K	X102/6102/7101	172.5	catalog/runs/Mortal_Kombat_Mythologies_Sub_Zero
+Mortal_Kombat_Trilogy	MortalKombatTril	U	INGAME	unknown gfx gfx:815154E17F5B1538	audio:13FC0758F120BE0F,gfx:815154E17F5B1538?	Eeprom4K	X102/6102/7101	61.4	catalog/runs/Mortal_Kombat_Trilogy
+Ms_Pac_Man_Maze_Madness	MS. PAC-MAN MM	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:EBA5BD69C510C233 | silent	gfx:EBA5BD69C510C233?	Eeprom4K	X102/6102/7101	157.3	catalog/runs/Ms_Pac_Man_Maze_Madness
+Mystical_Ninja_Starring_Goemon	MYSTICAL NINJA	U	INGAME	unknown gfx gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	140.9	catalog/runs/Mystical_Ninja_Starring_Goemon
+Off_Road_Challenge	OFFROAD	U	TITLE		audio:13FC0758F120BE0F,gfx:F925184A5DCE1F98	Eeprom4K	X102/6102/7101	148.7	catalog/runs/Off_Road_Challenge
+Ogre_Battle_64_Person_of_Lordly_Caliber	OgreBattle64	U	TITLE		audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148	Sram32K	X102/6102/7101	208.2	catalog/runs/Ogre_Battle_64_Person_of_Lordly_Caliber
+Olympic_Hockey_Nagano_98	OLYMPIC HOCKEY	U	INGAME	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	138.2	catalog/runs/Olympic_Hockey_Nagano_98
+Onegai_Monsters	ONEGAI MONSTER	J	TITLE	unknown gfx gfx:580B2A524219558F,gfx:5F0C5B471A3837E8	audio:A7D6C48BB1E215F5,gfx:580B2A524219558F?,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	91.7	catalog/runs/Onegai_Monsters
+PD_Ultraman_Battle_Collection_64	Ultraman Battle	J	BOOTS	stuck on a Japanese cartridge/save warning box after logo | 	audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	189.2	catalog/runs/PD_Ultraman_Battle_Collection_64
+PGA_European_Tour	PGA European Tou	U	TITLE		audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	102.3	catalog/runs/PGA_European_Tour
+Pachinko_365_Nichi	PACHINKO365NICHI	J	TITLE	unknown gfx gfx:2D5D893F791A0C8A	audio:13FC0758F120BE0F,gfx:2D5D893F791A0C8A?	Eeprom4K	X102/6102/7101	216.7	catalog/runs/Pachinko_365_Nichi
+Paper_Mario	PAPER MARIO	U	TITLE		audio:A7D6C48BB1E215F5,gfx:F5AC1564B6CA8870	FlashRam	X103/6103/7103	282.6	catalog/runs/Paper_Mario
+Paperboy	PAPERBOY	U	INGAME		audio:A7D6C48BB1E215F5,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	112.7	catalog/runs/Paperboy
+Parlor_Pro_64_Pachinko_Jikki_Simulation_Game	Parlor PRO 64	J	INGAME	unknown gfx gfx:5F0C5B471A3837E8,gfx:F2683F177175DA14	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?,gfx:F2683F177175DA14?	Eeprom4K	X102/6102/7101	226	catalog/runs/Parlor_Pro_64_Pachinko_Jikki_Simulation_Game
+Penny_Racers	PENNY RACERS	U	TITLE	unknown gfx gfx:66A0D12F61F9A73F	audio:A7D6C48BB1E215F5,gfx:66A0D12F61F9A73F?	Eeprom4K	X102/6102/7101	337.3	catalog/runs/Penny_Racers
+Pocket_Monsters_Stadium	POKEMON STADIUM	J	TITLE	unknown gfx gfx:474AFD65F9613077	audio:A7D6C48BB1E215F5,gfx:474AFD65F9613077?,jpeg:5D4F9C0CC57D484C?	Sram32K	X103/6103/7103	254.3	catalog/runs/Pocket_Monsters_Stadium
+Pokemon_Puzzle_League	PUZZLE LEAGUE N6	U	TITLE	unknown gfx gfx:5F0C5B471A3837E8,gfx:F2683F177175DA14	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?,gfx:F2683F177175DA14?,hvqm:C2671D4724F82B54?	FlashRam	X102/6102/7101	172.5	catalog/runs/Pokemon_Puzzle_League
+Pokemon_Stadium	POKEMON STADIUM	U	TITLE		audio:A7D6C48BB1E215F5,gfx:15105CF13014B030,jpeg:1A6E03F69CB0C24D	FlashRam	X103/6103/7103	201.4	catalog/runs/Pokemon_Stadium
+Polaris_SnoCross	POLARISSNOCROSS	U	INGAME	unknown gfx gfx:5D619B9193E69E4F	audio:918568EAA32DF30B,gfx:15105CF13014B030,gfx:5D619B9193E69E4F?,gfx:61F5813D0D011870,gfx:F6341AF6AC25AE35	Eeprom4K	X102/6102/7101	110	catalog/runs/Polaris_SnoCross
+Power_League_Baseball_64	PowerLeague64	J	TITLE	unknown gfx gfx:0425191F8089F739	audio:13FC0758F120BE0F,gfx:0425191F8089F739?	Eeprom4K	X102/6102/7101	344.6	catalog/runs/Power_League_Baseball_64
+Power_Rangers_Lightspeed_Rescue	POWER RANGERS	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:EBA5BD69C510C233 | silent | frozen picture	gfx:EBA5BD69C510C233?	Eeprom4K	X102/6102/7101	53	catalog/runs/Power_Rangers_Lightspeed_Rescue
+Powerpuff_Girls_The_Chemical_X_Traction	PPG CHEMICAL X	U	INGAME	unknown gfx gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	298.6	catalog/runs/Powerpuff_Girls_The_Chemical_X_Traction
+Premier_Manager_64	Premier Manager	E	BOOTS	REGION lockout screen: this game is not designed for use on this system (PAL game) | unknown gfx gfx:474AFD65F9613077	audio:13FC0758F120BE0F,gfx:474AFD65F9613077?	Sram32K	X102/6102/7101	182.8	catalog/runs/Premier_Manager_64
+Pro_Mahjong_Kiwame_64	KIWAME 64	J	TITLE	unknown gfx gfx:464B1BD12F25F3BE	audio:13FC0758F120BE0F,gfx:464B1BD12F25F3BE?	Eeprom4K	X102/6102/7101	327.9	catalog/runs/Pro_Mahjong_Kiwame_64
+Public_Domain	Dexanoid - Prote	PD	BOOTS	homebrew/PD collection: garbage picture, no RSP | slow: deadline hit at frame 1069 | no RSP tasks | silent | rc=3		none	X102/6102/7101	10	catalog/runs/Public_Domain
+Public_Domain_Demos	Cube Demo	PD	INGAME	homebrew/PD demo | unknown gfx gfx:B8AC429886EAC673 | silent	gfx:B8AC429886EAC673?	Eeprom4K	X102/6102/7101	204	catalog/runs/Public_Domain_Demos
+Public_Domain_Emulation	N64 GAMEBOY EMUL	PD	NO-BOOT	homebrew/PD collection (emulators) | slow: deadline hit at frame 102 | no RSP tasks | silent | rc=3		none	X102/6102/7101	1	catalog/runs/Public_Domain_Emulation
+Public_Domain_Intros	Live suxx!	PD	TITLE	homebrew/PD intros | unknown gfx gfx:464B1BD12F25F3BE,gfx:E7FE76AD3E84C253	gfx:464B1BD12F25F3BE?,gfx:E7FE76AD3E84C253?	Eeprom4K	X102/6102/7101	174	catalog/runs/Public_Domain_Intros
+Public_Domain_Tools	SRAM BACKUP	PD	TITLE	homebrew/PD tool, runs as designed | no RSP tasks | silent | frozen picture		Eeprom4K	X102/6102/7101	757.1	catalog/runs/Public_Domain_Tools
+Puyo_Puyo_4_Puyo_Puyo_Party	PUYOPUYO4	J	INGAME	unknown gfx gfx:F2683F177175DA14	audio:13FC0758F120BE0F,gfx:F2683F177175DA14?	Eeprom4K	X102/6102/7101	331.3	catalog/runs/Puyo_Puyo_4_Puyo_Puyo_Party
+Puyo_Puyo_Sun_64	PUYO PUYO SUN 64	J	INGAME	unknown gfx gfx:464B1BD12F25F3BE	audio:13FC0758F120BE0F,gfx:464B1BD12F25F3BE?	Eeprom4K	X102/6102/7101	272	catalog/runs/Puyo_Puyo_Sun_64
+Quake_64	Quake	U	TITLE		audio:13FC0758F120BE0F,gfx:F925184A5DCE1F98	Eeprom4K	X102/6102/7101	65.2	catalog/runs/Quake_64
+Quake_II	QUAKE II	U	TITLE	unknown gfx gfx:1409EE9AE294056B,gfx:5694424E7F46E478	audio:A7D6C48BB1E215F5,gfx:1409EE9AE294056B?,gfx:5694424E7F46E478?	Eeprom4K	X102/6102/7101	62.6	catalog/runs/Quake_II
+Quest_64	Quest 64	U	INGAME	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	458.9	catalog/runs/Quest_64
+RR64_Ridge_Racer_64	RIDGE RACER 64	U	TITLE		audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	496	catalog/runs/RR64_Ridge_Racer_64
+Rakuga_Kids	RAKUGAKIDS	E	TITLE		audio:13FC0758F120BE0F,gfx:2FFB93DFC50C79CB	Eeprom4K	X102/6102/7101	259	catalog/runs/Rakuga_Kids
+Rally_Challenge_2000	RALLY CHALLENGE	U	TITLE		audio:A7D6C48BB1E215F5,gfx:61F5813D0D011870	Eeprom4K	X102/6102/7101	386.1	catalog/runs/Rally_Challenge_2000
+Rampage_2_Universal_Tour	RAMPAGE2	U	INGAME	unknown gfx gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	114.2	catalog/runs/Rampage_2_Universal_Tour
+Rampage_World_Tour	RAMPAGE	U	INGAME	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	314.1	catalog/runs/Rampage_World_Tour
+Rat_Attack	RAT ATTACK	U	NO-BOOT	unimpl: cpu:tlb-exception | silent | frozen picture	audio:13FC0758F120BE0F	Eeprom4K	X102/6102/7101	245.8	catalog/runs/Rat_Attack
+Rayman_2_The_Great_Escape	Rayman 2	U	TITLE	unknown gfx gfx:1409EE9AE294056B	audio:13FC0758F120BE0F,gfx:1409EE9AE294056B?	Eeprom4K	X102/6102/7101	74.4	catalog/runs/Rayman_2_The_Great_Escape
+Razor_Freestyle_Scooter	RAZOR FREESTYLE	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | 	audio:13FC0758F120BE0F,gfx:017A1830EFE46148,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	423.8	catalog/runs/Razor_Freestyle_Scooter
+Re_Volt	Re-Volt	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:A2F148800F6FAA72 | frozen picture	audio:13FC0758F120BE0F,gfx:A2F148800F6FAA72?	Eeprom4K	X102/6102/7101	89	catalog/runs/Re_Volt
+Ready_2_Rumble_Boxing	READY 2 RUMBLE	U	INGAME	unknown gfx gfx:580B2A524219558F	audio:13FC0758F120BE0F,gfx:580B2A524219558F?	Eeprom4K	X102/6102/7101	125.7	catalog/runs/Ready_2_Rumble_Boxing
+Ready_2_Rumble_Boxing_Round_2	Ready to Rumble	U	INGAME	unknown gfx gfx:580B2A524219558F	audio:13FC0758F120BE0F,gfx:580B2A524219558F?	Eeprom4K	X102/6102/7101	100	catalog/runs/Ready_2_Rumble_Boxing_Round_2
+Road_Rash_64	ROAD RASH 64	U	INGAME	unknown gfx gfx:3E2D5743DECDFEB2	audio:A7D6C48BB1E215F5,gfx:3E2D5743DECDFEB2?	Eeprom4K	X102/6102/7101	170.3	catalog/runs/Road_Rash_64
+Roadsters_Trophy	ROADSTERS TROPHY	U	NO-BOOT	no RSP tasks | silent | frozen picture		Eeprom4K	X102/6102/7101	51.2	catalog/runs/Roadsters_Trophy
+Robot_Ponkottsu_64_Caramel_of_the_7_Seas	Robopon64	J	TITLE		audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	203.5	catalog/runs/Robot_Ponkottsu_64_Caramel_of_the_7_Seas
+Robotech_Crystal_Dreams	Robotech - Crystal Dreams	Beta	TITLE	unimpl: cpu:tlb-exception | unknown gfx gfx:464B1BD12F25F3BE	audio:13FC0758F120BE0F,gfx:464B1BD12F25F3BE?	Eeprom4K	X102/6102/7101	52	catalog/runs/Robotech_Crystal_Dreams
+Robotron_64	ROBOTRON-64	U	INGAME	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	110.5	catalog/runs/Robotron_64
+Rocket_Robot_on_Wheels	ROCKETROBOTONWHE	U	INGAME		audio:A7D6C48BB1E215F5,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	262.4	catalog/runs/Rocket_Robot_on_Wheels
+Rugrats_Scavenger_Hunt	RUGRATSSCAVENGER	U	TITLE	unknown gfx gfx:5F0C5B471A3837E8	audio:A7D6C48BB1E215F5,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	589.3	catalog/runs/Rugrats_Scavenger_Hunt
+Rugrats_in_Paris_The_Movie	RUGRATS IN PARIS	U	TITLE		audio:4E84BBC9A3472C12?,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	95.9	catalog/runs/Rugrats_in_Paris_The_Movie
+Rush_2_Extreme_Racing_USA	RUSH 2	U	INGAME		audio:13FC0758F120BE0F,gfx:61F5813D0D011870	Eeprom4K	X102/6102/7101	185.9	catalog/runs/Rush_2_Extreme_Racing_USA
+SD_Hiryuu_no_Ken_Densetsu	SD HIRYU STADIUM	J	TITLE	unknown gfx gfx:5F0C5B471A3837E8,gfx:6B809811A0E0A3A4,gfx:DC3C65D7C985B290,gfx:F2683F177175DA14	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?,gfx:6B809811A0E0A3A4?,gfx:DC3C65D7C985B290?,gfx:F2683F177175DA14?	Eeprom4K	X102/6102/7101	325.6	catalog/runs/SD_Hiryuu_no_Ken_Densetsu
+S_C_A_R_S	SCARS	U	TITLE		audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	210.4	catalog/runs/S_C_A_R_S
+San_Francisco_Rush_2049	Rush 2049	U	INGAME		audio:4E84BBC9A3472C12?,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	159.6	catalog/runs/San_Francisco_Rush_2049
+San_Francisco_Rush_Extreme_Racing	S.F. RUSH	U	INGAME	unknown gfx gfx:07EF1CCC0C7A4DBE	audio:13FC0758F120BE0F,gfx:07EF1CCC0C7A4DBE?,gfx:F925184A5DCE1F98	Eeprom4K	X102/6102/7101	150.3	catalog/runs/San_Francisco_Rush_Extreme_Racing
+Scooby_Doo_Classic_Creep_Capers	SCOOBY-DOO	U	TITLE		audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	751.3	catalog/runs/Scooby_Doo_Classic_Creep_Capers
+Shadow_Man	Shadowman	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | 	audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	433.1	catalog/runs/Shadow_Man
+Shadowgate_64_Trials_of_the_Four_Towers	SHADOWGATE64	U	TITLE		audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	759.6	catalog/runs/Shadowgate_64_Trials_of_the_Four_Towers
+Sim_City_2000	SIM CITY 2000	J	INGAME		audio:13FC0758F120BE0F,gfx:F925184A5DCE1F98	Eeprom4K	X102/6102/7101	483.5	catalog/runs/Sim_City_2000
+Snowboard_Kids	SNOWBOARD KIDS	U	TITLE	unknown gfx gfx:E8F5E7B054211C4C	audio:13FC0758F120BE0F,gfx:E8F5E7B054211C4C?	Eeprom4K	X102/6102/7101	64.1	catalog/runs/Snowboard_Kids
+Snowboard_Kids_2	SNOWBOARD KIDS2	U	TITLE	unknown gfx gfx:A2F148800F6FAA72	audio:13FC0758F120BE0F,gfx:A2F148800F6FAA72?,gfx:F6341AF6AC25AE35	Eeprom4K	X102/6102/7101	378.1	catalog/runs/Snowboard_Kids_2
+South_Park	South Park	U	TITLE	unknown gfx gfx:AE81B28CB96E4A9F	audio:13FC0758F120BE0F,gfx:AE81B28CB96E4A9F?	Eeprom4K	X102/6102/7101	205.9	catalog/runs/South_Park
+South_Park_Chef_s_Luv_Shack	South Park: Chef	U	INGAME	unknown gfx gfx:3E2D5743DECDFEB2	audio:13FC0758F120BE0F,gfx:3E2D5743DECDFEB2?	Eeprom4K	X102/6102/7101	203.2	catalog/runs/South_Park_Chef_s_Luv_Shack
+South_Park_Rally	South Park Rally	U	INGAME	unknown gfx gfx:EBA5BD69C510C233	gfx:EBA5BD69C510C233?	Eeprom4K	X102/6102/7101	112.3	catalog/runs/South_Park_Rally
+Space_Invaders	SPACE INVADERS	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:FABFB798D67E6BC9 | silent	audio:13FC0758F120BE0F,gfx:017A1830EFE46148,gfx:FABFB798D67E6BC9?	Eeprom4K	X102/6102/7101	251.4	catalog/runs/Space_Invaders
+Space_Station_Silicon_Valley	Silicon Valley	U	TITLE	unknown gfx gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	277.8	catalog/runs/Space_Station_Silicon_Valley
+Spider_Man	SPIDERMAN	U	TITLE		audio:A7D6C48BB1E215F5,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	464	catalog/runs/Spider_Man
+StarCraft_64	STARCRAFT 64	U	TITLE	unknown gfx gfx:05584721F7FC3A58	gfx:05584721F7FC3A58?	FlashRam	X102/6102/7101	60.5	catalog/runs/StarCraft_64
+Star_Fox_64	STARFOX64	U	TITLE	duplicate archive of a certified game | 	audio:97EF4A8EE38175B8,gfx:F925184A5DCE1F98	Eeprom4K	X101/6101	264.1	catalog/runs/Star_Fox_64
+Star_Fox_64_U_V1_0	STARFOX64	U	TITLE	duplicate archive of a certified game | 	audio:97EF4A8EE38175B8,gfx:F925184A5DCE1F98	Eeprom4K	X101/6101	269.4	catalog/runs/Star_Fox_64_U_V1_0
+Star_Soldier_Vanishing_Earth	STAR SOLDIER	U	INGAME	unknown gfx gfx:66A0D12F61F9A73F,gfx:F2683F177175DA14	audio:13FC0758F120BE0F,gfx:66A0D12F61F9A73F?,gfx:F2683F177175DA14?	Eeprom4K	X102/6102/7101	358.7	catalog/runs/Star_Soldier_Vanishing_Earth
+Star_Wars_Episode_I_Racer	STAR WARS EP1 RA	U	TITLE		audio:13FC0758F120BE0F,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	42.4	catalog/runs/Star_Wars_Episode_I_Racer
+Star_Wars_Shadows_of_the_Empire	Shadow of the Em	U	INGAME	unknown gfx gfx:A38C89FF32E25068	audio:13FC0758F120BE0F,gfx:A38C89FF32E25068?	Eeprom4K	X102/6102/7101	48.5	catalog/runs/Star_Wars_Shadows_of_the_Empire
+Starshot_Space_Circus_Fever	Starshot	U	TITLE	unknown gfx gfx:04BC736C6587338B	audio:13FC0758F120BE0F,gfx:04BC736C6587338B?	Eeprom4K	X102/6102/7101	74	catalog/runs/Starshot_Space_Circus_Fever
+Stunt_Racer_64	Stunt Racer 64	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | silent	gfx:4F4321BEA4CB7631	Eeprom4K	X102/6102/7101	758.2	catalog/runs/Stunt_Racer_64
+Super_B_Daman_Battle_Phoenix_64	BattlePhoenix64	J	TITLE		audio:13FC0758F120BE0F,gfx:F925184A5DCE1F98	Eeprom4K	X102/6102/7101	387.4	catalog/runs/Super_B_Daman_Battle_Phoenix_64
+Super_Bowling_64	SUPER BOWLING	U	TITLE	unknown gfx gfx:AF2D0482427B07E0	audio:A7D6C48BB1E215F5,gfx:AF2D0482427B07E0?	Eeprom4K	X102/6102/7101	590.3	catalog/runs/Super_Bowling_64
+Super_Mario_64	SUPER MARIO 64	U	INGAME	duplicate archive of a certified game | 	audio:13FC0758F120BE0F,gfx:5A737FB549CD69EB	Eeprom4K	X102/6102/7101	197.7	catalog/runs/Super_Mario_64
+Super_Robot_Spirits	SUPERROBOTSPIRIT	J	TITLE	unknown gfx gfx:128C8A33E5E2CA33,gfx:2403F990C3158A19	audio:13FC0758F120BE0F,gfx:128C8A33E5E2CA33?,gfx:2403F990C3158A19?	Eeprom4K	X102/6102/7101	508.9	catalog/runs/Super_Robot_Spirits
+Super_Robot_Taisen_64	½°Êß°ÛÎÞ¯ÄÀ²¾Ý64	J	TITLE		audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Sram32K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	335.5	catalog/runs/Super_Robot_Taisen_64
+Supercross_2000	Supercross	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | frozen picture	audio:13FC0758F120BE0F,gfx:2FFB93DFC50C79CB	Eeprom4K	X102/6102/7101	79.1	catalog/runs/Supercross_2000
+Superman	SUPERMAN	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:5F0C5B471A3837E8 | silent	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	120.6	catalog/runs/Superman
+Susume_Taisen_Puzzle_Dama_Toukon_Marumata_Chou	½½Ò!À²¾ÝÊß½ÞÙÀÞÏ	J	TITLE		audio:13FC0758F120BE0F,gfx:61AB2C2B2FD98B1A	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	450.7	catalog/runs/Susume_Taisen_Puzzle_Dama_Toukon_Marumata_Chou
+Taz_Express	Taz Express	E	BOOTS	REGION lockout screen: this game is not designed for use on this system (PAL game) | silent | frozen picture	audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	122.5	catalog/runs/Taz_Express
+Tetrisphere	TETRISPHERE	U	TITLE	unknown gfx gfx:B35F0BE738E27CC5	audio:13FC0758F120BE0F,gfx:B35F0BE738E27CC5?	Eeprom4K	X102/6102/7101	114.5	catalog/runs/Tetrisphere
+Tigger_s_Honey_Hunt	Tigger's Honey H	U	INGAME		audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148	FlashRam	X102/6102/7101	117.1	catalog/runs/Tigger_s_Honey_Hunt
+Tom_Clancy_s_Rainbow_Six	RAINBOW SIX	U	TITLE		audio:13FC0758F120BE0F,gfx:61F5813D0D011870	Eeprom4K	X102/6102/7101	347.9	catalog/runs/Tom_Clancy_s_Rainbow_Six
+Tom_and_Jerry_in_Fists_of_Furry	TOM AND JERRY	U	INGAME	unknown gfx gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	219.3	catalog/runs/Tom_and_Jerry_in_Fists_of_Furry
+Tonic_Trouble	Tonic Trouble	U	INGAME		audio:13FC0758F120BE0F,gfx:61F5813D0D011870	Eeprom4K	X102/6102/7101	119.3	catalog/runs/Tonic_Trouble
+Tony_Hawk_s_Pro_Skater	TONY HAWK PRO SK	U	TITLE		audio:A7D6C48BB1E215F5,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	530.6	catalog/runs/Tony_Hawk_s_Pro_Skater
+Tony_Hawk_s_Pro_Skater_2	THPS2	U	TITLE		audio:A7D6C48BB1E215F5,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	327	catalog/runs/Tony_Hawk_s_Pro_Skater_2
+Tony_Hawk_s_Pro_Skater_3	THPS3	U	TITLE		audio:A7D6C48BB1E215F5,gfx:C81ACD2C909A4B88	Eeprom4K	X102/6102/7101	349.5	catalog/runs/Tony_Hawk_s_Pro_Skater_3
+Top_Gear_Hyper_Bike	Top Gear Hyper B	U	TITLE	controller pak prompt after Start | 	gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	242	catalog/runs/Top_Gear_Hyper_Bike
+Top_Gear_Overdrive	Top Gear Overdri	U	TITLE	unknown gfx gfx:A2F148800F6FAA72	gfx:A2F148800F6FAA72?	Eeprom4K	X102/6102/7101	234.6	catalog/runs/Top_Gear_Overdrive
+Top_Gear_Rally	TOP GEAR RALLY	U	TITLE		gfx:F925184A5DCE1F98	Eeprom4K	X102/6102/7101	354	catalog/runs/Top_Gear_Rally
+Top_Gear_Rally_2	TOP GEAR RALLY 2	U	TITLE	unknown gfx gfx:474AFD65F9613077	audio:13FC0758F120BE0F,gfx:474AFD65F9613077?	Eeprom4K	X102/6102/7101	55	catalog/runs/Top_Gear_Rally_2
+Toukon_Road_2_The_Next_Generation	TOUKON ROAD2	J	TITLE	unknown gfx gfx:557BDAB0B68E525F,gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:557BDAB0B68E525F?,gfx:5F0C5B471A3837E8?	Sram32K	X102/6102/7101	333.5	catalog/runs/Toukon_Road_2_The_Next_Generation
+Toukon_Road_Brave_Spirits	TOUKON ROAD	J	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:9DF9E386BD7BDC47,gfx:E8F5E7B054211C4C	audio:13FC0758F120BE0F,gfx:9DF9E386BD7BDC47?,gfx:E8F5E7B054211C4C?	Eeprom4K	X102/6102/7101	333.1	catalog/runs/Toukon_Road_Brave_Spirits
+Toy_Story_2	Toy Story 2	U	NO-BOOT	unimpl: cpu:tlb-exception | no RSP tasks | silent | frozen picture		Eeprom4K	X102/6102/7101	543.9	catalog/runs/Toy_Story_2
+Transformers_Beast_Wars_Transmetal	BEAST WARS US	U	TITLE		audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	209.4	catalog/runs/Transformers_Beast_Wars_Transmetal
+Triple_Play_2000	TRIPLE PLAY 2000	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:9DF07F17F043E6CC | frozen picture	audio:13FC0758F120BE0F,gfx:9DF07F17F043E6CC?	Eeprom4K	X102/6102/7101	73.1	catalog/runs/Triple_Play_2000
+Tsumi_to_Batsu_Chikyuu_no_Keishousha	TSUMI TO BATSU	J	INGAME		audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	304.7	catalog/runs/Tsumi_to_Batsu_Chikyuu_no_Keishousha
+Turok_2_Seeds_of_Evil	Turok 2: Seeds o	U	TITLE	unknown gfx gfx:AE81B28CB96E4A9F	audio:13FC0758F120BE0F,gfx:AE81B28CB96E4A9F?	Eeprom4K	X102/6102/7101	269.9	catalog/runs/Turok_2_Seeds_of_Evil
+Turok_3_Shadow_of_Oblivion	Turok 3: Shadow	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:AE81B28CB96E4A9F	audio:13FC0758F120BE0F,gfx:AE81B28CB96E4A9F?	Eeprom4K	X102/6102/7101	276.7	catalog/runs/Turok_3_Shadow_of_Oblivion
+Turok_Dinosaur_Hunter	TUROK_DINOSAUR_H	U	INGAME	unknown gfx gfx:F6C489BBB9446CFC	audio:13FC0758F120BE0F,gfx:F6C489BBB9446CFC?	Eeprom4K	X102/6102/7101	221.4	catalog/runs/Turok_Dinosaur_Hunter
+Turok_Rage_Wars	Turok: Rage Wars	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:AE81B28CB96E4A9F | silent | frozen picture	audio:13FC0758F120BE0F,gfx:AE81B28CB96E4A9F?	Eeprom4K	X102/6102/7101	338.6	catalog/runs/Turok_Rage_Wars
+Twisted_Edge_Extreme_Snowboarding	TWISTED EDGE	U	GLITCHY	menus fine but no audio (rms 0) | silent	gfx:61F5813D0D011870	Eeprom4K	X102/6102/7101	109.1	catalog/runs/Twisted_Edge_Extreme_Snowboarding
+V_Rally_Edition_99	V-RALLY	U	TITLE	unknown gfx gfx:21F269279C1406BB,gfx:AF2D0482427B07E0	audio:13FC0758F120BE0F,gfx:017A1830EFE46148,gfx:21F269279C1406BB?,gfx:AF2D0482427B07E0?	Eeprom4K	X102/6102/7101	151.5	catalog/runs/V_Rally_Edition_99
+Vigilante_8	VIGILANTE 8	U	TITLE		audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	169.9	catalog/runs/Vigilante_8
+Vigilante_8_2nd_Offense	V8: SECOND OFFEN	U	TITLE		audio:13FC0758F120BE0F,gfx:017A1830EFE46148	Eeprom4K	X102/6102/7101	455.2	catalog/runs/Vigilante_8_2nd_Offense
+Virtual_Chess_64	VIRTUALCHESS	U	INGAME	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	174.4	catalog/runs/Virtual_Chess_64
+Virtual_Pool_64	Virtual Pool 64	U	TITLE	unknown gfx gfx:5F0C5B471A3837E8	audio:13FC0758F120BE0F,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/6102/7101	52.6	catalog/runs/Virtual_Pool_64
+Virtual_Pro_Wrestling_64	ÊÞ°Á¬Ù ÌßÛÚ½ØÝ¸Þ	J	TITLE	unknown gfx gfx:6571445B0096A26F,gfx:AB9E06DB209423C8	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?,gfx:AB9E06DB209423C8?	Sram32K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	106.7	catalog/runs/Virtual_Pro_Wrestling_64
+WCW_Backstage_Assault	WCW BACKSTAGE	U	TITLE	unknown gfx gfx:EBA5BD69C510C233	audio:A7D6C48BB1E215F5,gfx:C81ACD2C909A4B88,gfx:EBA5BD69C510C233?	Eeprom4K	X102/6102/7101	76.7	catalog/runs/WCW_Backstage_Assault
+WCW_Mayhem	WCW MAYHEM	U	TITLE	unknown gfx gfx:EBA5BD69C510C233	audio:13FC0758F120BE0F,gfx:C81ACD2C909A4B88,gfx:EBA5BD69C510C233?	Eeprom4K	X102/6102/7101	63.1	catalog/runs/WCW_Mayhem
+WCW_Nitro	NITRO64	U	TITLE	unknown gfx gfx:032B72AE40B13D44,gfx:580B2A524219558F	audio:13FC0758F120BE0F,gfx:032B72AE40B13D44?,gfx:580B2A524219558F?	Eeprom4K	X102/6102/7101	92.4	catalog/runs/WCW_Nitro
+WCW_nWo_Revenge	WCW / nWo  REVEN	U	TITLE		audio:A7D6C48BB1E215F5,gfx:10D9A52A0EC45EEC,gfx:15105CF13014B030	Sram32K	X102/6102/7101	105	catalog/runs/WCW_nWo_Revenge
+WCW_vs_nWo_World_Tour	WCWvs.NWO:World	U	TITLE	unknown gfx gfx:6571445B0096A26F,gfx:AB9E06DB209423C8	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?,gfx:AB9E06DB209423C8?	Eeprom4K	X102/6102/7101	105.8	catalog/runs/WCW_vs_nWo_World_Tour
+WWF_Attitude	WWF: Attitude	U	TITLE	unknown gfx gfx:AF2D0482427B07E0	audio:13FC0758F120BE0F,gfx:017A1830EFE46148,gfx:AF2D0482427B07E0?	Eeprom4K	X102/6102/7101	204.3	catalog/runs/WWF_Attitude
+WWF_No_Mercy	WWF No Mercy	U	TITLE	unknown gfx gfx:EBA5BD69C510C233	audio:A7D6C48BB1E215F5,gfx:DE87866302B9BD0F,gfx:EBA5BD69C510C233?	FlashRam	X102/6102/7101	100.9	catalog/runs/WWF_No_Mercy
+WWF_War_Zone	WWF War Zone	U	TITLE		audio:13FC0758F120BE0F,gfx:2FFB93DFC50C79CB	Eeprom4K	X102/6102/7101	304.4	catalog/runs/WWF_War_Zone
+WWF_WrestleMania_2000	WRESTLEMANIA 200	U	TITLE	unknown gfx gfx:EBA5BD69C510C233	audio:A7D6C48BB1E215F5,gfx:DE87866302B9BD0F,gfx:EBA5BD69C510C233?	Sram32K	X102/6102/7101	101.5	catalog/runs/WWF_WrestleMania_2000
+Waialae_Country_Club_True_Golf_Classics	Waialae Country	U	TITLE	unknown gfx gfx:66A0D12F61F9A73F	audio:13FC0758F120BE0F,gfx:66A0D12F61F9A73F?	FlashRam	X102/6102/7101	129	catalog/runs/Waialae_Country_Club_True_Golf_Classics
+War_Gods	WAR GODS	U	INGAME	unknown gfx gfx:464B1BD12F25F3BE	audio:13FC0758F120BE0F,gfx:464B1BD12F25F3BE?	Eeprom4K	X102/6102/7101	278.7	catalog/runs/War_Gods
+Wayne_Gretzky_s_3D_Hockey	W.G. 3DHOCKEY	U	INGAME	unknown gfx gfx:02571EFA6B5F1349	audio:13FC0758F120BE0F,gfx:02571EFA6B5F1349?	Eeprom4K	X102/6102/7101	192.5	catalog/runs/Wayne_Gretzky_s_3D_Hockey
+Wayne_Gretzky_s_3D_Hockey_98	W.G. 3DHOCKEY98	U	INGAME	unknown gfx gfx:6571445B0096A26F	audio:13FC0758F120BE0F,gfx:6571445B0096A26F?	Eeprom4K	X102/6102/7101	94.3	catalog/runs/Wayne_Gretzky_s_3D_Hockey_98
+Wetrix	Wetrix	U	INGAME		audio:13FC0758F120BE0F,gfx:F925184A5DCE1F98	Eeprom4K	X102/6102/7101	162.7	catalog/runs/Wetrix
+Wheel_of_Fortune	WHEEL OF FORTUNE	U	INGAME	unknown gfx gfx:464B1BD12F25F3BE	audio:13FC0758F120BE0F,gfx:464B1BD12F25F3BE?	Eeprom4K	X102/6102/7101	64.3	catalog/runs/Wheel_of_Fortune
+WinBack_Covert_Operations	WIN BACK	U	INGAME	unknown gfx gfx:1E155E3C162B212C	audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148,gfx:1E155E3C162B212C?	Eeprom4K	X102/6102/7101	122.6	catalog/runs/WinBack_Covert_Operations
+Wipeout_64	Wipeout 64	U	TITLE	unknown gfx gfx:2403F990C3158A19,gfx:3C6C292FCB3844CB,gfx:E8F5E7B054211C4C	audio:13FC0758F120BE0F,gfx:2403F990C3158A19?,gfx:3C6C292FCB3844CB?,gfx:E8F5E7B054211C4C?	Eeprom4K	X102/6102/7101	128.5	catalog/runs/Wipeout_64
+Wonder_Project_J2	WONDER PROJECT J	J	TITLE	unknown gfx gfx:464B1BD12F25F3BE	audio:13FC0758F120BE0F,gfx:464B1BD12F25F3BE?	Eeprom4K	X102/6102/7101	231.8	catalog/runs/Wonder_Project_J2
+World_Cup_98	World Cup 98	U	BOOTS	CPAK-PROMPT stuck on No Controller Pak screen (no pak emulated / prompt wants B) | unknown gfx gfx:F6C489BBB9446CFC | frozen picture	audio:13FC0758F120BE0F,gfx:F6C489BBB9446CFC?	Eeprom4K	X102/6102/7101	91.7	catalog/runs/World_Cup_98
+Worms_Armageddon	WORMS ARMAGEDDON	U	TITLE	unknown gfx gfx:21F269279C1406BB	audio:A7D6C48BB1E215F5,gfx:21F269279C1406BB?	Eeprom4K	X102/6102/7101	128.4	catalog/runs/Worms_Armageddon
+Xena_Warrior_Princess_The_Talisman_of_Fate	XENAWARRIORPRINC	U	TITLE		audio:13FC0758F120BE0F,gfx:15105CF13014B030	Eeprom4K	X102/6102/7101	335.7	catalog/runs/Xena_Warrior_Princess_The_Talisman_of_Fate
+Yakouchuu_II_Satsujin_Kouru	YAKOUTYUU2	J	INGAME	unknown gfx gfx:1192DDD2056C755A,gfx:21F269279C1406BB,gfx:220D5D158F67333B,gfx:53E3CAFAD1BD12AA,gfx:78D9ED3D12636E68,gfx:970E81A8DD602939,gfx:A93A1D076EC6FF0B	audio:A7D6C48BB1E215F5,gfx:017A1830EFE46148,gfx:1192DDD2056C755A?,gfx:21F269279C1406BB?,gfx:220D5D158F67333B?,gfx:53E3CAFAD1BD12AA?,gfx:78D9ED3D12636E68?,gfx:970E81A8DD602939?,gfx:A93A1D076EC6FF0B?	Eeprom4K	X102/6102/7101	132.5	catalog/runs/Yakouchuu_II_Satsujin_Kouru
+Zool_Majou_Tsukai_Densetsu	½Þ°Ù Ï¼Þ­³Â¶²ÃÞÝ	J	TITLE	unknown gfx gfx:5F0C5B471A3837E8	audio:A7D6C48BB1E215F5,gfx:5F0C5B471A3837E8?	Eeprom4K	X102/{cic.get(crc,'unknown')}\tsize={len(d)>>20}MB")	314	catalog/runs/Zool_Majou_Tsukai_Densetsu

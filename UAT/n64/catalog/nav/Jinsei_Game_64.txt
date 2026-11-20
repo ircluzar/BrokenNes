@@ -1,0 +1,155 @@
+# nav2 Jinsei_Game_64: name/birthday by A; face editor: B closes the parts popup, stick up+left wraps to 決定; save; COM1 character the same; board game starts
+run 600
+run 300
+screenshot p1
+run 300
+screenshot p2
+run 300
+screenshot p3
+press START 8 90
+screenshot p4
+press A 8 90
+screenshot p5
+press START 8 90
+screenshot p6
+press A 8 90
+screenshot p7
+press START 8 90
+screenshot p8
+press A 8 90
+screenshot p9
+press START 8 90
+screenshot p10
+press A 8 90
+screenshot p11
+press START 8 90
+screenshot p12
+press A 8 90
+screenshot p13
+press START 8 90
+screenshot p14
+press A 8 90
+screenshot p15
+press A 8 120
+screenshot p16
+press A 8 120
+screenshot p17
+press A 8 120
+screenshot p18
+press A 8 120
+screenshot p19
+press A 8 120
+screenshot p20
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+screenshot face1
+press B 8 60
+stick 0 100
+run 6
+stick 0 0
+run 25
+stick -100 0
+run 6
+stick 0 0
+run 25
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+screenshot com
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press B 8 60
+stick 0 100
+run 6
+stick 0 0
+run 25
+stick -100 0
+run 6
+stick 0 0
+run 25
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+press A 8 100
+screenshot face2
+press B 8 60
+stick 0 100
+run 6
+stick 0 0
+run 25
+stick -100 0
+run 6
+stick 0 0
+run 25
+press A 8 120
+press A 8 120
+press A 8 120
+press A 8 120
+press A 8 120
+press A 8 120
+press A 8 120
+press A 8 120
+press A 8 120
+press A 8 120
+press A 8 120
+press A 8 120
+press A 8 120
+press A 8 120
+press A 8 120
+screenshot board
+press A 8 150
+screenshot g1
+press A 8 150
+screenshot g2
+press A 8 150
+screenshot g3
+press A 8 150
+screenshot g4
+press A 8 150
+screenshot g5
+press A 8 150
+screenshot g6

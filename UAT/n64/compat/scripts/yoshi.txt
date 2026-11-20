@@ -1,0 +1,565 @@
+# Yoshi's Story: title -> Story Mode -> page 1 -> lucky fruit -> Select Yoshi -> level 1-1 cleared -> page 2 played
+# [cert_scripts13] 1-1 is cleared with a CHEAT: poke the fruit count to 29 (0x800F89D3 and its mirror 0x800F894F,
+# found by cert_scripts12), then Yoshi eats one real fruit and the level ends (tally, Best 612, story text, page 2).
+# After the reset the title menu shows 'Story Mode / Start From P.2' (EEPROM progress).
+run 600
+screenshot t10
+run 600
+screenshot t20
+run 600
+screenshot t30
+press START 5 60
+run 120
+screenshot s1
+press START 5 60
+run 120
+screenshot s2
+press A 5 60
+run 120
+screenshot a1
+press A 5 60
+run 120
+screenshot a2
+press A 5 60
+run 120
+screenshot a3
+press A 5 60
+run 120
+screenshot a4
+press START 5 60
+run 120
+screenshot s3
+press A 5 60
+run 300
+screenshot a5
+press A 5 60
+run 300
+screenshot a6
+press A 5 60
+run 600
+screenshot level_start
+savestate gameplay
+savestate speed
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+poke 800F894F 1D
+poke 800F89D3 1D
+screenshot fruit_29
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+screenshot clear_03
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+screenshot clear_07
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+press A 25 10
+stick 70 0
+press B 5 10
+stick 0 0
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+press A 25 10
+stick 70 0
+press B 5 10
+stick 0 0
+screenshot clear_11
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+press A 25 10
+stick 70 0
+press B 5 10
+stick 0 0
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+press A 25 10
+stick 70 0
+press B 5 10
+stick 0 0
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+press A 25 10
+stick 70 0
+press B 5 10
+stick 0 0
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+press A 25 10
+stick 70 0
+press B 5 10
+stick 0 0
+screenshot clear_15
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+press A 25 10
+stick 70 0
+press B 5 10
+stick 0 0
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+press A 25 10
+stick 70 0
+press B 5 10
+stick 0 0
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+press A 25 10
+stick 70 0
+press B 5 10
+stick 0 0
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+press A 25 10
+stick 70 0
+press B 5 10
+stick 0 0
+screenshot clear_19
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+press A 25 10
+stick 70 0
+press B 5 10
+stick 0 0
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+press A 25 10
+stick 70 0
+press B 5 10
+stick 0 0
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+press A 25 10
+stick 70 0
+press B 5 10
+stick 0 0
+stick 70 0
+run 15
+stick 0 0
+press B 5 0
+run 20
+stick 70 0
+press A 25 10
+stick 70 0
+press B 5 10
+stick 0 0
+screenshot clear_23
+press A 5 120
+screenshot tally_00
+press A 5 120
+screenshot tally_01
+press A 5 120
+screenshot tally_02
+press A 5 120
+screenshot tally_03
+press A 5 120
+screenshot tally_04
+press A 5 120
+screenshot tally_05
+press A 5 120
+screenshot tally_06
+press A 5 120
+screenshot tally_07
+press A 5 120
+screenshot tally_08
+press A 5 120
+screenshot tally_09
+press A 5 120
+screenshot tally_10
+press A 5 120
+screenshot tally_11
+run 600
+press A 5 150
+press A 5 150
+screenshot story_01
+press A 5 150
+press A 5 150
+screenshot story_03
+press A 5 150
+press A 5 150
+screenshot story_05
+press A 5 150
+press A 5 150
+screenshot story_07
+press A 5 150
+press A 5 150
+screenshot story_09
+press A 5 150
+press A 5 150
+screenshot story_11
+press A 5 150
+press A 5 150
+screenshot story_13
+press A 5 150
+press A 5 150
+screenshot story_15
+press A 5 150
+press A 5 150
+screenshot story_17
+press A 5 150
+press A 5 150
+screenshot story_19
+screenshot p2_level
+stick 80 0
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+screenshot p2_play_1
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+screenshot p2_play_2
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+screenshot p2_play_3
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+screenshot p2_play_4
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+screenshot p2_play_5
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+run 20
+press B 6 20
+run 30
+press A 25 25
+screenshot p2_play_6
+release
+stick 0 0
+checkpoint end
+# certification point 5: the cleared page survives a reset (title menu: Story Mode, Start From P.2)
+savefile pre_reset
+reset
+run 1800
+screenshot reset_boot
+press START 5 60
+run 120
+screenshot reset_title
+press START 5 60
+run 120
+screenshot reset_story_p2
+savefile post_reset
+checkpoint save_end

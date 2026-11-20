@@ -1,0 +1,41 @@
+id	tier	archive	why
+sm64	standard	Super Mario 64 (U) [!].z64	reference game, already certified on castle/title
+mk64	standard	Mario Kart 64 (U) [!].z64	EEPROM 4K, 4-player split screen, common F3DEX
+sf64	standard	Star Fox 64 (U) (V1.1) [!].z64	Rumble Pak, EEPROM, voice audio
+oot	standard	Legend of Zelda, The - Ocarina of Time (U) (V1.0) [!].z64	SRAM saves, F3DZEX, big streaming game
+wr64	standard	Wave Race 64.7z	water effects, EEPROM
+ssb	standard	Super Smash Bros..7z	SRAM, 4 players, popular
+dkr	standard	Diddy Kong Racing.7z	EEPROM 4K, custom-ish F3DEX
+mp1	standard	Mario Party.7z	EEPROM, many minigames
+kirby	standard	Kirby 64 - The Crystal Shards.7z	EEPROM, framebuffer tricks in places
+yoshi	standard	Yoshi's Story.7z	2.5D sprites, EEPROM 16K
+snap	standard	Pokemon Snap.7z	FlashRAM, framebuffer reads (photo judging)
+ge007	standard	GoldenEye 007.7z	EEPROM, TLB use, frame-rate heavy
+fzx	standard	F-ZERO X.7z	SRAM, 60 fps, many racers
+mtennis	standard	Mario Tennis.7z	EEPROM 16K, Transfer Pak optional
+drmario	standard	Dr. Mario 64.7z	simple 2D, EEPROM
+mm	hard	Legend of Zelda, The - Majora's Mask (U) [!].z64	Expansion Pak required, FlashRAM, framebuffer effects
+pd	hard	Perfect Dark.7z	Expansion Pak, EEPROM 16K, heavy CPU/TLB, VI tricks
+dk64	hard	Donkey Kong 64.7z	Expansion Pak required, EEPROM 16K, timing-sensitive
+conker	hard	Conker's Bad Fur Day.7z	EEPROM 16K, 64 MB cart, timing/CIC
+bt	hard	Banjo-Tooie.7z	EEPROM 16K, CIC 6105, framebuffer effects
+jfg	hard	Jet Force Gemini.7z	FlashRAM, CIC 6105, timing
+rogue	hard	Star Wars - Rogue Squadron.7z	custom microcode, hi-res Expansion Pak mode
+naboo	hard	Star Wars Episode I - Battle for Naboo.7z	custom microcode, Expansion Pak
+indy	hard	Indiana Jones and the Infernal Machine.7z	custom Factor 5 microcode
+wdc	hard	World Driver Championship.7z	custom Boss Game Studios microcode, hi-res
+re2	hard	Resident Evil 2.7z	64 MB cart, FMV, custom microcode
+pstad2	hard	Pokemon Stadium 2.7z	FlashRAM, Transfer Pak, custom audio
+blast	hard	Blast Corps.7z	unusual RSP use, EEPROM
+pw64	hard	Pilotwings 64.7z	S2DEX sprite microcode, EEPROM
+excite	hard	Excitebike 64.7z	CIC 6105, EEPROM 16K, track editor
+rat	cat	Rat Attack.7z	speed_cat1
+cusa	cat	Cruis'n USA.7z	speed_cat1
+cworld	cat	Cruis'n World.7z	speed_cat1
+hybrid	cat	Hybrid Heaven.7z	speed_cat1
+duke	cat	Duke Nukem 64.7z	speed_cat1
+aero	cat	AeroFighters Assault.7z	speed_cat1
+clay	cat	Clay Fighter 63 1-3.7z	speed_cat1
+asb2k	cat	All-Star Baseball 2000.7z	speed_cat1
+s1080	cat	1080 Snowboarding.7z	speed_cat1
+cexo	cat	Cruis'n Exotica.7z	speed_cat1

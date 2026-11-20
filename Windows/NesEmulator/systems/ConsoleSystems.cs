@@ -11,7 +11,7 @@ namespace NesEmulator.Systems;
 /// Genesis / Mega Drive) are appended: stored settings use <see cref="Consoles.Key"/>, never these numbers. They stay out of every menu, ROM
 /// detection and file filter until their cores exist (see <see cref="Consoles.IsAvailable"/>).
 /// </summary>
-public enum ConsoleKind { Nes, Snes, GameBoy, GameBoyColor, MasterSystem, GameGear, Genesis, WideMess, Pc }
+public enum ConsoleKind { Nes, Snes, GameBoy, GameBoyColor, MasterSystem, GameGear, Genesis, WideMess, Pc, N64 }
 
 /// <summary>One controller, the union of every console's buttons. Each console reads the ones it has.</summary>
 /// <remarks>
@@ -56,6 +56,12 @@ public static class Consoles
     /// </summary>
     public static bool X86Enabled { get; set; }
 
+    /// <summary>
+    /// The Nintendo 64 (cor64, the cer64plus core: docs/projects/n64-cor64.md). Offered only by the hosts that reference cor64 and register it at start-up (the desktop app, Workshop, BrokenDev MCP:
+    /// NesEmulator.N64.N64Host.Register); Lite and the FL plugin leave it off. It is ISOLATED like the x86 PC: its CPU, RDP picture and AI sound are its own.
+    /// </summary>
+    public static bool N64Enabled { get; set; }
+
     public static bool IsAvailable(ConsoleKind k) => k switch
     {
         ConsoleKind.MasterSystem => MasterSystemReady || SegaPreview,
@@ -63,6 +69,7 @@ public static class Consoles
         ConsoleKind.Genesis => GenesisReady || SegaPreview,
         ConsoleKind.WideMess => WideMessEnabled,
         ConsoleKind.Pc => X86Enabled,
+        ConsoleKind.N64 => N64Enabled && ConsoleSessions.N64Factory != null,
         _ => true,
     };
 
@@ -76,7 +83,7 @@ public static class Consoles
     };
 
     private static readonly ConsoleKind[] Every =
-        { ConsoleKind.Nes, ConsoleKind.Snes, ConsoleKind.GameBoy, ConsoleKind.GameBoyColor, ConsoleKind.MasterSystem, ConsoleKind.GameGear, ConsoleKind.Genesis, ConsoleKind.WideMess, ConsoleKind.Pc };
+        { ConsoleKind.Nes, ConsoleKind.Snes, ConsoleKind.GameBoy, ConsoleKind.GameBoyColor, ConsoleKind.MasterSystem, ConsoleKind.GameGear, ConsoleKind.Genesis, ConsoleKind.WideMess, ConsoleKind.Pc, ConsoleKind.N64 };
 
     /// <summary>The consoles the apps offer: the finished ones (plus the Sega ones while the preview is on).</summary>
     public static ConsoleKind[] All => Every.Where(IsAvailable).ToArray();
@@ -91,14 +98,15 @@ public static class Consoles
         ConsoleKind.Genesis => "Genesis / Mega Drive",
         ConsoleKind.WideMess => "WideMess",
         ConsoleKind.Pc => "x86 PC",
+        ConsoleKind.N64 => "Nintendo 64",
         _ => "Game Boy Color",
     };
 
-    /// <summary>Short stable key for settings and storage ("nes", "snes", "gb", "gbc", "sms", "gg", "md", "wms", "x86").</summary>
+    /// <summary>Short stable key for settings and storage ("nes", "snes", "gb", "gbc", "sms", "gg", "md", "wms", "x86", "n64").</summary>
     public static string Key(ConsoleKind k) => k switch
     {
         ConsoleKind.Nes => "nes", ConsoleKind.Snes => "snes", ConsoleKind.GameBoy => "gb",
-        ConsoleKind.MasterSystem => "sms", ConsoleKind.GameGear => "gg", ConsoleKind.Genesis => "md", ConsoleKind.WideMess => "wms", ConsoleKind.Pc => "x86",
+        ConsoleKind.MasterSystem => "sms", ConsoleKind.GameGear => "gg", ConsoleKind.Genesis => "md", ConsoleKind.WideMess => "wms", ConsoleKind.Pc => "x86", ConsoleKind.N64 => "n64",
         _ => "gbc",
     };
 
@@ -112,6 +120,7 @@ public static class Consoles
         "md" or "genesis" or "megadrive" or "mega drive" or "gen" => ConsoleKind.Genesis,
         "wms" or "widemess" => ConsoleKind.WideMess,
         "x86" or "pc" or "dos" => ConsoleKind.Pc,
+        "n64" or "nintendo64" or "nintendo 64" => ConsoleKind.N64,
         _ => ConsoleKind.Nes,
     };
 
@@ -123,6 +132,7 @@ public static class Consoles
         ConsoleKind.Genesis => "Genesis",
         ConsoleKind.WideMess => "WideMess",
         ConsoleKind.Pc => "x86",
+        ConsoleKind.N64 => "N64",
         _ => "Game Boy",
     };
 
@@ -141,13 +151,14 @@ public static class Consoles
         ConsoleKind.Genesis => new[] { ".md", ".gen", ".smd", ".bin" },
         ConsoleKind.WideMess => new[] { ".wms" },
         ConsoleKind.Pc => new[] { ".img", ".ima", ".exe", ".com" },   // a disk image, or a DOS program (it boots on a FreeDOS disk made for it)
+        ConsoleKind.N64 => new[] { ".z64", ".n64", ".v64" },
         _ => new[] { ".gb", ".gbc" },
     };
 
     /// <summary>Every ROM extension BrokenNes 2 opens (the Sega ones only once available), plus .zip (a ROM inside is unpacked).</summary>
     public static string[] AllRomExtensions =>
         new[] { ".nes", ".sfc", ".smc", ".gb", ".gbc" }
-            .Concat(new[] { ConsoleKind.MasterSystem, ConsoleKind.GameGear, ConsoleKind.Genesis, ConsoleKind.WideMess, ConsoleKind.Pc }.Where(IsAvailable).SelectMany(Extensions))
+            .Concat(new[] { ConsoleKind.MasterSystem, ConsoleKind.GameGear, ConsoleKind.Genesis, ConsoleKind.WideMess, ConsoleKind.Pc, ConsoleKind.N64 }.Where(IsAvailable).SelectMany(Extensions))
             .Append(".zip").ToArray();
 }
 
@@ -198,6 +209,8 @@ public static class RomDetect
         return Consoles.IsGameBoy(selected) ? selected : ConsoleKind.GameBoy;
     }
 
+    private static bool IsN64Header(byte[] r) => (r[0], r[1], r[2], r[3]) is (0x80, 0x37, 0x12, 0x40) or (0x37, 0x80, 0x40, 0x12) or (0x40, 0x12, 0x37, 0x80);
+
     /// <summary>The console this ROM is for, or null when it looks like none of them.</summary>
     public static ConsoleKind? Detect(byte[] rom, string fileName)
     {
@@ -208,6 +221,8 @@ public static class RomDetect
             return (rom[0x143] & 0x80) != 0 ? ConsoleKind.GameBoyColor : ConsoleKind.GameBoy;
         // Sega: only while the console is available (a hidden console must not capture ROMs the other paths would have handled)
         if (NesEmulator.Sega.SegaRomFormat.Detect(rom, fileName) is { } sega && Consoles.IsAvailable(sega)) return sega;
+        // an N64 cartridge: the header's first word in any of the three byte orders (z64 80 37 12 40, v64 37 80 40 12, n64 40 12 37 80), only where the console is offered
+        if (rom.Length >= 0x1000 && Consoles.IsAvailable(ConsoleKind.N64) && IsN64Header(rom)) return ConsoleKind.N64;
         string ext = Path.GetExtension(fileName).ToLowerInvariant();
         // an x86 console disk image (a raw floppy or hard disk), by its extension, only where the console is offered
         if (ext is ".img" or ".ima" && Consoles.IsAvailable(ConsoleKind.Pc) && rom.Length >= 512 && rom.Length % 512 == 0) return ConsoleKind.Pc;
@@ -523,6 +538,9 @@ public static class CoreCatalog
             (ConsoleKind.Pc, CoreSlot.Cpu) => new[] { ("I386", CoreGrade.Stock, "x86 PC"), ("I386_D074", CoreGrade.Stock, "x86 PC") },
             (ConsoleKind.Pc, CoreSlot.Ppu) => new[] { ("VGA", CoreGrade.Stock, "x86 PC") },
             (ConsoleKind.Pc, _) => new[] { ("ADLIB", CoreGrade.Stock, "x86 PC") },
+            (ConsoleKind.N64, CoreSlot.Cpu) => new[] { ("COR64", CoreGrade.Stock, "Nintendo 64") },
+            (ConsoleKind.N64, CoreSlot.Ppu) => new[] { ("PRDP", CoreGrade.Stock, "Nintendo 64"), ("MADCAT", CoreGrade.Stock, "Nintendo 64") },
+            (ConsoleKind.N64, _) => new[] { ("AI", CoreGrade.Stock, "Nintendo 64") },
             _ => new[] { ("MD", CoreGrade.Stock, "Genesis") },
         };
         // the console's own enhanced picture and sound chips (SFCS, SMSS, GGS, MDS), once they exist: after its stock cores
@@ -610,7 +628,7 @@ public static class CoreCatalog
     private static void AddEnhanced(List<CoreOption> list, ConsoleKind console, CoreSlot slot)
     {
         // the WideMess's chips on the other consoles' menus, and theirs on its (milestone 7): the WideMess offers the other consoles' chips as the SNES console does (not the SNES's: its own WMS chips are the SNES's, and more)
-        if (slot == CoreSlot.Cpu || console == ConsoleKind.Nes || console == ConsoleKind.Pc) return;   // the x86 console is isolated: no other console's chips
+        if (slot == CoreSlot.Cpu || console == ConsoleKind.Nes || console == ConsoleKind.Pc || console == ConsoleKind.N64) return;   // the x86 console is isolated: no other console's chips
         string own = Consoles.Family(console);
         if (OwnRouteOf(console) is { } mine && Built(mine))
         {
@@ -766,6 +784,18 @@ public static class CoreCatalog
                         if (CoreRegistry.ApuIds.Contains("DMGS", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMGS", "Game Boy sound chip with extra channel banks: all eight of the S-DSP's voices (through NES registers)", "Game Boy"));
                         foreach (var id in HubSoundChips("SNES").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "Game Boy" || PortedBridgeEngine(i) != null)) list.Add(new("NES:" + id, HubSoundLabel(id, "the S-DSP's eight voices"), NesFamilyOf(CoreSlot.Apu, id)));
                         break;
+                }
+                break;
+            // The Nintendo 64 (cor64): its own parts only, isolated like the x86 PC. PRDP (parallel-rdp, Vulkan) is listed only where it can run, so the default is the best this machine has.
+            case ConsoleKind.N64:
+                switch (slot)
+                {
+                    case CoreSlot.Cpu: list.Add(new("COR64", "COR64 (VR4300: interpreter + x64 JIT, cer64plus)", "N64")); break;
+                    case CoreSlot.Ppu:
+                        if (ConsoleSessions.N64PpuAvailable?.Invoke("PRDP") == true) list.Add(new("PRDP", "PRDP (parallel-rdp on Vulkan)", "N64"));
+                        list.Add(new("MADCAT", "MADCAT (software RDP, no GPU needed)", "N64"));
+                        break;
+                    default: list.Add(new("AI", "AI (the N64 audio interface DAC)", "N64")); break;
                 }
                 break;
             // The x86 console (P3): its own parts only, one of each (isolated: no bridges, no swaps with the other consoles).

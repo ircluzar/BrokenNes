@@ -24,7 +24,7 @@ param(
     [int]      $FuzzMinutes = 10,
     [int]      $Soak = 20000,
     [int]      $Games = 6,
-    [string[]] $Consoles = @('nes', 'gb', 'gbc', 'sms', 'gg', 'md', 'snes', 'wm', 'pc'),
+    [string[]] $Consoles = @('nes', 'gb', 'gbc', 'sms', 'gg', 'md', 'snes', 'wm', 'pc', 'n64'),
     [string[]] $Skip = @(),
     [int]      $Seed = 0,
     [string]   $Out
@@ -40,7 +40,8 @@ $t0 = Get-Date
 $groups = [ordered]@{}
 # the x86 PC console has its own checks (4b); Butchering scenarios and the fuzzer run on the others
 $runPc = $Consoles -contains 'pc'
-$Consoles = @($Consoles | Where-Object { $_ -ne 'pc' })
+$runN64 = $Consoles -contains 'n64'
+$Consoles = @($Consoles | Where-Object { $_ -ne 'pc' -and $_ -ne 'n64' })
 function Note($m, $c = 'Gray') { Write-Host ("[{0:HH:mm:ss}] {1}" -f (Get-Date), $m) -ForegroundColor $c }
 
 # ---- 1. build (scratch output; dotnet must not touch the user's exe)
@@ -132,6 +133,22 @@ if ($Skip -notcontains 'determinism' -and $Consoles.Count -gt 0) {
     $groups['Replay determinism'] = [pscustomobject]@{ ok = ($df -eq 0 -and $dp -gt 0); line = "$dp pass, $df fail, $dn not run"; details = $det }
 }
 
+# ---- 4c. the Nintendo 64 (cor64): --n64session on each ROM in BROKENNES_N64_ROMS (a folder; ROMs are never in the repo): detection, menus, 1000 frames (SM64 is black from power-on until about frame 700),
+# a picture, a save state round trip (the same frames after a load give the same pictures and sound), the battery. One ROM at a time (an N64 session is large).
+if ($runN64 -and $Skip -notcontains 'n64') {
+    Note "N64 console checks" White
+    $nd = Join-Path $Out 'n64'; New-Item -ItemType Directory -Force -Path $nd | Out-Null
+    $roms = if ($env:BROKENNES_N64_ROMS -and (Test-Path $env:BROKENNES_N64_ROMS)) { @(Get-ChildItem $env:BROKENNES_N64_ROMS -File | Where-Object { $_.Extension -in '.z64', '.n64', '.v64' }) } else { @() }
+    $det = @(); $okN = 0
+    foreach ($r in $roms) {
+        $log = Join-Path $nd ($r.BaseName + '.txt')
+        & $exe --n64session $r.FullName --frames 1000 --ppu MADCAT *> $log
+        $txt = Get-Content $log -ErrorAction SilentlyContinue
+        if ($LASTEXITCODE -ne 0 -or @(@($txt) -cmatch 'FAIL').Count -gt 0) { $det += "$($r.Name): exit $LASTEXITCODE"; $det += @($txt | Where-Object { $_ -cmatch 'FAIL' } | Select-Object -First 8 | ForEach-Object { "  $_" }) } else { $okN++ }
+    }
+    $groups['N64 console'] = [pscustomobject]@{ ok = ($roms.Count -gt 0 -and $det.Count -eq 0); line = $(if ($roms.Count -eq 0) { 'no ROMs (set BROKENNES_N64_ROMS)' } else { "$okN of $($roms.Count) ROMs pass" }); details = $det }
+}
+
 # ---- 4b. the x86 PC console
 if ($runPc -and $Skip -notcontains 'x86') {
     Note "x86 PC console checks" White
@@ -159,7 +176,7 @@ $allOk = -not ($groups.Values | Where-Object { -not $_.ok })
 $md = New-Object System.Text.StringBuilder
 [void]$md.AppendLine("# BrokenNes test battery - $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
 [void]$md.AppendLine('')
-[void]$md.AppendLine(("**{0}** in {1:0} min - commit {2}, seed {3}, consoles {4}" -f $(if ($allOk) { 'ALL GREEN' } else { 'FAILURES' }), $mins, (git -C $Repo rev-parse --short HEAD), $Seed, ((@($Consoles) + @(if ($runPc) { 'pc' })) -join ' ')))
+[void]$md.AppendLine(("**{0}** in {1:0} min - commit {2}, seed {3}, consoles {4}" -f $(if ($allOk) { 'ALL GREEN' } else { 'FAILURES' }), $mins, (git -C $Repo rev-parse --short HEAD), $Seed, ((@($Consoles) + @(if ($runPc) { 'pc' }) + @(if ($runN64) { 'n64' })) -join ' ')))
 [void]$md.AppendLine('')
 [void]$md.AppendLine('| Group | Result | |'); [void]$md.AppendLine('|---|---|---|')
 foreach ($k in $groups.Keys) { [void]$md.AppendLine("| $k | $($groups[$k].line) | $(if ($groups[$k].ok) { 'OK' } else { '**FAIL**' }) |") }

@@ -1,0 +1,62 @@
+# [cart_saves] save persistence: boot (game formats/writes its save), reset, reload
+run 120
+screenshot boot_2s
+run 480
+screenshot boot_10s
+run 600
+screenshot title_20s
+pulse START 60 20       # Start pressed 3 times over 1 s (some titles ignore the first press)
+run 570
+screenshot after_start_10s
+pulse START 60 20       # again: gets past "press start" menus that need two presses
+press A 5 25
+run 540
+screenshot after_start_20s
+savefile s1_boot
+reset
+run 120
+screenshot r_boot_2s
+run 480
+screenshot r_boot_10s
+run 600
+screenshot r_title_20s
+pulse START 60 20       # Start pressed 3 times over 1 s (some titles ignore the first press)
+run 570
+screenshot r_after_start_10s
+pulse START 60 20       # again: gets past "press start" menus that need two presses
+press A 5 25
+run 540
+screenshot r_after_start_20s
+savefile s2_after_reset
+reload
+run 120
+screenshot l_boot_2s
+run 480
+screenshot l_boot_10s
+run 600
+screenshot l_title_20s
+pulse START 60 20       # Start pressed 3 times over 1 s (some titles ignore the first press)
+run 570
+screenshot l_after_start_10s
+pulse START 60 20       # again: gets past "press start" menus that need two presses
+press A 5 25
+run 540
+screenshot l_after_start_20s
+savefile s3_after_reload
+clearsave
+reset
+run 120
+screenshot c_boot_2s
+run 480
+screenshot c_boot_10s
+run 600
+screenshot c_title_20s
+pulse START 60 20       # Start pressed 3 times over 1 s (some titles ignore the first press)
+run 570
+screenshot c_after_start_10s
+pulse START 60 20       # again: gets past "press start" menus that need two presses
+press A 5 25
+run 540
+screenshot c_after_start_20s
+savefile s4_control_blank
+checkpoint end

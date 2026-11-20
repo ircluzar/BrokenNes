@@ -1,0 +1,204 @@
+run 1200
+pulse START 60 20
+run 570
+pulse START 60 20
+press A 5 25
+run 540
+screenshot label
+press A 5 30
+stick 0 -80
+run 8
+stick 0 0
+run 15
+stick 0 -80
+run 8
+stick 0 0
+run 15
+stick 0 -80
+run 8
+stick 0 0
+run 15
+stick 0 -80
+run 8
+stick 0 0
+run 30
+screenshot nav
+press A 5 30
+run 600
+screenshot c1
+pulse START 60 20
+run 600
+screenshot c2
+pulse START 60 20
+run 600
+screenshot c3
+pulse START 60 20
+run 900
+screenshot c4
+pulse A 60 20
+run 900
+screenshot c5
+run 2400
+screenshot g1
+pulse A 60 20
+run 1200
+screenshot g2
+savestate speed
+# [emu_fix3] route (cert_scripts6): jumpship corridor -> character teleporter -> Goldwood
+pulse A 300 20
+run 400
+screenshot corridor_1
+run 400
+screenshot corridor_2
+run 800
+screenshot teleporter
+press A 5 300
+press A 5 300
+run 1200
+screenshot trip
+run 1200
+screenshot goldwood
+# save right on arrival (walking forward meets Magnus and opens his dialogue): START -> pause screen,
+# Z = Save Game ("Game Saved"), A, A, START back to the game
+press START 5 120
+press Z 5 90
+screenshot saved
+press A 5 90
+press A 5 90
+run 200
+press START 5 120
+screenshot after_save
+press B 5 60
+press START 5 120
+run 120
+screenshot back_in_game
+# ~2 minutes of play in Goldwood away from Magnus (back/sideways, A fire / B jump)
+stick 0 -80
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_1
+stick -80 0
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_2
+stick 80 0
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_3
+stick 80 0
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_4
+stick -80 0
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_5
+stick 0 -80
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_6
+stick -60 -60
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_7
+stick 60 -60
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_8
+stick 0 -80
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_9
+stick -80 0
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_10
+stick 80 0
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_11
+stick 80 0
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_12
+stick -80 0
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_13
+stick 0 -80
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_14
+stick -60 -60
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_15
+stick 60 -60
+run 200
+press A 5 40
+press B 5 40
+stick 0 0
+run 60
+screenshot play_16
+checkpoint end
+release
+stick 0 0
+run 120
+savefile pre_reset
+reset
+run 1200
+pulse START 60 20
+run 570
+screenshot reset_title
+pulse START 60 20
+run 300
+screenshot reset_menu
+press A 5 120
+screenshot reset_load
+savefile post_reset
+checkpoint save_end

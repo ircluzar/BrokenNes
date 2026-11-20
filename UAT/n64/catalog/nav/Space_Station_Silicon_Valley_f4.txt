@@ -1,0 +1,339 @@
+# nav1 Space_Station_Silicon_Valley: best attempt (did not reach gameplay at COR64_VI_SPEEDUP=11, see FINDINGS): observe + START/A intro pairs + A-walk
+run 600
+screenshot o00
+run 150
+screenshot o01
+run 150
+screenshot o02
+run 150
+screenshot o03
+run 150
+screenshot o04
+run 150
+screenshot o05
+run 150
+screenshot o06
+press START 6 20
+run 130
+screenshot o10
+press A 6 20
+run 130
+screenshot o11
+press START 6 20
+run 130
+screenshot o12
+press A 6 20
+run 130
+screenshot o13
+press START 6 20
+run 130
+screenshot o14
+press A 6 20
+run 130
+screenshot o15
+press START 6 20
+run 130
+screenshot o16
+press A 6 20
+run 130
+screenshot o17
+press START 6 20
+run 130
+screenshot o18
+press A 6 20
+run 130
+screenshot o19
+press START 6 20
+run 130
+screenshot o20
+press A 6 20
+run 130
+screenshot o21
+press START 6 20
+run 130
+screenshot o22
+press A 6 20
+run 130
+screenshot o23
+press START 6 20
+run 130
+screenshot o24
+press A 6 20
+run 130
+screenshot o25
+press START 6 20
+run 130
+screenshot o26
+press A 6 20
+run 130
+screenshot o27
+press START 6 20
+run 130
+screenshot o28
+press A 6 20
+run 130
+screenshot o29
+press START 6 20
+run 130
+screenshot o30
+press A 6 20
+run 130
+screenshot o31
+press START 6 20
+run 130
+screenshot o32
+press A 6 20
+run 130
+screenshot o33
+press START 6 20
+run 130
+screenshot o34
+press A 6 20
+run 130
+screenshot o35
+press START 6 20
+run 130
+screenshot o36
+press A 6 20
+run 130
+screenshot o37
+press START 6 20
+run 130
+screenshot o38
+press A 6 20
+run 130
+screenshot o39
+press START 6 20
+run 130
+screenshot o40
+press A 6 20
+run 130
+screenshot o41
+press START 6 20
+run 130
+screenshot o42
+press A 6 20
+run 130
+screenshot o43
+press START 6 20
+run 130
+screenshot o44
+press A 6 20
+run 130
+screenshot o45
+press START 8 20
+run 70
+press A 8 20
+run 70
+press START 8 20
+run 70
+press A 8 20
+run 70
+screenshot L2
+press START 8 20
+run 70
+press A 8 20
+run 70
+press START 8 20
+run 70
+press A 8 20
+run 70
+screenshot L4
+press START 8 20
+run 70
+press A 8 20
+run 70
+press START 8 20
+run 70
+press A 8 20
+run 70
+screenshot L6
+press START 8 20
+run 70
+press A 8 20
+run 70
+press START 8 20
+run 70
+press A 8 20
+run 70
+screenshot L8
+press START 8 20
+run 70
+press A 8 20
+run 70
+press START 8 20
+run 70
+press A 8 20
+run 70
+screenshot L10
+press START 8 20
+run 70
+press A 8 20
+run 70
+press START 8 20
+run 70
+press A 8 20
+run 70
+screenshot L12
+press START 8 20
+run 70
+press A 8 20
+run 70
+press START 8 20
+run 70
+press A 8 20
+run 70
+screenshot L14
+press START 8 20
+run 70
+press A 8 20
+run 70
+press START 8 20
+run 70
+press A 8 20
+run 70
+screenshot L16
+press START 8 20
+run 70
+press A 8 20
+run 70
+press START 8 20
+run 70
+press A 8 20
+run 70
+screenshot L18
+press START 8 20
+run 70
+press A 8 20
+run 70
+press START 8 20
+run 70
+press A 8 20
+run 70
+screenshot L20
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w3
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w6
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w9
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w12
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w15
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w18
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w21
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w24
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w27
+press A 8 30
+run 100
+press A 8 30
+run 100
+press A 8 30
+run 100
+screenshot w30
+hold A
+stick 0 80
+run 300
+screenshot x1
+run 300
+screenshot x2
+run 300
+screenshot x3
+run 300
+screenshot x4
+run 300
+screenshot x5
+run 300
+screenshot x6
+press A 6 30
+run 400
+screenshot Z1
+stick 0 90
+run 200
+stick 0 0
+screenshot Y1
+press A 6 30
+run 400
+screenshot Z2
+stick 0 90
+run 200
+stick 0 0
+screenshot Y2
+press A 6 30
+run 400
+screenshot Z3
+stick 0 90
+run 200
+stick 0 0
+screenshot Y3
+press A 6 30
+run 400
+screenshot Z4
+stick 0 90
+run 200
+stick 0 0
+screenshot Y4
+press A 6 30
+run 400
+screenshot Z5
+stick 0 90
+run 200
+stick 0 0
+screenshot Y5
+press A 6 30
+run 400
+screenshot Z6
+stick 0 90
+run 200
+stick 0 0
+screenshot Y6

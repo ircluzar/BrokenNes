@@ -52,7 +52,7 @@ public sealed partial class PcMachine : IX86Bus
     /// <summary>The 82077AA floppy controller (the PCI 430TX board only; the other boards serve floppies through the BIOS alone).</summary>
     public readonly Fdc82077? Fdc;
     private bool BmPort(int port, out int off) { off = 0; if (Ata == null || Pci == null || !Pci.Functions.TryGetValue(PciBus.IdeDevFn, out var f)) return false; int b = f.Bar4Base; if (b < 0 || port < b || port >= b + 16) return false; off = port - b; return true; }
-    private bool NicPort(int port, out int off) { off = 0; if (Nic == null) return false; int b = Pci!.NicFn!.IoBase; if (b < 0 || port < b || port >= b + Rtl8029.IoSize) return false; off = port - b; return true; }
+    private bool NicPort(int port, out int off) { off = 0; if (Nic == null) return false; if (Pci!.NicFn == null) return false; int b = Pci.NicFn.IoBase; if (b < 0 || port < b || port >= b + Rtl8029.IoSize) return false; off = port - b; return true; }
     /// <summary>The IDE controller (null on a BIOS-only machine: the default).</summary>
     public readonly AtaController? Ata;
     /// <summary>The ATAPI CD-ROM's disc (secondary master; IDE machines only). Read-only media: not part of a save state.</summary>
@@ -78,7 +78,7 @@ public sealed partial class PcMachine : IX86Bus
             Cpu.Ferr = () => Pic.Pulse(13);         // FERR# -> IRQ 13 (CR0.NE clear: DOS / Windows 9x style FPU errors)
         }
         Pit = new Pit8254(() => PitNow, () => Pic.Pulse(0));
-        Kbc = new Kbc8042(Pic, config.Bus == PcBus.Pci430TX);   // the Windows 98 board has the PS/2 mouse
+        Kbc = new Kbc8042(Pic, config.Bus == PcBus.Pci430TX && Environment.GetEnvironmentVariable("X86_NOMOUSE") == null);   // (X86_NOMOUSE: a diagnostic)   // the Windows 98 board has the PS/2 mouse
         Cmos = new Cmos(() => PitNow, MemKb);
         Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64);
         S3 = Vga.S3;
@@ -327,7 +327,7 @@ public sealed partial class PcMachine : IX86Bus
 
     private long _lastFrame = -1;
     /// <summary>Instructions per batch between device updates (an interrupt waits at most this long).</summary>
-    public int Batch = 256;
+    public int Batch = int.TryParse(Environment.GetEnvironmentVariable("X86_BATCH"), out int xb) ? xb : 256;   // (X86_BATCH: an experiment knob)
 
     /// <summary>Runs until the VGA starts its next frame (vertical retrace), renders the picture. False when the machine has stopped.</summary>
     public bool RunFrame()
@@ -365,9 +365,13 @@ public sealed partial class PcMachine : IX86Bus
     /// <summary>X86_ALLOCPROBE=1: bytes allocated per part of a batch (devices / CPU / picture), for the GC hunt (diagnostics).</summary>
     public static readonly bool AllocProbe = Environment.GetEnvironmentVariable("X86_ALLOCPROBE") == "1";
     public long AllocDevices, AllocCpu, AllocRender;
+    /// <summary>X86_TIMEPROBE=1: wall ticks in the CPU batches vs everything between them (devices, frame work), diagnostics.</summary>
+    public static readonly bool TimeProbe = Environment.GetEnvironmentVariable("X86_TIMEPROBE") == "1";
+    public long TicksCpu, TicksDevices; private long _tp0;
     private bool RunBatch()
     {
         Batches++;
+        if (TimeProbe && _tp0 == 0) _tp0 = System.Diagnostics.Stopwatch.GetTimestamp();
         long a0 = AllocProbe ? GC.GetAllocatedBytesForCurrentThread() : 0;
         Card?.Advance();
         Nic?.Poll();
@@ -375,6 +379,7 @@ public sealed partial class PcMachine : IX86Bus
         Pit.UpdateIrq();
         Kbc.Pump();
         if (AllocProbe) { long a1 = GC.GetAllocatedBytesForCurrentThread(); AllocDevices += a1 - a0; try { return RunBatchCpu(); } finally { AllocCpu += GC.GetAllocatedBytesForCurrentThread() - a1; } }
+        if (TimeProbe) { long t1 = System.Diagnostics.Stopwatch.GetTimestamp(); TicksDevices += t1 - _tp0; bool ok = RunBatchCpu(); long t2 = System.Diagnostics.Stopwatch.GetTimestamp(); TicksCpu += t2 - t1; _tp0 = t2; return ok; }
         return RunBatchCpu();
     }
 

@@ -1,0 +1,52 @@
+press A 8 30
+run 120
+screenshot w1
+press A 8 30
+run 120
+screenshot w2
+press A 8 30
+run 120
+screenshot w3
+press A 8 30
+run 120
+screenshot w4
+press A 8 30
+run 120
+screenshot w5
+press A 8 30
+run 120
+screenshot w6
+press A 8 30
+run 120
+screenshot w7
+press A 8 30
+run 120
+screenshot w8
+press A 8 30
+run 120
+screenshot w9
+press A 8 30
+run 120
+screenshot w10
+press A 8 30
+run 120
+screenshot w11
+press A 8 30
+run 120
+screenshot w12
+press A 8 30
+run 120
+screenshot w13
+press A 8 30
+run 120
+screenshot w14
+hold A
+stick 0 80
+run 240
+screenshot x1
+run 240
+screenshot x2
+run 240
+screenshot x3
+run 240
+screenshot x4

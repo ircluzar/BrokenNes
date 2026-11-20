@@ -81,7 +81,7 @@ public sealed class PciBus
             ide.Cfg[4] = 0x01;                                    // I/O decode on, legacy ports (no bus master DMA yet)
             ide.Cfg[0x41] = 0x80; ide.Cfg[0x43] = 0x80;           // IDETIM: both channels' decode enabled
         }
-        if (_m.Nic != null)
+        if (_m.Nic != null && Environment.GetEnvironmentVariable("X86_NONIC") == null)   // (X86_NONIC: the card left off the bus, a diagnostic)
         {
             var nic = NicFn = Functions[NicDevFn] = new PciFunction("RTL8029 Ethernet", Rtl8029.Vendor, Rtl8029.Device, 0x020000, 0x00) { IoBarSize = Rtl8029.IoSize };
             nic.Cfg[0x10] = 1; nic.Cfg[0x3d] = 1;                 // I/O BAR, INTA#
@@ -546,8 +546,6 @@ public sealed partial class PcMachine
         Node("PNP0B00", 8, 3, 0, d => { Io(d, 0x70, 2); Irq(d, 8); });
         Node("PNP0303", 9, 0, 0, d => { Io(d, 0x60, 1); Io(d, 0x64, 1); Irq(d, 1); });
         if (Kbc.HasMouse) Node("PNP0F13", 9, 2, 0, d => Irq(d, 12));   // the PS/2 mouse on the 8042
-        // the SB16 (Windows 98's SB16AWE.INF knows the legacy SB16 as *PNPB003; there is no SB Pro driver in Windows 98): 220h, 388h, IRQ 5, DMA 1 + 5
-        if (Card?.Id == "SB16_D072") Node("PNPB003", 4, 1, 0, d => { Io(d, 0x220, 16); Io(d, 0x388, 4); Irq(d, 5); d.AddRange(new byte[] { 0x2a, 0x02, 0x08 }); d.AddRange(new byte[] { 0x2a, 0x20, 0x16 }); });
         // the 82077AA floppy controller: 3F0h-3F5h, 3F7h, IRQ 6, DMA 2 (8-bit)
         if (Fdc != null) Node("PNP0700", 1, 2, 0, d => { Io(d, 0x3f0, 6); Io(d, 0x3f7, 1); Irq(d, 6); d.AddRange(new byte[] { 0x2a, 0x04, 0x00 }); });
         Node("PNP0800", 4, 1, 0, d => Io(d, 0x61, 1));
@@ -559,6 +557,10 @@ public sealed partial class PcMachine
             Mem(d, 0xf0000, 0x10000, 0x00);
             Mem(d, 0x100000, (uint)MemKb * 1024 - 0x100000, 0x03);
         });
+        // (LAST: a node added in the middle renumbers the nodes after it - Windows 98 then sees a "new" PCI bus (*PNP0A03) and its S3
+        // child, and the next boot says "the adapter type is incorrect"; appended, the other nodes keep their numbers)
+        // the SB16 (Windows 98's SB16AWE.INF knows the legacy SB16 as *PNPB003; there is no SB Pro driver in Windows 98): 220h, 388h, IRQ 5, DMA 1 + 5
+        if (Card?.Id == "SB16_D072") Node("PNPB003", 4, 1, 0, d => { Io(d, 0x220, 16); Io(d, 0x388, 4); Irq(d, 5); d.AddRange(new byte[] { 0x2a, 0x02, 0x08 }); d.AddRange(new byte[] { 0x2a, 0x20, 0x16 }); });
         return list;
     }
 }

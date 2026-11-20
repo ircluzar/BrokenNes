@@ -1,0 +1,82 @@
+# nav2 Hercules_The_Legendary_Journeys (visp_fix2: VI cap 6 + Count 6): warning, no rumble, title, new game, story text, gameplay
+run 900
+screenshot o00
+press START 30 120
+screenshot o01
+press A 30 120
+screenshot o02
+run 1500
+screenshot o03
+press START 30 200
+screenshot o04
+press START 30 200
+screenshot o05
+press A 30 200
+screenshot o06
+press A 30 200
+screenshot o07
+press A 30 150
+screenshot o08
+press A 30 150
+screenshot o09
+press A 30 150
+screenshot o10
+press A 30 150
+screenshot o11
+press A 30 150
+screenshot o12
+press A 30 150
+screenshot o13
+press START 30 150
+screenshot o14
+press A 30 150
+screenshot o15
+run 300
+screenshot o16
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot t02
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot t05
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot t08
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot t11
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot t14
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot t17
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot t20
+press A 20 100
+press A 20 100
+press A 20 100
+screenshot t23
+run 300
+screenshot t99
+savestate s1
+stick 0 90
+run 200
+screenshot g1
+stick 60 60
+run 200
+screenshot g2
+stick 0 0
+press B 20 60
+screenshot g3
+stick 0 90
+run 300
+screenshot g4

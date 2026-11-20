@@ -1,0 +1,198 @@
+# kirby [boot_dkr]: intro -> Start -> title -> A -> Select File, File 1 created (A, A), Start -> "Yep!" -> Pop Star 1-1
+run 1500
+screenshot t0
+press START 15 45
+run 30
+screenshot a1
+run 30
+screenshot a2
+run 30
+screenshot a3
+run 30
+screenshot a4
+run 30
+screenshot a5
+run 30
+screenshot a6
+savestate file_select
+press A 15 45
+run 30
+screenshot b1
+run 30
+screenshot b2
+run 30
+screenshot b3
+run 30
+screenshot b4
+press A 15 45
+run 30
+screenshot c1
+run 30
+screenshot c2
+run 30
+screenshot c3
+run 30
+screenshot c4
+run 30
+screenshot c5
+press A 15 45
+run 600
+savestate copy_question
+press DL 10 30
+press A 15 45
+run 300
+screenshot h1
+press START 10 50
+press A 10 50
+run 300
+screenshot h2
+press START 10 50
+press A 10 50
+run 300
+screenshot h3
+press START 10 50
+press A 10 50
+run 300
+screenshot h4
+press START 10 50
+press A 10 50
+run 300
+screenshot h5
+press START 10 50
+press A 10 50
+run 300
+screenshot h6
+press START 10 50
+press A 10 50
+savestate stage_1_1
+# [cert_scripts4] gameplay: Pop Star 1-1 flown back and forth (float = A pulses while D-pad held), 6 legs x 14 flights
+# (~13400 frames). Flying keeps Kirby above most enemies; the earlier walk/inhale loop lost all lives (game over), and
+# the mini-boss barn at the end of 1-1 kills him, so the legs turn back before it. One life is lost on the way (play_40).
+run 120
+savestate speed
+hold DR
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+screenshot play_6
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+screenshot play_12
+pulse A 150 10
+pulse A 150 10
+release
+hold DL
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+screenshot play_18
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+screenshot play_24
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+release
+hold DR
+pulse A 150 10
+pulse A 150 10
+screenshot play_30
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+screenshot play_36
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+screenshot play_42
+release
+hold DL
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+screenshot play_48
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+screenshot play_54
+pulse A 150 10
+pulse A 150 10
+release
+hold DR
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+screenshot play_60
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+screenshot play_66
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+release
+hold DL
+pulse A 150 10
+pulse A 150 10
+screenshot play_72
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+screenshot play_78
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+pulse A 150 10
+screenshot play_84
+release
+checkpoint end
+# [cert_scripts2] certification point 5: File 1 (created above) survives a reset
+release
+stick 0 0
+savefile pre_reset
+reset
+run 1500
+screenshot reset_intro
+press START 15 45
+run 180
+screenshot reset_title
+press A 15 45
+run 120
+screenshot reset_filesel
+savefile post_reset
+checkpoint save_end

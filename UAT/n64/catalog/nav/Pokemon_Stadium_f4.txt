@@ -1,0 +1,86 @@
+# catalog smoke v2 (~150 s): menus via Start/A/Down+A/B, then stick forward with A, then with B
+run 600
+screenshot v010
+pulse START 120 30
+pulse A 120 40
+run 300
+screenshot v019
+pulse START 60 30
+pulse A 240 40
+press B 5 40
+press B 5 40
+pulse A 240 40
+screenshot v030
+press DD 5 20
+pulse A 120 40
+press DD 5 20
+press A 5 40
+pulse START 90 30
+pulse A 300 50
+screenshot v045
+pulse A 360 45
+press B 5 30
+pulse START 60 30
+pulse A 300 50
+screenshot v060
+stick 0 80
+pulse A 600 60
+hold A
+run 300
+screenshot v075
+run 600
+screenshot v090
+release
+pulse START 60 30
+pulse A 300 50
+hold B
+run 600
+screenshot v105
+release B
+hold A
+run 900
+screenshot v120
+release
+pulse A 300 40
+hold A+B
+run 600
+screenshot v135
+release
+stick 0 0
+run 600
+screenshot v150
+checkpoint end
+press A 8 40
+run 120
+press B 8 40
+press A 8 40
+press CU 8 40
+run 120
+screenshot Q1
+press A 8 40
+run 250
+screenshot P1
+press A 8 40
+run 250
+screenshot P2
+press A 8 40
+run 250
+screenshot P3
+press A 8 40
+run 250
+screenshot P4
+press A 8 40
+run 250
+screenshot P5
+press A 8 40
+run 250
+screenshot P6
+press A 8 40
+run 250
+screenshot P7
+press A 8 40
+run 250
+screenshot P8
+press A 8 40
+run 250
+screenshot P9

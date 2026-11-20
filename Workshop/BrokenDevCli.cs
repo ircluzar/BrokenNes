@@ -768,10 +768,12 @@ internal static partial class BrokenDevCli
                 "sms" => ConsoleKind.MasterSystem, "gg" => ConsoleKind.GameGear, "md" => ConsoleKind.Genesis,
                 // a DOS game (kind dos): the x86 PC, a .exe / .com put on a FreeDOS boot disk made for it, or a disk image
                 "x86" => ConsoleKind.Pc,
+                "n64" => ConsoleKind.N64,
                 _ => ConsoleKind.Snes,
             };
             if (console == ConsoleKind.WideMess) Consoles.WideMessEnabled = true;
             if (console == ConsoleKind.Pc) Consoles.X86Enabled = true;
+            if (console == ConsoleKind.N64) NesEmulator.N64.N64Host.Register();
             cpu = cpu == "" ? CoreCatalog.Default(console, CoreSlot.Cpu) : cpu;
             ppu = ppu == "" ? CoreCatalog.Default(console, CoreSlot.Ppu) : ppu;
             apu = apu == "" ? CoreCatalog.Default(console, CoreSlot.Apu) : apu;

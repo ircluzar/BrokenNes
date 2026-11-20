@@ -1,0 +1,183 @@
+# mtennis: boot -> intro -> title (PRESS START; 'saved data erased' on a blank battery) -> Main Menu 1 Player ->
+# Exhibition -> 1 set of 2 games -> court select (Hard Court) -> match; ~5 minutes of play (stick + A/B).
+# Lane scripts_speed. Real VI pace (run_game.sh). Checkpoints: b05-b30 intro, s1 title, a1 save message, s2 main menu,
+# a2-s4 play mode, a4/s5 court select, a5/a6 match start (in-game).
+run 300
+screenshot b05
+run 300
+screenshot b10
+run 300
+screenshot b15
+run 300
+screenshot b20
+run 300
+screenshot b25
+run 300
+screenshot b30
+pulse START 60 20
+run 240
+screenshot s1
+pulse A 60 20
+run 240
+screenshot a1
+checkpoint x1
+pulse START 60 20
+run 240
+screenshot s2
+pulse A 60 20
+run 240
+screenshot a2
+checkpoint x2
+pulse START 60 20
+run 240
+screenshot s3
+pulse A 60 20
+run 240
+screenshot a3
+checkpoint x3
+pulse START 60 20
+run 240
+screenshot s4
+pulse A 60 20
+run 240
+screenshot a4
+checkpoint x4
+pulse START 60 20
+run 240
+screenshot s5
+pulse A 60 20
+run 240
+screenshot a5
+checkpoint x5
+pulse START 60 20
+run 240
+screenshot s6
+pulse A 60 20
+run 240
+screenshot a6
+checkpoint x6
+savestate speed
+stick 40 0
+pulse A 300 20
+stick -40 0
+pulse B 300 20
+stick 0 40
+pulse A 300 30
+stick 0 0
+run 300
+screenshot play_1
+stick 40 0
+pulse A 300 20
+stick -40 0
+pulse B 300 20
+stick 0 40
+pulse A 300 30
+stick 0 0
+run 300
+screenshot play_2
+stick 40 0
+pulse A 300 20
+stick -40 0
+pulse B 300 20
+stick 0 40
+pulse A 300 30
+stick 0 0
+run 300
+screenshot play_3
+stick 40 0
+pulse A 300 20
+stick -40 0
+pulse B 300 20
+stick 0 40
+pulse A 300 30
+stick 0 0
+run 300
+screenshot play_4
+stick 40 0
+pulse A 300 20
+stick -40 0
+pulse B 300 20
+stick 0 40
+pulse A 300 30
+stick 0 0
+run 300
+screenshot play_5
+stick 40 0
+pulse A 300 20
+stick -40 0
+pulse B 300 20
+stick 0 40
+pulse A 300 30
+stick 0 0
+run 300
+screenshot play_6
+stick 40 0
+pulse A 300 20
+stick -40 0
+pulse B 300 20
+stick 0 40
+pulse A 300 30
+stick 0 0
+run 300
+screenshot play_7
+stick 40 0
+pulse A 300 20
+stick -40 0
+pulse B 300 20
+stick 0 40
+pulse A 300 30
+stick 0 0
+run 300
+screenshot play_8
+stick 40 0
+pulse A 300 20
+stick -40 0
+pulse B 300 20
+stick 0 40
+pulse A 300 30
+stick 0 0
+run 300
+screenshot play_9
+stick 40 0
+pulse A 300 20
+stick -40 0
+pulse B 300 20
+stick 0 40
+pulse A 300 30
+stick 0 0
+run 300
+screenshot play_10
+stick 40 0
+pulse A 300 20
+stick -40 0
+pulse B 300 20
+stick 0 40
+pulse A 300 30
+stick 0 0
+run 300
+screenshot play_11
+stick 40 0
+pulse A 300 20
+stick -40 0
+pulse B 300 20
+stick 0 40
+pulse A 300 30
+stick 0 0
+run 300
+screenshot play_12
+checkpoint end
+# [cert_scripts2] certification point 5: SRAM survives a reset. On the first boot the game formats the blank battery
+# ("saved data has been erased"); after the reset that message must not appear (A goes straight to the main menu).
+release
+stick 0 0
+savefile pre_reset
+reset
+run 1800
+pulse START 60 20
+run 240
+screenshot reset_title
+pulse A 60 20
+run 240
+screenshot reset_after_a
+savefile post_reset
+checkpoint save_end

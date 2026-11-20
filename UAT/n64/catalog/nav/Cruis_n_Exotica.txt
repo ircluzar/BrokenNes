@@ -1,0 +1,58 @@
+# nav2 Cruis_n_Exotica (visp_fix2, VI cap 1 from visp_fix1): title, 1 player (D-up), name, Challenge, Korea, auto, car, race with A held
+run 600
+screenshot o00
+run 150
+screenshot o01
+run 150
+screenshot o02
+run 150
+screenshot o03
+run 150
+screenshot o04
+run 150
+screenshot o05
+run 150
+screenshot o06
+press START 30 300
+screenshot p0
+savestate players
+press DU 20 80
+press DU 20 80
+press DU 20 80
+screenshot p1
+press A 30 300
+screenshot p2
+press A 30 300
+screenshot p3
+press START 30 300
+screenshot p4
+press A 30 300
+screenshot p5
+press A 30 300
+screenshot p6
+press A 30 300
+screenshot p7
+press A 30 300
+screenshot p8
+press A 30 300
+screenshot p9
+hold A
+run 600
+screenshot q1
+stick 40 0
+run 300
+screenshot q2
+stick 0 0
+run 300
+screenshot q3
+run 600
+screenshot q4
+run 600
+screenshot g1
+stick 60 0
+run 300
+screenshot g2
+stick 0 0
+run 300
+screenshot g3
+release
