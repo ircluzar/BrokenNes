@@ -295,8 +295,12 @@ internal static class X86BootCli
         {
             var tp = ta.Split('-'); uint lo = Convert.ToUInt32(tp[0], 16), hi = Convert.ToUInt32(tp[1], 16); long sl = 0; int tslice = int.Parse(Arg(args, "--traceslice") ?? "1");
             int thits = int.Parse(Arg(args, "--tracehit") ?? "1"), th = 0; bool inR = false;   // --tracehit N: the Nth entry into the range (not the first)
-            while (sl++ < 400_000_000) { uint l = m.Cpu.SegBase[1] + m.Cpu.Ip; bool r = l >= lo && l < hi; if (r && !inR && ++th >= thits) break; inR = r; m.RunClock(tslice); }
+            var tring = new Queue<string>(); bool tr = args.Contains("--tracering");   // --tracering: print the last 80 instructions before the stop
+            while (sl++ < 400_000_000) { uint l = m.Cpu.SegBase[1] + m.Cpu.Ip; if (tr) { tring.Enqueue($"{m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} SS:SP {m.Cpu.SegSel[2]:X4}:{m.Cpu.R[4]:X4} AX {m.Cpu.R[0]:X4} vm{(m.Cpu.Flags >> 17) & 1} | {LinBytes(m, l, 6)}"); if (tring.Count > 80) tring.Dequeue(); } bool r = l >= lo && l < hi; if (r && !inR) { th++; if (args.Contains("--tracehitlog")) Console.WriteLine($"hit {th}: SS:SP {m.Cpu.SegSel[2]:X4}:{m.Cpu.R[4]:X8} frame {LinBytes(m, m.Cpu.SegBase[2] + (m.Cpu.R[4] & 0xffff), 16)} AX {m.Cpu.R[0]:X8}"); if (th >= thits) break; }
+                if (Arg(args, "--tracestopcs") is string tsc && m.Cpu.SegSel[1] == Convert.ToUInt32(tsc, 16)) break;
+                if (Arg(args, "--tracestopbytes") is string tsb && LinBytes(m, l, tsb.Length / 3 + 1) == tsb) break;   /* stop when the code at CS:EIP starts with these bytes ("20 07 20 07") */ inR = r; m.RunClock(tslice); }
             Console.WriteLine($"traceat: at {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} after {sl} slices");
+            foreach (var t in tring) Console.WriteLine("  ring " + t);
         }
         if (Arg(args, "--trace") is string trc)   // one instruction at a time: where a hang loops
         {
