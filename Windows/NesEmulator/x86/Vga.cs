@@ -133,6 +133,7 @@ public sealed class Vga
             case 0x3c7: DacReadIndex = (byte)val; DacSub = 0; DacState = 3; break;
             case 0x3c8: DacWriteIndex = (byte)val; DacSub = 0; DacState = 0; break;
             case 0x3c9:
+                DacWrites++; if (val > 0x3f) DacWritesOver63++;
                 _dacCache[DacSub] = (byte)(val & 0x3f);
                 if (++DacSub == 3)
                 {
@@ -361,6 +362,7 @@ public sealed class Vga
 
     // ================= the picture =================
 
+    public long DacWrites, DacWritesOver63;   // diagnostics (not saved): an 8-bit DAC driver writes values above 3Fh
     private static int C6(int v) => (v << 2) | (v >> 4);
     public int Dac(int i) => unchecked((int)0xff000000) | (C6(Palette[i * 3] & 63) << 16) | (C6(Palette[i * 3 + 1] & 63) << 8) | C6(Palette[i * 3 + 2] & 63);
 

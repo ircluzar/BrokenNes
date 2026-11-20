@@ -353,6 +353,8 @@ internal static class X86BootCli
             Console.WriteLine($"linmap {a0:X8}: " + string.Join(" ", Enumerable.Range(0, np).Select(k => { uint p = LinPhys(m, a0 + (uint)k * 4096); return p == 0xffffffff ? "--" : (p >> 12).ToString("X"); })) + $" | {LinBytes(m, a0, 16)}");
         }
         if (args.Contains("--frametimes")) Console.WriteLine(FrameTimeReport());
+        if (args.Contains("--dacdump")) for (int r = 0; r < 256; r += 16) Console.WriteLine($"dac {r:X2}: " + string.Join(" ", Enumerable.Range(r, 16).Select(i => $"{m.Vga.Palette[i * 3]:X2}{m.Vga.Palette[i * 3 + 1]:X2}{m.Vga.Palette[i * 3 + 2]:X2}")));
+        Console.WriteLine($"vga: DAC writes {m.Vga.DacWrites}, above 3Fh {m.Vga.DacWritesOver63}; S3 CR55 {(m.S3 != null ? m.Vga.Cr[0x55] : 0):X2} CR67 {(m.S3 != null ? m.Vga.Cr[0x67] : 0):X2} SR18 {(m.S3 != null ? m.S3.SrRead(0x18) : 0):X2}; VGA-by-MMIO writes {m.S3?.VgaMmioWrites}, CR53 {(m.S3 != null ? m.Vga.Cr[0x53] : 0):X2}");
         if (args.Contains("--frametimes")) { var gi = GC.GetGCMemoryInfo(GCKind.Ephemeral); Console.WriteLine($"gc last ephemeral: gen {gi.Generation}, pause {(gi.PauseDurations.Length > 0 ? gi.PauseDurations[0].TotalMilliseconds : 0):F1} ms, promoted {gi.PromotedBytes / 1048576} MB, heap {gi.HeapSizeBytes / 1048576} MB, fragmented {gi.FragmentedBytes / 1048576} MB; gen0 budget? total committed {gi.TotalCommittedBytes / 1048576} MB"); }
         if (PcMachine.AllocProbe) Console.WriteLine($"allocprobe: devices {m.AllocDevices / 1048576} MB, cpu {m.AllocCpu / 1048576} MB, render {m.AllocRender / 1048576} MB, total thread {GC.GetAllocatedBytesForCurrentThread() / 1048576} MB");
         if (_allocs != null) lock (_allocs.ByType) foreach (var kv in _allocs.ByType.OrderByDescending(x => x.Value).Take(15)) Console.WriteLine($"  alloc {kv.Value / 1048576,6} MB {kv.Key}");
@@ -505,6 +507,7 @@ internal static class X86BootCli
                 if (tok.StartsWith("save:")) { File.WriteAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5), m.SaveState()); _wavMark = _wav?.Length ?? 0; continue; }   // {save:PATH}: a savestate right here (the run goes on; --wav also writes the sound from here on as FILE.after.wav)
                 if (tok.StartsWith("load:")) { m.LoadState(File.ReadAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5))); continue; }   // {load:PATH}: load a savestate right here, in this process (the run goes on from it)
                 if (tok.StartsWith("wait:")) { int wn = int.Parse(tok[5..]); for (int q = 0; q < wn; q++) Frame(m); continue; }
+                if (tok.StartsWith("typefile:")) { TypeText(m, File.ReadAllText(tok[9..]).Trim()); continue; }   // {typefile:PATH}: type a file's text (a key kept out of command lines and logs)
                 var parts = tok.Split('+'); var mods = new List<byte[]>();
                 foreach (var p in parts[..^1]) mods.Add(p switch { "ctrl" => new byte[] { 0x1d }, "alt" => new byte[] { 0x38 }, "shift" => new byte[] { 0x2a }, "win" => new byte[] { 0xe0, 0x5b }, _ => throw new ArgumentException("key mod " + p) });
                 byte[] key = TokenKey(parts[^1]);
