@@ -81,7 +81,7 @@ public sealed class PciBus
             ide.Cfg[4] = 0x01;                                    // I/O decode on, legacy ports (no bus master DMA yet)
             ide.Cfg[0x41] = 0x80; ide.Cfg[0x43] = 0x80;           // IDETIM: both channels' decode enabled
         }
-        if (_m.Nic != null)
+        if (_m.Nic != null && Environment.GetEnvironmentVariable("X86_NONIC") == null)   // (X86_NONIC: the card left off the bus, a diagnostic)
         {
             var nic = NicFn = Functions[NicDevFn] = new PciFunction("RTL8029 Ethernet", Rtl8029.Vendor, Rtl8029.Device, 0x020000, 0x00) { IoBarSize = Rtl8029.IoSize };
             nic.Cfg[0x10] = 1; nic.Cfg[0x3d] = 1;                 // I/O BAR, INTA#

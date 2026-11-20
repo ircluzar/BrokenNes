@@ -52,7 +52,7 @@ public sealed partial class PcMachine : IX86Bus
     /// <summary>The 82077AA floppy controller (the PCI 430TX board only; the other boards serve floppies through the BIOS alone).</summary>
     public readonly Fdc82077? Fdc;
     private bool BmPort(int port, out int off) { off = 0; if (Ata == null || Pci == null || !Pci.Functions.TryGetValue(PciBus.IdeDevFn, out var f)) return false; int b = f.Bar4Base; if (b < 0 || port < b || port >= b + 16) return false; off = port - b; return true; }
-    private bool NicPort(int port, out int off) { off = 0; if (Nic == null) return false; int b = Pci!.NicFn!.IoBase; if (b < 0 || port < b || port >= b + Rtl8029.IoSize) return false; off = port - b; return true; }
+    private bool NicPort(int port, out int off) { off = 0; if (Nic == null) return false; if (Pci!.NicFn == null) return false; int b = Pci.NicFn.IoBase; if (b < 0 || port < b || port >= b + Rtl8029.IoSize) return false; off = port - b; return true; }
     /// <summary>The IDE controller (null on a BIOS-only machine: the default).</summary>
     public readonly AtaController? Ata;
     /// <summary>The ATAPI CD-ROM's disc (secondary master; IDE machines only). Read-only media: not part of a save state.</summary>
@@ -78,7 +78,7 @@ public sealed partial class PcMachine : IX86Bus
             Cpu.Ferr = () => Pic.Pulse(13);         // FERR# -> IRQ 13 (CR0.NE clear: DOS / Windows 9x style FPU errors)
         }
         Pit = new Pit8254(() => PitNow, () => Pic.Pulse(0));
-        Kbc = new Kbc8042(Pic, config.Bus == PcBus.Pci430TX);   // the Windows 98 board has the PS/2 mouse
+        Kbc = new Kbc8042(Pic, config.Bus == PcBus.Pci430TX && Environment.GetEnvironmentVariable("X86_NOMOUSE") == null);   // (X86_NOMOUSE: a diagnostic)   // the Windows 98 board has the PS/2 mouse
         Cmos = new Cmos(() => PitNow, MemKb);
         Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64);
         S3 = Vga.S3;
