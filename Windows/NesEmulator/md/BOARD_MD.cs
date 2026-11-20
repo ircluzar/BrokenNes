@@ -455,6 +455,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         if (address < 0x400000)
         {
             if (Cart.Svp != null && address >= 0x300000 && Cart.Svp.ReadWord(address, out ushort sv)) return sv;
+            if (Cart.JCart && MdCartridge.IsJCartAddress(address)) return Cart.ReadJCart();
             ushort cv = Cart.ReadWord(address);
             if (CartTrace != null && address >= 0x200000) CartTrace($"cart read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {cv:X4}");
             return cv;
@@ -491,6 +492,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         {
             if (Cart.Svp != null && address >= 0x300000 && Cart.Svp.Write(address, upper, lower, data)) return;
             if (CartTrace != null && address >= 0x200000) CartTrace($"cart write ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} = {data:X4}");
+            if (Cart.JCart && MdCartridge.IsJCartAddress(address)) { Cart.JCartTh = ((lower ? data : data >> 8) & 1) != 0; return; }
             if (upper) Cart.WriteByte(address, (byte)(data >> 8));
             if (lower) Cart.WriteByte(address | 1, (byte)data);
             return;
