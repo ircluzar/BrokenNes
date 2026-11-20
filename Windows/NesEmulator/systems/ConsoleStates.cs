@@ -46,6 +46,32 @@ public static class ConsoleStateFile
             }
         }
         if (payload.Count < ParallelMin) return ms.ToArray();
+        var r = PackBig(ms, payload, null);
+        return r.Array!;
+    }
+
+    /// <summary><see cref="Wrap(ConsoleKind, string, string, IReadOnlyDictionary{string, string}, ArraySegment{byte})"/> into <paramref name="reuse"/>
+    /// when the file fits there (a buffer the caller no longer needs: the bug capture's evicted state), else a new array with 1/8 to spare;
+    /// the file is the returned segment (the same bytes as Wrap).</summary>
+    public static ArraySegment<byte> WrapInto(ConsoleKind console, string gameId, string title, IReadOnlyDictionary<string, string> units, ArraySegment<byte> payload, byte[]? reuse)
+    {
+        if (payload.Count < ParallelMin) return new ArraySegment<byte>(Wrap(console, gameId, title, units, payload));
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true))
+        {
+            w.Write(Magic); w.Write((ushort)Version);
+            w.Write(Consoles.Key(console)); w.Write(gameId); w.Write(title);
+            w.Write((byte)units.Count);
+            foreach (var kv in units) { w.Write(kv.Key); w.Write(kv.Value); }
+            w.Write(payload.Count);
+        }
+        return PackBig(ms, payload, reuse ?? Array.Empty<byte>());
+    }
+
+    /// <summary>The big-state tail: CRC + parallel deflate after the header in <paramref name="ms"/>. <paramref name="reuse"/> null: an exact-size
+    /// new array; else that buffer when the file fits, or a new one with room to spare.</summary>
+    private static ArraySegment<byte> PackBig(MemoryStream ms, ArraySegment<byte> payload, byte[]? reuse)
+    {
         // a big state (the x86 PC: ~110 MB, the bug capture takes one a second): the CRC and the compression in parallel pieces into pooled
         // buffers, then the file in ONE array of its exact size (the same format and payload; no growing copies: they were GBs of garbage)
         var crc = System.Threading.Tasks.Task.Run(() => Crc32(payload.AsSpan()));
@@ -53,14 +79,14 @@ public static class ConsoleStateFile
         try
         {
             long packed = 0; foreach (int l in lens) packed += l;
-            int head = (int)ms.Length;
-            var file = new byte[checked(head + 8 + (int)packed)];
+            int head = (int)ms.Length, total = checked(head + 8 + (int)packed);
+            var file = reuse == null ? new byte[total] : reuse.Length >= total ? reuse : new byte[total + total / 8];
             ms.GetBuffer().AsSpan(0, head).CopyTo(file);
             BitConverter.TryWriteBytes(file.AsSpan(head, 4), crc.Result);
             BitConverter.TryWriteBytes(file.AsSpan(head + 4, 4), (int)packed);
             int at = head + 8;
             for (int i = 0; i < parts.Length; i++) { parts[i].AsSpan(0, lens[i]).CopyTo(file.AsSpan(at)); at += lens[i]; }
-            return file;
+            return new ArraySegment<byte>(file, 0, total);
         }
         finally { foreach (var p in parts) System.Buffers.ArrayPool<byte>.Shared.Return(p); }
     }

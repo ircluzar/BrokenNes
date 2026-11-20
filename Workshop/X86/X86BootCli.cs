@@ -381,6 +381,8 @@ internal static class X86BootCli
                 ulong fh = 14695981039346656037UL; var smem = m.Cpu.Mem; for (int i = 0; i < smem.Length; i++) { fh ^= smem[i]; fh *= 1099511628211UL; } double tFnv = sbw.Elapsed.TotalMilliseconds;
                 uint rc = 0xFFFFFFFF; foreach (byte cb in st) { rc ^= cb; for (int k = 0; k < 8; k++) rc = (rc & 1) != 0 ? (rc >> 1) ^ 0xEDB88320u : rc >> 1; }
                 Console.WriteLine($"savebench: crc {(~rc == crc ? "EQUALS" : "DIFFERS FROM")} the bitwise definition");
+                var into = NesEmulator.Systems.ConsoleStateFile.WrapInto(NesEmulator.Systems.ConsoleKind.Pc, "g", "t", new Dictionary<string, string>(), st, new byte[wrapped.Length + 4096]);
+                Console.WriteLine($"savebench: WrapInto a reused buffer {(into.AsSpan().SequenceEqual(wrapped) ? "EQUALS" : "DIFFERS FROM")} Wrap");
                 bool same = NesEmulator.Systems.ConsoleStateFile.PayloadOf(wrapped).AsSpan().SequenceEqual(st);
                 var ms2 = new MemoryStream(); m.SaveState(ms2); bool streamSame = ms2.ToArray().AsSpan().SequenceEqual(st);
                 Console.WriteLine($"savebench: state {st.Length >> 20} MB {tSave:F0} ms, crc {tCrc:F0} ms, wrap(crc+deflate) {tWrap:F0} ms -> {wrapped.Length >> 20} MB, fnv over RAM {smem.Length >> 20} MB {tFnv:F0} ms; round trip {(same ? "EQUAL" : "DIFFERENT")}, stream save {(streamSame ? "EQUAL" : "DIFFERENT")}");
