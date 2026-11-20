@@ -198,16 +198,21 @@ def ranks(l):
 # Genesis colour: BrokenNes outputs the measured (non-linear) DAC ladder 0,49,87,119,146,174,206,255 per 3-bit level; BizHawk's
 # Genplus-gx outputs the linear 0,34,...,238. Same picture, different brightness: ~0.05-0.08 on picdiff's edge term, which made
 # whole title screens "close, not same" (Streets of Rage, Mortal Kombat, Earthworm Jim...). Map BrokenNes's MD pictures onto the
-# reference ladder before comparing them with BizHawk's. Nearest level, so shadow/highlight mid-levels land on a neighbour.
+# reference ladder before comparing them with BizHawk's.
+# Shadow/highlight (SEGA-01, 2026-11-19): both emulators output 15 levels, BrokenNes its measured ladder (MdVdpRender.Levels15),
+# Genplus-gx 17*k (shadow = level/2, highlight = 119 + level/2). The old 8-level map pushed every shadowed pixel onto a neighbour
+# (Marsupilami's whole menu scored 0.13 "differs"), so map all 15 levels.
 MD_LADDER = False
 _MD_BN = np.array([0, 49, 87, 119, 146, 174, 206, 255])
 _MD_GP = np.array([0, 34, 68, 102, 136, 170, 204, 238])
+_MD_BN15 = np.array([0, 27, 49, 71, 87, 103, 119, 130, 146, 157, 174, 190, 206, 228, 255])
+_MD_GP15 = np.arange(15) * 17
 
 
 def to_ref_ladder(img):
     if not MD_LADDER or img is None:
         return img
-    return _MD_GP[np.abs(img[..., None] - _MD_BN).argmin(-1)].astype(np.int32)
+    return _MD_GP15[np.abs(img[..., None] - _MD_BN15).argmin(-1)].astype(np.int32)
 
 
 def picdiff(a, b):

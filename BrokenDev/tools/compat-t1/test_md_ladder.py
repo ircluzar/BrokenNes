@@ -23,6 +23,10 @@ if t1.picdiff(t1.to_ref_ladder(bn), gp) != 0:
 moved = gp.copy(); moved[:, 160:] = np.roll(moved[:, 160:], 3, axis=0)
 if t1.picdiff(t1.to_ref_ladder(bn), moved) <= 0.03:
     fails.append("a real difference must still score")
+# shadow/highlight: BrokenNes's 15-level ladder against Genplus's 17*k (Marsupilami's shadowed menu)
+k = np.repeat(((yy // 8 + xx // 8) % 15)[..., None], 3, axis=2)
+if t1.picdiff(t1.to_ref_ladder(t1._MD_BN15[k].astype(np.int32)), (k * 17).astype(np.int32)) != 0:
+    fails.append("shadow/highlight levels should map to Genplus's")
 t1.MD_LADDER = False
 if not np.array_equal(t1.to_ref_ladder(bn), bn):
     fails.append("other consoles must pass through")
