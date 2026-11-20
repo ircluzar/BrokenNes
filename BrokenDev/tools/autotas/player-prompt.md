@@ -37,9 +37,10 @@ $R gap                      # GAP SOLVER when every jump dies: long waits (a pla
 $R exits --apply            # EXIT FINDER: a wall or dead end often hides a pipe/door: walks, jumps, holds Down/Up to find it
 $R tree                     # your checkpoints as a branch tree
 $R probe 8                  # MAPS/MENUS: what each button does here (RAM changes, a picture each); nothing recorded
-$R explore 8 --vals Up,Down,Left,Right,A --key mapx,mapy,mode --want 'mode != 0' --apply
+$R explore 8 --vals Up,Down,Left,Right,A --key mapx,mapy,mode --want 'lvl == 1' --apply
                             # MAPS/MENUS: searches button presses until --want holds (e.g. a level entered), tightens the
-                            # path to the fewest frames, --apply records it. If it enters the wrong place, add && mode != N.
+                            # path to the fewest frames, --apply records it. Use the game's level flag (lvl) so bonus rooms/houses do not count;
+                            # to reach a SPECIFIC level, run it without --apply first: it lists what it reached.
 $R finish --note "<notes>"  # ONLY after a step printed >>> GOAL; replays + writes the movie and state
 ```
 Every step prints frame, RAM (mode 0 = map, x/y position, xspd, p = P-meter, pow, lives, time) and events:
