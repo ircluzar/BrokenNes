@@ -24,6 +24,10 @@ public static class ConsoleStateFile
 
     /// <summary>Wraps a session's payload. <paramref name="units"/> are the parts the state depends on, by name (for example <c>apu</c> = <c>SMS-FM</c>, <c>format</c> = <c>sms-1</c>).</summary>
     public static byte[] Wrap(ConsoleKind console, string gameId, string title, IReadOnlyDictionary<string, string> units, byte[] payload)
+        => Wrap(console, gameId, title, units, new ArraySegment<byte>(payload));
+
+    /// <summary><see cref="Wrap(ConsoleKind, string, string, IReadOnlyDictionary{string, string}, byte[])"/> of a part of a buffer (a reused one).</summary>
+    public static byte[] Wrap(ConsoleKind console, string gameId, string title, IReadOnlyDictionary<string, string> units, ArraySegment<byte> payload)
     {
         using var ms = new MemoryStream();
         using (var w = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true))
@@ -32,12 +36,57 @@ public static class ConsoleStateFile
             w.Write(Consoles.Key(console)); w.Write(gameId); w.Write(title);
             w.Write((byte)units.Count);
             foreach (var kv in units) { w.Write(kv.Key); w.Write(kv.Value); }
-            w.Write(payload.Length); w.Write(Crc32(payload));
-            using var z = new MemoryStream();
-            using (var d = new DeflateStream(z, CompressionLevel.Fastest, leaveOpen: true)) d.Write(payload);
-            w.Write((int)z.Length); w.Write(z.GetBuffer(), 0, (int)z.Length);
+            if (payload.Count >= ParallelMin) w.Write(payload.Count);   // (a big state: its CRC and packed data are added below)
+            else
+            {
+                w.Write(payload.Count); w.Write(Crc32(payload.AsSpan()));
+                using var z = new MemoryStream();
+                using (var d = new DeflateStream(z, CompressionLevel.Fastest, leaveOpen: true)) d.Write(payload.AsSpan());
+                w.Write((int)z.Length); w.Write(z.GetBuffer(), 0, (int)z.Length);
+            }
         }
-        return ms.ToArray();
+        if (payload.Count < ParallelMin) return ms.ToArray();
+        // a big state (the x86 PC: ~110 MB, the bug capture takes one a second): the CRC and the compression in parallel pieces into pooled
+        // buffers, then the file in ONE array of its exact size (the same format and payload; no growing copies: they were GBs of garbage)
+        var crc = System.Threading.Tasks.Task.Run(() => Crc32(payload.AsSpan()));
+        var (parts, lens) = DeflateParallel(payload);
+        try
+        {
+            long packed = 0; foreach (int l in lens) packed += l;
+            int head = (int)ms.Length;
+            var file = new byte[checked(head + 8 + (int)packed)];
+            ms.GetBuffer().AsSpan(0, head).CopyTo(file);
+            BitConverter.TryWriteBytes(file.AsSpan(head, 4), crc.Result);
+            BitConverter.TryWriteBytes(file.AsSpan(head + 4, 4), (int)packed);
+            int at = head + 8;
+            for (int i = 0; i < parts.Length; i++) { parts[i].AsSpan(0, lens[i]).CopyTo(file.AsSpan(at)); at += lens[i]; }
+            return file;
+        }
+        finally { foreach (var p in parts) System.Buffers.ArrayPool<byte>.Shared.Return(p); }
+    }
+
+    private const int ParallelMin = 16 << 20, ParallelChunk = 1 << 20;
+
+    /// <summary>One raw deflate stream made of independently compressed 1 MB pieces: every piece but the last ends with a sync flush (byte-aligned,
+    /// not final), the last one with the final block, so the pieces simply follow each other and any inflater reads them as one stream.
+    /// The pieces are pooled buffers (the caller returns them) of their packed lengths.</summary>
+    internal static (byte[][] parts, int[] lens) DeflateParallel(ArraySegment<byte> payload)
+    {
+        int n = (payload.Count + ParallelChunk - 1) / ParallelChunk;
+        var parts = new byte[n][]; var lens = new int[n];
+        System.Threading.Tasks.Parallel.For(0, n, i =>
+        {
+            int off = i * ParallelChunk, len = Math.Min(ParallelChunk, payload.Count - off);
+            var buf = System.Buffers.ArrayPool<byte>.Shared.Rent(len + len / 8 + 4096);   // (deflate never grows data by more than ~0.1 %)
+            var z = new MemoryStream(buf, 0, buf.Length, writable: true, publiclyVisible: true);
+            var d = new DeflateStream(z, CompressionLevel.Fastest, leaveOpen: true);
+            d.Write(payload.Array!, payload.Offset + off, len);
+            if (i < n - 1) { d.Flush(); lens[i] = (int)z.Position; }   // sync flush: everything so far, no final block (what disposing adds after it is ignored)
+            d.Dispose();
+            if (i == n - 1) lens[i] = (int)z.Position;
+            parts[i] = buf;
+        });
+        return (parts, lens);
     }
 
     /// <summary>Reads the header only. Throws <see cref="InvalidDataException"/> (with the reason, for the user) when this is not a console state at all.</summary>
@@ -139,11 +188,30 @@ public static class ConsoleStateFile
 
     /// <summary>CRC-32 (the zip / PNG polynomial), a table at a time: the same value as the bit-by-bit definition (the SNES state test checks that), about ten times faster on the half-megabyte a SNES state is.</summary>
     internal static uint Crc32(ReadOnlySpan<byte> data)
-    {
+    {   // slicing-by-8 (the same CRC-32, 8 bytes a step: a 110 MB x86 state took 220 ms byte by byte)
         uint crc = 0xFFFFFFFF;
+        var t = Crc8;
+        int i = 0;
+        for (; i + 8 <= data.Length; i += 8)
+        {
+            uint a = crc ^ System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(i));
+            uint b = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(i + 4));
+            crc = t[7 * 256 + (a & 0xff)] ^ t[6 * 256 + ((a >> 8) & 0xff)] ^ t[5 * 256 + ((a >> 16) & 0xff)] ^ t[4 * 256 + (a >> 24)]
+                ^ t[3 * 256 + (b & 0xff)] ^ t[2 * 256 + ((b >> 8) & 0xff)] ^ t[256 + ((b >> 16) & 0xff)] ^ t[b >> 24];
+        }
         var table = CrcTable;
-        foreach (byte b in data) crc = table[(crc ^ b) & 0xFF] ^ (crc >> 8);
+        for (; i < data.Length; i++) crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >> 8);
         return ~crc;
+    }
+
+    private static readonly uint[] Crc8 = BuildCrc8();
+    private static uint[] BuildCrc8()
+    {
+        var t = new uint[8 * 256];
+        var b = BuildCrcTable();
+        for (int i = 0; i < 256; i++) t[i] = b[i];
+        for (int k = 1; k < 8; k++) for (int i = 0; i < 256; i++) t[k * 256 + i] = (t[(k - 1) * 256 + i] >> 8) ^ t[t[(k - 1) * 256 + i] & 0xff];
+        return t;
     }
 
     /// <summary>The same CRC-32 for other files (BrokenDev Timeflow's blocks).</summary>

@@ -278,8 +278,17 @@ public sealed class PcSession : IConsoleSession
     public byte[] SaveState()
     {
         if (!_powered) { FirstPowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); }
-        return ConsoleStateFile.Wrap(Console, GameId, Title, StateUnits(), WithSoundOutput(_m.SaveState()));
+        // one buffer for the payload, reused (the bug capture takes a state a second: ~110 MB of Win98 RAM, video memory and disk diff; four
+        // growing copies of it a second were GBs of large-object garbage, a 20 GB window), packed in parallel pieces by Wrap (~1 s -> ~0.1 s)
+        var ms = _stateBuf ??= new MemoryStream();
+        ms.SetLength(0);
+        _m.SaveState(ms);
+        WriteSoundOutput(ms);
+        var file = ConsoleStateFile.Wrap(Console, GameId, Title, StateUnits(), new ArraySegment<byte>(ms.GetBuffer(), 0, (int)ms.Length));
+        if (ms.Capacity > 512 << 20) _stateBuf = null;   // (never keep a freak-sized buffer)
+        return file;
     }
+    private MemoryStream? _stateBuf;
 
     // FA-ST-3: the sound already drawn but not yet read (the speaker, the AdLib, the card) follows the machine as a trailer: [machine][PCAU section][its length][PCAU].
     // The machine state is unchanged; a state without the trailer (older) loads as before: the drawn samples are dropped and the sound carries on from the present.
@@ -288,9 +297,16 @@ public sealed class PcSession : IConsoleSession
     private byte[] WithSoundOutput(byte[] machine)
     {
         using var ms = new MemoryStream();
+        ms.Write(machine);
+        WriteSoundOutput(ms);
+        return ms.ToArray();
+    }
+
+    /// <summary>The sound trailer, appended at the stream's end.</summary>
+    private void WriteSoundOutput(MemoryStream ms)
+    {
         using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, true))
         {
-            w.Write(machine);
             long start = ms.Position;
             w.Write(1);   // section version
             _m.Speaker.SaveOutput(w);
@@ -300,7 +316,6 @@ public sealed class PcSession : IConsoleSession
             card?.SaveOutput(w);
             w.Write((int)(ms.Position - start)); w.Write(SoundMagic);
         }
-        return ms.ToArray();
     }
 
     /// <summary>Splits a payload into the machine state and the sound trailer (null when there is none).</summary>

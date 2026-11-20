@@ -727,8 +727,23 @@ namespace BrokenNes.Windows
         }
 
         /// <summary>Runs one frame of the SNES / Game Boy session: input, the frame, sound, the picture.</summary>
+        /// <summary>BROKENNES_SLOWFRAMES=path: one line per session frame slower than 100 ms (where its time went, GC counts and pause), for the stall hunt.</summary>
+        private static readonly string? SlowFrameLog = Environment.GetEnvironmentVariable("BROKENNES_SLOWFRAMES");
+        private long sfLast, sfPrevEnd; private readonly long[] sfT = new long[6];
+        private void SlowMark(int i) { if (SlowFrameLog != null) sfT[i] = System.Diagnostics.Stopwatch.GetTimestamp(); }
+        private void SlowFrameEnd()
+        {
+            long end = System.Diagnostics.Stopwatch.GetTimestamp(); double f = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            long start = sfPrevEnd == 0 ? sfT[0] : sfPrevEnd; sfPrevEnd = end;
+            if ((end - start) * f < 100) return;
+            var gi = GC.GetGCMemoryInfo(GCKind.Any);
+            string line = $"{DateTime.Now:HH:mm:ss.fff} frame {sessionFrames} total {(end - start) * f:F0} ms: outside {(sfT[0] - start) * f:F0} pre+lockwait {(sfT[1] - sfT[0]) * f:F0} run {(sfT[2] - sfT[1]) * f:F0} post {(sfT[3] - sfT[2]) * f:F0} audio {(sfT[4] - sfT[3]) * f:F0} copy {(end - sfT[4]) * f:F0} | gc {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)} pauseTotal {GC.GetTotalPauseDuration().TotalMilliseconds:F0} last gen{gi.Generation} {gi.PauseDurations[0].TotalMilliseconds:F0} ms heap {gi.HeapSizeBytes >> 20} MB";
+            try { File.AppendAllText(SlowFrameLog!, line + Environment.NewLine); } catch { }
+        }
+
         private void RunSessionFrame(IConsoleSession s)
         {
+            SlowMark(0);
             inputManager?.Poll();
             inputManager2?.Poll();
             var p1 = ToPad(inputManager); var p2 = ToPad(inputManager2);
@@ -761,7 +776,9 @@ namespace BrokenNes.Windows
                 DrainPcKeys(s);                     // the x86 PC: the real keyboard's keys typed since the last frame
                 s.SetPad(0, p1); s.SetPad(1, p2);
                 ApplyPointer(s, ptr);
+                SlowMark(1);
                 using (PerformanceProfiler.Time("Session.RunFrame")) s.RunFrame();
+                SlowMark(2);
                 TfAfterFrame(s);
                 FarmAfterFrame();
             }
@@ -776,6 +793,7 @@ namespace BrokenNes.Windows
                 fpsStopwatch.Restart();
             }
 
+            SlowMark(3);
             if (audioManager != null)
             using (PerformanceProfiler.Time("Session.Audio"))
             {
@@ -790,6 +808,7 @@ namespace BrokenNes.Windows
             // The size, the picture and the buffer are read together under the lock a core swap takes: a swap between reading the size (256 x 240, a NES chip drawing the game) and reading the picture
             // (160 x 144, the console's own chip again) read past the end of the picture, threw, and the loop below treats an exception as the end of the emulation - the game stopped for good
             // (found by driving the swaps through the HTTP API: about one swap back in three).
+            SlowMark(4);
             int w, h, aw; bool resize = false;
             using (PerformanceProfiler.Time("Session.Copy"))
             lock (emulationLock)
@@ -805,6 +824,7 @@ namespace BrokenNes.Windows
                     for (int i = 0; i < n; i++) dst[i] = (int)src[i];
                 }
             }
+            if (SlowFrameLog != null) SlowFrameEnd();
             if (resize)
             {
                 RequestDisplaySize(w, h, aw);

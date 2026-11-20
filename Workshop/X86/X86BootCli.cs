@@ -364,6 +364,22 @@ internal static class X86BootCli
         if (args.Contains("--dacdump")) for (int r = 0; r < 256; r += 16) Console.WriteLine($"dac {r:X2}: " + string.Join(" ", Enumerable.Range(r, 16).Select(i => $"{m.Vga.Palette[i * 3]:X2}{m.Vga.Palette[i * 3 + 1]:X2}{m.Vga.Palette[i * 3 + 2]:X2}")));
         Console.WriteLine($"vga: DAC writes {m.Vga.DacWrites}, above 3Fh {m.Vga.DacWritesOver63}; S3 CR55 {(m.S3 != null ? m.Vga.Cr[0x55] : 0):X2} CR67 {(m.S3 != null ? m.Vga.Cr[0x67] : 0):X2} SR18 {(m.S3 != null ? m.S3.SrRead(0x18) : 0):X2}; VGA-by-MMIO writes {m.S3?.VgaMmioWrites}, CR53 {(m.S3 != null ? m.Vga.Cr[0x53] : 0):X2}");
         if (args.Contains("--frametimes")) { var gi = GC.GetGCMemoryInfo(GCKind.Ephemeral); Console.WriteLine($"gc last ephemeral: gen {gi.Generation}, pause {(gi.PauseDurations.Length > 0 ? gi.PauseDurations[0].TotalMilliseconds : 0):F1} ms, promoted {gi.PromotedBytes / 1048576} MB, heap {gi.HeapSizeBytes / 1048576} MB, fragmented {gi.FragmentedBytes / 1048576} MB; gen0 budget? total committed {gi.TotalCommittedBytes / 1048576} MB"); }
+        if (Environment.GetEnvironmentVariable("X86_SAVEBENCH") == "1")
+        {   // the bug-capture state's cost on this machine, by stage (diagnostics)
+            for (int rep = 0; rep < 3; rep++)
+            {
+                var sbw = System.Diagnostics.Stopwatch.StartNew();
+                var st = m.SaveState(); double tSave = sbw.Elapsed.TotalMilliseconds; sbw.Restart();
+                uint crc = NesEmulator.Systems.ConsoleStateFile.Crc32Public(st); double tCrc = sbw.Elapsed.TotalMilliseconds; sbw.Restart();
+                var wrapped = NesEmulator.Systems.ConsoleStateFile.Wrap(NesEmulator.Systems.ConsoleKind.Pc, "g", "t", new Dictionary<string, string>(), st); double tWrap = sbw.Elapsed.TotalMilliseconds; sbw.Restart();
+                ulong fh = 14695981039346656037UL; var smem = m.Cpu.Mem; for (int i = 0; i < smem.Length; i++) { fh ^= smem[i]; fh *= 1099511628211UL; } double tFnv = sbw.Elapsed.TotalMilliseconds;
+                uint rc = 0xFFFFFFFF; foreach (byte cb in st) { rc ^= cb; for (int k = 0; k < 8; k++) rc = (rc & 1) != 0 ? (rc >> 1) ^ 0xEDB88320u : rc >> 1; }
+                Console.WriteLine($"savebench: crc {(~rc == crc ? "EQUALS" : "DIFFERS FROM")} the bitwise definition");
+                bool same = NesEmulator.Systems.ConsoleStateFile.PayloadOf(wrapped).AsSpan().SequenceEqual(st);
+                var ms2 = new MemoryStream(); m.SaveState(ms2); bool streamSame = ms2.ToArray().AsSpan().SequenceEqual(st);
+                Console.WriteLine($"savebench: state {st.Length >> 20} MB {tSave:F0} ms, crc {tCrc:F0} ms, wrap(crc+deflate) {tWrap:F0} ms -> {wrapped.Length >> 20} MB, fnv over RAM {smem.Length >> 20} MB {tFnv:F0} ms; round trip {(same ? "EQUAL" : "DIFFERENT")}, stream save {(streamSame ? "EQUAL" : "DIFFERENT")}");
+            }
+        }
         if (PcMachine.AllocProbe) Console.WriteLine($"allocprobe: devices {m.AllocDevices / 1048576} MB, cpu {m.AllocCpu / 1048576} MB, render {m.AllocRender / 1048576} MB, total thread {GC.GetAllocatedBytesForCurrentThread() / 1048576} MB");
         if (_allocs != null) lock (_allocs.ByType) foreach (var kv in _allocs.ByType.OrderByDescending(x => x.Value).Take(15)) Console.WriteLine($"  alloc {kv.Value / 1048576,6} MB {kv.Key}");
         if (lanLink != null) Console.WriteLine($"lan: sent {lanLink.Sent} (IPX {lanLink.SentIpx}), received {lanLink.Received} (IPX {lanLink.ReceivedIpx}){(lanLink.Members > 0 ? $", members {lanLink.Members}" : "")}");
