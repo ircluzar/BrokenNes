@@ -91,7 +91,7 @@ internal static class X86BootCli
         var sw = Stopwatch.StartNew();
         m.PowerOn();
         // --loadstate: carry on from a --savestate of the same machine (its disks come from the state; the CD stays the one given)
-        if (Arg(args, "--loadstate") is string ls) { m.LoadState(File.ReadAllBytes(ls)); if (args.Contains("--cdchanged")) m.Ata?.Secondary.MediaChanged(0); }   // --cdchanged: the disc was swapped since the state was saved (UNIT ATTENTION)
+        if (Arg(args, "--loadstate") is string ls) { m.LoadState(File.ReadAllBytes(ls)); if (_allocs != null) lock (_allocs.ByType) _allocs.ByType.Clear();   /* (count the run, not the load) */ if (args.Contains("--cdchanged")) m.Ata?.Secondary.MediaChanged(0); }   // --cdchanged: the disc was swapped since the state was saved (UNIT ATTENTION)
         // --net: plug the network card into the built-in NAT (DHCP, DNS, the HTTPS bridge); off by default
         PcNat? nat = null;
         if (Arg(args, "--niclog") is string nl && m.Nic != null)
@@ -342,6 +342,12 @@ internal static class X86BootCli
             }
         }
         foreach (var va in Args(args, "--vramdump")) { var pp = va.Split(':'); int a0 = Convert.ToInt32(pp[0], 16), ln = int.Parse(pp[1]); for (int k = 0; k < ln; k += 32) Console.WriteLine($"vram {a0 + k:X6}: " + string.Join(" ", m.Vga.Ram.Skip(a0 + k).Take(32).Select(b => b.ToString("X2")))); }
+        if (Arg(args, "--ipsync") is string isy)   // --ipsync LO-HI (hex linear): run small slices until EIP is in that range, so --dump reads that process's address space (Win98: per-process low memory)
+        {
+            var r = isy.Split('-'); uint lo = Convert.ToUInt32(r[0], 16), hi = Convert.ToUInt32(r[1], 16); int k = 0;
+            for (; k < 200000; k++) { uint lin = m.Cpu.SegBase[1] + m.Cpu.Ip; if (lin >= lo && lin < hi) break; m.RunClock(97); }
+            Console.WriteLine($"ipsync: {k} slices, EIP lin {m.Cpu.SegBase[1] + m.Cpu.Ip:X8}");
+        }
         foreach (var da in Args(args, "--dump"))   // --dump HEXLIN:LEN: bytes at a linear address (through the page tables)
         {
             var parts = da.Split(':'); uint a0 = Convert.ToUInt32(parts[0], 16); int len = parts.Length > 1 ? int.Parse(parts[1]) : 64;

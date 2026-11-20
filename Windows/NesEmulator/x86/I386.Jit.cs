@@ -202,7 +202,7 @@ public sealed partial class I386
     // expand-down data segments (Win98's flat Win32 DS / ES / SS is one: 0167h, limit EE60h, B = 1): valid offsets are limit + 1 .. FFFFh / FFFFFFFFh.
     // The compiled limit check is (off - lo) <= span - (size - 1): lo = 0, span = limit for the usual kind; lo = limit + 1, span = top - lo here
     /// <summary>Usable for reads only: a readable code segment (a CS: override, jump tables in 16-bit code; Win98's ring-0 code reads through CS too).</summary>
-    private bool JSegRdOk(int seg) => JSegOk(seg) || (Cr0 & 1) != 0 && (Flags & VM) == 0 && (SegFlags[seg] & 0x1a) == 0x1a && SegLimit[seg] >= 3;
+    private bool JSegRdOk(int seg) => JSegOk(seg) || (Cr0 & 1) != 0 && (Flags & VM) == 0 && ((SegFlags[seg] & 0x1a) == 0x1a || (SegFlags[seg] & 0x1e) == 0x10) && SegLimit[seg] >= 3;   // (+ read-only data, expand-up: Win98's 0123h, limit 3 - StarCraft's GS: / 16-bit ES:)
     private bool ExpandDown(int seg) => (Cr0 & 1) != 0 && (Flags & VM) == 0 && (SegFlags[seg] & 0x1c) == 0x14;
     [MethodImpl(MethodImplOptions.NoInlining)] private uint JSegLo(int seg) => ExpandDown(seg) ? SegLimit[seg] + 1 : 0;
     [MethodImpl(MethodImplOptions.NoInlining)] private uint JSegSpan(int seg) => ExpandDown(seg) ? ((SegFlags[seg] & 0x4000) != 0 ? 0xffffffffu : 0xffffu) - (SegLimit[seg] + 1) : SegLimit[seg];
@@ -274,7 +274,7 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JCodeSame() => JitSame(_jitCur!);
     [MethodImpl(MethodImplOptions.NoInlining)] private void JImul2(int bits, int reg, uint a, uint b) => Imul2(bits, reg, a, b);
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JCall(uint rel) => CallNear(rel, true);
-    [MethodImpl(MethodImplOptions.NoInlining)] private bool JRet() => OpRet() != FAIL;
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool JRet(int n) => K(Ret((uint)n)) != FAIL;
 
     /// <summary>An out-of-line instruction: exactly one iteration of Exec1's loop (without the compiled code), from Ip <paramref name="ip"/>.</summary>
     /// <summary>JITSTAT: out-of-line instructions by physical address (the top ones, disassembled by the caller from memory).</summary>
@@ -1272,10 +1272,10 @@ public sealed partial class I386
                     {
                         var inLim = il.DefineLabel();
                         Ld(V); Ld0(); I4(SEG_CS); Call("JSegLim"); il.Emit(OpCodes.Ble_Un, inLim);
-                        Prep(); Ld0(); Call("JRet"); FailIfFalse(); StDec(); LeaveAfter(k, () => { Ld0(); Call("JNextIp"); });
+                        Prep(); Ld0(); I4((int)e.Imm); Call("JRet"); FailIfFalse(); StDec(); LeaveAfter(k, () => { Ld0(); Call("JNextIp"); });
                         il.MarkLabel(inLim);
                     }
-                    StReg(32, 4, () => { Ld(A); I4(pb / 8); Op(OpCodes.Add); Ld(spm); Op(OpCodes.And); LdReg(32, 4); Ld(spm); Op(OpCodes.Not); Op(OpCodes.And); Op(OpCodes.Or); });
+                    StReg(32, 4, () => { Ld(A); I4(pb / 8 + (int)e.Imm); Op(OpCodes.Add); Ld(spm); Op(OpCodes.And); LdReg(32, 4); Ld(spm); Op(OpCodes.Not); Op(OpCodes.And); Op(OpCodes.Or); });
                     StDec();
                     LeaveAfter(k, () => Ld(V));
                     ends = true;
