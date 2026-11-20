@@ -83,6 +83,12 @@ public sealed partial class I386
         return null;
     }
     public int JitReused { get; private set; }
+    /// <summary>--jitstat pipeline counters: regions posted to the compiler, dropped at install (bytes changed meanwhile / failed),
+    /// worker ticks inside Emit + the .NET JIT, compiles of a key compiled before (churn), variant-table clears.</summary>
+    public long JitPosted, JitDropped, JitRecompiles, JitKeepClears, JitInstrCompiled;
+    public static long JitEmitTicks;
+    private readonly HashSet<ulong> _jitSeenKeys = new();
+    public string JitPipeStat() => $"jitpipe: posted {JitPosted} installed {JitCompiled} dropped {JitDropped} recompiles(same key) {JitRecompiles} keep-clears {JitKeepClears} unseen-cut {JitUnseenCut} instrs-compiled {JitInstrCompiled} worker-compile {JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms ({JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, JitPosted):F2} ms/region; IL build {JitBuildTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms, IL {JitIlBytes / Math.Max(1, JitPosted)} bytes/region)";
 
     // statistics (Workshop --x86boot --jitstat)
     public int JitCompiled { get; private set; }
@@ -549,6 +555,15 @@ public sealed partial class I386
     /// <summary>Compile the region of cached-form instructions reachable from <paramref name="en"/>'s address: the fall-throughs and the
     /// targets of the near jumps (JMP / Jcc / a folded JZ), close by, up to JitMaxInstr instructions. Jumps between them stay inside the
     /// compiled code; everything else leaves it.</summary>
+    /// <summary>Default (X86_NOJITSEEN turns it off): a region takes only instructions the CPU has already run (they have a JIT entry: every fast-path fetch makes
+    /// one); paths never taken are left out of it, so the .NET JIT compiles less cold code (they leave the block, the interpreter runs
+    /// them, and if they get hot they get a region of their own).</summary>
+    private static readonly bool JitSeenOnly = Environment.GetEnvironmentVariable("X86_NOJITSEEN") == null;   // (default since 2026-11-20; X86_NOJITSEEN: the whole reachable region again)
+    public long JitUnseenCut;
+    private bool JitSeen(uint pa, bool pg) { var e = _je[JitIndex(pa)]; return e != null && e.Start == pa && e.C16 == _c16 && e.Pg == pg; }
+    private readonly List<(uint pa, DEntry e)> _jcFound = new();
+    private readonly HashSet<uint> _jcSeen = new();
+    private readonly Queue<uint> _jcTodo = new();
     private void JitCompile(JitEntry en)
     {
         uint start = en.Start;
@@ -560,13 +575,15 @@ public sealed partial class I386
             JitRegister(old);
             return;
         }
-        var found = new SortedDictionary<uint, DEntry>();
-        var todo = new Queue<uint>();
+        var found = _jcFound; found.Clear(); var seen = _jcSeen; seen.Clear();
+        var todo = _jcTodo; todo.Clear();
         todo.Enqueue(start);
+        bool anyCompiled = false;
         while (todo.Count > 0 && found.Count < JitMaxInstr)
         {
             uint pa = todo.Dequeue();
-            if (found.ContainsKey(pa)) continue;
+            if (!seen.Add(pa)) continue;
+            if (JitSeenOnly && pa != start && !JitSeen(pa, pg)) { if (JitStats) JitUnseenCut++; continue; }   // never run yet: leave it out (it exits there)
             // one 4 KB page (the compiled code never goes on into another one: see Continue)
             if ((pa & 0xfff) >= 4096 - 16 || pa + 32 >= MemSize || (pa >> 12) != (start >> 12)) continue;
             var e = new DEntry();
@@ -574,14 +591,15 @@ public sealed partial class I386
             if (e.Kind == DK_SLOW) continue;
             uint end = pa + e.Len;
             if (JitFoldsAt(e, end)) { e.Folds = true; e.FoldNb = (byte)U8(end); e.FoldRel = Sext8(U8(end + 1)); }
-            found[pa] = e;
+            found.Add((pa, e)); if (e.Kind != DK_INTERP) anyCompiled = true;
             if (e.Kind is not (DK_JMP or DK_CALL or DK_RET) && !(e.Kind == DK_INTERP && e.Op == 1)) todo.Enqueue(end);
             if (e.Kind is DK_JMP or DK_JCC) todo.Enqueue(end + e.Imm);
             if (e.Folds) todo.Enqueue(end + 2 + e.FoldRel);
         }
-        if (!found.Values.Any(x => x.Kind != DK_INTERP)) { en.Failed = true; return; }
-        var pas = found.Keys.ToArray();
-        var ins = found.Values.ToArray();
+        if (!anyCompiled) { en.Failed = true; return; }
+        found.Sort((x, y) => x.pa.CompareTo(y.pa));
+        var pas = new uint[found.Count]; var ins = new DEntry[found.Count];
+        for (int i = 0; i < pas.Length; i++) { pas[i] = found[i].pa; ins[i] = found[i].e; }
         // the byte ranges the code depends on: each instruction, plus the JZ / JNZ a CMP / TEST folds with
         var ranges = new List<(uint a, uint b)>();
         for (int k = 0; k < pas.Length; k++)
@@ -592,11 +610,12 @@ public sealed partial class I386
             else ranges.Add((a, b));
         }
         // the bytes it is compiled from, as they are now (the compiled code runs only while memory still holds them)
-        var bytes = new List<byte>();
-        foreach (var (a, b) in ranges) bytes.AddRange(Mem.AsSpan((int)a, (int)(b - a)).ToArray());
+        int nb = 0; foreach (var (a, b) in ranges) nb += (int)(b - a);
+        var bytes = new byte[nb]; nb = 0;
+        foreach (var (a, b) in ranges) { Mem.AsSpan((int)a, (int)(b - a)).CopyTo(bytes.AsSpan(nb)); nb += (int)(b - a); }
         var code = new JitCode
         {
-            Start = start, Count = pas.Length, C16 = _c16, Pg = pg, Bytes = bytes.ToArray(),
+            Start = start, Count = pas.Length, C16 = _c16, Pg = pg, Bytes = bytes,
             RunAt = ranges.Select(r => (int)r.a).ToArray(), RunLen = ranges.Select(r => (int)(r.b - r.a)).ToArray(),
             Addrs = pas,
         };
@@ -623,11 +642,14 @@ public sealed partial class I386
         }
         en.Pending = true;
         if (JitWatch != 0 && pas.Contains(JitWatch)) Console.Error.WriteLine($"jw: post region {start:X8} n {pas.Length}");
-        _jitPending++;
+        _jitPending++; JitPosted++; JitInstrCompiled += pas.Length;
+        if (!_jitSeenKeys.Add(key)) JitRecompiles++;
         JitWorker.Post(() =>
         {
-            try { code.Fn = Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg); code.Fn(this, -1); }
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            try { code.Fn = Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg); System.Threading.Interlocked.Add(ref JitBuildTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0); code.Fn(this, -1); }
             catch (Exception ex) { code.Fn = null!; if (JitStats) Console.Error.WriteLine($"jit: {start:X8} failed: {ex.GetType().Name} {ex.Message}"); }
+            System.Threading.Interlocked.Add(ref JitEmitTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0);
             _jitDone.Enqueue((en, code, key));
         });
     }
@@ -636,7 +658,7 @@ public sealed partial class I386
     {
         JitCompiled++;
         if (JitStats) _jitAll.Add(code);
-        if (_jitCodes.Count >= JitKeep) _jitCodes.Clear();   // a long session that has run a lot of different code: let the old code go
+        if (_jitCodes.Count >= JitKeep) { _jitCodes.Clear(); JitKeepClears++; }   // a long session that has run a lot of different code: let the old code go
         if (!_jitCodes.TryGetValue(key, out var vs) || vs.Length != JitVariants) _jitCodes[key] = vs = new JitCode[JitVariants];
         Array.Copy(vs, 0, vs, 1, vs.Length - 1); vs[0] = code;   // (newest first; the oldest falls off)
         JitRegister(code);
@@ -660,7 +682,7 @@ public sealed partial class I386
                 e.Pending = false; e.Visits = 0;
                 if (code.Fn == null && pa == code.Start) e.Failed = true;
             }
-            if (ok) JitInstall(en, code, key);
+            if (ok) JitInstall(en, code, key); else JitDropped++;
         }
     }
 
@@ -714,8 +736,20 @@ public sealed partial class I386
     private JitFn Emit(uint start, uint[] pas, DEntry[] ins, uint lo, uint hi, bool c16, uint memSize, bool ioMem, bool pg)
     {
         var mm = JitMethods.Value;
-        var dm = new DynamicMethod("x86blk", typeof(int), new[] { typeof(I386), typeof(int) }, typeof(I386), true);
-        var il = dm.GetILGenerator();
+        DynamicMethod? dm = null; System.Reflection.Emit.TypeBuilder? tb = null;
+        ILGenerator il;
+        if (JitTier)
+        {   // a static method of a (collectible) emitted type: the runtime's tiered compilation applies (DynamicMethod is always fully
+            // optimized): a quick tier-0 compile now, the optimized one in the background once the block has run 30 times
+            var mb0 = (tb = JitTierModule().DefineType("x86blk" + System.Threading.Interlocked.Increment(ref _jitTierN), TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Abstract))
+                .DefineMethod("x86blk", MethodAttributes.Public | MethodAttributes.Static, typeof(int), new[] { typeof(I386), typeof(int) });
+            il = mb0.GetILGenerator();
+        }
+        else
+        {
+            dm = new DynamicMethod("x86blk", typeof(int), new[] { typeof(I386), typeof(int) }, typeof(I386), true);
+            il = dm.GetILGenerator();
+        }
         var ip0 = il.DeclareLocal(typeof(uint));   // the Ip of the region's start address
         var cyc = il.DeclareLocal(typeof(long));
         var st = il.DeclareLocal(typeof(int));
@@ -1539,8 +1573,32 @@ public sealed partial class I386
                 Continue(k, () => IpAt(pe), pe, true);
             }
         }
-        return (JitFn)dm.CreateDelegate(typeof(JitFn));
+        System.Threading.Interlocked.Add(ref JitIlBytes, il.ILOffset);
+        if (tb != null) return (JitFn)tb.CreateType()!.GetMethod("x86blk")!.CreateDelegate(typeof(JitFn));
+        return (JitFn)dm!.CreateDelegate(typeof(JitFn));
     }
+    /// <summary>X86_JITTIER: compile blocks as emitted-type methods (tiered: quick first, optimized when hot) instead of DynamicMethods.</summary>
+    private static readonly bool JitTier = Environment.GetEnvironmentVariable("X86_JITTIER") == "1";
+    private static int _jitTierN;
+    private static System.Reflection.Emit.ModuleBuilder? _jitTierMod;
+    private static int _jitTierModN;
+    private static readonly object _jitTierLock = new();
+    /// <summary>A collectible dynamic assembly that may use I386's private members; a new one every 256 blocks (so old code can be collected).</summary>
+    private static System.Reflection.Emit.ModuleBuilder JitTierModule()
+    {
+        lock (_jitTierLock)
+        {
+            if (_jitTierMod == null || ++_jitTierModN % 256 == 0)
+            {
+                var ab = System.Reflection.Emit.AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("x86blocks" + _jitTierModN), System.Reflection.Emit.AssemblyBuilderAccess.RunAndCollect);
+                ab.SetCustomAttribute(new System.Reflection.Emit.CustomAttributeBuilder(typeof(System.Runtime.CompilerServices.IgnoresAccessChecksToAttribute).GetConstructor(new[] { typeof(string) })!,
+                    new object[] { typeof(I386).Assembly.GetName().Name! }));
+                _jitTierMod = ab.DefineDynamicModule("x86blocks");
+            }
+            return _jitTierMod;
+        }
+    }
+    public static long JitIlBytes, JitBuildTicks;
 
     /// <summary>The segments a compiled instruction reads or writes through (bit per segment).</summary>
     private static int InsSegs(DEntry e)
@@ -1560,3 +1618,4 @@ public sealed partial class I386
     private static bool DcHasModrm(byte kind) => kind is DK_MOVEG or DK_MOVGE or DK_ALUEG or DK_ALUGE or DK_GRP1 or DK_GRP2 or DK_TESTEG
         or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU or DK_MMX;
 }
+
