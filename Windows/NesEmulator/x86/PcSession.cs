@@ -157,9 +157,21 @@ public sealed class PcSession : IConsoleSession
     }
 
 
+    private bool _stateHookUsed;
+    // BROKENNES_X86_MACHINESTATE: start from a machine state saved by the Workshop's x86boot ({save:PATH}) on the same disks (X86-02: StarCraft's menu); used once
+    private void FirstPowerOn()
+    {
+        _m.PowerOn(); _powered = true;
+        if (!_stateHookUsed && Environment.GetEnvironmentVariable("BROKENNES_X86_MACHINESTATE") is { Length: > 0 } ms && File.Exists(ms))
+        {
+            _stateHookUsed = true;
+            _m.LoadState(File.ReadAllBytes(ms));
+        }
+    }
+
     public void RunFrame()
     {
-        if (!_powered) { _m.PowerOn(); _powered = true; }
+        if (!_powered) { FirstPowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); }
         _m.RunFrame();
         _m.Speaker.CatchUp();   // the PC speaker's and the AdLib's samples up to the end of this frame
         _m.Opl.CatchUp();
@@ -176,7 +188,7 @@ public sealed class PcSession : IConsoleSession
         _w = w; _h = h;
     }
 
-    public void Reset() { _m.PowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); _powered = true; _pad = PadButtons.None; }
+    public void Reset() { FirstPowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); _powered = true; _pad = PadButtons.None; }
     public uint[] Frame => _frame;
     public int FrameWidth => _w;
     public int FrameHeight => _h;
@@ -255,7 +267,7 @@ public sealed class PcSession : IConsoleSession
 
     public byte[] SaveState()
     {
-        if (!_powered) { _m.PowerOn(); _powered = true; }
+        if (!_powered) { FirstPowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); }
         return ConsoleStateFile.Wrap(Console, GameId, Title, StateUnits(), WithSoundOutput(_m.SaveState()));
     }
 
