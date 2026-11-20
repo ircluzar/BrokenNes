@@ -62,11 +62,22 @@ python -I submit.py n64 ab_rep --cmd "COR64_MYFLAG=1 bash UAT/n64/ab30.sh" --rep
 python -I submit.py status ab_myflag        # keeper status, items done, each result's last log lines
 ```
 
-- Lines run in bash in `C:\brokennes\n64\repo` with `N64_WORK` = that job's own folder. An item's `"lib": ["Game.7z", ...]` copies those
-  library archives with the job (`N64_LIBRARY_DIR` points at them), so `catalog/run_one.sh` works on any PC, not only STONE.
+- Lines run in bash in `C:\brokennes\n64\repo` with `N64_WORK` = that job's own folder.
+- **Every PC holds the game library** (since 2026-11-20): the 353 game archives of `X:\EMULATION\Nintendo 64` (4.7 GB; no
+  GameShark/Action Replay/CD64 BIOS/Public Domain carts, no loose .z64) in `C:\brokennes\n64\data\lib`, verified by size + SHA256.
+  An item's `"lib": ["Game.7z", ...]` no longer travels with the job: `N64_LIBRARY_DIR=/c/brokennes/n64/data/lib`, and fleetq ships
+  only an archive that PC's inventory lacks, straight into its library by scp, with a `N64 LIB FALLBACK` line in `queue.log`.
+  Inventory: `C:\BrokenNes-work\n64\lib_inventory.json`; re-sync / re-verify after adding games:
+  `python -I C:\BrokenNes-work\n64\libsync.py [--pcs A,B] [--verify-only]` (idle PCs first, 2 at a time, 250 Mbit/s each, pauses
+  on a PC while an agent-tier job runs there; never through the E: stick). `n64_catalog_bench` stays on STONE (its list has the carts).
 - Results come back to `C:\BrokenNes-work\n64\fleet\<name>\<item id>\<PC>\` (`job.log` + the work folder).
   `python -I C:\BrokenNes-work\n64\fleet\summarize.py` rewrites `SUMMARY.md` there (pass/fail and numbers per job).
-- QUARTZ cannot start parallel-rdp (no Vulkan): give an item `"pc": "<other PC>"` or use `COR64_RDP=software` when it matters.
+- QUARTZ and AMBER (i5-6500T, HD 530; AMBER has no Vulkan loader at all) cannot start parallel-rdp: fleetq skips them for N64
+  items unless the item says `"soft_rdp": true` (then `COR64_RDP=software`). Both have 8 GB (`N64_MIN_FREE_GB=2` there).
+- Which PC for what: speed A/B (`heavy`) on the quiet HD 630 PCs (CORAL, STONE, DIAMOND, OPAL, SAPPHIRE, ZIRCON, EMERALD, PEARL);
+  EMERALD/PEARL usually run other work, so they suit COMPAT_TWICE / crash repro more than timing. AMBER/QUARTZ: software-RDP
+  checks and CPU-only runs (krom RSP, segv repro with `soft_rdp`). N64 jobs stay under 1 GB RAM, so 2-3 per 16 GB PC is fine for
+  non-timing work; timing work is 1 per PC.
 - `--tier sweep` is for regression / status runs (they only fill spare capacity). Rule: agent tests first, sweeps fill the rest.
 
 ## Reference
