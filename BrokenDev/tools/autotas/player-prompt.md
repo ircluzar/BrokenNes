@@ -34,9 +34,12 @@ $R do "Right+B@x>=400 Right+B+A:14 none@air==0"
 $R map 120 --cell 16        # the LEVEL MAP stitched from every grid you have looked at ('|' = you): plan routes on it
 $R rewind 60                # TIME MACHINE: go back 60 frames on your current line (no checkpoint needed)
 $R gap                      # GAP SOLVER when every jump dies: long waits (a platform must arrive) + slow landings from earlier checkpoints
+$R roam 30                  # MAZES (castles, caves): explores every reachable spot both ways + doors (Up/Down) until a door/pipe/goal, plays the path
+$R goal --apply             # LEVEL END: touches the goal object (card box) even if it is behind/above you
 $R exits --apply            # EXIT FINDER: a wall or dead end often hides a pipe/door: walks, jumps, holds Down/Up to find it
 $R tree                     # your checkpoints as a branch tree
 $R probe 8                  # MAPS/MENUS: what each button does here (RAM changes, a picture each); nothing recorded
+$R nodes 8 --key mapx,mapy       # MAP: every place the d-pad reaches + what A does there (LEVEL / room / nothing) and its path
 $R explore 8 --vals Up,Down,Left,Right,A --key mapx,mapy,mode --want 'lvl == 1' --apply
                             # MAPS/MENUS: searches button presses until --want holds (e.g. a level entered), tightens the
                             # path to the fewest frames, --apply records it. Use the game's level flag (lvl) so bonus rooms/houses do not count;
@@ -56,7 +59,7 @@ Buttons: Up Down Left Right A B Start Select. A held longer = higher jump. To ju
 ## Rules
 - Use timeout 600000 ms on every runner call; keep `advance` to 3-4 hops per call and search grids under ~300 combos.
 - A level can end at a pipe (stand on it, hold Down ~40) or a card box, not just at the far right: look at the picture when advance is stuck at a wall.
-- On a map or menu: never guess presses; use `explore` (or `probe` to learn what the buttons do).
+- On a map or menu: never guess presses; run `nodes` first to see which places are LEVELS, then `do "<its path> A:8"` (or `explore`).
 - The grid's last line says AUTO-SCROLL when the screen moves by itself: then platforms beyond the screen edge are not there
   yet; wait (step none) until they appear before searching for a landing. `search` and `advance` then also try waiting
   0-120 frames before each jump by themselves; a gap that no jump crosses usually needs a WAIT (a platform arrives), not a better jump.
