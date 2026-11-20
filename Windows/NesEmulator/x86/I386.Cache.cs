@@ -30,14 +30,17 @@ public sealed partial class I386
 
     /// <summary>Decode the instruction at <paramref name="paddr"/> (in a fast-fetch code page) into <paramref name="e"/>; Kind 0 if it is not
     /// one of the cached forms.</summary>
+    private static readonly ulong KindOff = ulong.TryParse(Environment.GetEnvironmentVariable("X86_JITKINDOFF"), System.Globalization.NumberStyles.HexNumber, null, out ulong ko) ? ko : 0;
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void DcDecode(ref DEntry e, uint paddr)
     {
         DcDecodeFast(ref e, paddr);
+        if (e.Kind != DK_SLOW && (KindOff >> e.Kind & 1) != 0) e.Kind = DK_SLOW;   // (X86_JITKINDOFF: those kinds out of line, a cost-parity hunt)
         if (e.Kind != DK_SLOW) return;
         int len = DcLength(paddr, out bool noFall);
         if (len <= 0) return;
         e = default;
+        if ((KindOff >> DK_INTERP & 1) != 0) return;   // (bit 22: out-of-line instructions end the region instead)
         e.Kind = DK_INTERP; e.Len = (byte)len; e.Op = (byte)(noFall ? 1 : 0); e.Mod = (byte)(DcNoWrite(paddr) ? 0 : 1);
         e.Rm = (byte)(DcKeepsSegs(paddr) ? 1 : 0);
     }

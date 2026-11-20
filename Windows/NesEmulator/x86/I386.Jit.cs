@@ -371,6 +371,7 @@ public sealed partial class I386
 
     /// <summary>Block linking (X86_NOLINK turns it off): leave as JExitOk, but when the next instruction starts a valid compiled block
     /// that Exec1's next iteration would run (the same fetch-page test, entry lookup and code check as Step1), run it from here.</summary>
+    private int JFpuNmRefund() => (Cr0 & 0xc) != 0 ? _memCost : 0;
     private static readonly bool NoPageLink = Environment.GetEnvironmentVariable("X86_PAGELINK") == null;   // opt-in: links 7M -> 23M per 10 s in StarCraft but no wall-clock gain (A/B 2026-11-20)
     /// <summary>Block linking across pages: what Peek8 would do at the next fetch, without a page walk or fault - only when the TLB already
     /// holds a read translation for this CPL (paging on), the target is 16+ bytes inside its page and the CS limit, and the page is plain RAM.</summary>
@@ -445,7 +446,7 @@ public sealed partial class I386
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JMmx", "JCodeSame", "JCall", "JRet",
+        foreach (var n in new[] { "JRam", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JFpuNmRefund", "JMmx", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
                      "JXlat", "JFlagOp", "JStk", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
@@ -1463,6 +1464,9 @@ public sealed partial class I386
                 }
                 case DK_FPU:
                 {
+                    // #NM (CR0.EM / TS: Win98's lazy FPU switch) comes before the interpreter decodes the ModR/M, so it charges no memory
+                    // operand then: take back the cost the instruction was charged with (savestates: JIT == interpreter)
+                    if (mem) { il.Emit(OpCodes.Ldloc, cyc); Ld0(); Call("JFpuNmRefund"); il.Emit(OpCodes.Conv_I8); il.Emit(OpCodes.Sub); il.Emit(OpCodes.Stloc, cyc); }
                     Prep();
                     Ld0(); I4(op); Call("JFpu"); FailIfFalse();
                     bool load = op is 0 or 2 or 4 or 6 || (op == 1 && e.Reg is 0 or 4 or 5) || (op == 3 && e.Reg is 0 or 5) || (op == 5 && e.Reg is 0 or 4)
