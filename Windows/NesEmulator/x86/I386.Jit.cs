@@ -60,6 +60,7 @@ public sealed partial class I386
     /// <summary>X86_NOKEEPSEGS: reload the segments after every out-of-line instruction (A/B of DcKeepsSegs).</summary>
     private static readonly bool NoKeepSegs = Environment.GetEnvironmentVariable("X86_NOKEEPSEGS") != null;
     /// <summary>X86_NOHELPEROPS: flag ops and stack ops out of line again (A/B).</summary>
+    private static readonly bool NoMmxJit = Environment.GetEnvironmentVariable("X86_NOMMXJIT") != null;
     private static readonly bool NoHelperOps = Environment.GetEnvironmentVariable("X86_NOHELPEROPS") != null;
     private static readonly bool NoStkOp = Environment.GetEnvironmentVariable("X86_NOSTKOP") != null, NoFlagOp = Environment.GetEnvironmentVariable("X86_NOFLAGOP") != null;
     private static readonly int StkMask = int.TryParse(Environment.GetEnvironmentVariable("X86_STKMASK"), out int sm) ? sm : 15;   // (bit 3 PUSH Sreg: was broken by an Op truncation, PUSH FS pushed GS: Win98 fatal 0D at boot)
@@ -403,7 +404,7 @@ public sealed partial class I386
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JCodeSame", "JCall", "JRet",
+        foreach (var n in new[] { "JRam", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JMmx", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
                      "JXlat", "JFlagOp", "JStk", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
@@ -988,7 +989,7 @@ public sealed partial class I386
                 if (e.Index < 8) { LdReg(32, e.Index); if (e.Scale != 0) { I4(e.Scale); il.Emit(OpCodes.Shl); } il.Emit(OpCodes.Add); }
                 if (e.A16) { I4(0xffff); il.Emit(OpCodes.And); }
                 il.Emit(OpCodes.Stloc, ea);
-                if (e.Kind is not (DK_LEA or DK_FPU))   // (an ESC: the helper checks the limit after #NM, as the interpreter)
+                if (e.Kind is not (DK_LEA or DK_FPU or DK_MMX))   // (an ESC: the helper checks the limit after #NM, as the interpreter)
                 {
                     LimitCheck(k, e.Seg, ea, Math.Max(1, bits / 8));
                     il.Emit(OpCodes.Ldloc, sb[e.Seg]!); il.Emit(OpCodes.Ldloc, ea); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, la);
@@ -1406,6 +1407,19 @@ public sealed partial class I386
                     }
                     break;
                 }
+                case DK_MMX:
+                {
+                    Prep();
+                    Ld0(); I4(op); I4(op is >= 0x71 and <= 0x73 ? (int)e.Imm : -1); Call("JMmx"); FailIfFalse();
+                    if (mem && op is 0x7e or 0x7f)
+                    {   // a store: it may have written to this code, leave right after it
+                        var same = il.DefineLabel();
+                        Ld0(); Call("JCodeSame"); il.Emit(OpCodes.Brtrue, same);
+                        StDec(); LeaveAfter(k, () => IpAt(pe));
+                        il.MarkLabel(same);
+                    }
+                    break;
+                }
                 case DK_FPU:
                 {
                     Prep();
@@ -1453,5 +1467,5 @@ public sealed partial class I386
     private static readonly bool SegLazy = Environment.GetEnvironmentVariable("X86_SEGLAZY") != "0";
 
     private static bool DcHasModrm(byte kind) => kind is DK_MOVEG or DK_MOVGE or DK_ALUEG or DK_ALUGE or DK_GRP1 or DK_GRP2 or DK_TESTEG
-        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU;
+        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU or DK_MMX;
 }

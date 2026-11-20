@@ -48,6 +48,21 @@ public sealed partial class I386
         if ((_fsw & FSW_ES) != 0 && (Cr0 & 0x20) != 0) return K(Throw0(EX_MF));
         if (b1 == 0x77) { _fempty = 0xff; _ftop = 0; return OK; }   // EMMS (TOP is left alone on real chips: it is 0 after any MMX op anyway)
         if (!DecodeModrm()) return FAIL;
+        return MmxBody(b1);
+    }
+    /// <summary>A compiled MMX instruction (DK_MMX, after JPrep: the ModRM already decoded): the interpreter's own checks and body.</summary>
+    private int _jMmxImm = -1;
+    private bool JMmx(int b1, int imm)
+    {
+        if ((Cr0 & 4) != 0) { K(Throw0(EX_UD)); return false; }
+        if ((Cr0 & 8) != 0) { K(Throw0(EX_NM)); return false; }
+        if ((_fsw & FSW_ES) != 0 && (Cr0 & 0x20) != 0) { K(Throw0(EX_MF)); return false; }
+        if (_mod != 3) Cycle += _memCost;   // (as DecodeModrm)
+        _jMmxImm = imm; int rc = MmxBody((uint)b1); _jMmxImm = -1;
+        return rc != FAIL;
+    }
+    private int MmxBody(uint b1)
+    {
         int d = _reg;
         ulong a, b, r;
         switch (b1)
@@ -77,7 +92,7 @@ public sealed partial class I386
                 return OK;
             case 0x71: case 0x72: case 0x73: // shift by an immediate
             {
-                if (!Fetch8(out uint imm)) return FAIL;
+                uint imm; if (_jMmxImm >= 0) imm = (uint)_jMmxImm; else if (!Fetch8(out imm)) return FAIL;   // (compiled: the decoder's imm8)
                 if (_mod != 3) return K(Throw0(EX_UD));
                 int w = b1 == 0x71 ? 16 : b1 == 0x72 ? 32 : 64;
                 int kind = _reg;   // 2 SRL, 4 SRA, 6 SLL
