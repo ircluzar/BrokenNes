@@ -513,6 +513,7 @@ public sealed partial class PcMachine : IX86Bus
             if (Fdc != null) { w.Write(0x30434446); Fdc.Save(w); }   // "FDC0"
             if (Ata != null && (Ata.Primary.BmActive || Ata.Secondary.BmActive)) { w.Write(0x4d424449); Ata.Primary.SaveBm(w); Ata.Secondary.SaveBm(w); }   // "IDBM": bus-master DMA
             if (Ata != null && Ata.Secondary.AudioActive) { w.Write(0x41444443); Ata.Secondary.SaveAudio(w); }   // "CDDA": CD audio playing or paused
+            if (Ata != null && (Ata.Primary.AnyMediaChanged || Ata.Secondary.AnyMediaChanged)) { w.Write(0x434d4443); Ata.Primary.SaveMediaChanged(w); Ata.Secondary.SaveMediaChanged(w); }   // "CDMC": a disc change not yet reported (UNIT ATTENTION)
             // "DSKD": the four drives (A:, B:, C:, D:) as base hash + overlay of changed sectors (DiskImage.SaveDiff)
             w.Write(0x444b5344);
             foreach (var d in new[] { Floppy[0], Floppy[1], Hdd[0], Hdd[1] })
@@ -576,7 +577,7 @@ public sealed partial class PcMachine : IX86Bus
         string? picId = null; byte[]? picBlob = null;
         string? svgaId = null; byte[]? svgaBlob = null;
         PcConfig? saved = null; bool mouse = false;
-        bool nicLoaded = false, fdcLoaded = false, cdda = false, idbm = false;
+        bool nicLoaded = false, fdcLoaded = false, cdda = false, idbm = false, cdmc = false;
         while (r.BaseStream.Position + 4 <= r.BaseStream.Length)
         {
             int magic = r.ReadInt32();
@@ -596,6 +597,7 @@ public sealed partial class PcMachine : IX86Bus
             else if (magic == 0x30434446 && Fdc != null) { Fdc.Load(r); fdcLoaded = true; }
             else if (magic == 0x4d424449 && Ata != null) { Ata.Primary.LoadBm(r); Ata.Secondary.LoadBm(r); idbm = true; }
             else if (magic == 0x41444443 && Ata != null) { Ata.Secondary.LoadAudio(r); cdda = true; }
+            else if (magic == 0x434d4443 && Ata != null) { Ata.Primary.LoadMediaChanged(r); Ata.Secondary.LoadMediaChanged(r); cdmc = true; }
             else if (magic == 0x444b5344)
             {
                 var bases = new List<byte[]?>();
@@ -606,6 +608,7 @@ public sealed partial class PcMachine : IX86Bus
             else throw new InvalidDataException($"unknown block {magic:X8} in an x86 state");
         }
         if (!cdda) Ata?.Secondary.ClearAudio();
+        if (!cdmc) { Ata?.Primary.ClearAllMediaChanged(); Ata?.Secondary.ClearAllMediaChanged(); }   // no "CDMC" (and every older state): the disc in the drive is the one the guest already knows
         if (!idbm) { Ata?.Primary.ClearBm(); Ata?.Secondary.ClearBm(); }
         if (Nic != null && !nicLoaded) Nic.Reset();   // a state from before the card: it sits there as after a cold boot, unconfigured
         if (!mouse) Kbc.ResetMouse();
