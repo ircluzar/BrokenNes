@@ -265,15 +265,30 @@ public sealed partial class I386
     private void JSegLoad(int mask)
     {
         int ok = 0, rd = 0;
+        // lane D 2026-11-20: a segment whose inputs (selector, base, limit, flags, CR0.PE, EFLAGS.VM) are those of its last load keeps its
+        // results (the prologue and every reload after an out-of-line instruction call this: 7% of AoE's CPU thread). X86_NOJSCACHE: always compute.
+        uint mode = (Cr0 & 1) | (Flags & VM);
         for (int s = 0; s < 6; s++)
         {
             if ((mask >> s & 1) == 0) continue;
-            if (JSegOk(s)) { ok |= 1 << s; rd |= 1 << s; }
-            else if (JSegRdOk(s)) rd |= 1 << s;
+            if (!NoJsCache && (_jsValid >> s & 1) != 0 && _jsMode == mode && _jsSel[s] == SegSel[s] && _jsBase[s] == SegBase[s] && _jsLim[s] == SegLimit[s] && _jsFl[s] == SegFlags[s])
+            {
+                ok |= _jsOkAll & 1 << s; rd |= _jsRdAll & 1 << s;
+                continue;
+            }
+            int b = 1 << s;
+            if (JSegOk(s)) { ok |= b; rd |= b; }
+            else if (JSegRdOk(s)) rd |= b;
             _jsBase[s] = SegBase[s]; _jsSpan[s] = JSegSpan(s); _jsLo[s] = JSegLo(s);
+            if (_jsMode != mode) { _jsValid = 0; _jsMode = mode; }
+            _jsSel[s] = SegSel[s]; _jsLim[s] = SegLimit[s]; _jsFl[s] = SegFlags[s]; _jsValid |= b;
+            _jsOkAll = (_jsOkAll & ~b) | (ok & b); _jsRdAll = (_jsRdAll & ~b) | (rd & b);
         }
         _jsOk = ok; _jsRd = rd;
     }
+    private readonly uint[] _jsSel = new uint[6], _jsLim = new uint[6], _jsFl = new uint[6];
+    private int _jsValid, _jsOkAll, _jsRdAll; private uint _jsMode = 0xffffffff;
+    private static readonly bool NoJsCache = Environment.GetEnvironmentVariable("X86_NOJSCACHE") != null;
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JSOk(int s) => (_jsOk >> s & 1) != 0;
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JSRd(int s) => (_jsRd >> s & 1) != 0;
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSBase(int s) => _jsBase[s];
