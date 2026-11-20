@@ -651,7 +651,7 @@ public sealed partial class I386
             if (e.Kind is DK_JMP or DK_JCC) todo.Enqueue(end + e.Imm);
             if (e.Folds) todo.Enqueue(end + 2 + e.FoldRel);
         }
-        if (!anyCompiled && !JitAllOol) { en.Failed = true; return; }   // (X86_JITALLOOL: a region of only out-of-line instructions (INT 30h) compiles too)
+        if (!anyCompiled) { en.Failed = true; return; }
         found.Sort((x, y) => x.pa.CompareTo(y.pa));
         var pas = new uint[found.Count]; var ins = new DEntry[found.Count];
         for (int i = 0; i < pas.Length; i++) { pas[i] = found[i].pa; ins[i] = found[i].e; }
