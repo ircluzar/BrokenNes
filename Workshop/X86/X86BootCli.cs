@@ -387,6 +387,7 @@ internal static class X86BootCli
         if (args.Contains("--jitstat")) Console.WriteLine($"  exec1 steps {m.Cpu.Step1Calls} of which compiled-block entries {m.Cpu.Step1Jit}; halt batches {m.HaltBatches}");
         if (args.Contains("--jitstat")) Console.WriteLine("  linkpage nopg/pageend/limit/notlb/notag/io/ok: " + string.Join(" ", m.Cpu.LinkPageWhy));
         if (args.Contains("--jitstat")) Console.WriteLine("  linkwhy budget/depth/linked/nocode/otherpage: " + string.Join(" ", m.Cpu.LinkWhy));
+        if (args.Contains("--jitstat")) Console.WriteLine("  jcond op*16+cc: " + string.Join(" ", Enumerable.Range(0, 512).Where(i => m.Cpu.JCondOps[i] > 0).OrderByDescending(i => m.Cpu.JCondOps[i]).Take(12).Select(i => $"{i / 16}/{i % 16:X}={m.Cpu.JCondOps[i]}")));
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.InterpModes()) Console.WriteLine("  interpmode " + l);
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.InterpTop(40)) Console.WriteLine("  interp " + l);
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.InterpAt.OrderByDescending(x => x.Value).Take(30)) Console.WriteLine($"  interpat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))} [{m.Cpu.JitWhy(kv.Key)}]");

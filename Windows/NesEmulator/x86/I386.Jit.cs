@@ -304,7 +304,9 @@ public sealed partial class I386
         return sp.Mask == 0 ? null : sp;
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegBase(int seg) => SegBase[seg];
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JCond(uint c) => Cond(c);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JCond(uint c) { if (JitStats) JCondOps[(_ccOp & 31) * 16 + (c & 15)]++; return Cond(c); }
+    /// <summary>JITSTAT: the condition tests compiled code made through Cond, by lazy-flag op and condition.</summary>
+    public readonly long[] JCondOps = new long[32 * 16];
     [MethodImpl(MethodImplOptions.NoInlining)] private uint JAlu(int op, int bits, uint a, uint b) => Alu(op, bits, a, b);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private void JIncDec(int bits, int reg, bool dec) => IncDecReg(bits, reg, dec);
     [MethodImpl(MethodImplOptions.NoInlining)] private int JGetCF() => GetCF();
@@ -811,7 +813,13 @@ public sealed partial class I386
         var te = il.DeclareLocal(typeof(nuint));
         var tlbL = il.DeclareLocal(typeof(uint).MakeByRefType()); var tlbX = il.DeclareLocal(typeof(uint).MakeByRefType());
         var permR = il.DeclareLocal(typeof(nuint));   // the _tlbTag half for this CPL
-        void LdPerm() { Ld0(); il.Emit(OpCodes.Ldfld, FCpl); I4(3); Op(OpCodes.Ceq); I4(2 * TlbSize); Op(OpCodes.Mul); Op(OpCodes.Conv_U); Stl(permR); }
+        var tlbR = il.DeclareLocal(typeof(uint).MakeByRefType()); var tlbW = il.DeclareLocal(typeof(uint).MakeByRefType());   // ref _tlbTag[permR] (reads), [permR + TlbSize] (writes)
+        void LdPerm()
+        {
+            Ld0(); il.Emit(OpCodes.Ldfld, FCpl); I4(3); Op(OpCodes.Ceq); I4(2 * TlbSize); Op(OpCodes.Mul); Op(OpCodes.Conv_U); Stl(permR);
+            Ld(tlbL); Ld(permR); I4(4); Op(OpCodes.Conv_U); Op(OpCodes.Mul); Op(OpCodes.Add); Stl(tlbR);
+            Ld(tlbR); I4(4 * TlbSize); Op(OpCodes.Conv_U); Op(OpCodes.Add); Stl(tlbW);
+        }
 
         void Call(string name) => il.Emit(OpCodes.Call, mm[name]);
         void Ld0() => il.Emit(OpCodes.Ldarg_0);
@@ -1114,7 +1122,7 @@ public sealed partial class I386
             // the prologue, no bounds checks: the index < 4 * TlbSize)
             Ld(la); I4(12); Op(OpCodes.Shr_Un); Stl(lpn);
             Ld(lpn); I4(TlbSize - 1); Op(OpCodes.And); Op(OpCodes.Conv_U); Stl(te);
-            Ld(tlbL); Ld(te); Ld(permR); Op(OpCodes.Add); if (write) { I4(TlbSize); Op(OpCodes.Add); } I4(4); Op(OpCodes.Mul); Op(OpCodes.Add); Op(OpCodes.Ldind_U4);
+            Ld(write ? tlbW : tlbR); Ld(te); I4(4); Op(OpCodes.Mul); Op(OpCodes.Add); Op(OpCodes.Ldind_U4);
             Ld(lpn); il.Emit(OpCodes.Bne_Un, slow);
             if (size > 1) { Ld(la); I4(0xfff); Op(OpCodes.And); I4(4096 - size); il.Emit(OpCodes.Bgt_Un, slow); }
             Ld(tlbX); Ld(te); I4(4); Op(OpCodes.Mul); Op(OpCodes.Add); Op(OpCodes.Ldind_U4); Ld(la); Op(OpCodes.Xor); Stl(pax); il.Emit(OpCodes.Br, done);
@@ -1467,11 +1475,15 @@ public sealed partial class I386
                     SmcCheck(pg ? pax : la, pb / 8);
                     break;
                 }
+                case DK_LEAVE when !NoIncInline:
                 case DK_POP:
                 {
                     // PopReg(bits, reg): v = [SS base + (sp & spm)]; SetSp(sp + n); SReg(reg, v)
+                    // (LEAVE, as Leave: the same with sp = EBP, into EBP)
                     int pb = e.O16 ? 16 : 32;
-                    LdReg(32, 4); Stl(A);
+                    bool leave = e.Kind == DK_LEAVE;
+                    if (leave) op = 5;
+                    LdReg(32, leave ? 5 : 4); Stl(A);
                     Ld(A); LdSpm(); Op(OpCodes.And); Stl(ea); LimitCheck(k, SEG_SS, ea, pb / 8);
                     LdBase(SEG_SS); Ld(A); LdSpm(); Op(OpCodes.And); Op(OpCodes.Add); Stl(la);
                     Xlat(k, pb / 8, false);
@@ -1543,7 +1555,20 @@ public sealed partial class I386
                     // Imul2(bits, reg, a, b): 0F AF a = reg, b = E; 69 / 6B a = E, b = imm
                     if (op == 0) { LdReg(bits, e.Reg); Stl(A); ReadE(); Stl(B); }
                     else { ReadE(); Stl(A); U4(e.Imm); Stl(B); }
-                    Ld0(); I4(bits); I4(e.Reg); Ld(A); Ld(B); Call("JImul2");
+                    if (NoIncInline || bits == 8) { Ld0(); I4(bits); I4(e.Reg); Ld(A); Ld(B); Call("JImul2"); break; }
+                    // Imul2 inline (X86_NOINCINLINE: the call): the same lazy-flag fields
+                    StF(FSrc1, () => { Ld(A); SextTop(bits); }); StF(FSrc2, () => { Ld(B); SextTop(bits); });
+                    if (bits == 16) { LdF(FSrc1); LdF(FSrc2); Op(OpCodes.Mul); Stl(D); StF(FOp, () => I4((int)Cc.IMUL16)); }
+                    else
+                    {
+                        var res = il.DeclareLocal(typeof(long));
+                        Ld(A); Op(OpCodes.Conv_I8); Ld(B); Op(OpCodes.Conv_I8); Op(OpCodes.Mul); Stl(res);
+                        Ld(res); Op(OpCodes.Conv_U4); Stl(D);
+                        StF(FDst2, () => { Ld(res); I4(32); Op(OpCodes.Shr); Op(OpCodes.Conv_U4); });
+                        StF(FOp, () => I4((int)Cc.IMUL32));
+                    }
+                    StF(FDst, () => Ld(D)); StF(FMask, () => U4(ALL));
+                    StReg(bits, e.Reg, () => Ld(D));
                     break;
                 case DK_GRP5:
                     Prep();
@@ -1727,7 +1752,7 @@ public sealed partial class I386
     private static int InsSegs(DEntry e)
     {
         int m = 0;
-        if (e.Kind is DK_PUSH or DK_POP or DK_CALL or DK_RET) m |= 1 << SEG_SS;
+        if (e.Kind is DK_PUSH or DK_POP or DK_CALL or DK_RET or DK_LEAVE) m |= 1 << SEG_SS;
         if (e.Kind == DK_STOS || (e.Kind == DK_STR && e.Op != 2)) m |= 1 << SEG_ES;
         if (e.Kind == DK_STR && e.Op != 3) m |= 1 << e.Seg;
         if (DcHasModrm(e.Kind) && e.Mod != 3 && e.Kind != DK_LEA) m |= 1 << e.Seg;
