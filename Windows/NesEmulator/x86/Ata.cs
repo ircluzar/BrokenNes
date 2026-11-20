@@ -286,7 +286,7 @@ public sealed class AtaChannel
         Word(b, 63, 0x0407);                 // multiword DMA 0-2, mode 2 selected
         Word(b, 51, 0x0200);                 // PIO mode 2 timing
         Word(b, 53, 0x0007);                 // words 54-58, 64-70 and 88 valid
-        Word(b, 88, 0x0007);                 // Ultra DMA 0-2 supported (none selected: multiword DMA 2 is the mode)
+        Word(b, 88, Environment.GetEnvironmentVariable("X86_UDMA") == "1" ? 0x0407 : 0x0007);   // Ultra DMA 0-2 supported (X86_UDMA test: mode 2 selected)
         int lc = Math.Min(65535, (int)Math.Min(int.MaxValue, total / (_lHeads[Dev] * _lSpt[Dev])));
         Word(b, 54, lc); Word(b, 55, _lHeads[Dev]); Word(b, 56, _lSpt[Dev]);
         long cur = (long)lc * _lHeads[Dev] * _lSpt[Dev];
