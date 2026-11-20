@@ -30,3 +30,9 @@ Re-run `t1.py regrade --console md` after merge, then sort what is still Jank:
 4. Use the fleet for comparison sweeps (C:\BrokenNes-work\fleet\HOWTO.md); heavy local work only in heavy slot1/slot2.
 
 Park the long tail (the remaining ~500 MD Jank) until round 2's causes are fixed and the regrade has run.
+
+## SEGA-01: the 71 Jank (2026-11-20, main 087a97c7)
+- Merged: J-Cart (Micro Machines II 3/4-player menu) + t1 md ladder maps all 15 shadow/highlight levels. md battery ALL GREEN (120 golden, 145 scenarios, fuzz, replay).
+- Recount on the deep runs: 20 already deep-OK + 7 more with the 15-level ladder (Sub-Terrania, Marsupilami, Jim Power, DJ Boy, Toughman, Fatal Fury, Rambo III) = 27 harness artifacts; 32 still deep-Jank; 10 deep "Not tested" (cmdline error 11-19) + 2 never run.
+- Targeted re-grade of those 40 (+MM II): keeper entry md_sj1_regrade (only-list C:\BrokenNes-work\md_sj1_regrade.json, --force ingest so grades can rise), Workshop C:\brokennes\ws_sj1, kit t1.py updated on all PCs.
+- Raiden Trad probe: without input BrokenNes matches BizHawk's attract (BN ~2 frames ahead at 180, ~5 at 540: slow drift). Start held 8 frames at 180 or at 420: BrokenNes takes it, BizHawk ignores it both times. 6-button vs 3-button pad on BN changes nothing. The game reads the pad 4 NOPs after each TH write ($00ABF6); suspect Genplus's TH-transition latency model. Needs a third opinion (BlastEm, in C:\BrokenNes-tools\sega\oracles) before changing MdPads.
