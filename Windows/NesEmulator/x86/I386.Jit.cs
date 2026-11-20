@@ -38,6 +38,7 @@ public sealed partial class I386
         public uint[] Addrs = Array.Empty<uint>();   // the instructions, by address (entry k = Addrs[k])
         public bool C16, Pg;   // compiled for this code size, and with paging on or off (the memory accesses differ)
         public long Runs, Instrs, Ticks, Retired;
+        public long NXlat, NSlow, NOol, NCond;   // JITSTAT: TLB misses (JXlat), non-RAM / split accesses, out-of-line instructions, Cond calls
         public uint[] Pages = Array.Empty<uint>(), Gens = Array.Empty<uint>();   // the 4 KB pages Bytes come from, and their code write generations when last checked
         public uint Epoch = 0xffffffff;   // _memEpoch when last checked (FFFFFFFF: never: compare the bytes)
         public bool SpecFail;   // its segment specialization no longer held at a run: compiled again without it
@@ -97,7 +98,7 @@ public sealed partial class I386
     public long JitRuns, JitInvalid, JitDeclines;
     public readonly long[] JitDeclineSeg = new long[6];
     public IEnumerable<string> JitTop(int n) => _jitAll.OrderByDescending(b => b.Ticks).Take(n)
-        .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} retired {b.Retired} ns/retired {b.Ticks * 1e9 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, b.Retired):F2} | {Convert.ToHexString(b.Bytes)}");
+        .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} retired {b.Retired} ns/retired {b.Ticks * 1e9 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, b.Retired):F2} xlat {b.NXlat} slow {b.NSlow} ool {b.NOol} cond {b.NCond} | {Convert.ToHexString(b.Bytes)}");
     private readonly long[] _interpOps = new long[65536];
     public readonly Dictionary<uint, long> InterpAt = new();
     /// <summary>JITSTAT: why an interpreted address is not compiled: its entry's state.</summary>
@@ -236,12 +237,14 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)]
     private uint JRdSlow(int bits, uint la)
     {
+        if (JitStats && _jitCur != null) _jitCur.NSlow++;
         var r = new OptAddr { A1 = la };
         return bits == 8 ? Load8Slow(ref r) : bits == 16 ? Load16Slow(ref r) : Load32Slow(ref r);
     }
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void JWrSlow(int bits, uint la, uint v)
     {
+        if (JitStats && _jitCur != null) _jitCur.NSlow++;
         var r = new OptAddr { A1 = la };
         if (bits == 8) Store8Slow(ref r, v); else if (bits == 16) Store16Slow(ref r, v); else Store32Slow(ref r, v);
     }
@@ -311,7 +314,7 @@ public sealed partial class I386
         return sp.Mask == 0 ? null : sp;
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegBase(int seg) => SegBase[seg];
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JCond(uint c) { if (JitStats) JCondOps[(_ccOp & 31) * 16 + (c & 15)]++; return Cond(c); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JCond(uint c) { if (JitStats) { JCondOps[(_ccOp & 31) * 16 + (c & 15)]++; if (_jitCur != null) _jitCur.NCond++; } return Cond(c); }
     /// <summary>JITSTAT: the condition tests compiled code made through Cond, by lazy-flag op and condition.</summary>
     public readonly long[] JCondOps = new long[32 * 16];
     [MethodImpl(MethodImplOptions.NoInlining)] private uint JAlu(int op, int bits, uint a, uint b) => Alu(op, bits, a, b);
@@ -393,6 +396,7 @@ public sealed partial class I386
     {
         Cycle = cyc; _steps = st; NextIp = ip;
         uint opa = 0xffffffff;
+        if (JitStats && _jitCur != null) _jitCur.NOol++;
         if (JitStats && _jitCur != null) { uint pa = (_jitCur.Start & ~0xfffu) | ((SegBase[SEG_CS] + ip) & 0xfff); if (pa + 2 < MemSize) { _oolOps[Mem[pa] << 8 | Mem[pa + 1]]++; JitOolAt(pa); opa = pa; } }   // (the region never leaves its 4 KB page)
         if (!PcMachine.TimeProbe) return Step1(false);
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -426,6 +430,7 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)]
     private bool JXlat(uint la, int rwm, int size)
     {
+        if (JitStats && _jitCur != null) _jitCur.NXlat++;
         var r = new OptAddr();
         if (!TranslateLaddr(ref r, rwm, la, size, Cpl)) return false;
         _jpa = r.Two ? 0xffffffff : r.A1;
@@ -436,6 +441,7 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)]
     private uint JRdLin(int bits, uint la)
     {
+        if (JitStats && _jitCur != null) _jitCur.NSlow++;
         var r = new OptAddr();
         if (!TranslateLaddr(ref r, 1, la, bits / 8, Cpl)) return 0;
         return bits == 8 ? Load8Slow(ref r) : bits == 16 ? Load16Slow(ref r) : Load32Slow(ref r);
@@ -443,6 +449,7 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void JWrLin(int bits, uint la, uint v)
     {
+        if (JitStats && _jitCur != null) _jitCur.NSlow++;
         var r = new OptAddr();
         if (!TranslateLaddr(ref r, 2, la, bits / 8, Cpl)) return;
         if (bits == 8) Store8Slow(ref r, v); else if (bits == 16) Store16Slow(ref r, v); else Store32Slow(ref r, v);
@@ -644,7 +651,7 @@ public sealed partial class I386
             if (e.Kind is DK_JMP or DK_JCC) todo.Enqueue(end + e.Imm);
             if (e.Folds) todo.Enqueue(end + 2 + e.FoldRel);
         }
-        if (!anyCompiled) { en.Failed = true; return; }
+        if (!anyCompiled && !JitAllOol) { en.Failed = true; return; }   // (X86_JITALLOOL: a region of only out-of-line instructions (INT 30h) compiles too)
         found.Sort((x, y) => x.pa.CompareTo(y.pa));
         var pas = new uint[found.Count]; var ins = new DEntry[found.Count];
         for (int i = 0; i < pas.Length; i++) { pas[i] = found[i].pa; ins[i] = found[i].e; }
