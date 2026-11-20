@@ -217,6 +217,16 @@ public sealed class PcSession : IConsoleSession
         return _exported;
     }
 
+    /// <summary>The periodic save without stopping the machine: null when the disk is unchanged since the last export, else a function that builds the disk
+    /// as it is now (run it on another thread: a Win98 disk is 1 GB, building, comparing and writing it on the emulation thread stalled the game for seconds every 10 s).</summary>
+    public Func<byte[]>? ExportSaveLater()
+    {
+        var d = Disk;
+        if (_exported != null && !d.Dirty) return null;
+        var build = d.Snapshot(); d.Dirty = false;
+        return () => { var a = build(); _exported = a; return a; };
+    }
+
     /// <summary>A disk saved earlier from this same image: it replaces the disk (before the machine starts, or with a cold boot). Another size is refused, the disk stays as it was.</summary>
     public void ImportSave(byte[] data)
     {

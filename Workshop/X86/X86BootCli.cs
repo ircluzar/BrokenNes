@@ -381,6 +381,7 @@ internal static class X86BootCli
         {
             double tf = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             Console.WriteLine($"timeprobe: steps without a compiled block {m.Cpu.InterpCount.Sum()}, {m.Cpu.InterpTicks.Sum() * tf:F0} ms; top by time (first byte, 100 = fetch off the cached page):");
+            Console.WriteLine("timeprobe: by decline path (none,invalid,failed,pending,compile,counting,new): " + string.Join(" ", Enumerable.Range(0, 7).Select(i => $"{m.Cpu.WhyCount[i]}/{m.Cpu.WhyTicks[i] * tf:F0}ms")));
             foreach (int i in Enumerable.Range(0, 257).OrderByDescending(i => m.Cpu.InterpTicks[i]).Take(16))
                 Console.WriteLine($"  {(i == 256 ? "page" : i.ToString("X2"))}: {m.Cpu.InterpCount[i]} steps, {m.Cpu.InterpTicks[i] * tf:F0} ms, {m.Cpu.InterpTicks[i] * tf * 1e6 / Math.Max(1, m.Cpu.InterpCount[i]):F0} ns each");
         }

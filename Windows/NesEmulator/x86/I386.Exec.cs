@@ -33,6 +33,9 @@ public sealed partial class I386
     public long Step1Calls, Step1Jit;
     /// <summary>X86_TIMEPROBE: wall ticks / counts of Exec1 steps that ran no compiled block, by first byte (256 = fetch outside the cached page).</summary>
     public readonly long[] InterpTicks = new long[257], InterpCount = new long[257];
+    /// <summary>X86_TIMEPROBE: interpreted steps by JitTry's decline path (0 none/page miss, 1 invalidated, 2 failed, 3 pending, 4 compile queued, 5 counting, 6 new entry).</summary>
+    public readonly long[] WhyTicks = new long[8], WhyCount = new long[8];
+    internal int _jtWhy;
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int Step1Timed()
     {
@@ -40,8 +43,9 @@ public sealed partial class I386
         uint laddr = SegBase[SEG_CS] + NextIp;
         int b = ((ulong)laddr ^ _ifLaddr) < 4096 - 16 ? Mem[(_ifXaddr ^ laddr) % (uint)Mem.Length] : 256;
         long runs = JitTimedRuns, t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        _jtWhy = 0;
         int r = Step1(true);
-        if (JitTimedRuns == runs) { InterpTicks[b] += System.Diagnostics.Stopwatch.GetTimestamp() - t0; InterpCount[b]++; }
+        if (JitTimedRuns == runs) { long dt = System.Diagnostics.Stopwatch.GetTimestamp() - t0; InterpTicks[b] += dt; InterpCount[b]++; WhyTicks[_jtWhy] += dt; WhyCount[_jtWhy]++; }
         return r;
     }
     private bool Exec1(int stepcount)
