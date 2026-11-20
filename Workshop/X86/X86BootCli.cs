@@ -91,7 +91,7 @@ internal static class X86BootCli
         var sw = Stopwatch.StartNew();
         m.PowerOn();
         // --loadstate: carry on from a --savestate of the same machine (its disks come from the state; the CD stays the one given)
-        if (Arg(args, "--loadstate") is string ls) { m.LoadState(File.ReadAllBytes(ls)); if (args.Contains("--cdchanged")) m.Ata?.Secondary.MediaChanged(0); }   // --cdchanged: the disc was swapped since the state was saved (UNIT ATTENTION)
+        if (Arg(args, "--loadstate") is string ls) { m.LoadState(File.ReadAllBytes(ls)); if (_allocs != null) lock (_allocs.ByType) _allocs.ByType.Clear();   /* (count the run, not the load) */ if (args.Contains("--cdchanged")) m.Ata?.Secondary.MediaChanged(0); }   // --cdchanged: the disc was swapped since the state was saved (UNIT ATTENTION)
         // --net: plug the network card into the built-in NAT (DHCP, DNS, the HTTPS bridge); off by default
         PcNat? nat = null;
         if (Arg(args, "--niclog") is string nl && m.Nic != null)
