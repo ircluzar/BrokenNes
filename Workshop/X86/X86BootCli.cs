@@ -342,6 +342,12 @@ internal static class X86BootCli
             }
         }
         foreach (var va in Args(args, "--vramdump")) { var pp = va.Split(':'); int a0 = Convert.ToInt32(pp[0], 16), ln = int.Parse(pp[1]); for (int k = 0; k < ln; k += 32) Console.WriteLine($"vram {a0 + k:X6}: " + string.Join(" ", m.Vga.Ram.Skip(a0 + k).Take(32).Select(b => b.ToString("X2")))); }
+        if (Arg(args, "--ipsync") is string isy)   // --ipsync LO-HI (hex linear): run small slices until EIP is in that range, so --dump reads that process's address space (Win98: per-process low memory)
+        {
+            var r = isy.Split('-'); uint lo = Convert.ToUInt32(r[0], 16), hi = Convert.ToUInt32(r[1], 16); int k = 0;
+            for (; k < 200000; k++) { uint lin = m.Cpu.SegBase[1] + m.Cpu.Ip; if (lin >= lo && lin < hi) break; m.RunClock(97); }
+            Console.WriteLine($"ipsync: {k} slices, EIP lin {m.Cpu.SegBase[1] + m.Cpu.Ip:X8}");
+        }
         foreach (var da in Args(args, "--dump"))   // --dump HEXLIN:LEN: bytes at a linear address (through the page tables)
         {
             var parts = da.Split(':'); uint a0 = Convert.ToUInt32(parts[0], 16); int len = parts.Length > 1 ? int.Parse(parts[1]) : 64;
