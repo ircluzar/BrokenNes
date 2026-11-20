@@ -30,11 +30,13 @@ public sealed partial class I386
         return t;
     }
 
+    public long Step1Calls, Step1Jit;
     private bool Exec1(int stepcount)
     {
         _steps = stepcount;
         for (; _steps > 0; _steps--)
         {
+            if (JitStats) Step1Calls++;
             int r = Step1(true);
             if (r == OK) continue;
             if (r == FAIL) return false;
@@ -62,6 +64,7 @@ public sealed partial class I386
                 {
                     // a compiled block from here (I386.Jit.cs), else interpret this instruction
                     int rc = JitTry(paddr);
+                    if (JitStats && rc != JIT_DECLINE) Step1Jit++;
                     if (rc == OK) return OK;
                     if (rc == FAIL) return FAIL;
                     if (rc == JIT_END) return END;
