@@ -412,6 +412,7 @@ internal static class X86BootCli
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.OolAt.OrderByDescending(x => x.Value).Take(40)) Console.WriteLine($"  oolat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))}");
         if (args.Contains("--irqstat")) Console.WriteLine($"batches {m.Batches} halted {m.HaltBatches} cycle {m.Cpu.Cycle} idle-clock {m.Clock - m.Cpu.Cycle}");
         if (args.Contains("--irqstat")) Console.WriteLine("irqs: " + string.Join(" ", Enumerable.Range(0, 256).Where(i => m.IrqCount[i] > 0).Select(i => $"{i:X2}h={m.IrqCount[i]}")) + $"; PIC imr {m.Pic.MasterImr:X2}/{m.Pic.SlaveImr:X2}; CR0 {m.Cpu.Cr0:X}; CS:EIP {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8}; IF {(m.Cpu.Flags >> 9) & 1}; halt {m.Cpu.Halt}");
+        if (m.Card is Dosbox072SoundBlaster sbm) Console.WriteLine($"sb mixer: {sbm.MixerSummary}");
         Console.WriteLine("---- screen ----");
         Console.WriteLine(Screen(m).TrimEnd());
         Console.WriteLine("----------------");
