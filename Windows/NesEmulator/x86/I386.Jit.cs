@@ -38,7 +38,8 @@ public sealed partial class I386
         public uint[] Addrs = Array.Empty<uint>();   // the instructions, by address (entry k = Addrs[k])
         public bool C16, Pg;   // compiled for this code size, and with paging on or off (the memory accesses differ)
         public long Runs, Instrs, Ticks, Retired;
-        public uint[] Pages = Array.Empty<uint>(), Gens = Array.Empty<uint>();   // the 4 KB pages Bytes come from, and their code write generations when last checked
+        public uint[] Pages = Array.Empty<uint>(), Gens = Array.Empty<uint>();
+        public uint[] Lines = Array.Empty<uint>(), LGens = Array.Empty<uint>();   // (the 64-byte lines and their generations)   // the 4 KB pages Bytes come from, and their code write generations when last checked
         public uint Epoch = 0xffffffff;   // _memEpoch when last checked (FFFFFFFF: never: compare the bytes)
         public bool SpecFail;   // its segment specialization no longer held at a run: compiled again without it
     }
@@ -224,6 +225,8 @@ public sealed partial class I386
         en.Code = null; en.Visits = 0; en.Failed = false; en.Pending = false;
         return JIT_DECLINE;
     }
+    /// <summary>X86_NOLINEGEN: a write to a compiled block's page always compares its bytes (before 2026-11-20).</summary>
+    private static readonly bool NoLineGen = Environment.GetEnvironmentVariable("X86_NOLINEGEN") != null;
     private static readonly int JitSmc = int.TryParse(Environment.GetEnvironmentVariable("X86_JITSMC"), out int jsmc) ? jsmc : 0;
     private readonly Dictionary<ulong, int> _smc = new();
     public long JitSmcStops;
@@ -577,7 +580,13 @@ public sealed partial class I386
     }
     [MethodImpl(MethodImplOptions.NoInlining)]
     private bool JitSameSlow(JitCode code)
-    {
+    {   // a store went to one of its pages: if none of its own lines was written, nothing to compare (the page's other code / data was)
+        if (code.Epoch == _memEpoch && !NoLineGen && code.Lines.Length != 0)
+        {
+            uint[] ln = code.Lines, lg = code.LGens; bool same = true;
+            for (int i = 0; i < ln.Length; i++) if (_lnGen[ln[i]] != lg[i]) { same = false; break; }
+            if (same) { for (int i = 0; i < code.Pages.Length; i++) code.Gens[i] = _pgGen[code.Pages[i]]; return true; }
+        }
         byte[] b = code.Bytes;
         int[] ro = code.RunAt, rl = code.RunLen;
         int at = 0;
@@ -602,7 +611,11 @@ public sealed partial class I386
                 for (uint pg = a >> 12; pg <= e >> 12; pg++) pages.Add(pg);
             }
             code.Pages = pages.ToArray(); code.Gens = new uint[code.Pages.Length];
+            var lines = new SortedSet<uint>();
+            for (int i = 0; i < code.RunAt.Length; i++) { uint a = (uint)code.RunAt[i], e = a + (uint)code.RunLen[i] - 1; for (uint l = a >> 6; l <= e >> 6; l++) lines.Add(l); }
+            code.Lines = lines.ToArray(); code.LGens = new uint[code.Lines.Length];
         }
+        for (int i = 0; i < code.Lines.Length; i++) code.LGens[i] = _lnGen[code.Lines[i]];
         for (int i = 0; i < code.Pages.Length; i++) code.Gens[i] = _pgGen[code.Pages[i]];
         code.Epoch = _memEpoch;
     }

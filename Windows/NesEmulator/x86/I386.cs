@@ -121,6 +121,7 @@ public sealed partial class I386
         MemSize = (uint)memSize;
         _codeMark = new byte[(memSize >> 6) + 2];
         _pgGen = new uint[(memSize >> 12) + 2];
+        _lnGen = new uint[(memSize >> 6) + 2];
         _bus = bus;
         _ioMem = bus.MapsIoMem;
         Reset();
@@ -161,6 +162,7 @@ public sealed partial class I386
     // Writes to memory from outside the CPU (the BIOS, DMA, disk loads, save states, tools) bump _memEpoch: every block compares once.
     private readonly byte[] _codeMark;   // per 64-byte line of RAM: 1 = a compiled block's bytes are there
     private readonly uint[] _pgGen;      // per 4 KB page: the code write generation
+    private readonly uint[] _lnGen;      // per 64-byte line: the same, finer (a store to a code page but another line: no byte compare)
     private uint _memEpoch;
     /// <summary>Memory was written by something other than the CPU's own stores (the BIOS, DMA, a disk load, a tool): compiled blocks check their bytes.</summary>
     public void MemTouched() => _memEpoch++;
@@ -184,9 +186,10 @@ public sealed partial class I386
     private void CodeWrite(uint a, uint n)
     {
         if (a >= MemSize) return;
-        _pgGen[a >> 12]++;
+        _pgGen[a >> 12]++; _lnGen[a >> 6]++;
         uint e = a + n - 1;
         if ((e >> 12) != (a >> 12) && e < MemSize) _pgGen[e >> 12]++;
+        if ((e >> 6) != (a >> 6) && e < MemSize) _lnGen[e >> 6]++;
     }
     /// <summary>A store of a whole range (REP fast paths): its code lines, if any, move their pages on.</summary>
     private void CodeWrRange(uint a, uint bytes)
