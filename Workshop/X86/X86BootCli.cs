@@ -381,6 +381,20 @@ internal static class X86BootCli
                 Console.WriteLine($"savebench: state {st.Length >> 20} MB {tSave:F0} ms, crc {tCrc:F0} ms, wrap(crc+deflate) {tWrap:F0} ms -> {wrapped.Length >> 20} MB, fnv over RAM {smem.Length >> 20} MB {tFnv:F0} ms; round trip {(same ? "EQUAL" : "DIFFERENT")}, stream save {(streamSame ? "EQUAL" : "DIFFERENT")}");
             }
         }
+        if (Environment.GetEnvironmentVariable("X86_LATENCY") is { Length: > 0 } latSpec)
+        {   // guest input latency (diagnostics): frames from a PS/2 mouse move (or a key, "key") to the first changed picture, 5 tries 30 frames apart
+            static ulong Hash(PcMachine pm) { ulong h = 14695981039346656037UL; var f = pm.Vga.Frame; for (int i = 0; i < f.Length; i++) { h ^= (uint)f[i]; h *= 1099511628211UL; } return h; }
+            for (int t = 0; t < 5; t++)
+            {
+                for (int k = 0; k < 30; k++) m.RunFrame();
+                ulong h0 = Hash(m); m.RunFrame(); bool idle = Hash(m) == h0; h0 = Hash(m);
+                if (latSpec == "key") m.Kbc.KeyBytes(0x39); else m.Kbc.MouseInput(t % 2 == 0 ? 40 : -40, 0, 0);
+                int ln = 0; while (ln < 30) { m.RunFrame(); ln++; if (Hash(m) != h0) break; }
+                if (latSpec == "key") m.Kbc.KeyBytes(0xb9);
+                Console.WriteLine($"latency: try {t} {(idle ? "screen idle before" : "screen was changing")}: first change after {ln} frame(s)");
+            }
+        }
+        if (m.Card is Dosbox072SoundBlaster sbm) Console.WriteLine("sbmixer: " + sbm.MixerSummary());
         if (PcMachine.AllocProbe) Console.WriteLine($"allocprobe: devices {m.AllocDevices / 1048576} MB, cpu {m.AllocCpu / 1048576} MB, render {m.AllocRender / 1048576} MB, total thread {GC.GetAllocatedBytesForCurrentThread() / 1048576} MB");
         if (_allocs != null) lock (_allocs.ByType) foreach (var kv in _allocs.ByType.OrderByDescending(x => x.Value).Take(15)) Console.WriteLine($"  alloc {kv.Value / 1048576,6} MB {kv.Key}");
         if (lanLink != null) Console.WriteLine($"lan: sent {lanLink.Sent} (IPX {lanLink.SentIpx}), received {lanLink.Received} (IPX {lanLink.ReceivedIpx}){(lanLink.Members > 0 ? $", members {lanLink.Members}" : "")}");

@@ -53,6 +53,12 @@ namespace BrokenNes.Windows
         private const int TrimAboveMs = 100;      // queue this deep (piled up after a stall + catch-up, or a device not taking sound): drop the frame's samples
         private const double MaxRateAdjust = 0.005;   // +-0.5 % = at most 8.6 cents: inaudible
         private double queueEma = -1;             // smoothed queue depth (ms) the rate control steers by
+        private static readonly bool NoStretch = Environment.GetEnvironmentVariable("BROKENNES_AUDIO_NOSTRETCH") == "1";
+        private readonly AudioStretch stretch = new();
+        private bool stretching;
+        private double stretchF = 1.0;
+        private float[] stretchBuf = new float[8192];
+        private long stretchOn, stretchedSamples;
         private double resamplePos;               // the streaming resampler: next output position, in input samples after `resamplePrev`
         private float resamplePrev;
         /// <summary>The output in use: "wasapi", "waveout" or "" with no device.</summary>
@@ -345,7 +351,7 @@ namespace BrokenNes.Windows
                 int bytesPerFrame = bytesPerSample * channels;
                 double queueMs = waveProvider.BufferedBytes * 1000.0 / (sampleRate * bytesPerFrame);
                 if (queueMs > TrimAboveMs) { overflows++; Log(0, queueMs); return; }   // do not let latency pile up: skip this frame's sound (transients only)
-                if (queueMs < PrimeBelowMs)
+                if (queueMs < (stretching ? 1 : PrimeBelowMs))
                 {
                     // start-up, after a pause, after a stall: start again from the target depth instead of creeping up to it
                     int pad = (int)((TargetQueueMs - queueMs) * sampleRate / 1000.0);
@@ -379,6 +385,20 @@ namespace BrokenNes.Windows
                 if (SubmitWavPath is { Length: > 0 } && !disposed)
                 {
                     try { submitWav ??= new WaveFileWriter(SubmitWavPath, WaveFormat.CreateIeeeFloatWaveFormat(sourceRate, 1)); submitWav.WriteSamples(samples, 0, n); } catch { }
+                }
+                // below full speed (the queue running low with the rate control at its limit): stretch the sound, same pitch, instead of
+                // letting the device play silence every few frames (BROKENNES_AUDIO_NOSTRETCH=1: off, for the A/B)
+                if (!NoStretch)
+                {   // the stretch follows the queue (an integrator: a steady shortfall of production settles at the factor that covers it)
+                    stretchF = Math.Clamp(stretchF + 0.03 * (TargetQueueMs - queueMs) / TargetQueueMs, 1.0, 3.0);
+                    if (!stretching && stretchF > 1.05) { stretching = true; stretch.Reset(); stretchOn++; }
+                    else if (stretching && stretchF <= 1.0) stretching = false;
+                    if (stretching)
+                    {
+                        o = stretch.Process(outBuf, o, stretchF, ref stretchBuf);
+                        outBuf = stretchBuf;
+                        stretchedSamples += o;
+                    }
                 }
                 AddPcm(outBuf, o, Muted ? 0f : MasterVolume);
                 Log(o, queueMs);
@@ -623,7 +643,7 @@ namespace BrokenNes.Windows
                 // how fast the device really takes sound, in samples a second (44100 at 44100 when it plays in real time)
                 readRateHz = diag.TotalBytesRead / (double)(bytesPerSample * channels) / Math.Max(secs, 1e-6),
                 maxReadGapMs = diag.MaxGapTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
-                samplesSubmitted, primes, overflows, rate = lastRate, queueEmaMs = queueEma,
+                samplesSubmitted, primes, overflows, stretchOn, stretchedSamples, stretchFactor = stretchF, rate = lastRate, queueEmaMs = queueEma,
             };
         }
         

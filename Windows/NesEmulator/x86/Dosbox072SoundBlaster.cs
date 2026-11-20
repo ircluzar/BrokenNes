@@ -660,10 +660,17 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
 
     private static float CALCVOL(int v) => (float)Math.Pow(10.0f, (31 - v) * -1.3f / 20);
 
+    /// <summary>Diagnostics: the mixer's volumes as the program set them (5-bit, 31 = full) and the 3Bh-47h storage (gains).</summary>
+    public string MixerSummary() => $"master {mixer_master[0]}/{mixer_master[1]} voice {mixer_dac[0]}/{mixer_dac[1]} fm {mixer_fm[0]}/{mixer_fm[1]} cd {mixer_cda[0]}/{mixer_cda[1]} line {mixer_lin[0]}/{mixer_lin[1]} enabled {mixer_enabled} " +
+        $"3B-47 {Convert.ToHexString(mixer_unhandled, 0x3b, 0x0d)}";
+
     private void CTMIXER_UpdateVolumes()
     {
         if (!mixer_enabled) return;
-        _chan.SetVolume(mixer_master[0] / 31.0f * CALCVOL(mixer_dac[0]), mixer_master[1] / 31.0f * CALCVOL(mixer_dac[1]));
+        // the SB16's output gain (41h / 42h bits 7-6: x1, x2, x4, x8; not in DOSBox 0.72, which stores them): Win98's SB16 driver sets x2, so
+        // every Windows game was 6 dB quieter than on the card (Age of Empires and StarCraft sounded quiet)
+        float gl = type == SBT_16 ? 1 << (mixer_unhandled[0x41] >> 6) : 1, gr = type == SBT_16 ? 1 << (mixer_unhandled[0x42] >> 6) : 1;
+        _chan.SetVolume(gl * mixer_master[0] / 31.0f * CALCVOL(mixer_dac[0]), gr * mixer_master[1] / 31.0f * CALCVOL(mixer_dac[1]));
         // (the "FM" channel's volume would go to the AdLib: not wired, the AdLib keeps its own level)
     }
 
@@ -752,6 +759,7 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
                 break;
             default:
                 if (((type == SBT_PRO1 || type == SBT_PRO2) && mixer_index == 0x0c) || (type == SBT_16 && mixer_index >= 0x3b && mixer_index <= 0x47)) mixer_unhandled[mixer_index] = val;
+                if (type == SBT_16 && mixer_index is 0x41 or 0x42) CTMIXER_UpdateVolumes();
                 break;
         }
     }
@@ -924,5 +932,6 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
         if (sv == 0x1602) { r.Read(asp_regs, 0, 256); asp_init = r.ReadBoolean(); } else if (type == SBT_16) { Array.Clear(asp_regs); asp_regs[5] = 0x01; asp_regs[9] = 0xf8; asp_init = false; }
         foreach (var c in _m.Dma.Channels) if (c.Callback == DmaCb) c.Callback = null;
         if (cbch >= 0 && cb_kind != 0) _m.Dma[cbch].SetCallbackSilently(DmaCb);
+        if (type == SBT_16) CTMIXER_UpdateVolumes();   // (a state from before the output gain gets it; a newer one gets the same volume it saved)
     }
 }
