@@ -60,6 +60,7 @@ public sealed partial class I386
     /// <summary>X86_NOKEEPSEGS: reload the segments after every out-of-line instruction (A/B of DcKeepsSegs).</summary>
     private static readonly bool NoKeepSegs = Environment.GetEnvironmentVariable("X86_NOKEEPSEGS") != null;
     /// <summary>X86_NOHELPEROPS: flag ops and stack ops out of line again (A/B).</summary>
+    private static readonly bool NoRetImm = Environment.GetEnvironmentVariable("X86_NORETIMM") != null, NoPushI = Environment.GetEnvironmentVariable("X86_NOPUSHI") != null, NoRdSeg = Environment.GetEnvironmentVariable("X86_NORDSEG") != null;
     private static readonly bool NoMmxJit = Environment.GetEnvironmentVariable("X86_NOMMXJIT") != null;
     private static readonly bool NoHelperOps = Environment.GetEnvironmentVariable("X86_NOHELPEROPS") != null;
     private static readonly bool NoStkOp = Environment.GetEnvironmentVariable("X86_NOSTKOP") != null, NoFlagOp = Environment.GetEnvironmentVariable("X86_NOFLAGOP") != null;
@@ -223,7 +224,7 @@ public sealed partial class I386
     // expand-down data segments (Win98's flat Win32 DS / ES / SS is one: 0167h, limit EE60h, B = 1): valid offsets are limit + 1 .. FFFFh / FFFFFFFFh.
     // The compiled limit check is (off - lo) <= span - (size - 1): lo = 0, span = limit for the usual kind; lo = limit + 1, span = top - lo here
     /// <summary>Usable for reads only: a readable code segment (a CS: override, jump tables in 16-bit code; Win98's ring-0 code reads through CS too).</summary>
-    private bool JSegRdOk(int seg) => JSegOk(seg) || (Cr0 & 1) != 0 && (Flags & VM) == 0 && ((SegFlags[seg] & 0x1a) == 0x1a || (SegFlags[seg] & 0x1e) == 0x10) && SegLimit[seg] >= 3;   // (+ read-only data, expand-up: Win98's 0123h, limit 3 - StarCraft's GS: / 16-bit ES:)
+    private bool JSegRdOk(int seg) => JSegOk(seg) || (Cr0 & 1) != 0 && (Flags & VM) == 0 && ((SegFlags[seg] & 0x1a) == 0x1a || !NoRdSeg && (SegFlags[seg] & 0x1e) == 0x10) && SegLimit[seg] >= 3;   // (+ read-only data, expand-up: Win98's 0123h, limit 3 - StarCraft's GS: / 16-bit ES:)
     private bool ExpandDown(int seg) => (Cr0 & 1) != 0 && (Flags & VM) == 0 && (SegFlags[seg] & 0x1c) == 0x14;
     [MethodImpl(MethodImplOptions.NoInlining)] private uint JSegLo(int seg) => ExpandDown(seg) ? SegLimit[seg] + 1 : 0;
     [MethodImpl(MethodImplOptions.NoInlining)] private uint JSegSpan(int seg) => ExpandDown(seg) ? ((SegFlags[seg] & 0x4000) != 0 ? 0xffffffffu : 0xffffu) - (SegLimit[seg] + 1) : SegLimit[seg];
