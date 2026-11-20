@@ -75,6 +75,18 @@ public sealed partial class I386
             {
                 _ifPaddr = 0;
                 if (!Peek8(out b1)) return FAIL;
+                // the fetch page was not cached (a jump / call / return onto another page): Peek8 has just cached it, so a compiled block
+                // from here can run now (before, the target's first instruction was always interpreted and its block never entered)
+                if (jit && JitOn && !NoPageMissJit && ((ulong)laddr ^ _ifLaddr) < 4096 - 16)
+                {
+                    uint paddr = _ifXaddr ^ laddr;
+                    int rc = JitTry(paddr);
+                    if (rc == OK) return OK;
+                    if (rc == FAIL) return FAIL;
+                    if (rc == JIT_END) return END;
+                    if (JitStats) JitCountInterp(paddr);
+                    _ifPaddr = paddr + 1;
+                }
                 NextIp++;
             }
             Cycle++;

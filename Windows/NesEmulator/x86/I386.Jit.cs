@@ -61,6 +61,7 @@ public sealed partial class I386
     private static readonly bool NoKeepSegs = Environment.GetEnvironmentVariable("X86_NOKEEPSEGS") != null;
     /// <summary>X86_NOHELPEROPS: flag ops and stack ops out of line again (A/B).</summary>
     private static readonly bool NoRetImm = Environment.GetEnvironmentVariable("X86_NORETIMM") != null, NoPushI = Environment.GetEnvironmentVariable("X86_NOPUSHI") != null, NoRdSeg = Environment.GetEnvironmentVariable("X86_NORDSEG") != null;
+    private static readonly bool NoPageMissJit = Environment.GetEnvironmentVariable("X86_PAGEMISSJIT") == null;   // opt-in: no measurable gain (A/B 2026-11-20)
     private static readonly bool NoMmxJit = Environment.GetEnvironmentVariable("X86_NOMMXJIT") != null;
     private static readonly bool NoHelperOps = Environment.GetEnvironmentVariable("X86_NOHELPEROPS") != null;
     private static readonly bool NoStkOp = Environment.GetEnvironmentVariable("X86_NOSTKOP") != null, NoFlagOp = Environment.GetEnvironmentVariable("X86_NOFLAGOP") != null;
@@ -370,14 +371,31 @@ public sealed partial class I386
 
     /// <summary>Block linking (X86_NOLINK turns it off): leave as JExitOk, but when the next instruction starts a valid compiled block
     /// that Exec1's next iteration would run (the same fetch-page test, entry lookup and code check as Step1), run it from here.</summary>
+    private static readonly bool NoPageLink = Environment.GetEnvironmentVariable("X86_PAGELINK") == null;   // opt-in: links 7M -> 23M per 10 s in StarCraft but no wall-clock gain (A/B 2026-11-20)
+    /// <summary>Block linking across pages: what Peek8 would do at the next fetch, without a page walk or fault - only when the TLB already
+    /// holds a read translation for this CPL (paging on), the target is 16+ bytes inside its page and the CS limit, and the page is plain RAM.</summary>
+    public readonly long[] LinkPageWhy = new long[7];
+    private void LPW(int i) { if (JitStats) LinkPageWhy[i]++; }
+    private void LinkPage(uint laddr, uint ip)
+    {
+        if ((Cr0 & CR0_PG) == 0) { LPW(0); return; } if ((laddr & 0xfff) >= 4096 - 16) { LPW(1); return; } if ((ulong)ip + 16 > SegLimit[SEG_CS]) { LPW(2); return; }
+        uint lpg = laddr >> 12; int e = (int)(lpg % TlbSize);
+        if (_tlbLpgno[e] != lpg) { LPW(3); return; } if (PteLookup[_tlbLookup[e] * 4 + (Cpl == 3 ? 2 : 0)] != 0) { LPW(4); return; }   // (a read at this CPL: the page walk's own check)
+        uint pa = _tlbXaddr[e] ^ laddr;
+        if (MemSize <= 4096 || pa >= MemSize - 4096 || InIoMem(pa) || InIoMem(pa + 16)) { LPW(5); return; } LPW(6);
+        _ifLaddr = laddr & ~4095ul; _ifXaddr = pa ^ laddr;
+    }
+    /// <summary>JITSTAT: block exits - 0 step budget out, 1 link depth, 2 linked, 3 no compiled block at the target, 4 target on another fetch page.</summary>
+    public readonly long[] LinkWhy = new long[5];
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JExitLink(uint ip, uint nextIp, long cyc, int st)
     {
         Ip = ip; NextIp = nextIp; Cycle = cyc; _steps = st + 1;
-        if (st <= 0 || !JitLink || _linkDepth >= 64) return OK;   // (each link nests a call: at most 64 deep)
+        if (st <= 0 || !JitLink || _linkDepth >= 64) { if (JitStats) LinkWhy[st <= 0 ? 0 : 1]++; return OK; }   // (each link nests a call: at most 64 deep)
         _steps = st;   // (Exec1's loop step for the block that just ran)
         _c16 = Code16; _spm = SpMask;
         uint laddr = SegBase[SEG_CS] + nextIp;
+        if (((ulong)laddr ^ _ifLaddr) >= 4096 - 16 && !NoPageLink) LinkPage(laddr, nextIp);   // a target on another page: cache its fetch page when the TLB already allows it
         if (((ulong)laddr ^ _ifLaddr) < 4096 - 16)
         {
             uint paddr = _ifXaddr ^ laddr;
@@ -389,12 +407,14 @@ public sealed partial class I386
                 _linkDepth++;
                 int rc = code.Fn(this, en.K);
                 _linkDepth--;
+                if (JitStats) LinkWhy[2]++;
                 if (rc != JIT_DECLINE) return rc;
                 // (declined in its prologue, nothing changed: back to Exec1, which would interpret the caller's start address again
                 // if this returned JIT_DECLINE)
                 Ip = ip; Cycle = cyc;
             }
         }
+        if (JitStats) LinkWhy[((ulong)(SegBase[SEG_CS] + nextIp) ^ _ifLaddr) < 4096 - 16 ? 3 : 4]++;
         _steps = st + 1;
         return OK;
     }
