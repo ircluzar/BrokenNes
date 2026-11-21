@@ -79,7 +79,8 @@ public sealed partial class I386
     private uint _ifXaddr, _ifPaddr;
 
     // TLB
-    private const int TlbSize = 512;
+    /// <summary>X86_TLBBITS (default 9 = 512 entries): the TLB size as a power of two (direct-mapped; the JIT reads it at emit time).</summary>
+    private static readonly int TlbSize = 1 << (int.TryParse(Environment.GetEnvironmentVariable("X86_TLBBITS"), out var tb) && tb is >= 6 and <= 14 ? tb : 9);
     /// <summary>The TLB slot of a linear page: X86_TLBHASH folds bits 9+ in (pages 2 MB apart no longer share a slot: Win98's VMM / Win16
     /// thunk data against user stacks); default the low bits as before.</summary>
     private static readonly bool TlbHash = Environment.GetEnvironmentVariable("X86_TLBHASH") != null;
