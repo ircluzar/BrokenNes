@@ -435,6 +435,43 @@ public sealed partial class I386
         if (opa != 0xffffffff) OolTicksAt[opa] = OolTicksAt.GetValueOrDefault(opa) + dt;   // (JITSTAT + TIMEPROBE: which out-of-line instructions cost the time)
         return r;
     }
+    /// <summary>An out-of-line IN / OUT (DcIoTag): exactly what JInterp's Step1(false) does for it, without the fetch and prefix decode.</summary>
+    public long OolIo;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int JIo(uint ip, long cyc, int st, uint opc, uint port, int len)
+    {
+        Cycle = cyc; _steps = st;
+        if (JitStats) OolIo++;
+        _c16 = Code16; _spm = SpMask;
+        Ip = ip; NextIp = ip + (uint)len;
+        uint b1 = opc & 0xff;
+        _ifPaddr = 0;
+        Cycle++;
+        _opsz16 = (opc & 0x100) != 0 ? !_c16 : _c16; _adsz16 = _c16; _rep = 0; _curSeg = -1;
+        if (_opCost != null) Cycle += _opCost[b1];
+        int v = _opsz16 ? 16 : 32;
+        int pt = port == 0xffffffff ? (int)L16(2) : (int)port;
+        if (PcMachine.TimeProbe)
+        {
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            int r = JIoOp(b1, v, pt);
+            long dt = System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+            TicksIo += dt; int key = pt | (int)b1 << 16; IoTicksAt[key] = IoTicksAt.GetValueOrDefault(key) + dt; IoCountAt[key] = IoCountAt.GetValueOrDefault(key) + 1;
+            return r;
+        }
+        return JIoOp(b1, v, pt);
+    }
+    /// <summary>X86_TIMEPROBE: wall ticks inside JIo's In / Out, by opcode &lt;&lt; 16 | port.</summary>
+    public long TicksIo;
+    public readonly Dictionary<int, long> IoTicksAt = new(), IoCountAt = new();
+    private int JIoOp(uint b1, int v, int pt)
+    {
+        return b1 switch
+        {
+            0xe4 or 0xec => K(In(8, pt)), 0xe5 or 0xed => K(In(v, pt)),
+            0xe6 or 0xee => K(Out(8, pt)), _ => K(Out(v, pt)),
+        };
+    }
     /// <summary>X86_TIMEPROBE: wall ticks inside out-of-line instructions (JInterp) and their count.</summary>
     public long TicksOol, OolCalls;
     public readonly Dictionary<uint, long> OolTicksAt = new();
@@ -582,7 +619,7 @@ public sealed partial class I386
     {
         var d = new Dictionary<string, MethodInfo>();
         foreach (var n in new[] { "JRam", "JSegKey", "JGetCF", "JSegLoad", "JSSame", "JSSameLive", "JSpecFail", "JSOk", "JSRd", "JSBase", "JSSpan", "JSLo", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JFpuNmRefund", "JMmxNmRefund", "JMmx", "JCodeSame", "JCall", "JRet",
-                     "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
+                     "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JIo", "JStill", "JSpm",
                      "JXlat", "JFlagOp", "JStk", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
         return d;
@@ -1288,7 +1325,8 @@ public sealed partial class I386
             {   // out of line, through the interpreter's own loop body (it counts the instruction clock itself)
                 if (SegLazy && anyLazy) { I4(1); Stl(ran); }   // (something ran: a later unusable segment must leave, not decline)
                 var notFail = il.DefineLabel(); var notEnd = il.DefineLabel(); var leaveG = il.DefineLabel();
-                Ld0(); IpAt(pa); LdCyc(); LdSt(); Call("JInterp"); Stl(Y);
+                if (e.Reg == 1) { Ld0(); IpAt(pa); LdCyc(); LdSt(); U4(e.Disp); U4(e.Imm); I4(e.Len); Call("JIo"); Stl(Y); }   // (IN / OUT: DcIoTag)
+                else { Ld0(); IpAt(pa); LdCyc(); LdSt(); Call("JInterp"); Stl(Y); }
                 Ld(Y); I4(FAIL); il.Emit(OpCodes.Bne_Un, notFail); I4(FAIL); Op(OpCodes.Ret);
                 il.MarkLabel(notFail);
                 Ld(Y); I4(END); il.Emit(OpCodes.Bne_Un, notEnd); I4(JIT_END); Op(OpCodes.Ret);

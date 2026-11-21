@@ -44,6 +44,20 @@ public sealed partial class I386
         if ((KindOff >> DK_INTERP & 1) != 0) return;   // (bit 22: out-of-line instructions end the region instead)
         e.Kind = DK_INTERP; e.Len = (byte)len; e.Op = (byte)(noFall ? 1 : 0); e.Mod = (byte)(DcNoWrite(paddr) ? 0 : 1);
         e.Rm = (byte)(DcKeepsSegs(paddr) ? 1 : 0);
+        if (!NoIoJit) DcIoTag(ref e, paddr);
+    }
+
+    /// <summary>X86_NOIOJIT: off. IN / OUT (E4-E7, EC-EF, only 66 prefixes): the compiled code calls JIo (the interpreter's In / Out with the
+    /// prefix state set as Step1 would) instead of JInterp (Step1's fetch / prefix decode); everything around it stays the JInterp sequence.
+    /// Reg = 1, Disp = the opcode | 100h with a 66 prefix, Imm = the imm8 port (FFFFFFFF: DX).</summary>
+    private static readonly bool NoIoJit = Environment.GetEnvironmentVariable("X86_NOIOJIT") != null;
+    private void DcIoTag(ref DEntry e, uint paddr)
+    {
+        int p = 0; uint b; bool o = false;
+        for (;;) { b = U8(paddr + (uint)p++); if (b != 0x66) break; o = true; if (p > 4) return; }
+        if (!(b is >= 0xe4 and <= 0xe7 or >= 0xec and <= 0xef)) return;
+        if (e.Len != p + (b < 0xe8 ? 1 : 0)) return;
+        e.Reg = 1; e.Disp = b | (o ? 0x100u : 0); e.Imm = b < 0xe8 ? U8(paddr + (uint)p) : 0xffffffff;
     }
 
     /// <summary>Does this out-of-line instruction leave every segment register, SS's size, the CPL and the code size alone (unless it faults, which
