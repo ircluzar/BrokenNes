@@ -279,10 +279,16 @@ public sealed partial class I386
     // JSegOk / JSegRdOk / JSegBase / JSegSpan / JSegLo values, read back through inlined getters (was up to 8 calls per segment)
     private readonly uint[] _jsBase = new uint[6], _jsSpan = new uint[6], _jsLo = new uint[6];
     private int _jsOk, _jsRd;
+    private uint _jsGen = 0xffffffffu, _jsMode = 0xffffffffu;   // JSegLoad's memo key (not saved: SegGen moves on at every state load)
+    private static readonly bool NoSegMemo = Environment.GetEnvironmentVariable("X86_NOSEGMEMO") != null;
     private static readonly bool NoSegLoad = Environment.GetEnvironmentVariable("X86_NOSEGLOAD") != null;
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void JSegLoad(int mask)
-    {
+    {   // memo (X86_NOSEGMEMO: off): every value below depends only on the segment registers (any real change bumps SegGen), PE and VM,
+        // so while those are unchanged the last computation (made for all six segments) still holds
+        uint mode = ((Flags >> 16) & 2) | (Cr0 & 1);
+        if (SegGen == _jsGen && mode == _jsMode && !NoSegMemo) return;
+        if (!NoSegMemo) { mask = 63; _jsGen = SegGen; _jsMode = mode; }
         int ok = 0, rd = 0;
         for (int s = 0; s < 6; s++)
         {
