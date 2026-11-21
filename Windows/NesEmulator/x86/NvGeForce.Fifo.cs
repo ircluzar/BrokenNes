@@ -110,6 +110,7 @@ public sealed partial class NvGeForce
     // ================= the DMA pusher =================
 
     private bool _inPusher;
+    private int _pushDiag;   // diagnostics: push reads that land in low system memory (logged, first 20)
 
     private void RunPusher()
     {
@@ -124,6 +125,7 @@ public sealed partial class NvGeForce
             while (get != put && guard++ < 4_000_000)
             {
                 if (Stalled) break;
+                if (OpLog != null && _pushDiag < 20) { var (dv, da) = DmaAddr(inst, get); if (!dv && da < 0x100000) { _pushDiag++; OpLog($"pushdiag ch{ActiveChid} inst {inst:X} get {get:X} put {put:X} -> sys {da:X} w0 {Ramin32(inst):X8} lim {Ramin32(inst + 4):X8} pte0 {Ramin32(inst + 8):X8} pteN {Ramin32(inst + 8 + ((get + (Ramin32(inst) >> 20)) >> 12) * 4):X8}"); } }
                 uint w = DmaRead32(inst, get); get += 4; PushWords++;
                 if (_dmaCount > 0)
                 {
