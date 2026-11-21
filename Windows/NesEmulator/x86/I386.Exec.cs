@@ -50,11 +50,11 @@ public sealed partial class I386
     }
     private bool Exec1(int stepcount)
     {
-        _steps = stepcount;
+        _steps = stepcount; _tramp = null;
         for (; _steps > 0; _steps--)
         {
             if (JitStats) Step1Calls++;
-            int r = PcMachine.TimeProbe ? Step1Timed() : Step1(true);
+            int r = _tramp != null ? RunTramp() : PcMachine.TimeProbe ? Step1Timed() : Step1(true);
             if (r == OK) continue;
             if (r == FAIL) return false;
             return true;

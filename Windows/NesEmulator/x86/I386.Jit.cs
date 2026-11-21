@@ -536,6 +536,7 @@ public sealed partial class I386
             ref var en = ref _je[JitIndex(paddr)];
             if (en.Used && en.Start == paddr && en.C16 == _c16 && en.Pg == ((Cr0 & CR0_PG) != 0) && en.Code is JitCode code && JitSame(code))
             {
+                if (UseTramp) { _tramp = code; _trampK = en.K; if (JitStats) LinkWhy[2]++; _steps = st + 1; return OK; }   // (Exec1's next iteration runs it: no nested call)
                 Ip = nextIp;
                 _jitCur = code;
                 _linkDepth++;
@@ -553,6 +554,19 @@ public sealed partial class I386
         return OK;
     }
     private int _linkDepth;
+    /// <summary>X86_TRAMP: a link does not nest a call; JExitLink leaves the checked target here and Exec1's next iteration runs it
+    /// (what Step1 + JitTry would do, without the fetch and the lookup).</summary>
+    private static readonly bool UseTramp = Environment.GetEnvironmentVariable("X86_TRAMP") != null;
+    private JitCode? _tramp; private int _trampK;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int RunTramp()
+    {
+        var code = _tramp!; _tramp = null;
+        _c16 = Code16; _spm = SpMask; Ip = NextIp; _jitCur = code;
+        int rc = code.Fn(this, _trampK);
+        if (rc == JIT_DECLINE) return Step1(true);
+        return rc == JIT_END ? END : rc;
+    }
     /// <summary>X86_LINKDEPTH: how many linked blocks may nest (each link is a nested native call; default 64).</summary>
     private static readonly int LinkDepthMax = int.TryParse(Environment.GetEnvironmentVariable("X86_LINKDEPTH"), out int ld) && ld > 0 ? ld : 64;
     /// <summary>JITSTAT: why the last compiled block declined (2 entry index, 1x segment at the prologue, 3x segment at the entry instruction).</summary>
