@@ -32,6 +32,9 @@ public sealed class PcSession : IConsoleSession
     /// <param name="image">A disk image, or a DOS program (<see cref="PcDisks.IsDosProgram"/>: it is put on a FreeDOS boot disk made for it, <see cref="PcDisks.ForProgram"/>).</param>
     public PcSession(byte[] image, string fileName = "", string apu = "ADLIB", string cpu = "I386", string ppu = "VGA", CpuModel? model = null, string machine = PcMachinePreset.ClassicKey)
     {
+        // nano98: a .n98 game package boots straight into its game on the seat machine (N98Seat: the package applied onto the seat base)
+        N98Seat? seat = N98Seat.IsPackage(fileName) ? N98Seat.Prepare(image, fileName) : null;
+        if (seat != null) { image = seat.Image; machine = seat.Machine; }
         var preset = PcMachinePreset.Find(machine);
         // X86-02: background (non-blocking) gen2 collections while a PC runs: the JIT's Reflection.Emit garbage made blocking collections the worst frames (A/B: p99 163 -> 124 ms). BROKENNES_X86_GCLAT=0 opts out.
         if (Environment.GetEnvironmentVariable("BROKENNES_X86_GCLAT") != "0") System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
@@ -49,8 +52,9 @@ public sealed class PcSession : IConsoleSession
             if (_nat != null) _nat.LanShared = true;
             _m.Nic.Link = _m.Nic.Link != null ? new PcLinkPair(_lan, _m.Nic.Link) : _lan;
         }
-        Title = fileName.Length > 0 ? Path.GetFileNameWithoutExtension(fileName) : "x86 disk";
-        if (PcDisks.IsDosProgram(image, fileName))
+        Title = seat != null ? seat.Title : fileName.Length > 0 ? Path.GetFileNameWithoutExtension(fileName) : "x86 disk";
+        if (seat != null) GameId = "n98" + seat.Id;
+        else if (PcDisks.IsDosProgram(image, fileName))
         {
             string fd = PcDisks.FindFreeDos() ?? throw new FileNotFoundException($"a DOS program needs the FreeDOS boot disk ({PcDisks.FreeDosImageName} in the app's x86/freedos folder, or BROKENNES_FREEDOS); open a disk image instead");
             Program = PcDisks.DosName(fileName);
@@ -69,6 +73,13 @@ public sealed class PcSession : IConsoleSession
         if (!_floppy && Environment.GetEnvironmentVariable("BROKENNES_X86_HDD2") is { Length: > 0 } hdd2 && File.Exists(hdd2) && _m.Ata != null) _m.Hdd[1] = new DiskImage(DiskImage.ReadImageFile(hdd2), false);
         // the CD drive's disc (X86-02): BROKENNES_X86_CD = an .iso, .cue or .bin (IDE machines; read from the file, never written)
         if (Environment.GetEnvironmentVariable("BROKENNES_X86_CD") is { Length: > 0 } cdPath && File.Exists(cdPath)) InsertCd(CdImage.Open(cdPath));
+        if (seat != null)
+        {
+            Seat = seat;
+            _m.Command = seat.Command;
+            if (seat.CdPath != null && _m.Cd == null) InsertCd(CdImage.Open(seat.CdPath));
+            _m.StatusLine += OnSeatStatus;
+        }
         if (!PcSound.Apply(_m, apu)) throw new ArgumentException($"the x86 PC has no sound card '{apu}'");
         ApuId = apu.ToUpperInvariant();
         _m.Vga.Picture = VgaPictures.Create(_m.Vga, ppu);
@@ -161,10 +172,64 @@ public sealed class PcSession : IConsoleSession
 
 
     private bool _stateHookUsed;
+
+    // ================= nano98 seat =================
+    /// <summary>The .n98 package this session boots (null: an ordinary disk).</summary>
+    public N98Seat? Seat { get; private set; }
+    /// <summary>The seat launcher's last status line (port E9h: "N98 READY", "N98 RUN ...", "N98 EXIT n", "N98 POWEROFF", "N98 FAIL n").</summary>
+    public string? SeatStatus { get; private set; }
+    /// <summary>Raised on the emulation thread when the seat's game ends: ("exit", code), ("fail", error) or ("poweroff", "").</summary>
+    public event Action<string, string>? SeatEnded;
+    private string? _resumeKey;   // the disk content the cold boot started from (a resume snapshot is only valid for that same disk)
+    private bool _snapPending;
+    public bool SeatPoweredOff => _m.Stopped?.StartsWith("APM", StringComparison.Ordinal) == true;
+
+    private void OnSeatStatus(string line)
+    {
+        SeatStatus = line;
+        if (line == "N98 READY" && _resumeKey != null) _snapPending = true;   // the machine is up and the launcher has its command: the resume point
+        else if (line.StartsWith("N98 EXIT ", StringComparison.Ordinal)) { string code = line[9..]; if (code != "0") SeatEnded?.Invoke("exit", code); }
+        else if (line.StartsWith("N98 FAIL", StringComparison.Ordinal)) SeatEnded?.Invoke("fail", line.Length > 9 ? line[9..] : "");
+    }
+
+    /// <summary>Power-on of a seat: the cached resume snapshot when it was made by this emulator build from this same disk, else a cold boot that makes one.</summary>
+    private bool SeatResume()
+    {
+        if (Seat == null) return false;
+        string key = Disk.ContentKey(), dir = Seat.ResumeDir, st = Path.Combine(dir, "resume.bin"), meta = Path.Combine(dir, "resume.key");
+        try
+        {
+            if (File.Exists(st) && File.Exists(meta) && File.ReadAllText(meta) == key && Environment.GetEnvironmentVariable("BROKENNES_N98_NORESUME") != "1")
+            {
+                _m.LoadState(File.ReadAllBytes(st));
+                _m.Ata?.Secondary.ClearMediaChanged(0);
+                return true;
+            }
+        }
+        catch (Exception e) { System.Console.WriteLine($"[nano98] resume snapshot not used: {e.Message}"); }
+        _resumeKey = key;
+        return false;
+    }
+
+    private void SeatSnapshot()
+    {
+        _snapPending = false;
+        try
+        {
+            string dir = Seat!.ResumeDir; Directory.CreateDirectory(dir);
+            File.WriteAllBytes(Path.Combine(dir, "resume.bin.tmp"), SaveState());
+            File.Move(Path.Combine(dir, "resume.bin.tmp"), Path.Combine(dir, "resume.bin"), true);
+            File.WriteAllText(Path.Combine(dir, "resume.key"), _resumeKey!);
+            System.Console.WriteLine($"[nano98] resume snapshot saved ({dir})");
+        }
+        catch (Exception e) { System.Console.WriteLine($"[nano98] resume snapshot not saved: {e.Message}"); }
+        _resumeKey = null;
+    }
     // BROKENNES_X86_MACHINESTATE: start from a machine state saved by the Workshop's x86boot ({save:PATH}) on the same disks (X86-02: StarCraft's menu); used once
     private void FirstPowerOn()
     {
-        _m.PowerOn(); _powered = true;
+        _m.PowerOn(); _powered = true; _seatOffSent = false;
+        if (SeatResume()) return;
         if (!_stateHookUsed && Environment.GetEnvironmentVariable("BROKENNES_X86_MACHINESTATE") is { Length: > 0 } ms && File.Exists(ms))
         {
             _stateHookUsed = true;
@@ -183,7 +248,10 @@ public sealed class PcSession : IConsoleSession
         _m.Opl.CatchUp();
         _m.Card?.Advance();
         CopyFrame();
+        if (_snapPending) SeatSnapshot();
+        if (Seat != null && SeatPoweredOff && !_seatOffSent) { _seatOffSent = true; SeatEnded?.Invoke("poweroff", ""); }
     }
+    private bool _seatOffSent;
 
     private void CopyFrame()
     {

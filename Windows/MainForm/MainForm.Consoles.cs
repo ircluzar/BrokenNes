@@ -561,7 +561,28 @@ namespace BrokenNes.Windows
             UpdateConsoleTitle();
             Console.WriteLine($"[Console] {s.Description}");
             RefreshRecentRomsMenu();
+            if (s is NesEmulator.X86.PcSession { Seat: not null } seat) seat.SeatEnded += (kind, detail) => BeginInvoke(() => OnSeatEnded(seat, kind, detail));
             StartEmulation();
+        }
+
+        /// <summary>nano98: the seat's game ended. Power-off (the launcher's normal exit) goes back to the menu; a failed start or a non-zero exit
+        /// code asks: restart the game, or back to the menu.</summary>
+        private void OnSeatEnded(NesEmulator.X86.PcSession seat, string kind, string detail)
+        {
+            if (!ReferenceEquals(session, seat)) return;
+            if (kind != "poweroff")
+            {
+                string what = kind == "fail" ? $"could not start (error {detail})" : $"ended with exit code {detail}";
+                var r = MessageBox.Show(this, $"{seat.Title} {what}." + Environment.NewLine + Environment.NewLine + "Restart the game? (No: back to the menu)", "BrokenNes 2", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                if (r == DialogResult.Yes)
+                {
+                    StopEmulation();
+                    lock (emulationLock) seat.Reset();
+                    StartEmulation();
+                    return;
+                }
+            }
+            CloseRom_Click(this, EventArgs.Empty);
         }
 
         private void StopSession()

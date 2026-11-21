@@ -1,3 +1,4 @@
+using System.Linq;
 // A raw disk image (floppy or hard disk) for the x86 console's BIOS (INT 13h), IDE and floppy controller. Written for BrokenNes.
 
 using System;
@@ -93,6 +94,15 @@ public sealed class DiskImage
     }
 
     /// <summary>The whole disk as the machine sees it (a new array).</summary>
+    /// <summary>A key for the disk's content relative to its base: the base length + a hash of the changed sectors (nano98 resume snapshots).</summary>
+    public string ContentKey()
+    {
+        using var h = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        h.AppendData(BitConverter.GetBytes(Base.LongLength));
+        foreach (var s in _overlay.Keys.OrderBy(k => k)) { h.AppendData(BitConverter.GetBytes(s)); h.AppendData(_overlay[s]); }
+        return Convert.ToHexString(h.GetHashAndReset());
+    }
+
     public byte[] ToArray()
     {
         var a = (byte[])Base.Clone();

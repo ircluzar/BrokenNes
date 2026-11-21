@@ -150,7 +150,7 @@ public static class Consoles
         ConsoleKind.GameGear => new[] { ".gg" },
         ConsoleKind.Genesis => new[] { ".md", ".gen", ".smd", ".bin" },
         ConsoleKind.WideMess => new[] { ".wms" },
-        ConsoleKind.Pc => new[] { ".img", ".ima", ".exe", ".com" },   // a disk image, or a DOS program (it boots on a FreeDOS disk made for it)
+        ConsoleKind.Pc => new[] { ".img", ".ima", ".exe", ".com", ".n98" },   // a disk image, or a DOS program (it boots on a FreeDOS disk made for it)
         ConsoleKind.N64 => new[] { ".z64", ".n64", ".v64" },
         _ => new[] { ".gb", ".gbc" },
     };
@@ -226,6 +226,8 @@ public static class RomDetect
         string ext = Path.GetExtension(fileName).ToLowerInvariant();
         // an x86 console disk image (a raw floppy or hard disk), by its extension, only where the console is offered
         if (ext is ".img" or ".ima" && Consoles.IsAvailable(ConsoleKind.Pc) && rom.Length >= 512 && rom.Length % 512 == 0) return ConsoleKind.Pc;
+        // ... or a nano98 game package (a zip: Windows 98 seat + game, booted straight into the game)
+        if (ext == ".n98" && Consoles.IsAvailable(ConsoleKind.Pc) && rom.Length > 4 && rom[0] == 'P' && rom[1] == 'K') return ConsoleKind.Pc;
         // ... or a DOS program (not a Windows one), which the console boots on a FreeDOS disk made for it
         if (ext is ".exe" or ".com" && Consoles.IsAvailable(ConsoleKind.Pc) && NesEmulator.X86.PcDisks.IsDosProgram(rom, fileName)) return ConsoleKind.Pc;
         return ext switch
