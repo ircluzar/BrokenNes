@@ -36,6 +36,10 @@ public sealed partial class PcMachine : IX86Bus
     public readonly System.Text.StringBuilder Teletype = new();
     /// <summary>Port E9h output (the Bochs debug port): a test program's log.</summary>
     public readonly System.Text.StringBuilder DebugPort = new();
+    /// <summary>A whole line written to port E9h (guest-initiated status, e.g. the nano98 launcher's "N98 ..." lines): raised at the newline.
+    /// Host side only (not in the savestate); the guest decides what and when, so a replay sees the same lines at the same instructions.</summary>
+    public event Action<string>? StatusLine;
+    private int _statusFrom;
     /// <summary>Called for a port the board does not answer (for devices added later: sound cards).</summary>
     public Func<int, int, int>? ExtraIn;     // (port, size) -> value or -1
     public Func<int, int, int, bool>? ExtraOut; // (port, size, value) -> handled
@@ -213,7 +217,10 @@ public sealed partial class PcMachine : IX86Bus
             case 0x70: case 0x71: Cmos.Out(port, v); return;
             case 0x92: Kbc.A20 = (v & 2) != 0; if ((v & 1) != 0) CpuResetRequest(); return;
             case 0x80: return;                                // POST code
-            case 0xe9: DebugPort.Append((char)v); return;
+            case 0xe9:
+                DebugPort.Append((char)v);
+                if (v == 10) { var l = DebugPort.ToString(_statusFrom, DebugPort.Length - _statusFrom).TrimEnd((char)13, (char)10); _statusFrom = DebugPort.Length; StatusLine?.Invoke(l); }
+                return;
             case 0x388: AdlibWait(); if (AdlibPresent) Opl.WriteAddress(v); return;   // AdLib (YM3812) address
             case 0x389: AdlibWait(); if (AdlibPresent) Opl.WriteData(v); return;      // AdLib data
             case BiosTrapPort: BiosTrap(); Cpu.MemTouched(); return;   // (our BIOS writes memory directly: compiled blocks check their bytes)

@@ -209,6 +209,9 @@ internal static class X86BootCli
             int i = pk.IndexOf('='); uint a = Convert.ToUInt32(pk[..i], 16);
             foreach (var b in pk[(i + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries)) m.PhysW8(a++, Convert.ToByte(b, 16));
         }
+        // guest status lines (port E9h, the nano98 launcher): printed as they come; --until-status TEXT stops the run at the first line containing TEXT
+        string? untilStatus = Arg(args, "--until-status");
+        m.StatusLine += l => { Console.WriteLine($"x86boot: status \"{l}\" at cycle {m.Cpu.Cycle}"); if (untilStatus != null && l.Contains(untilStatus)) m.Stopped ??= "status: " + l; };
         var shotAt = Args(args, "--shotat").Select(x => { int i = x.IndexOf('='); return (f: int.Parse(x[..i]), p: x[(i + 1)..]); }).OrderBy(x => x.f).ToList();
         int n = 0;
         foreach (var (sf, sp) in shotAt) { n += RunUntil(m, null, sf - n); X86Shots.SavePng(m.Vga, sp); Console.WriteLine($"x86boot: frame {n} at {sw.Elapsed.TotalSeconds:F1} s, cycle {m.Cpu.Cycle}"); }
