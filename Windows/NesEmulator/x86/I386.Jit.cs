@@ -505,7 +505,7 @@ public sealed partial class I386
     private int JFpuNmRefund() => (Cr0 & 0xc) != 0 ? _memCost : 0;
     /// <summary>The same for a compiled MMX instruction: #UD / #NM / #MF come before the interpreter decodes the ModR/M (MmxExec).</summary>
     private int JMmxNmRefund() => (Cr0 & 0xc) != 0 || (_fsw & FSW_ES) != 0 && (Cr0 & 0x20) != 0 ? _memCost : 0;
-    private static readonly bool NoPageLink = Environment.GetEnvironmentVariable("X86_PAGELINK") == null;   // opt-in: links 7M -> 23M per 10 s in StarCraft but no wall-clock gain (A/B 2026-11-20)
+    private static readonly bool NoPageLink = Environment.GetEnvironmentVariable("X86_NOPAGELINK") != null;   // opt-in: links 7M -> 23M per 10 s in StarCraft but no wall-clock gain (A/B 2026-11-20)
     /// <summary>Block linking across pages: what Peek8 would do at the next fetch, without a page walk or fault - only when the TLB already
     /// holds a read translation for this CPL (paging on), the target is 16+ bytes inside its page and the CS limit, and the page is plain RAM.</summary>
     public readonly long[] LinkPageWhy = new long[7];
@@ -556,7 +556,7 @@ public sealed partial class I386
     private int _linkDepth;
     /// <summary>X86_TRAMP: a link does not nest a call; JExitLink leaves the checked target here and Exec1's next iteration runs it
     /// (what Step1 + JitTry would do, without the fetch and the lookup).</summary>
-    private static readonly bool UseTramp = Environment.GetEnvironmentVariable("X86_TRAMP") != null;
+    private static readonly bool UseTramp = Environment.GetEnvironmentVariable("X86_NOTRAMP") == null;
     private JitCode? _tramp; private int _trampK;
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int RunTramp()
