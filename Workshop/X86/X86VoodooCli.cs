@@ -19,6 +19,19 @@ internal static class X86VoodooCli
 
     public static int Run(string[] args)
     {
+        if (Array.IndexOf(args, "--dump") is int di and >= 0)
+        {
+            // --dump STATE: the card's registers in a WIN98-P166-VOODOO state
+            var dm = new PcMachine(PcConfig.Win98Voodoo, CpuModel.PentiumMmx, PcVideo.S3Trio64);
+            if (Array.IndexOf(args, "--hdd") is int hi and >= 0) dm.Hdd[0] = new DiskImage(System.IO.File.ReadAllBytes(args[hi + 1]), false);
+            dm.LoadState(System.IO.File.ReadAllBytes(args[di + 1]));
+            var v = dm.Voodoo!;
+            foreach (var (n, o) in new[] { ("fbzColorPath", 0x104), ("fogMode", 0x108), ("alphaMode", 0x10c), ("fbzMode", 0x110), ("lfbMode", 0x114), ("clipLR", 0x118), ("clipTB", 0x11c), ("fbiInit0", 0x210), ("fbiInit1", 0x214), ("fbiInit2", 0x218), ("fbiInit3", 0x21c), ("fbiInit4", 0x200), ("videoDim", 0x20c), ("hSync", 0x220), ("vSync", 0x224), ("backPorch", 0x208) })
+                Console.WriteLine($"{n,-14} {v.Reg[o / 4]:X8}");
+            foreach (var (n, o) in new[] { ("textureMode", 0x300), ("tLOD", 0x304), ("tDetail", 0x308), ("texBase", 0x30c), ("trexInit1", 0x320) }) Console.WriteLine($"{n,-14} {v.TReg[o / 4]:X8}");
+            Console.WriteLine($"active {v.Active} {v.Width}x{v.Height} triangles {v.Triangles} pixels {v.Pixels}");
+            return 0;
+        }
         string? shot = Array.IndexOf(args, "--shot") is int si and >= 0 && si + 1 < args.Length ? args[si + 1] : null;
 
         // the default Win98 machine has no 3D card: nothing at 00:0B.0
