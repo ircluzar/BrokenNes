@@ -91,6 +91,8 @@ namespace BrokenNes.Windows
             var loadRomItem = new ToolStripMenuItem("&Load Rom...", null, LoadRom_Click);
             loadRomItem.ShortcutKeys = Keys.Control | Keys.O;
             emulatorMenu.DropDownItems.Add(loadRomItem);
+            if (NesEmulator.Systems.Consoles.IsAvailable(NesEmulator.Systems.ConsoleKind.Pc))
+                emulatorMenu.DropDownItems.Add(new ToolStripMenuItem("Open game &package (.n98)...", null, OpenN98_Click));   // nano98: a Windows 98 game, booted straight into the game
             
             var closeRomItem = new ToolStripMenuItem("&Close Rom", null, CloseRom_Click);
             emulatorMenu.DropDownItems.Add(closeRomItem);

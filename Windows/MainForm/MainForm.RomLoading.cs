@@ -64,6 +64,12 @@ namespace BrokenNes.Windows
             }
         }
         
+        private void OpenN98_Click(object? sender, EventArgs e)
+        {
+            using var d = new OpenFileDialog { Filter = "Windows 98 game packages (*.n98)|*.n98|All files (*.*)|*.*", Title = "Open a game package (.n98): Windows 98 boots straight into the game" };
+            if (d.ShowDialog() == DialogResult.OK) LoadRomFile(d.FileName);
+        }
+
         private void ResetGame()
         {
             if (!string.IsNullOrEmpty(currentRomPath) && File.Exists(currentRomPath))
