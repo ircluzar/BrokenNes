@@ -153,9 +153,10 @@ if ($runN64 -and $Skip -notcontains 'n64') {
 if ($runPc -and $Skip -notcontains 'x86') {
     Note "x86 PC console checks" White
     $xd = Join-Path $Out 'x86'; New-Item -ItemType Directory -Force -Path $xd | Out-Null
-    $runs = [ordered]@{ 'x86test' = @('--x86test'); 'x86dev' = @('--x86dev'); 'x86video' = @('--x86video'); 'x86ide' = @('--x86ide'); 'x86pci' = @('--x86pci'); 'x86engines' = @('--x86engines'); 'x86cards' = @('--x86cards'); 'x86fdc' = @('--x86fdc'); 'x86cpu' = @('--x86cpu', '--vec', (Join-Path $Repo 'tools\x86-cpu\cpuvec.bin')) }
+    $runs = [ordered]@{ 'x86test' = @('--x86test'); 'x86dev' = @('--x86dev'); 'x86video' = @('--x86video'); 'x86ide' = @('--x86ide'); 'x86pci' = @('--x86pci'); 'x86voodoo' = @('--x86voodoo'); 'x86engines' = @('--x86engines'); 'x86cards' = @('--x86cards'); 'x86fdc' = @('--x86fdc'); 'x86cpu' = @('--x86cpu', '--vec', (Join-Path $Repo 'tools\x86-cpu\cpuvec.bin')) }
     $fd = if ($env:BROKENNES_FREEDOS) { $env:BROKENNES_FREEDOS } else { 'C:\BrokenNes-tools\dos\freedos\FD14LITE.img' }
     if (Test-Path $fd) { foreach ($cpu in 'I386', 'I386_D074') { $runs["x86session-$cpu"] = @('--x86session', $fd, '--frames', '600', '--cpu', $cpu) } }
+    if (Test-Path $fd) { $runs['x86bugrt'] = @('--x86bugrt', $fd) }   # the bug capture's x86 round trip: keys recorded, replayed in sync, off course without them
     $procs = foreach ($k in $runs.Keys) { $p = Start-Process -FilePath $exe -ArgumentList $runs[$k] -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $xd "$k.txt") -RedirectStandardError (Join-Path $xd "$k.err.txt"); $null = $p.Handle; [pscustomobject]@{ k = $k; p = $p } }
     $procs.p | Wait-Process
     $det = @(); $okN = 0

@@ -12,11 +12,19 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace NesEmulator.X86;
 
 /// <summary>One PCI function's 256-byte configuration space (header type 0); the writable bytes are the command, latency, interrupt line and the device-specific area.</summary>
+/// <summary>A PCI device's memory-mapped window (BAR0). Offsets are relative to the BAR base; sizes 1, 2 or 4 bytes.</summary>
+public interface IPciMmio
+{
+    uint MmioRead(uint off, int size);
+    void MmioWrite(uint off, uint v, int size);
+}
+
 public sealed class PciFunction
 {
     public readonly byte[] Cfg = new byte[256];
@@ -35,10 +43,22 @@ public sealed class PciFunction
     /// <summary>Size of the I/O window behind BAR4 (the PIIX4 IDE's bus-master registers; 0: none).</summary>
     public int Bar4Size;
     public int Bar4Base => (Cfg[4] & 1) != 0 && Bar4Size != 0 && (Read32(0x20) & 0xfffc) != 0 ? (int)(Read32(0x20) & 0xfffc & ~(uint)(Bar4Size - 1)) : -1;
+    /// <summary>Size of the memory window behind BAR0 (a power of two, 0: none). The general PCI MMIO facility (Voodoo now, a GeForce later).</summary>
+    public uint MemBarSize;
+    /// <summary>The device behind the memory BAR.</summary>
+    public IPciMmio? Mmio;
+    /// <summary>BAR0's memory base, or 0 when memory decode (command bit 1) is off or the BAR is unplaced.</summary>
+    public uint MemBase => (Cfg[4] & 2) != 0 && MemBarSize != 0 ? Read32(0x10) & ~(MemBarSize - 1) : 0;
     public int IoBase => (Cfg[4] & 1) != 0 && IoBarSize != 0 ? (int)(Read32(0x10) & 0xfffc & ~(uint)(IoBarSize - 1)) : -1;
     public void WriteByte(int reg, byte v)
     {
-        if (reg is >= 0x10 and <= 0x13 && IoBarSize != 0)
+        if (reg is >= 0x10 and <= 0x13 && MemBarSize != 0)
+        {
+            Cfg[reg] = v;
+            uint b = Read32(0x10) & ~(MemBarSize - 1);   // memory space, 32-bit, not prefetchable
+            for (int i = 0; i < 4; i++) Cfg[0x10 + i] = (byte)(b >> (8 * i));
+        }
+        else if (reg is >= 0x10 and <= 0x13 && IoBarSize != 0)
         {
             Cfg[reg] = v;
             uint b = (Read32(0x10) & ~(uint)(IoBarSize - 1) & 0xffff) | 1;
@@ -58,13 +78,20 @@ public sealed class PciFunction
 /// <summary>PCI bus 0 behind configuration mechanism #1, plus the PIIX4 I/O it owns (CF9h reset control, 4D0h/4D1h ELCR).</summary>
 public sealed class PciBus
 {
-    public const byte HostDevFn = 0x00, IsaDevFn = 0x38, IdeDevFn = 0x39, VgaDevFn = 0x48, NicDevFn = 0x50;   // 00.0, 07.0, 07.1, 09.0, 0A.0
+    public const byte HostDevFn = 0x00, IsaDevFn = 0x38, IdeDevFn = 0x39, VgaDevFn = 0x48, NicDevFn = 0x50, Voodoo1DevFn = 0x58;   // 00.0, 07.0, 07.1, 09.0, 0A.0
     private readonly PcMachine _m;
     public readonly SortedDictionary<byte, PciFunction> Functions = new();
     public uint Address;
     public byte Elcr1, Elcr2, ResetControl;
     public PciFunction Isa => Functions[IsaDevFn];
     public PciFunction? NicFn;
+    /// <summary>The functions with a memory BAR (looked up on accesses at 0xE0000000 and up).</summary>
+    public PciFunction[] MmioFns = Array.Empty<PciFunction>();
+    public PciFunction? MmioAt(uint a)
+    {
+        foreach (var f in MmioFns) { uint b = f.MemBase; if (b != 0 && a - b < f.MemBarSize) return f; }
+        return null;
+    }
 
     public PciBus(PcMachine m) { _m = m; Reset(); }
 
@@ -87,6 +114,13 @@ public sealed class PciBus
             nic.Cfg[0x10] = 1; nic.Cfg[0x3d] = 1;                 // I/O BAR, INTA#
             nic.W16(0x2c, Rtl8029.Vendor); nic.W16(0x2e, Rtl8029.Device);
         }
+        if (_m.Voodoo != null)
+        {
+            var vf = Functions[Voodoo1DevFn] = new PciFunction("3dfx Voodoo Graphics", Voodoo1.Vendor, Voodoo1.Device, 0x040000, 0x02) { MemBarSize = Voodoo1.MemSize, Mmio = _m.Voodoo };
+            vf.Cfg[0x3d] = 1;                                     // INTA# (present on the card, unused by the Voodoo 1 drivers)
+            _m.Voodoo.Pci = vf;
+        }
+        MmioFns = Functions.Values.Where(f => f.Mmio != null).ToArray();
         Functions[HostDevFn].Cfg[4] = 0x06;
         isa.Cfg[4] = 0x07;
         Address = 0; Elcr1 = Elcr2 = 0; ResetControl = 0;
@@ -242,6 +276,13 @@ public sealed partial class PcMachine
             pci.Isa.Cfg[0x61] = NicIrq;
             nic.Cfg[0x3c] = NicIrq;
             pci.Elcr2 |= 1 << (NicIrq - 8);
+        }
+
+        // the Voodoo: its 16 MB window at E8000000h (clear of the S3's 64 MB at E0000000h), memory decode on, no I/O
+        if (pci.Functions.ContainsKey(PciBus.Voodoo1DevFn))
+        {
+            pci.ConfigWrite(0, PciBus.Voodoo1DevFn, 0x10, 0xe8000000, 4);
+            pci.ConfigWrite(0, PciBus.Voodoo1DevFn, 0x04, 0x02, 1);
         }
 
         // $PIR: the routing table (one slot entry per device that has an interrupt pin)
@@ -406,7 +447,7 @@ public sealed partial class PcMachine
         uint oldEs = C.SegSel[I386.SEG_ES], oldBase = C.SegBase[I386.SEG_ES], oldLim = C.SegLimit[I386.SEG_ES], oldFl = C.SegFlags[I386.SEG_ES];
         bool ok = C.LoadSeg(I386.SEG_ES, sel);
         for (int i = 0; ok && i < data.Length; i++) ok = C.CpuStore(8, I386.SEG_ES, off + (uint)i, data[i]);
-        C.SegSel[I386.SEG_ES] = oldEs; C.SegBase[I386.SEG_ES] = oldBase; C.SegLimit[I386.SEG_ES] = oldLim; C.SegFlags[I386.SEG_ES] = oldFl;
+        C.SegGen++; C.SegSel[I386.SEG_ES] = oldEs; C.SegBase[I386.SEG_ES] = oldBase; C.SegLimit[I386.SEG_ES] = oldLim; C.SegFlags[I386.SEG_ES] = oldFl;
         return ok;
     }
 
@@ -506,7 +547,7 @@ public sealed partial class PcMachine
         bool ok = C.LoadSeg(I386.SEG_ES, sel);
         uint v = 0;
         if (ok) ok = C.CpuLoad(8, I386.SEG_ES, off, out v);
-        C.SegSel[I386.SEG_ES] = oldEs; C.SegBase[I386.SEG_ES] = oldBase; C.SegLimit[I386.SEG_ES] = oldLim; C.SegFlags[I386.SEG_ES] = oldFl;
+        C.SegGen++; C.SegSel[I386.SEG_ES] = oldEs; C.SegBase[I386.SEG_ES] = oldBase; C.SegLimit[I386.SEG_ES] = oldLim; C.SegFlags[I386.SEG_ES] = oldFl;
         b = (byte)v;
         return ok;
     }

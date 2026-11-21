@@ -25,7 +25,7 @@ public sealed partial class PcMachine
         else if (mode == 0x13) { Vga.SetRegs(Vga.Mode13); cols = 40; rows = 25; pageSize = 0; }
         else if (mode is 0x12 or 0x11) { Vga.SetRegs(Vga.Mode12); cols = 80; rows = 30; pageSize = 0; mode = 0x12; }
         else return;                                             // not offered: the mode stays as it was
-        if (!_v86Video) Vga.S3?.LeaveEnhanced();
+        Vga.S3?.LeaveEnhanced();   // also from V86 (a DOS box under Windows): a real S3 BIOS mode set leaves the enhanced mode, and Int10 replays the CR31/CR3x changes through the VDD (Quake in a full-screen DOS box was drawn by the enhanced-mode path, 2026-11-20)
         if (mode == 0x13) Vga.LoadDefaultDac256(); else { Array.Clear(Vga.Palette); Vga.LoadEgaDac(); }
         if (!noClear)
         {
@@ -403,12 +403,14 @@ public sealed partial class PcMachine
     // A real video BIOS reaches the card only through OUTs and the VM's own B8000 mapping, and Windows 98's VDD virtualizes both
     // (a background VM's mode set must not touch the screen Windows is drawing). So in V86 mode the C# service runs, its register
     // changes become replayed OUTs (the VDD sees them), and the card's registers (and video memory, for mode/font sets) are put back.
+    private static readonly bool _int10Log = Environment.GetEnvironmentVariable("X86_INT10LOG") == "1";   // every INT 10h call (debug)
     private bool _v86Video;
     private byte TxtR(int i) => _v86Video ? Lin8(0xb8000u + (uint)((i >> 2) * 2 + (i & 1))) : Vga.Ram[i];
     private void TxtW(int i, byte v) { if (_v86Video) LinW8(0xb8000u + (uint)((i >> 2) * 2 + (i & 1)), v); else Vga.Ram[i] = v; }
 
     private void Int10()
     {
+        if (_int10Log) Console.WriteLine($"int10: AX={AX:X4} BX={BX:X4} vm={(C.Flags & I386.VM) != 0} cs:ip={Cpu.SegSel[1]:X4}:{Cpu.Ip:X4} GR6={Vga.Gr[6]:X2} AR10={Vga.Ar[0x10]:X2} S3enh={Vga.S3?.Enhanced}");
         if ((C.Flags & I386.VM) == 0) { Int10Core(); return; }
         var v = Vga;
         byte[] sr = (byte[])v.Sr.Clone(), gr = (byte[])v.Gr.Clone(), cr = (byte[])v.Cr.Clone(), ar = (byte[])v.Ar.Clone(), pal = (byte[])v.Palette.Clone();

@@ -17,6 +17,7 @@ public sealed partial class I386
         public bool O16, A16;
         public sbyte Seg, SegRaw; // the segment used for a memory operand / the prefix one (-1 none)
         public uint Disp, Imm;
+        public bool Live;        // (the compiler's) a MOV r32, imm32 whose immediate is read from memory at run time (live immediate)
         public bool Folds;       // (the compiler's) a CMP / TEST that folds with the JZ / JNZ rel8 after it
         public byte FoldNb;      // that JZ / JNZ's opcode
         public uint FoldRel;     // and its displacement, sign-extended

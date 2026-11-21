@@ -71,6 +71,7 @@ internal static class X86BootCli
         if (Environment.GetEnvironmentVariable("X86_GCLAT") != "0") System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
         var cfg = Arg(args, "--machine") is string mp ? PcConfig.Preset(mp) : PcConfig.Default;
         if (Arg(args, "--mem") is string mem) cfg = cfg with { MemoryMB = int.Parse(mem) };
+        if (args.Contains("--voodoo")) cfg = cfg with { Voodoo = true };
         if (Arg(args, "--bootorder") is string bo) cfg = cfg with { BootOrder = bo.ToUpperInvariant() };
         // --machine names a whole machine (the desktop's presets): its CPU model and video card, unless --cpu / --video say otherwise
         var preset = Arg(args, "--machine") is string mk && PcMachinePreset.Known(mk) ? PcMachinePreset.Find(mk) : null;
@@ -371,7 +372,11 @@ internal static class X86BootCli
         }
         CaptureReport();
         if (args.Contains("--frametimes")) Console.WriteLine(FrameTimeReport());
+        if (args.Contains("--frametimes")) foreach (var (w0, w1) in new[] { (0, 600), (600, 1800), (0, 1800) }) if (_frameMs.Count >= w1) Console.WriteLine(FrameWinReport(w0, w1));   // (after a load: the warm-up window first)
         if (args.Contains("--dacdump")) for (int r = 0; r < 256; r += 16) Console.WriteLine($"dac {r:X2}: " + string.Join(" ", Enumerable.Range(r, 16).Select(i => $"{m.Vga.Palette[i * 3]:X2}{m.Vga.Palette[i * 3 + 1]:X2}{m.Vga.Palette[i * 3 + 2]:X2}")));
+        Console.WriteLine($"x86boot: guest clock {m.InstructionsPerSecond:N0} instruction clocks / s (CPU model {m.Cpu.Model.Name}, CPI {m.Cpu.Model.Cpi})");   // a loaded state carries its own
+        if (Environment.GetEnvironmentVariable("X86_VGADUMP") == "1")   // the VGA's register state at the end (text vs graphics decisions)
+            Console.WriteLine($"vgadump: misc {m.Vga.Msr:X2} SR {Convert.ToHexString(m.Vga.Sr)} GR {Convert.ToHexString(m.Vga.Gr)} AR {Convert.ToHexString(m.Vga.Ar)} CR {Convert.ToHexString(m.Vga.Cr.AsSpan(0, 0x19))} S3 enh {m.S3?.Enhanced} BDA mode {m.Phys8(0x449):X2}");
         Console.WriteLine($"vga: DAC writes {m.Vga.DacWrites}, above 3Fh {m.Vga.DacWritesOver63}; S3 CR55 {(m.S3 != null ? m.Vga.Cr[0x55] : 0):X2} CR67 {(m.S3 != null ? m.Vga.Cr[0x67] : 0):X2} SR18 {(m.S3 != null ? m.S3.SrRead(0x18) : 0):X2}; VGA-by-MMIO writes {m.S3?.VgaMmioWrites}, CR53 {(m.S3 != null ? m.Vga.Cr[0x53] : 0):X2}");
         if (args.Contains("--frametimes")) { var gi = GC.GetGCMemoryInfo(GCKind.Ephemeral); Console.WriteLine($"gc last ephemeral: gen {gi.Generation}, pause {(gi.PauseDurations.Length > 0 ? gi.PauseDurations[0].TotalMilliseconds : 0):F1} ms, promoted {gi.PromotedBytes / 1048576} MB, heap {gi.HeapSizeBytes / 1048576} MB, fragmented {gi.FragmentedBytes / 1048576} MB; gen0 budget? total committed {gi.TotalCommittedBytes / 1048576} MB"); }
         if (Environment.GetEnvironmentVariable("X86_SAVEBENCH") == "1")
@@ -422,6 +427,7 @@ internal static class X86BootCli
         if (PcMachine.TimeProbe)
         {
             double tf = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            Console.WriteLine($"timeprobe: parts: sound card (Advance: DMA + mixing) {m.TicksCard * tf:F0} ms, VGA/S3 render {m.RenderTicks * tf:F0} ms");
             Console.WriteLine($"timeprobe: steps without a compiled block {m.Cpu.InterpCount.Sum()}, {m.Cpu.InterpTicks.Sum() * tf:F0} ms; top by time (first byte, 100 = fetch off the cached page):");
             Console.WriteLine("timeprobe: by decline path (none,invalid,failed,pending,compile,counting,new): " + string.Join(" ", Enumerable.Range(0, 7).Select(i => $"{m.Cpu.WhyCount[i]}/{m.Cpu.WhyTicks[i] * tf:F0}ms")));
             foreach (int i in Enumerable.Range(0, 257).OrderByDescending(i => m.Cpu.InterpTicks[i]).Take(16))
@@ -485,6 +491,12 @@ internal static class X86BootCli
         const double rt = 1000.0 / 70;   // a VGA frame of machine time
         return $"frametimes: {a.Length} frames, mean {sum / a.Length:F2} ms ({rt / (sum / a.Length) * 100:F0}% real time), p50 {P(.5):F2}, p99 {P(.99):F2} ({rt / P(.99) * 100:F0}%), max {a[^1]:F1} ms, frames over 50 ms {a.Count(v => v > 50)}; GC gen0/1/2 {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}, GC pause total {GC.GetTotalPauseDuration().TotalMilliseconds:F0} ms, allocated {GC.GetTotalAllocatedBytes() / 1048576} MB";
     }
+    public static string FrameWinReport(int w0, int w1)
+    {
+        var a = _frameMs.Skip(w0).Take(w1 - w0).ToArray(); Array.Sort(a);
+        double sum = a.Sum();
+        return $"framewin {w0}-{w1}: mean {sum / a.Length:F2} ms, p50 {a[a.Length / 2]:F2}, p99 {a[Math.Min(a.Length - 1, (int)(.99 * a.Length))]:F2}, over 50 ms {a.Count(v => v > 50)}, over 100 ms {a.Count(v => v > 100)}, total {sum / 1000:F2} s";
+    }
     private static PcMachine? _partner; private static PcLanHub? _pairHub; private static PcNat? _pairNat;
     // --bugcapture N: the desktop's bug capture as a soak sees it: every N frames the machine's state is copied between frames (timed with
     // the frame) into one of two alternating buffers, and packed (ConsoleStateFile.Wrap: CRC + parallel deflate) on a worker; the previous pack
@@ -492,20 +504,32 @@ internal static class X86BootCli
     private static int _capEvery, _capFrame, _capFlip, _capCount;
     private static readonly MemoryStream?[] _capBuf = new MemoryStream?[2];
     private static System.Threading.Tasks.Task<byte[]>? _capPack;
+    private static readonly byte[]?[] _capKeep = new byte[]?[32];
     private static double _capCopyMs, _capCopyMax, _capWaitMs; private static long _capBytes;
     private static void CaptureTick(PcMachine m)
     {
         var sw = Stopwatch.StartNew();
-        if (_capPack != null) { _capBytes = _capPack.Result.Length; }
+        if (_capPack != null) { _capBytes = _capPack.Result.Length; }   // (the buffer's length: WrapInto may leave spare room)
         _capWaitMs += sw.Elapsed.TotalMilliseconds;
         _capFlip ^= 1;
         var ms = _capBuf[_capFlip] ??= new MemoryStream();
         ms.SetLength(0);
         m.SaveState(ms);
         var seg = new ArraySegment<byte>(ms.GetBuffer(), 0, (int)ms.Length);
-        _capPack = System.Threading.Tasks.Task.Run(() => NesEmulator.Systems.ConsoleStateFile.Wrap(NesEmulator.Systems.ConsoleKind.Pc, "soak", "soak",
-            new Dictionary<string, string> { ["format"] = "x86-1" }, seg));
+        // packed into the evicted one of 32 kept buffers (as BugCaptureRing's slots reuse theirs since 8d4e62fb): memory flat, like the desktop
+        int keep = _capCount % _capKeep.Length; var reuse = _capKeep[keep];
+        _capPack = System.Threading.Tasks.Task.Run(() =>
+        {
+            var w = NesEmulator.Systems.ConsoleStateFile.WrapInto(NesEmulator.Systems.ConsoleKind.Pc, "soak", "soak", new Dictionary<string, string> { ["format"] = "x86-1" }, seg, reuse);
+            _capKeep[keep] = w.Array; return w.Array!;
+        });
         double t = sw.Elapsed.TotalMilliseconds; _capCopyMs += t; if (t > _capCopyMax) _capCopyMax = t; _capCount++;
+        if (_capCount % 60 == 0 && Environment.GetEnvironmentVariable("X86_MEMLOG") == "1")
+        {   // the soak's memory, managed vs the rest (diagnostics)
+            var gi = GC.GetGCMemoryInfo(); var pr = Process.GetCurrentProcess();
+            long kept = 0; foreach (var b in _capKeep) kept += b?.Length ?? 0;
+            Console.WriteLine($"memlog: states {_capCount} ws {pr.WorkingSet64 >> 20} MB private {pr.PrivateMemorySize64 >> 20} MB managed heap {gi.HeapSizeBytes >> 20} MB committed {gi.TotalCommittedBytes >> 20} MB fragmented {gi.FragmentedBytes >> 20} MB loh {gi.GenerationInfo[3].SizeAfterBytes >> 20} MB kept buffers {kept >> 20} MB payload bufs {(_capBuf[0]?.Capacity ?? 0) / 1048576}+{(_capBuf[1]?.Capacity ?? 0) / 1048576} MB gc2 {GC.CollectionCount(2)}");
+        }
     }
     private static void CaptureReport()
     {
@@ -603,6 +627,7 @@ internal static class X86BootCli
                 if (tok.StartsWith("m:")) { var mv = tok[2..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), mv.Length > 2 ? int.Parse(mv[2]) : 0); Frame(m); Frame(m); continue; }   // {m:dx,dy[,buttons]}: the PS/2 mouse
                 if (tok.StartsWith("click:")) { var mv = tok[6..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), 0); Frame(m); Frame(m); m.Kbc.MouseInput(0, 0, 1); Frame(m); Frame(m); m.Kbc.MouseInput(0, 0, 0); Frame(m); Frame(m); continue; }   // {click:dx,dy}: move then left click
                 if (tok.StartsWith("save:")) { File.WriteAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5), m.SaveState()); _wavMark = _wav?.Length ?? 0; continue; }   // {save:PATH}: a savestate right here (the run goes on; --wav also writes the sound from here on as FILE.after.wav)
+                if (tok.StartsWith("cd:")) { var cd = CdImage.Open(text.Substring(ci - tok.Length + 3, tok.Length - 3)); m.Cd = cd; if (m.Ata != null) { m.Ata.Secondary.Cd[0] = cd; m.Ata.Secondary.MediaChanged(0); } continue; }   // {cd:PATH}: change the disc (the drive reports the media change)
                 if (tok.StartsWith("load:")) { m.LoadState(File.ReadAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5))); continue; }   // {load:PATH}: load a savestate right here, in this process (the run goes on from it)
                 if (tok.StartsWith("wait:")) { int wn = int.Parse(tok[5..]); for (int q = 0; q < wn; q++) Frame(m); continue; }
                 if (tok.StartsWith("typefile:")) { TypeText(m, File.ReadAllText(tok[9..]).Trim()); continue; }   // {typefile:PATH}: type a file's text (a key kept out of command lines and logs)

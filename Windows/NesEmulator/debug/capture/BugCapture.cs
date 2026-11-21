@@ -69,6 +69,18 @@ public sealed class BugCaptureSource
     /// <summary>Whether the NES runs NTSC's frame length (60.0988) rather than BrokenNes's 60 fps frames.</summary>
     public static bool NesNtsc(NES nes) => nes.GetSpeedConfig()?.NtscAccurateFrameRate == true;
 
+    /// <summary>
+    /// The x86 PC's keyframe RAM hash: all of its physical RAM, 8 bytes at a time (64 MB ~ 10 ms, once a second). The PC offers no memory
+    /// domains (its RAM is not open to the corruption tools), so without this every PC keyframe hashed nothing and only the picture could catch a divergence.
+    /// </summary>
+    public static ulong PcRamHash(byte[] mem)
+    {
+        var q = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, ulong>(mem.AsSpan(0, mem.Length & ~7));
+        ulong h = 0xcbf29ce484222325UL;
+        foreach (ulong v in q) { h ^= v; h *= 0x100000001b3UL; h ^= h >> 29; }
+        return h;
+    }
+
     /// <summary>A console session: its own state (or why it has none), its ARGB picture, its work-RAM domains; <paramref name="machine"/>: its cores, watched.</summary>
     public static BugCaptureSource For(IConsoleSession s, Func<string>? machine = null)
     {
@@ -77,7 +89,7 @@ public sealed class BugCaptureSource
         return new BugCaptureSource(Consoles.Key(s.Console),
             states ? s.SaveState : null, states ? "" : s.StateUnsupportedReason,
             () => MovieHash.Picture(s.Frame, s.FrameWidth * s.FrameHeight),
-            () => MovieHash.Ram(domains),
+            s is NesEmulator.X86.PcSession pcRam ? () => PcRamHash(pcRam.Machine.Cpu.Mem) : () => MovieHash.Ram(domains),
             p => p.FromArgb(s.Frame, s.FrameWidth, s.FrameHeight), machine)
         {
             BeginSaveState = states && s is NesEmulator.X86.PcSession pc ? pc.BeginSaveState : null,
@@ -215,7 +227,7 @@ public sealed class BugCaptureRing
         padFrames = need;
         int samples = (int)(SampleRate * (Seconds + 4.0) * Math.Max(1.0, 60.0 / Every));
         if (audio.Length < samples) audio = new float[samples];
-        frame = 0; audioPos = 0; StateError = ""; MaxStateMs = 0; LastStateMs = 0; machineNow = null;
+        frame = 0; audioPos = 0; inputCount = 0; StateError = ""; MaxStateMs = 0; LastStateMs = 0; machineNow = null;
         BreakReason = ""; BreakFrame = -1;
         Clear(0);
         powerOnStart = powerOn;
@@ -276,6 +288,22 @@ public sealed class BugCaptureRing
         if (src == null) return;
         notes[noteCount % notes.Length] = (Math.Max(0, frame - 1), kind, text);
         noteCount++;
+    }
+
+    // ---- host input that is not a pad: the x86 PC's keyboard and mouse (told by the session as the frame begins); the last 16384 kept
+    private readonly (long Frame, char Kind, int A, int B, int C)[] inputs = new (long, char, int, int, int)[16384];
+    private long inputCount;
+
+    /// <summary>
+    /// A host input the machine took for the frame running now (emulation thread, after <see cref="Frame(PadButtons, PadButtons)"/>):
+    /// <paramref name="kind"/> 'K' = a key (a = scan code, b = 1 extended, c = 1 down), 'M' = the mouse (a = dx, b = dy, c = buttons).
+    /// Kept in order with the frame, so a capture's movie can hand the same inputs to the same frames.
+    /// </summary>
+    public void Input(char kind, int a, int b, int c)
+    {
+        if (src == null) return;
+        inputs[inputCount % inputs.Length] = (Math.Max(0, frame - 1), kind, a, b, c);
+        inputCount++;
     }
 
     public static PadButtons FromNes(bool[]? b)
@@ -407,6 +435,14 @@ public sealed class BugCaptureRing
             var (nf, kind, text) = notes[k % notes.Length];
             if (nf >= start && nf < frame) d.Notes.Add((nf - start, kind, text));
         }
+        // the host inputs since the start (frames counted from it); if the ring lost some of them, the movie cannot replay: say so
+        long firstKept = Math.Max(0, inputCount - inputs.Length);
+        if (firstKept > 0 && inputs[firstKept % inputs.Length].Frame >= start) d.InputsLost = true;
+        for (long k = firstKept; k < inputCount; k++)
+        {
+            var e = inputs[k % inputs.Length];
+            if (e.Frame >= start && e.Frame < frame) d.Inputs.Add((e.Frame - start, e.Kind, e.A, e.B, e.C));
+        }
         // the last keyframe and picture: now
         d.Keys.Add(new MovieKey { Frame = n, Picture = s.PictureHash(), Ram = s.RamHash() });
         var last = new BugPicture(); s.CopyPicture(last); last.Frame = n;
@@ -439,6 +475,10 @@ public sealed class BugCaptureData
     public readonly List<BugPicture> Pictures = new();
     /// <summary>The debug port's events of the capture (D7): the frame from the capture's start, the kind, the text.</summary>
     public readonly List<(long Frame, string Kind, string Text)> Notes = new();
+    /// <summary>The host inputs that are not pads (the x86 PC's keys 'K' and mouse 'M'), by movie frame, in order.</summary>
+    public readonly List<(long Frame, char Kind, int A, int B, int C)> Inputs = new();
+    /// <summary>The ring had dropped inputs of this history (more than it keeps): the movie would go off course.</summary>
+    public bool InputsLost;
     public BugPicture? Last;
     public float[] Audio = Array.Empty<float>();
     /// <summary>Samples at the start of the capture the sound buffer no longer held (0 normally): the sound file starts that late.</summary>

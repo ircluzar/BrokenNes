@@ -49,6 +49,8 @@ public sealed partial class I386
     public uint SpMask;
     public bool Halt;
     public readonly uint[] SegSel = new uint[8], SegBase = new uint[8], SegLimit = new uint[8], SegFlags = new uint[8];
+    /// <summary>Bumped on every write to SegSel / SegBase / SegLimit / SegFlags (compiled blocks skip their segment checks while it holds).</summary>
+    public uint SegGen;
     public uint IdtBase, IdtLimit, GdtBase, GdtLimit;
     public uint Cr0, Cr2, Cr3;
     public readonly uint[] Dr = new uint[8];
@@ -78,6 +80,11 @@ public sealed partial class I386
 
     // TLB
     private const int TlbSize = 512;
+    /// <summary>The TLB slot of a linear page: X86_TLBHASH folds bits 9+ in (pages 2 MB apart no longer share a slot: Win98's VMM / Win16
+    /// thunk data against user stacks); default the low bits as before.</summary>
+    private static readonly bool TlbHash = Environment.GetEnvironmentVariable("X86_TLBHASH") != null;
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static int TlbIdx(uint lp) => (int)((TlbHash ? lp ^ (lp >> 9) ^ (lp >> 18) : lp) & (TlbSize - 1));
     private readonly uint[] _tlbLpgno = new uint[TlbSize], _tlbXaddr = new uint[TlbSize];
     private readonly int[] _tlbLookup = new int[TlbSize];    // index into PteLookup: wp*4 + ((pte >> 1) & 3)
     private readonly int[] _tlbPpte = new int[TlbSize];      // physical address of the PTE's low byte
@@ -117,6 +124,14 @@ public sealed partial class I386
         _repCost16 = RepCosts(model);
         _memCost = MemCost(model);
         BuildOpCosts(model, out _opCost, out _opCost0F, out _mulCost, out _divCost);
+        // X86_P5COST (measurement only, not a default): "nomem" = memory operands cost nothing extra, "nofpu" = x87 opcodes nothing extra,
+        // "flat" = every instruction one clock unit (no class extras, no memory, no REP iterations): the timing-model sensitivity for the bench ladder
+        if (Environment.GetEnvironmentVariable("X86_P5COST") is string pc && !model.Legacy)
+        {
+            if (pc.Contains("nomem") || pc.Contains("flat")) _memCost = 0;
+            if ((pc.Contains("nofpu") || pc.Contains("flat")) && _opCost != null) for (int i = 0xd8; i <= 0xdf; i++) _opCost[i] = 0;
+            if (pc.Contains("flat")) { if (_opCost != null) Array.Clear(_opCost); if (_opCost0F != null) Array.Clear(_opCost0F); if (_mulCost != null) Array.Clear(_mulCost); if (_divCost != null) Array.Clear(_divCost); _repCost16 = null; }
+        }
         Mem = new byte[memSize + 16];
         MemSize = (uint)memSize;
         _codeMark = new byte[(memSize >> 6) + 2];
@@ -184,6 +199,7 @@ public sealed partial class I386
     private void CodeWrite(uint a, uint n)
     {
         if (a >= MemSize) return;
+        if (n == 4 && JitLiveImmOn) SmcNote(a);
         _pgGen[a >> 12]++;
         uint e = a + n - 1;
         if ((e >> 12) != (a >> 12) && e < MemSize) _pgGen[e >> 12]++;
@@ -340,7 +356,7 @@ public sealed partial class I386
     private bool TranslateLpgno(int rwm, uint lpgno, uint laddr, int cpl, out uint paddr)
     {
         paddr = 0;
-        int e = (int)(lpgno % TlbSize);
+        int e = TlbIdx(lpgno);
         if (_tlbLpgno[e] != lpgno)
         {
             if (!TlbRefill(e, lpgno))
@@ -446,7 +462,7 @@ public sealed partial class I386
         if ((Cr0 & CR0_PG) != 0)
         {
             uint lpgno = laddr >> 12;
-            int e = (int)(lpgno % TlbSize);
+            int e = TlbIdx(lpgno);
             if (_tlbLpgno[e] != lpgno && !TlbRefill(e, lpgno))
             {
                 Cr2 = laddr; Excno = EX_PF; Excerr = Cpl == 3 ? 4u : 0u;
@@ -807,7 +823,9 @@ public sealed partial class I386
         sel &= 0xffff;
         if ((Cr0 & 1) == 0 || (Flags & VM) != 0)
         {
-            SegSel[seg] = sel; SegBase[seg] = sel << 4; SegFlags[seg] = 0; if ((Flags & VM) != 0) SegLimit[seg] = 0xffff;   // a real-mode load keeps the cached limit, as a 386 does ("unreal mode"); V86 = 64 KB
+            uint s0 = SegSel[seg], b0 = SegBase[seg], f0 = SegFlags[seg], l0 = SegLimit[seg];
+            SegSel[seg] = sel; SegBase[seg] = sel << 4; SegFlags[seg] = 0; if ((Flags & VM) != 0) SegLimit[seg] = 0xffff;
+            if (s0 != SegSel[seg] || b0 != SegBase[seg] || f0 != SegFlags[seg] || l0 != SegLimit[seg]) SegGen++;   // (only a real change: Win98 reloads the same segments on every ring transition)   // a real-mode load keeps the cached limit, as a 386 does ("unreal mode"); V86 = 64 KB
             if (seg == SEG_CS) { Cpl = (Flags & VM) != 0 ? 3 : 0; Code16 = true; }
             if (seg == SEG_SS) SpMask = 0xffff;
             return true;
@@ -826,11 +844,13 @@ public sealed partial class I386
             if ((seg == SEG_DS || seg == SEG_ES || seg == SEG_FS || seg == SEG_GS) && !s) return Throw(EX_GP, sel & ~3u);
             if (!p) return Throw(seg == SEG_SS ? EX_SS : EX_NP, sel & ~3u);
         }
+        uint s0 = SegSel[seg], b0 = SegBase[seg], f0 = SegFlags[seg], l0 = SegLimit[seg];
         SegSel[seg] = sel;
         SegBase[seg] = (w1 >> 16) | ((w2 & 0xff) << 16) | (w2 & 0xff000000);
         SegLimit[seg] = (w2 & 0xf0000) | (w1 & 0xffff);
         if ((w2 & 0x00800000) != 0) SegLimit[seg] = (SegLimit[seg] << 12) | 0xfff;
         SegFlags[seg] = (w2 >> 8) & 0xffff;
+        if (s0 != sel || b0 != SegBase[seg] || f0 != SegFlags[seg] || l0 != SegLimit[seg]) SegGen++;
         if (seg == SEG_CS) { Cpl = (int)(sel & 3); Code16 = (SegFlags[SEG_CS] & SEG_D_BIT) == 0; }
         if (seg == SEG_SS) SpMask = (SegFlags[SEG_SS] & SEG_B_BIT) != 0 ? 0xffffffff : 0xffff;
         return true;
@@ -845,7 +865,7 @@ public sealed partial class I386
             bool isData = ((w2 >> 11) & 1) == 0;
             int dpl = (int)((w2 >> 13) & 3);
             bool conforming = ((w2 >> 8) & 4) != 0;
-            if ((isData || !conforming) && dpl < Cpl) { SegSel[s] = 0; SegBase[s] = 0; SegLimit[s] = 0; SegFlags[s] = 0; }
+            if ((isData || !conforming) && dpl < Cpl) { SegGen++; SegSel[s] = 0; SegBase[s] = 0; SegLimit[s] = 0; SegFlags[s] = 0; }
         }
     }
 
@@ -866,7 +886,7 @@ public sealed partial class I386
         Cr0 = 0; Cr2 = 0; Cr3 = 0;
         if (!_legacy) { Cr4 = 0; if (_hasFpu) Cr0 = 0x10; FpuInit(); }   // ET: a 387-class FPU is there
         Array.Clear(Dr);
-        _ccMask = 0;
+        _ccMask = 0; SegGen++;
         TlbClear();
         Excno = 0; Excerr = 0;
     }
@@ -881,6 +901,7 @@ public sealed partial class I386
         SegSel[SEG_SS] = 0x10; SegBase[SEG_SS] = 0; SegLimit[SEG_SS] = 0xffffffff; SegFlags[SEG_SS] = SEG_B_BIT;
         foreach (int s in new[] { SEG_DS, SEG_ES })
         { SegSel[s] = SegSel[SEG_SS]; SegBase[s] = SegBase[SEG_SS]; SegLimit[s] = SegLimit[SEG_SS]; SegFlags[s] = SegFlags[SEG_SS]; }
+        SegGen++;
     }
 
     /// <summary>Set the CS:IP the next instruction is fetched from (real mode / V86 meaning of CS); for the tests and the BIOS.</summary>

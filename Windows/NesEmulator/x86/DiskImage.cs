@@ -131,15 +131,41 @@ public sealed class DiskImage
     /// <summary>Finds a base image by hash when no disk in the machine has it (the desktop / tools may point it at a folder of images).</summary>
     public static Func<string, long, byte[]?>? BaseResolver;
 
-    /// <summary>The base's identity: "sha256:HEX". Hashed once per base array (big ones in the background from the moment the disk is made).</summary>
+    /// <summary>The base's identity: "p256:HEX" = SHA-256 over the SHA-256s of its 16 MB pieces, hashed in parallel (a 1 GB image: ~0.5 s on 12
+    /// threads; the plain SHA-256 of it took ~4.5 s on this i7-8700 without SHA instructions, and a state load waited for both disks, ~10 s).
+    /// Hashed once per base array, when a state first needs it (the old whole-image hash from the moment the disk is made, as before). States saved before carry "sha256:HEX"
+    /// (the whole image): <see cref="FindBase"/> still matches those, computing that hash only when one is asked for.</summary>
     public string BaseHash => HashOf(Base);
 
+    private const int HashPiece = 16 << 20;
     private static Task<string> HashTask(byte[] image)
     {
-        lock (_lock) return _hashes.GetValue(image, a => Task.Run(() => "sha256:" + Convert.ToHexString(SHA256.HashData(a))));
+        lock (_lock) return _hashes.GetValue(image, a => Task.Run(() => PieceHash(a)));
     }
 
+    private static string PieceHash(byte[] a)
+    {
+        int n = (int)((a.LongLength + HashPiece - 1) / HashPiece);
+        var parts = new byte[Math.Max(1, n) * 32];
+        System.Threading.Tasks.Parallel.For(0, n, i =>
+        {
+            long off = (long)i * HashPiece; int len = (int)Math.Min(HashPiece, a.LongLength - off);
+            SHA256.HashData(a.AsSpan((int)off, len), parts.AsSpan(i * 32, 32));
+        });
+        return "p256:" + Convert.ToHexString(SHA256.HashData(parts));
+    }
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<byte[], Task<string>> _legacy = new();
+    private static Task<string> LegacyTask(byte[] image)
+    {
+        lock (_lock) return _legacy.GetValue(image, a => Task.Run(() => "sha256:" + Convert.ToHexString(SHA256.HashData(a))));
+    }
+    private static string LegacyHashOf(byte[] image) => LegacyTask(image).GetAwaiter().GetResult();
+
     public static string HashOf(byte[] image) => HashTask(image).GetAwaiter().GetResult();
+
+    /// <summary>The image's hash in the form <paramref name="like"/> is written in ("p256:" now, "sha256:" in older states).</summary>
+    private static string HashLike(byte[] image, string like) => like.StartsWith("sha256:", StringComparison.Ordinal) ? LegacyHashOf(image) : HashOf(image);
 
     private static void Register(byte[] image)
     {
@@ -149,35 +175,54 @@ public sealed class DiskImage
             foreach (var w in _known) if (w.TryGetTarget(out var a) && ReferenceEquals(a, image)) return;
             _known.Add(new WeakReference<byte[]>(image));
         }
-        if (image.Length >= 4 << 20) HashTask(image);
+        // the whole-image sha256 starts now, one thread per image, as it always did (a state saved before p256 names the disk by it, and
+        // its load must be no slower than before); the parallel p256 is made when a state first needs it (~1 s)
+        if (image.Length >= 4 << 20) LegacyTask(image);
     }
 
     /// <summary>A base with this hash and length: the candidates first (the disks in the machine now), then every base still alive, then <see cref="BaseResolver"/>.</summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<byte[], object> _ids = new();
+    private static long _nextId;
+    /// <summary>"obj:N": this very array, for a state that never leaves the process (LoadState's undo copy).</summary>
+    private static string ObjectKey(byte[] a) { lock (_lock) return "obj:" + ((long)_ids.GetValue(a, _ => Interlocked.Increment(ref _nextId))); }
+
     public static byte[]? FindBase(string hash, long length, IEnumerable<byte[]?> candidates)
     {
-        foreach (var c in candidates) if (c != null && c.Length == length && HashOf(c) == hash) return c;
+        if (hash.StartsWith("obj:", StringComparison.Ordinal))
+        {
+            foreach (var c in candidates) if (c != null && c.Length == length && ObjectKey(c) == hash) return c;
+            lock (_lock) foreach (var w in _known) if (w.TryGetTarget(out var a) && a.Length == length && _ids.TryGetValue(a, out var id) && "obj:" + (long)id == hash) return a;
+            return null;
+        }
+        foreach (var c in candidates) if (c != null && c.Length == length && HashLike(c, hash) == hash) return c;
         List<byte[]> alive = new();
         lock (_lock) foreach (var w in _known) if (w.TryGetTarget(out var a) && a.Length == length) alive.Add(a);
-        foreach (var a in alive) if (HashOf(a) == hash) return a;
+        foreach (var a in alive) if (HashLike(a, hash) == hash) return a;
         var r = BaseResolver?.Invoke(hash, length);
-        return r != null && r.Length == length && HashOf(r) == hash ? r : null;
+        return r != null && r.Length == length && HashLike(r, hash) == hash ? r : null;
     }
 
     // ================= the diff in a savestate =================
 
     /// <summary>Writes floppy flag, base length + hash, then the overlay as runs of consecutive sectors in LBA order (canonical: the same disk writes the same bytes).</summary>
-    public void SaveDiff(BinaryWriter w)
+    private long[] _keys = Array.Empty<long>();
+    public void SaveDiff(BinaryWriter w, bool byObject = false)
     {
-        w.Write(IsFloppy); w.Write(Base.LongLength); w.Write(BaseHash);
-        var keys = new List<long>(_overlay.Keys);
+        w.Write(IsFloppy); w.Write(Base.LongLength); w.Write(byObject ? ObjectKey(Base) : BaseHash);
+        // the sorted sector list in a buffer kept with the disk (a Win98 disk has ~80k changed sectors: a new 640 KB list per state was
+        // large-object garbage a second under the bug capture, never collected between rare gen-2 GCs: the soak's creep)
+        int count = _overlay.Count;
+        if (_keys.Length < count) _keys = new long[count + count / 4 + 1024];
+        _overlay.Keys.CopyTo(_keys, 0);
+        var keys = _keys.AsSpan(0, count);
         keys.Sort();
         int runs = 0;
-        for (int i = 0; i < keys.Count; i++) if (i == 0 || keys[i] != keys[i - 1] + 1) runs++;
+        for (int i = 0; i < count; i++) if (i == 0 || keys[i] != keys[i - 1] + 1) runs++;
         w.Write(runs);
-        for (int i = 0; i < keys.Count;)
+        for (int i = 0; i < count;)
         {
             int j = i + 1;
-            while (j < keys.Count && keys[j] == keys[j - 1] + 1) j++;
+            while (j < count && keys[j] == keys[j - 1] + 1) j++;
             w.Write(keys[i]); w.Write(j - i);
             for (int k = i; k < j; k++) w.Write(_overlay[keys[k]]);
             i = j;

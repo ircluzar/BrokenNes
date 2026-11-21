@@ -67,6 +67,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--x86speed", StringComparison.OrdinalIgnoreCase)) return X86.X86SpeedCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--n64session", StringComparison.OrdinalIgnoreCase)) return N64.N64SessionCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86session", StringComparison.OrdinalIgnoreCase)) return X86.X86SessionCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--x86bugrt", StringComparison.OrdinalIgnoreCase)) return Bugs.PcBugRoundTrip.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86opl", StringComparison.OrdinalIgnoreCase)) return X86.X86OplCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86engines", StringComparison.OrdinalIgnoreCase)) return X86.X86EnginesCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86cards", StringComparison.OrdinalIgnoreCase)) return X86.X86CardsCli.Run(args);
@@ -78,6 +79,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--x86sst", StringComparison.OrdinalIgnoreCase)) return X86.X86SstCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86t386", StringComparison.OrdinalIgnoreCase)) return X86.X86T386Cli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86ide", StringComparison.OrdinalIgnoreCase)) return X86.X86IdeCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--x86voodoo", StringComparison.OrdinalIgnoreCase)) return X86.X86VoodooCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86lan", StringComparison.OrdinalIgnoreCase)) return X86.X86LanCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86pci", StringComparison.OrdinalIgnoreCase)) return X86.X86PciCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--m68ktest", StringComparison.OrdinalIgnoreCase)) return Sega.M68kTestCli.Run(args);
