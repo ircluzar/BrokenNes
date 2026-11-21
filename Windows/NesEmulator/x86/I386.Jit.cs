@@ -364,7 +364,6 @@ public sealed partial class I386
     }
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JGrp3(int bits) => Grp3Body(bits);
     /// <summary>FE / FF: INC / DEC Eb / Ev, CALL / JMP / PUSH Ev (after JPrep; the far forms are never compiled). False = a fault.</summary>
-    private static readonly bool TlbMemo = Environment.GetEnvironmentVariable("X86_TLBMEMO") != null;
     private static readonly bool CmOne = Environment.GetEnvironmentVariable("X86_CMONE") != null;
     private static readonly bool NoGrp5Inl = Environment.GetEnvironmentVariable("X86_NOGRP5INL") != null;
     private static bool Grp5Inline(in DEntry e) => !NoGrp5Inl && e.Reg is 2 or 4 or 6 && e.Bits != 8;
@@ -887,10 +886,6 @@ public sealed partial class I386
         var Y = il.DeclareLocal(typeof(int));
         var pax = il.DeclareLocal(typeof(uint));   // paging on: the physical address of `la` (FFFFFFFF: split over two pages)
         var lpn = il.DeclareLocal(typeof(uint));
-        // X86_TLBMEMO (opt-in): the last read / write translation hit in this run of the block (lpn, xor); FFFFFFFF = none. Every out-of-line
-        // call but the memory paths' own forgets them (a helper may change CR3 / CPL / the TLB)
-        bool memo = pg && TlbMemo;
-        var mRd = il.DeclareLocal(typeof(uint)); var mRdX = il.DeclareLocal(typeof(uint)); var mWr = il.DeclareLocal(typeof(uint)); var mWrX = il.DeclareLocal(typeof(uint));
         var te = il.DeclareLocal(typeof(nuint));
         var tlbL = il.DeclareLocal(typeof(uint).MakeByRefType()); var tlbX = il.DeclareLocal(typeof(uint).MakeByRefType());
         var permR = il.DeclareLocal(typeof(nuint));   // the _tlbTag half for this CPL
@@ -902,12 +897,7 @@ public sealed partial class I386
             Ld(tlbR); I4(4 * TlbSize); Op(OpCodes.Conv_U); Op(OpCodes.Add); Stl(tlbW);
         }
 
-        void Call(string name)
-        {
-            il.Emit(OpCodes.Call, mm[name]);
-            if (memo && name is not ("CodeWrite" or "JRdLin" or "JWrLin" or "JRdSlow" or "JWrSlow" or "JPhys" or "JPa" or "JCycle" or "JSteps")) MemoForget();
-        }
-        void MemoForget() { I4(-1); Stl(mRd); I4(-1); Stl(mWr); }
+        void Call(string name) => il.Emit(OpCodes.Call, mm[name]);
         void Ld0() => il.Emit(OpCodes.Ldarg_0);
         void I4(int v) => il.Emit(OpCodes.Ldc_I4, v);
         void U4(uint v) => il.Emit(OpCodes.Ldc_I4, unchecked((int)v));
@@ -1166,7 +1156,6 @@ public sealed partial class I386
         LdF(FR); I4(0); il.Emit(OpCodes.Ldelema, typeof(uint)); Stl(rref);
         LdF(FMem); I4(0); il.Emit(OpCodes.Ldelema, typeof(byte)); Stl(mref);
         LdF(FCodeMark); I4(0); il.Emit(OpCodes.Ldelema, typeof(byte)); Stl(cmref);
-        if (memo) MemoForget();
         if (!spSpec) { LdF(FSpm); Stl(spm); }
         if (pg)
         {
@@ -1273,21 +1262,11 @@ public sealed partial class I386
             // (_tlbTag: one compare = a TLB hit allowed at this CPL, a write's dirty bit already set; the arrays through refs taken once in
             // the prologue, no bounds checks: the index < 4 * TlbSize)
             Ld(la); I4(12); Op(OpCodes.Shr_Un); Stl(lpn);
-            var mk = write ? mWr : mRd; var mx = write ? mWrX : mRdX;
-            if (memo)
-            {   // the memo: one compare (a page-crossing access through the TLB path)
-                var miss = il.DefineLabel();
-                Ld(lpn); Ld(mk); il.Emit(OpCodes.Bne_Un, miss);
-                if (size > 1) { Ld(la); I4(0xfff); Op(OpCodes.And); I4(4096 - size); il.Emit(OpCodes.Bgt_Un, miss); }
-                Ld(mx); Ld(la); Op(OpCodes.Xor); Stl(pax); il.Emit(OpCodes.Br, done);
-                il.MarkLabel(miss);
-            }
             Ld(lpn); if (TlbHash) { Ld(lpn); I4(9); Op(OpCodes.Shr_Un); Op(OpCodes.Xor); Ld(lpn); I4(18); Op(OpCodes.Shr_Un); Op(OpCodes.Xor); } I4(TlbSize - 1); Op(OpCodes.And); Op(OpCodes.Conv_U); Stl(te);
             Ld(write ? tlbW : tlbR); Ld(te); I4(4); Op(OpCodes.Mul); Op(OpCodes.Add); Op(OpCodes.Ldind_U4);
             Ld(lpn); il.Emit(OpCodes.Bne_Un, slow);
             if (size > 1) { Ld(la); I4(0xfff); Op(OpCodes.And); I4(4096 - size); il.Emit(OpCodes.Bgt_Un, slow); }
-            if (memo) { Ld(tlbX); Ld(te); I4(4); Op(OpCodes.Mul); Op(OpCodes.Add); Op(OpCodes.Ldind_U4); Stl(mx); Ld(lpn); Stl(mk); Ld(mx); Ld(la); Op(OpCodes.Xor); Stl(pax); il.Emit(OpCodes.Br, done); }
-            else { Ld(tlbX); Ld(te); I4(4); Op(OpCodes.Mul); Op(OpCodes.Add); Op(OpCodes.Ldind_U4); Ld(la); Op(OpCodes.Xor); Stl(pax); il.Emit(OpCodes.Br, done); }
+            Ld(tlbX); Ld(te); I4(4); Op(OpCodes.Mul); Op(OpCodes.Add); Op(OpCodes.Ldind_U4); Ld(la); Op(OpCodes.Xor); Stl(pax); il.Emit(OpCodes.Br, done);
             il.MarkLabel(slow);
             var ok = il.DefineLabel();
             Ld0(); Ld(la); I4(write ? 3 : 1); I4(size); Call("JXlat"); il.Emit(OpCodes.Brtrue, ok);
