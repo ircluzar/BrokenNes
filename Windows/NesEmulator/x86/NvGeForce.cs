@@ -265,6 +265,7 @@ public sealed partial class NvGeForce : IPciMmio
             case 0x000200: return PmcEnable;
             case 0x002400: return 0x00000010;                    // PFIFO RUNOUT_STATUS: empty
             case 0x003214: return 0x00000010;                    // CACHE1_STATUS: empty
+            case 0x003220: return (Reg(a) & ~0x100u) | (Reg(0x003240) == Reg(0x003244) ? 0x100u : 0);   // DMA_PUSH: bit 8 = push buffer empty
             case 0x009400:                                       // PTIMER TIME_0 / TIME_1: frames x 1/70 s + 1 us per read (deterministic)
             case 0x009410:
             {
@@ -304,9 +305,10 @@ public sealed partial class NvGeForce : IPciMmio
         }
         if (a is >= 0x001800 and < 0x001900) { if (Pci != null) for (int i = 0; i < 4; i++) Pci.WriteByte((int)(a - 0x001800) + i, (byte)(v >> (8 * i))); return; }
         if (a is >= 0x800000 and < 0x1000000) { UserWrite(a, v); return; }
-        if (a is 0x001100 or 0x002100 or 0x009100 or 0x400100) { _reg[a] = Reg(a) & ~v; UpdateIrq(); if (a == 0x002100 && (v & 1) != 0) { _reg[0x003270] = Reg(0x003210); RunPusher(); } return; }   // (the NVIDIA driver's ISR does not advance CACHE1 GET: clearing CACHE_ERROR = the method was taken)   // interrupt status: write 1 to clear
+        if (a is 0x001100 or 0x002100 or 0x009100 or 0x400100) { _reg[a] = Reg(a) & ~v; UpdateIrq(); if (a == 0x002100 && (v & 1) != 0) { _reg[0x003270] = Reg(0x003210); _reg[0x003250] = Reg(0x003250) & ~0x1110u; RunPusher(); } return; }   // (the NVIDIA driver's ISR does not advance CACHE1 GET: clearing CACHE_ERROR = the method was taken)   // interrupt status: write 1 to clear
+        if (a == 0x003250) v = (v & 1) | (Reg(a) & 0x1110);   // PULL0: bits 4/8/12 are the puller's status (hash failed / software device), read-only
         _reg[a] = v;
-        if (a is 0x003240 or 0x003220 or 0x003200 or 0x003250 or 0x003270 or 0x002500) RunPusher();
+        if (a is 0x003240 or 0x003220 or 0x003200 or 0x003270 or 0x002500) RunPusher();
     }
 
     // ================= BAR1: the VRAM aperture =================
@@ -334,7 +336,7 @@ public sealed partial class NvGeForce : IPciMmio
 
     public void Save(BinaryWriter w)
     {
-        w.Write(3);   // version (3: PFIFO/PGRAPH state)
+        w.Write(4);   // version (4: PFIFO/PGRAPH state)
         w.Write(Unlocked); w.Write(Frame); w.Write(_timerReads);
         w.Write(PcrtcIntr); w.Write(PcrtcIntrEn); w.Write(PcrtcStart); w.Write(PmcIntrEn); w.Write(PmcEnable);
         w.Write(Bank); w.Write(VbeMode);
@@ -346,13 +348,13 @@ public sealed partial class NvGeForce : IPciMmio
     public void Load(BinaryReader r)
     {
         int ver = r.ReadInt32();
-        if (ver is not (1 or 2 or 3)) throw new InvalidDataException("unknown GeForce state version");
+        if (ver is not (1 or 2 or 3 or 4)) throw new InvalidDataException("unknown GeForce state version");
         Unlocked = r.ReadBoolean(); Frame = r.ReadInt64(); _timerReads = r.ReadInt64();
         PcrtcIntr = r.ReadUInt32(); PcrtcIntrEn = r.ReadUInt32(); PcrtcStart = r.ReadUInt32(); PmcIntrEn = r.ReadUInt32(); PmcEnable = r.ReadUInt32();
         Bank = r.ReadInt32(); VbeMode = r.ReadInt32();
         _reg.Clear();
         int n = r.ReadInt32();
         for (int i = 0; i < n; i++) { uint k = r.ReadUInt32(); _reg[k] = r.ReadUInt32(); }
-        if (ver >= 3) LoadFifo(r); else ResetFifo();
+        if (ver >= 4) LoadFifo(r); else ResetFifo();
     }
 }

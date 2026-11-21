@@ -23,6 +23,7 @@ public sealed partial class NvGeForce
     private readonly uint[] _subcObj = new uint[8];   // PRAMIN instance (bytes) of the object bound to each subchannel
     private readonly int[] _subcEng = new int[8];      // its engine (RAMHT context bits 17:16): 0 = software (the driver's ISR runs it), 1 = PGRAPH
     public long Methods, PushWords;                   // diagnostics
+    public uint TracePut = 0xffffffff; public bool PutHit;   // diagnostics: x86boot --nvtrace
     /// <summary>Diagnostics: every method executed (chid, subc, class, method, data).</summary>
     public Action<int, int, int, int, uint>? MethodLog;
 
@@ -79,6 +80,7 @@ public sealed partial class NvGeForce
         if (DmaMode(chid))
         {
             if (o != 0x40) return;
+            if (v == TracePut) PutHit = true;
             if (chid != ActiveChid) SwitchTo(chid);
             _reg[0x003240] = v & 0x1ffffffc;
             RunPusher();

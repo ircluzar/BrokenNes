@@ -103,6 +103,7 @@ public sealed partial class PcMachine : IX86Bus
                 if (Environment.GetEnvironmentVariable("X86_NVLOG") is string nvl and not "")
                 {
                     var lw = new System.IO.StreamWriter(nvl) { AutoFlush = true }; long nlog = 0;
+                    Nv.OpLog = t => { if (nlog++ < 300_000) lw.WriteLine($"{Vga.FrameCount} OP {t}"); };
                     Nv.MethodLog = (ch, sc, cl, mt, d) => { if (nlog++ < 300_000) lw.WriteLine($"{Vga.FrameCount} M ch{ch} s{sc} c{cl:X3} {mt:X4} {d:X8}"); };
                     Nv.Log = (o, v, sz, wr) => { if (nlog++ < 300_000) lw.WriteLine($"{Vga.FrameCount} {(wr ? 'W' : 'R')}{sz} {o:X6} {v:X8} {Cpu.SegSel[1]:X4}:{Cpu.Ip:X8}"); };
                 }
