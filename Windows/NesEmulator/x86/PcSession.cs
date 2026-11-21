@@ -146,15 +146,14 @@ public sealed class PcSession : IConsoleSession
     /// <summary>True when the PC has a PS/2 mouse (the Windows 98 machine).</summary>
     public bool HasMouse => _m.Kbc.HasMouse;
     /// <summary>The host's mouse: relative motion since the last call (x right, y down) and the buttons (bit 0 left, 1 right, 2 middle).</summary>
-    public void HostMouse(int dx, int dy, int buttons) { InputTap?.Invoke('M', dx, dy, buttons); _m.Kbc.MouseInput(dx, dy, buttons); }
+    public void HostMouse(int dx, int dy, int buttons) => _m.Kbc.MouseInput(dx, dy, buttons);
 
-    /// <summary>Told every host key and mouse input as it reaches the machine (the bug capture records them: 'K' scan/extended/down, 'M' dx/dy/buttons).</summary>
-    public Action<char, int, int, int>? InputTap;
+    /// <summary>Told every key byte and mouse input as it reaches the PC's keyboard controller, from any source (<see cref="Kbc8042.Tap"/>): the bug capture records them.</summary>
+    public Action<char, int, int, int>? InputTap { get => _m.Kbc.Tap; set => _m.Kbc.Tap = value; }
 
     public void HostKey(int scan, bool extended, bool down)
     {
         if (scan <= 0 || scan > 0x7f) return;
-        InputTap?.Invoke('K', scan, extended ? 1 : 0, down ? 1 : 0);
         if (scan == 0x45 && extended) { if (down) _m.Kbc.KeyBytes(0xe1, 0x1d, 0x45, 0xe1, 0x9d, 0xc5); return; }   // Pause (the host names it 45h extended)
         byte code = (byte)(down ? scan : scan | 0x80);
         if (extended) _m.Kbc.KeyBytes(0xe0, code); else _m.Kbc.KeyBytes(code);

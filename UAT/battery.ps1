@@ -157,7 +157,8 @@ if ($runPc -and $Skip -notcontains 'x86') {
     $fd = if ($env:BROKENNES_FREEDOS) { $env:BROKENNES_FREEDOS } else { 'C:\BrokenNes-tools\dos\freedos\FD14LITE.img' }
     if (Test-Path $fd) { foreach ($cpu in 'I386', 'I386_D074') { $runs["x86session-$cpu"] = @('--x86session', $fd, '--frames', '600', '--cpu', $cpu) } }
     if (Test-Path $fd) { $runs['x86bugrt'] = @('--x86bugrt', $fd) }   # the bug capture's x86 round trip: keys recorded, replayed in sync, off course without them
-    $procs = foreach ($k in $runs.Keys) { $p = Start-Process -FilePath $exe -ArgumentList $runs[$k] -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $xd "$k.txt") -RedirectStandardError (Join-Path $xd "$k.err.txt"); $null = $p.Handle; [pscustomobject]@{ k = $k; p = $p } }
+    if (Test-Path $fd) { $runs['x86bugrt-jitdelay'] = @('--x86bugrt', $fd) }   # the same with X86_JITDELAY=8: compiled code takes over at random moments, async JIT must stay exact
+    $procs = foreach ($k in $runs.Keys) { if ($k -eq 'x86bugrt-jitdelay') { $env:X86_JITDELAY = '8' }; $p = Start-Process -FilePath $exe -ArgumentList $runs[$k] -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $xd "$k.txt") -RedirectStandardError (Join-Path $xd "$k.err.txt"); $null = $p.Handle; Remove-Item Env:X86_JITDELAY -ErrorAction SilentlyContinue; [pscustomobject]@{ k = $k; p = $p } }
     $procs.p | Wait-Process
     $det = @(); $okN = 0
     foreach ($x in $procs) {

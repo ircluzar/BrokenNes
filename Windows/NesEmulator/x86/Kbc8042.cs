@@ -32,8 +32,17 @@ public sealed class Kbc8042
     private int _msButtons, _msDx, _msDy;       // motion not yet sent (remote mode, a full queue)
 
     /// <summary>The host's mouse: relative motion (x right, y DOWN, in mickeys) and the buttons (bit 0 left, 1 right, 2 middle).</summary>
+    /// <summary>
+    /// Told every input that reaches the controller from outside the machine, whatever sent it (the host keyboard and mouse, the pad's keys,
+    /// POST /api/x86/input scripts, the automation routes): 'B' a key byte (a), 'M' the mouse (a dx, b dy, c buttons). The bug capture records
+    /// these, so one path feeds the history and a replay hands the controller the same calls. (KeyBytes(a, b) = KeyBytes(a); KeyBytes(b): Pump
+    /// delivers only into an empty output buffer.)
+    /// </summary>
+    public Action<char, int, int, int>? Tap;
+
     public void MouseInput(int dx, int dy, int buttons)
     {
+        Tap?.Invoke('M', dx, dy, buttons);
         if (!HasMouse) return;
         _msDx += dx; _msDy += dy;
         bool btn = buttons != _msButtons; _msButtons = buttons;
@@ -91,7 +100,7 @@ public sealed class Kbc8042
     }
 
     /// <summary>A key event from the host: its set-1 bytes (E0 prefix included), in order.</summary>
-    public void KeyBytes(params byte[] codes) { foreach (var c in codes) _q.Enqueue(c); Pump(); }
+    public void KeyBytes(params byte[] codes) { if (Tap != null) foreach (var c in codes) Tap('B', c, 0, 0); foreach (var c in codes) _q.Enqueue(c); Pump(); }
 
     public bool HasPendingKeys => _q.Count > 0 || _obf;
 

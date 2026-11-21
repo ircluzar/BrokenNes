@@ -25,6 +25,10 @@ internal static class PcBugRoundTrip
         string dir = Opt("--keep") ?? Path.Combine(Path.GetTempPath(), "x86bugrt_" + Environment.ProcessId);
         Directory.CreateDirectory(dir);
 
+        // the JIT compiles on the CPU's thread (X86_JITSYNC, read once when the CPU type first loads: before any PC here): background
+        // compiles finishing at different moments made 1 run in 5 of this check go off course at frame 840 (2026-11-21), which is the JIT's
+        // repeatability, not the capture's: this check tests the capture; the background JIT's is a separate finding
+        if (Environment.GetEnvironmentVariable("X86_JITSYNC") == null && Environment.GetEnvironmentVariable("X86_JITDELAY") == null) Environment.SetEnvironmentVariable("X86_JITSYNC", "1");   // (X86_JITDELAY: the battery's x86bugrt-jitdelay keeps the background JIT, randomised)
         var s = new PcSession(File.ReadAllBytes(fd), Path.GetFileName(fd));
         var ring = new BugCaptureRing();
         ring.Attach(BugCaptureSource.For(s), 44100, s.FramesPerSecond, true);

@@ -35,6 +35,7 @@ namespace BrokenNes.Windows.WebApi
             // automation for the x86 PC's keyboard and mouse (tests of the bug capture's input recording, scripted play): scan code set 1, mouse relative + buttons
             app.MapPost("/api/input/pc-key", async (HttpContext ctx) =>
             {
+                if (!DebugControlAllowed) return ControlRefused();   // drives the game: behind enableDebuggerControl, as /api/x86/input
                 if (PcKey == null) return Results.BadRequest(new { success = false, error = "not wired" });
                 var r = await ctx.Request.ReadFromJsonAsync<PcKeyRequest>();
                 if (r == null || r.Scan <= 0 || r.Scan > 0x7f) return Results.BadRequest(new { success = false, error = "scan 1-127" });
@@ -42,6 +43,7 @@ namespace BrokenNes.Windows.WebApi
             });
             app.MapPost("/api/input/pc-mouse", async (HttpContext ctx) =>
             {
+                if (!DebugControlAllowed) return ControlRefused();
                 if (PcMouse == null) return Results.BadRequest(new { success = false, error = "not wired" });
                 var r = await ctx.Request.ReadFromJsonAsync<PcMouseRequest>();
                 if (r == null) return Results.BadRequest(new { success = false, error = "dx, dy, buttons" });

@@ -213,7 +213,7 @@ internal static class BugCli
             while (xi < mv.HostInputs.Count && mv.HostInputs[xi].Frame == f)
             {
                 var e = mv.HostInputs[xi++];
-                if (e.Kind == 'K') s.HostKey(e.A, e.B != 0, e.C != 0); else s.HostMouse(e.A, e.B, e.C);
+                if (e.Kind == 'B') s.Machine.Kbc.KeyBytes((byte)e.A); else if (e.Kind == 'K') s.HostKey(e.A, e.B != 0, e.C != 0); else s.HostMouse(e.A, e.B, e.C);
             }
             s.RunFrame();
             while (ki < mv.Keys.Count && mv.Keys[ki].Frame == f + 1)

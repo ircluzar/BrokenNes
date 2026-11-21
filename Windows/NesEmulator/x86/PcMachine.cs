@@ -560,6 +560,8 @@ public sealed partial class PcMachine : IX86Bus
         if (Cpu.Mem.Length > Rom + 0x10000 - 1 && Cpu.Mem[Rom + StubBase + 0x40] == 0xe6 && Cpu.Mem[Rom + StubBase + 0x42] == 0xcf) InstallInt10Replay();
         // a state with the first replay code (no font op): the newer code, unless the CPU is inside it right now
         else if (Cpu.Mem.Length > Rom + 0x10000 - 1 && Cpu.Mem[Rom + Int10Replay + 14] == 0x89 && !(Cpu.SegSel[1] == RomSeg && Cpu.Ip >= Int10Replay && Cpu.Ip < Int10Replay + 0x90)) InstallInt10Replay();
+        // states saved before the V86 INT 16h idle HLT (2026-11-21) have zeros there: put the 3 bytes in, so their DOS boxes stop burning time slices
+        if (Cpu.Mem.Length > Rom + 0x10000 - 1 && Cpu.Mem[Rom + Int16Stub + 4] == 0 && Cpu.Mem[Rom + Int16Stub + 5] == 0 && Cpu.Mem[Rom + Int16Stub + 6] == 0) { Cpu.Mem[Rom + Int16Stub + 4] = 0xf4; Cpu.Mem[Rom + Int16Stub + 5] = 0xeb; Cpu.Mem[Rom + Int16Stub + 6] = 0xf9; }
         _idle = r.ReadInt64(); _port61 = r.ReadByte(); _lastFrame = r.ReadInt64(); InstructionsPerSecond = r.ReadInt64();
         Pic.Load(r); Pit.Load(r); Kbc.Load(r); Cmos.Load(r); Vga.Load(r);
         if (version >= 2) Opl.Load(r); else { Opl.Reset(); Opl.Resync(); }
