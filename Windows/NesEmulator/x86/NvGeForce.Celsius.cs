@@ -118,7 +118,8 @@ public sealed partial class NvGeForce
         if (cw == 0) cw = 1e-6f;
         float iw = 1 / cw;
         v.X = cx * iw + F(G(inst, 0x6e8)) + 2048; v.Y = cy * iw + F(G(inst, 0x6ec)) + 2048;
-        float zmax = ((G(inst, 0x208) >> 4) & 3) == 1 ? 65535f : 16777215f;
+        bool zz16 = ((G(inst, 0x208) >> 4) & 3) == 1 || (int)(G(inst, 0x20c) >> 16) < (int)(G(inst, 0x200) >> 16) * 4;
+        float zmax = zz16 ? 65535f : 16777215f;
         v.Z = (cz * iw + F(G(inst, 0x6f0))) / zmax; v.W = iw;
     }
 
@@ -242,7 +243,9 @@ public sealed partial class NvGeForce
         uint cbase = (cdma != 0 ? DmaAddr(cdma, G(inst, 0x210)).addr : G(inst, 0x210)) & (VramBytes - 1);
         uint zbase = (zdma != 0 ? DmaAddr(zdma, G(inst, 0x214)).addr : G(inst, 0x214)) & (VramBytes - 1);
         int cpitch = (int)(pitches & 0xffff), zpitch = (int)(pitches >> 16);
-        bool z16 = ((rtf >> 4) & 3) == 1;
+        // Z16 when RT_FORMAT says so, or when the zeta pitch has no room for 4-byte depth (the 5.32 driver: format 0x103 with a 640-wide Z16
+        // buffer at pitch 0x600; reading that as Z24S8 wrapped every row at x = 384: a black band in 3D scenes)
+        bool z16 = ((rtf >> 4) & 3) == 1 || zpitch < (int)(G(inst, 0x200) >> 16) * 4;
         bool zTest = G(inst, 0x30c) != 0 && zpitch != 0, zWrite = G(inst, 0x35c) != 0 && zpitch != 0;
         int zFunc = (int)G(inst, 0x354) & 7;
         uint hz = G(inst, 0x200), vt = G(inst, 0x204);
