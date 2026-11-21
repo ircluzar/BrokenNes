@@ -49,6 +49,12 @@ public sealed class PciFunction
     public IPciMmio? Mmio;
     /// <summary>BAR0's memory base, or 0 when memory decode (command bit 1) is off or the BAR is unplaced.</summary>
     public uint MemBase => (Cfg[4] & 2) != 0 && MemBarSize != 0 ? Read32(0x10) & ~(MemBarSize - 1) : 0;
+    /// <summary>Size of a second memory window behind BAR1 (prefetchable; 0: none): the GeForce's VRAM aperture.</summary>
+    public uint Bar1Size;
+    /// <summary>The device behind BAR1.</summary>
+    public IPciMmio? Mmio1;
+    /// <summary>BAR1's memory base, or 0 when memory decode is off or the BAR is unplaced.</summary>
+    public uint MemBase1 => (Cfg[4] & 2) != 0 && Bar1Size != 0 ? Read32(0x14) & ~(Bar1Size - 1) : 0;
     public int IoBase => (Cfg[4] & 1) != 0 && IoBarSize != 0 ? (int)(Read32(0x10) & 0xfffc & ~(uint)(IoBarSize - 1)) : -1;
     public void WriteByte(int reg, byte v)
     {
@@ -63,6 +69,12 @@ public sealed class PciFunction
             Cfg[reg] = v;
             uint b = (Read32(0x10) & ~(uint)(IoBarSize - 1) & 0xffff) | 1;
             for (int i = 0; i < 4; i++) Cfg[0x10 + i] = (byte)(b >> (8 * i));
+        }
+        else if (reg is >= 0x14 and <= 0x17 && Bar1Size != 0)
+        {
+            Cfg[reg] = v;
+            uint b = (Read32(0x14) & ~(Bar1Size - 1)) | 0x08;   // memory space, 32-bit, prefetchable
+            for (int i = 0; i < 4; i++) Cfg[0x14 + i] = (byte)(b >> (8 * i));
         }
         else if (reg is >= 0x20 and <= 0x23 && Bar4Size != 0)
         {
@@ -87,10 +99,14 @@ public sealed class PciBus
     public PciFunction? NicFn;
     /// <summary>The functions with a memory BAR (looked up on accesses at 0xE0000000 and up).</summary>
     public PciFunction[] MmioFns = Array.Empty<PciFunction>();
-    public PciFunction? MmioAt(uint a)
+    public IPciMmio? MmioAt(uint a, out uint off)
     {
-        foreach (var f in MmioFns) { uint b = f.MemBase; if (b != 0 && a - b < f.MemBarSize) return f; }
-        return null;
+        foreach (var f in MmioFns)
+        {
+            uint b = f.MemBase; if (b != 0 && a - b < f.MemBarSize) { off = a - b; return f.Mmio; }
+            b = f.MemBase1; if (b != 0 && a - b < f.Bar1Size) { off = a - b; return f.Mmio1; }
+        }
+        off = 0; return null;
     }
 
     public PciBus(PcMachine m) { _m = m; Reset(); }
@@ -120,7 +136,17 @@ public sealed class PciBus
             vf.Cfg[0x3d] = 1;                                     // INTA# (present on the card, unused by the Voodoo 1 drivers)
             _m.Voodoo.Pci = vf;
         }
-        MmioFns = Functions.Values.Where(f => f.Mmio != null).ToArray();
+        if (_m.Nv != null)
+        {
+            var nf = Functions[VgaDevFn] = new PciFunction("GeForce 256 DDR", NvGeForce.Vendor, NvGeForce.Device, 0x030000, 0x10)
+                { MemBarSize = NvGeForce.Bar0Size, Mmio = _m.Nv, Bar1Size = NvGeForce.Bar1Size, Mmio1 = _m.Nv.Aperture };
+            nf.Cfg[0x14] = 0x08;                                  // BAR1 prefetchable
+            nf.Cfg[0x3d] = 1;                                     // INTA#
+            nf.W16(0x2c, NvGeForce.Vendor); nf.W16(0x2e, 0x0000);
+            nf.Cfg[4] = 0x03;                                     // I/O (the VGA ports) + memory decode on at power on, as a boot VGA
+            _m.Nv.Pci = nf;
+        }
+        MmioFns = Functions.Values.Where(f => f.Mmio != null || f.Mmio1 != null).ToArray();
         Functions[HostDevFn].Cfg[4] = 0x06;
         isa.Cfg[4] = 0x07;
         Address = 0; Elcr1 = Elcr2 = 0; ResetControl = 0;
@@ -252,7 +278,14 @@ public sealed partial class PcMachine
 
         // route PIRQA (the S3's INTA#) to IRQ 11
         var pci = Pci!;
-        if (S3 != null)
+        if (Nv != null)
+        {
+            // the GeForce: registers at E0000000h (16 MB), the VRAM aperture at F0000000h (128 MB), clear of the Voodoo's E8000000h
+            pci.ConfigWrite(0, PciBus.VgaDevFn, 0x10, 0xe0000000, 4);
+            pci.ConfigWrite(0, PciBus.VgaDevFn, 0x14, 0xf0000000, 4);
+            pci.ConfigWrite(0, PciBus.VgaDevFn, 0x04, 0x03, 1);
+        }
+        if (S3 != null || Nv != null)
         {
             pci.Isa.Cfg[0x60] = SvgaIrq;
             pci.ConfigWrite(0, PciBus.VgaDevFn, 0x3c, SvgaIrq, 1);
@@ -314,7 +347,7 @@ public sealed partial class PcMachine
             return e;
         }
         slots.Add(Slot(7, 0, 0x60, 0x61, 0x62, 0x63));
-        if (S3 != null) slots.Add(Slot(PciBus.VgaDevFn >> 3, 1, 0x60, 0x61, 0x62, 0x63));
+        if (S3 != null || Nv != null) slots.Add(Slot(PciBus.VgaDevFn >> 3, 1, 0x60, 0x61, 0x62, 0x63));
         if (Nic != null) slots.Add(Slot(PciBus.NicDevFn >> 3, 2, 0x61, 0x62, 0x63, 0x60));
         int size = 32 + 16 * slots.Count;
         var t = new byte[size];
