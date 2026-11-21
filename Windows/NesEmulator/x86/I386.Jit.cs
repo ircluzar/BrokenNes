@@ -44,8 +44,9 @@ public sealed partial class I386
     }
 
     /// <summary>One instruction address: how often it was reached, and the compiled block (and instruction in it) that starts there.</summary>
-    private sealed class JitEntry
+    private struct JitEntry   // (a struct in one array: a cold instruction's lookup is one cache miss, not two)
     {
+        public bool Used;
         public uint Start;
         public bool C16, Pg;
         public int Visits;
@@ -72,7 +73,7 @@ public sealed partial class I386
     private static readonly int StkMask = int.TryParse(Environment.GetEnvironmentVariable("X86_STKMASK"), out int sm) ? sm : 15;   // (bit 3 PUSH Sreg: was broken by an Op truncation, PUSH FS pushed GS: Win98 fatal 0D at boot)
     private static readonly int JitHot = int.TryParse(Environment.GetEnvironmentVariable("X86_JITHOT"), out int jh) ? jh : 32;
     private JitCode? _jitCur;   // the block running now
-    private readonly JitEntry?[] _je = new JitEntry?[1 << JitBits];
+    private readonly JitEntry[] _je = new JitEntry[1 << JitBits];
     private readonly List<JitCode> _jitAll = new();
     private readonly Dictionary<ulong, JitCode[]> _jitCodes = new();   // every block compiled, by start address and code size: a block evicted from the table is not compiled twice;
     // up to JitVariants versions per address (code a program rewrites in place, Win98's GDI blit code, comes back to the same few byte patterns)
@@ -101,7 +102,7 @@ public sealed partial class I386
     private readonly long[] _interpOps = new long[65536];
     public readonly Dictionary<uint, long> InterpAt = new();
     /// <summary>JITSTAT: why an interpreted address is not compiled: its entry's state.</summary>
-    public string JitWhy(uint pa) { var en = _je[JitIndex(pa)]; return en == null ? "no entry" : en.Start != pa ? $"slot holds {en.Start:X8}" : $"c16 {en.C16} pg {en.Pg} visits {en.Visits} failed {en.Failed} pending {en.Pending} code {(en.Code != null)}"; }
+    public string JitWhy(uint pa) { ref var en = ref _je[JitIndex(pa)]; return !en.Used ? "no entry" : en.Start != pa ? $"slot holds {en.Start:X8}" : $"c16 {en.C16} pg {en.Pg} visits {en.Visits} failed {en.Failed} pending {en.Pending} code {(en.Code != null)}"; }
     /// <summary>JITSTAT: interpreted instructions by mode (VM / 16-bit code / ring 0) and by the address's JIT entry state.</summary>
     private readonly long[,] _interpMode = new long[8, 6];
     public IEnumerable<string> InterpModes()
@@ -117,8 +118,8 @@ public sealed partial class I386
     private void JitCountInterp(uint pa)
     {
         int md = ((Flags & VM) != 0 ? 4 : 0) | (Code16 ? 2 : 0) | (Cpl == 0 ? 1 : 0);
-        var en = _je[JitIndex(pa)];
-        int s = en == null ? 0 : en.Start != pa ? 1 : en.Failed ? 3 : en.Pending ? 4 : en.Code != null ? 5 : 2;
+        ref var en = ref _je[JitIndex(pa)];
+        int s = !en.Used ? 0 : en.Start != pa ? 1 : en.Failed ? 3 : en.Pending ? 4 : en.Code != null ? 5 : 2;
         _interpMode[md, s]++;
         JitCountInterp0(pa);
     }
@@ -143,8 +144,8 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int JitTry(uint paddr)
     {
-        var en = _je[JitIndex(paddr)];
-        if (en != null && en.Start == paddr && en.C16 == _c16 && en.Pg == ((Cr0 & CR0_PG) != 0))
+        ref var en = ref _je[JitIndex(paddr)];
+        if (en.Used && en.Start == paddr && en.C16 == _c16 && en.Pg == ((Cr0 & CR0_PG) != 0))
         {
             var code = en.Code;
             if (code != null)
@@ -157,10 +158,10 @@ public sealed partial class I386
                     return JitRunCounted(code, en.K);
                 }
                 if (PcMachine.TimeProbe) _jtWhy = 1;
-                return JitInvalidated(en);
+                return JitInvalidated(ref en);
             }
             if (en.Failed || en.Pending) { if (PcMachine.TimeProbe) _jtWhy = en.Failed ? 2 : 3; return JIT_DECLINE; }
-            if (++en.Visits >= JitHot) { if (PcMachine.TimeProbe) _jtWhy = 4; JitCompile(en); }
+            if (++en.Visits >= JitHot) { if (PcMachine.TimeProbe) _jtWhy = 4; JitCompile(ref en); }
             else if (PcMachine.TimeProbe) _jtWhy = 5;
             return JIT_DECLINE;
         }
@@ -174,8 +175,8 @@ public sealed partial class I386
     private void JitWatchLog(uint paddr)
     {
         if (++_jwN % 100000 != 1) return;
-        var en = _je[JitIndex(paddr)];
-        Console.Error.WriteLine(en == null ? "jw: no entry" : $"jw: start {en.Start:X8} c16 {en.C16}/{_c16} visits {en.Visits} failed {en.Failed} pending {en.Pending} code {(en.Code == null ? "-" : en.Code.Start.ToString("X8") + " same " + JitSame(en.Code))} k {en.K} cr0 {Cr0:X} segs " +
+        ref var en = ref _je[JitIndex(paddr)];
+        Console.Error.WriteLine(!en.Used ? "jw: no entry" : $"jw: start {en.Start:X8} c16 {en.C16}/{_c16} visits {en.Visits} failed {en.Failed} pending {en.Pending} code {(en.Code == null ? "-" : en.Code.Start.ToString("X8") + " same " + JitSame(en.Code))} k {en.K} cr0 {Cr0:X} segs " +
             string.Join(",", Enumerable.Range(0, 6).Select(s => JSegOk(s) ? "1" : "0")));
     }
     /// <summary>X86_TIMEPROBE: wall ticks inside compiled blocks (out-of-line instructions included) and the block runs.</summary>
@@ -206,7 +207,7 @@ public sealed partial class I386
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private int JitInvalidated(JitEntry en)
+    private int JitInvalidated(ref JitEntry en)
     {   // the block's bytes changed: a version compiled earlier from these very bytes runs at once; else interpret, and compile again once hot again
         JitInvalid++;
         ulong key = en.Start | (en.C16 ? 1UL << 32 : 0) | (en.Pg ? 1UL << 33 : 0);
@@ -214,8 +215,8 @@ public sealed partial class I386
         {
             JitVariantHits++;
             JitRegister(v);
-            var e2 = _je[JitIndex(en.Start)];
-            if (e2 != null && e2.Code == v) { _jitCur = v; return v.Fn(this, e2.K); }
+            ref var e2 = ref _je[JitIndex(en.Start)];
+            if (e2.Used && e2.Code == v) { _jitCur = v; return v.Fn(this, e2.K); }
         }
         en.Code = null; en.Visits = 0; en.Failed = false; en.Pending = false;
         return JIT_DECLINE;
@@ -224,8 +225,8 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JitVisit(uint paddr)
     {
-        ref JitEntry? slot = ref _je[JitIndex(paddr)];
-        var en = slot ??= new JitEntry();
+        ref var en = ref _je[JitIndex(paddr)];
+        en.Used = true;
         en.Start = paddr; en.C16 = _c16; en.Pg = (Cr0 & CR0_PG) != 0; en.Visits = 1; en.Failed = false; en.Pending = false; en.Code = null; en.K = 0;
         return JIT_DECLINE;
     }
@@ -497,8 +498,8 @@ public sealed partial class I386
         if (((ulong)laddr ^ _ifLaddr) < 4096 - 16)
         {
             uint paddr = _ifXaddr ^ laddr;
-            var en = _je[JitIndex(paddr)];
-            if (en != null && en.Start == paddr && en.C16 == _c16 && en.Pg == ((Cr0 & CR0_PG) != 0) && en.Code is JitCode code && JitSame(code))
+            ref var en = ref _je[JitIndex(paddr)];
+            if (en.Used && en.Start == paddr && en.C16 == _c16 && en.Pg == ((Cr0 & CR0_PG) != 0) && en.Code is JitCode code && JitSame(code))
             {
                 Ip = nextIp;
                 _jitCur = code;
@@ -608,11 +609,11 @@ public sealed partial class I386
     /// them, and if they get hot they get a region of their own).</summary>
     private static readonly bool JitSeenOnly = Environment.GetEnvironmentVariable("X86_NOJITSEEN") == null;   // (default since 2026-11-20; X86_NOJITSEEN: the whole reachable region again)
     public long JitUnseenCut;
-    private bool JitSeen(uint pa, bool pg) { var e = _je[JitIndex(pa)]; return e != null && e.Start == pa && e.C16 == _c16 && e.Pg == pg; }
+    private bool JitSeen(uint pa, bool pg) { ref var e = ref _je[JitIndex(pa)]; return e.Used && e.Start == pa && e.C16 == _c16 && e.Pg == pg; }
     private readonly List<(uint pa, DEntry e)> _jcFound = new();
     private readonly HashSet<uint> _jcSeen = new();
     private readonly Queue<uint> _jcTodo = new();
-    private void JitCompile(JitEntry en)
+    private void JitCompile(ref JitEntry en)
     {
         uint start = en.Start;
         bool pg = (Cr0 & CR0_PG) != 0;
@@ -676,7 +677,7 @@ public sealed partial class I386
         {
             try { code.Fn = Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec); code.Fn(this, -1); }   // (entry -1: only compiles it, the .NET JIT, and declines)
             catch (Exception) { en.Failed = true; return; }
-            JitInstall(en, code, key);
+            JitInstall(code, key);
             return;
         }
         // in the background: the interpreter runs this code meanwhile (it does exactly what the compiled code will do, so when the
@@ -684,8 +685,8 @@ public sealed partial class I386
         // every address of the region waits for it (else each would get hot and ask for its own region meanwhile)
         foreach (uint pa in pas)
         {
-            ref JitEntry? slot = ref _je[JitIndex(pa)];
-            var e = slot ??= new JitEntry();
+            ref var e = ref _je[JitIndex(pa)];
+            e.Used = true;
             if (e.Start == pa && e.C16 == c16 && e.Pg == pg && e.Code != null) continue;
             e.Start = pa; e.C16 = c16; e.Pg = pg; e.Code = null; e.Failed = false; e.Pending = true;
         }
@@ -699,11 +700,11 @@ public sealed partial class I386
             try { code.Fn = Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec); System.Threading.Interlocked.Add(ref JitBuildTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0); code.Fn(this, -1); }
             catch (Exception ex) { code.Fn = null!; if (JitStats) Console.Error.WriteLine($"jit: {start:X8} failed: {ex.GetType().Name} {ex.Message}"); }
             System.Threading.Interlocked.Add(ref JitEmitTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0);
-            _jitDone.Enqueue((en, code, key));
+            _jitDone.Enqueue((code, key));
         });
     }
 
-    private void JitInstall(JitEntry en, JitCode code, ulong key)
+    private void JitInstall(JitCode code, ulong key)
     {
         JitCompiled++;
         if (JitStats) _jitAll.Add(code);
@@ -721,17 +722,17 @@ public sealed partial class I386
         while (_jitDone.TryDequeue(out var d))
         {
             _jitPending--;
-            var (en, code, key) = d;
+            var (code, key) = d;
             bool ok = code.Fn != null && JitSame(code);
             if (JitWatch != 0 && code.Addrs.Contains(JitWatch)) Console.Error.WriteLine($"jw: drain region {code.Start:X8} ok {ok} fn {code.Fn != null}");
             foreach (uint pa in code.Addrs)
             {   // the addresses that waited for it: interpreted again, counted again from 0 (a failed start: never again)
-                var e = _je[JitIndex(pa)];
-                if (e == null || e.Start != pa || e.C16 != code.C16 || e.Pg != code.Pg || !e.Pending) continue;
+                ref var e = ref _je[JitIndex(pa)];
+                if (!e.Used || e.Start != pa || e.C16 != code.C16 || e.Pg != code.Pg || !e.Pending) continue;
                 e.Pending = false; e.Visits = 0;
                 if (code.Fn == null && pa == code.Start) e.Failed = true;
             }
-            if (ok) JitInstall(en, code, key); else JitDropped++;
+            if (ok) JitInstall(code, key); else JitDropped++;
         }
     }
 
@@ -741,7 +742,7 @@ public sealed partial class I386
         while (_jitPending > 0) { System.Threading.Thread.Yield(); JitDrain(); }
     }
 
-    private readonly System.Collections.Concurrent.ConcurrentQueue<(JitEntry, JitCode, ulong)> _jitDone = new();
+    private readonly System.Collections.Concurrent.ConcurrentQueue<(JitCode, ulong)> _jitDone = new();
     private int _jitPending;
     /// <summary>X86_JITSYNC: compile on the CPU's own thread, at once (as before: a hitch, but the compiled code runs from the 32nd visit).</summary>
     private static readonly bool JitAsync = Environment.GetEnvironmentVariable("X86_JITSYNC") == null;
@@ -775,8 +776,8 @@ public sealed partial class I386
         for (int k = 0; k < code.Addrs.Length; k++)
         {
             uint pa = code.Addrs[k];
-            ref JitEntry? slot = ref _je[JitIndex(pa)];
-            var e = slot ??= new JitEntry();
+            ref var e = ref _je[JitIndex(pa)];
+            e.Used = true;
             if (pa != code.Start && e.Start == pa && e.C16 == code.C16 && e.Pg == code.Pg && e.Code != null && e.Code.Start == pa) continue;   // keep a region that starts there itself
             e.Start = pa; e.C16 = code.C16; e.Pg = code.Pg; e.Failed = false; e.Pending = false; e.Code = code; e.K = k;
         }
