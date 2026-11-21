@@ -281,6 +281,7 @@ public sealed partial class I386
     private int _jsOk, _jsRd;
     private uint _jsGen = 0xffffffffu, _jsMode = 0xffffffffu;   // JSegLoad's memo key (not saved: SegGen moves on at every state load)
     private static readonly bool NoSegMemo = Environment.GetEnvironmentVariable("X86_NOSEGMEMO") != null;
+    private static readonly bool NoSegInl = Environment.GetEnvironmentVariable("X86_NOSEGINL") != null;
     private static readonly bool NoSegLoad = Environment.GetEnvironmentVariable("X86_NOSEGLOAD") != null;
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void JSegLoad(int mask)
@@ -569,7 +570,8 @@ public sealed partial class I386
     private static readonly FieldInfo FSrc1 = Fld("_ccSrc1"), FSrc2 = Fld("_ccSrc2"), FDst = Fld("_ccDst"), FDst2 = Fld("_ccDst2"), FOp = Fld("_ccOp"),
         FMask = Fld("_ccMask"), FFlags = Fld("Flags"), FR = Fld("R"), FMem = Fld("Mem"), FSpm = Fld("_spm"),
         FTlbL = Fld("_tlbLpgno"), FTlbX = Fld("_tlbXaddr"), FTlbT = Fld("_tlbTag"), FCpl = Fld("Cpl"), FCodeMark = Fld("_codeMark"), FDeclWhy = Fld("_declWhy"), FJitCur = Fld("_jitCur"),
-        FSegKey = typeof(JitCode).GetField("SegKey")!;
+        FSegKey = typeof(JitCode).GetField("SegKey")!,
+        FSegGen = Fld("SegGen"), FJsGen = Fld("_jsGen"), FJsMode = Fld("_jsMode"), FCr0 = Fld("Cr0");
 
     private static MethodInfo M(string name) => typeof(I386).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
         ?? throw new MissingMethodException(nameof(I386), name);
@@ -1057,6 +1059,17 @@ public sealed partial class I386
         int segMask = 0;
         foreach (int s in usedSegs) segMask |= 1 << s;
         bool segLoad = !NoSegLoad && segMask != 0;
+        // JSegLoad with its memo test inline (X86_NOSEGINL: always the call): SegGen / PE / VM unchanged since the last computation = no call
+        void SegLoadCall()
+        {
+            if (NoSegInl || NoSegMemo) { Ld0(); I4(segMask); Call("JSegLoad"); return; }
+            var skip = il.DefineLabel(); var call = il.DefineLabel();
+            Ld0(); il.Emit(OpCodes.Ldfld, FSegGen); Ld0(); il.Emit(OpCodes.Ldfld, FJsGen); il.Emit(OpCodes.Bne_Un, call);
+            LdF(FFlags); I4(16); Op(OpCodes.Shr_Un); I4(2); Op(OpCodes.And); Ld0(); il.Emit(OpCodes.Ldfld, FCr0); I4(1); Op(OpCodes.And); Op(OpCodes.Or);
+            Ld0(); il.Emit(OpCodes.Ldfld, FJsMode); il.Emit(OpCodes.Beq, skip);
+            il.MarkLabel(call); Ld0(); I4(segMask); Call("JSegLoad");
+            il.MarkLabel(skip);
+        }
         // segment generation (X86_SEGGEN: on; off by default): when every segment the block uses is specialized, the block remembers the SegGen / VM / PE
         // key its last full check passed with; the same key again = nothing segment-related changed: no JSegLoad, no per-segment checks
         bool segGenFast = !NoSegGen && segLoad && spec != null && spec.Mask != 0 && (segMask & ~spec.Mask) == 0;
@@ -1066,7 +1079,7 @@ public sealed partial class I386
             Ld0(); Call("JSegKey"); Stl(segKeyL!);
             Ld0(); il.Emit(OpCodes.Ldfld, FJitCur); il.Emit(OpCodes.Ldfld, FSegKey); Ld(segKeyL!); il.Emit(OpCodes.Beq, segFastOk);
         }
-        if (segLoad) { Ld0(); I4(segMask); Call("JSegLoad"); }
+        if (segLoad) SegLoadCall();
         // segment specialization (X86_NOSEGSPEC: off): a segment usable when the block was compiled has its base / span / lo as constants and
         // no per-instruction usability test; the prologue checks it still holds those values (else: decline, and the block is compiled again
         // without the assumption); likewise SpMask
@@ -1274,7 +1287,7 @@ public sealed partial class I386
                 {
                     if (segLoad)
                     {
-                        Ld0(); I4(segMask); Call("JSegLoad");
+                        SegLoadCall();
                         foreach (int s in usedSegs)
                         {
                             if (IsSpec(s)) { Ld0(); I4(s); U4(spec!.Base[s]); U4(spec.Span[s]); U4(spec.Lo[s]); Call("JSSame"); il.Emit(OpCodes.Brfalse, leaveG); continue; }   // (changed: leave after it)
