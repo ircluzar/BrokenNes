@@ -80,6 +80,7 @@ public sealed class PcSession : IConsoleSession
             if (seat.Image2 != null && _m.Ata != null) _m.Hdd[1] = new DiskImage(seat.Image2, false);   // the package's D: (primary slave)
             if (seat.CdPath != null && _m.Cd == null) InsertCd(CdImage.Open(seat.CdPath));
             _m.StatusLine += OnSeatStatus;
+            _m.UploadByte = OnSeatUpload;
         }
         if (!PcSound.Apply(_m, apu)) throw new ArgumentException($"the x86 PC has no sound card '{apu}'");
         ApuId = apu.ToUpperInvariant();
@@ -188,6 +189,13 @@ public sealed class PcSession : IConsoleSession
     private void OnSeatStatus(string line)
     {
         SeatStatus = line;
+        if (line.StartsWith("N98 FILE ", StringComparison.Ordinal))
+        {
+            var parts = line[9..].Split(' ', 2);
+            if (parts.Length == 2 && long.TryParse(parts[0], out long size) && size >= 0 && size < 512L << 20) { _upPath = parts[1]; _upLeft = size; _upData = new MemoryStream(); if (size == 0) EndUpload(); }
+            return;
+        }
+        if (line == "N98 FILES END") { SeatFilesEnd(); return; }
         if (line == "N98 BOOT" && _resumeKey != null) _snapPending = true;   // the machine is up, the launcher waits 1 s before reading its command: the resume point
         else if (line.StartsWith("N98 EXIT ", StringComparison.Ordinal)) { string code = line[9..]; if (code != "0") SeatEnded?.Invoke("exit", code); }
         else if (line.StartsWith("N98 FAIL", StringComparison.Ordinal)) SeatEnded?.Invoke("fail", line.Length > 9 ? line[9..] : "");
@@ -197,13 +205,14 @@ public sealed class PcSession : IConsoleSession
     private bool SeatResume()
     {
         if (Seat == null) return false;
+        if (Disk.OverlaySectors != 0 || (_m.Hdd[1]?.OverlaySectors ?? 0) != 0) return false;   // resume snapshots are only made and used on the drives as the package left them
         string key = Disk.ContentKey() + (_m.Hdd[1] != null ? "+" + _m.Hdd[1]!.ContentKey() : ""), dir = Seat.ResumeDir, st = Path.Combine(dir, "resume.bin"), meta = Path.Combine(dir, "resume.key");
         try
         {
             if (File.Exists(st) && File.Exists(meta) && File.ReadAllText(meta) == key && Environment.GetEnvironmentVariable("BROKENNES_N98_NORESUME") != "1")
             {
                 LoadState(File.ReadAllBytes(st));
-                _m.Command = Seat.Command;   // this run's command (the state holds the one it was made with; the launcher had not read it yet)
+                _m.Command = Seat.CommandWith(withFiles: true);   // this run's command + save files (the state holds the one it was made with; the launcher had not read it yet)
                 _m.Ata?.Secondary.ClearMediaChanged(0);
                 return true;
             }
@@ -231,6 +240,8 @@ public sealed class PcSession : IConsoleSession
     private void FirstPowerOn()
     {
         _m.PowerOn(); _powered = true; _seatOffSent = false; _seatFrames = 0; _seatCrashSent = false; SeatStatus = null;
+        _seatFilesClean = false;
+        if (Seat != null) _m.Command = Seat.CommandWith(withFiles: Disk.OverlaySectors == 0 && (_m.Hdd[1]?.OverlaySectors ?? 0) == 0);   // (a sector layer from an unclean end already holds newer saves)
         if (SeatResume()) return;
         if (!_stateHookUsed && Environment.GetEnvironmentVariable("BROKENNES_X86_MACHINESTATE") is { Length: > 0 } ms && File.Exists(ms))
         {
@@ -256,10 +267,46 @@ public sealed class PcSession : IConsoleSession
     }
     private bool _seatOffSent;
 
+    // ---- nano98 FILE-LEVEL SAVES: at the game's end the launcher sends the files matching the manifest's save patterns (port EBh); the host keeps
+    // them in Seat.SavesDir and puts them back through the command port at the next start. After a clean end the drives' sector layer is dropped,
+    // so C: stays exactly as at the resume snapshot and the next start resumes in seconds.
+    private string? _upPath; private long _upLeft; private MemoryStream? _upData;
+    private readonly Dictionary<string, byte[]> _upFiles = new();
+    private bool _seatFilesClean;
+    private void OnSeatUpload(byte b)
+    {
+        if (_upData == null) return;
+        _upData.WriteByte(b);
+        if (--_upLeft <= 0) EndUpload();
+    }
+    private void EndUpload() { if (_upPath != null && _upData != null) _upFiles[_upPath] = _upData.ToArray(); _upPath = null; _upData = null; }
+    private void SeatFilesEnd()
+    {
+        try
+        {
+            string dir = Seat!.SavesDir, tmp = dir + ".new";
+            if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
+            Directory.CreateDirectory(tmp);
+            foreach (var (guest, data) in _upFiles)
+            {
+                if (guest.Length < 4 || guest[1] != ':') continue;
+                string rel = guest[0] + Path.DirectorySeparatorChar.ToString() + guest[3..].Replace('\\', Path.DirectorySeparatorChar);
+                if (rel.Contains("..")) continue;
+                string f = Path.Combine(tmp, rel); Directory.CreateDirectory(Path.GetDirectoryName(f)!); File.WriteAllBytes(f, data);
+            }
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+            Directory.Move(tmp, dir);
+            _seatFilesClean = true;
+            System.Console.WriteLine($"[nano98] {_upFiles.Count} save files kept in {dir}");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { System.Console.WriteLine($"[nano98] save files not kept: {e.Message}"); }
+        _upFiles.Clear();
+    }
+
     // ---- nano98 watchdog: crashes that never reach the launcher's exit code
     private long _seatFrames; private bool _seatCrashSent;
     private static readonly int BootTimeoutFrames = int.TryParse(Environment.GetEnvironmentVariable("BROKENNES_N98_BOOTTIMEOUT"), out int bt) ? bt : 30000;   // ~7 min of machine time
-    private static readonly string[] CrashTexts = { "fatal exception", "windows protection error", "invalid vxd", "while initializing device", "has caused an exception", "system halted", "insufficient memory to initialize windows" };
+    private static readonly string[] CrashTexts = { "fatal exception", "windows protection error", "invalid vxd", "while initializing device", "has caused an exception", "system halted", "insufficient memory to initialize windows", "it may be needed to run windows", "cannot find a device file", "is damaged" };
     private void SeatWatch()
     {
         _seatFrames++;
@@ -296,7 +343,9 @@ public sealed class PcSession : IConsoleSession
             {
                 w.Write(d != null);
                 if (d == null) continue;
-                w.Write(d.BaseHash); d.WriteOverlay(w); d.Dirty = false;
+                w.Write(d.BaseHash);
+                if (_seatFilesClean) w.Write(0); else d.WriteOverlay(w);   // a clean end: the save files are kept as files, the drives go back to the snapshot
+                d.Dirty = false;
             }
         }
         _seatSavesMade = true;
@@ -369,7 +418,7 @@ public sealed class PcSession : IConsoleSession
     {
         if (Seat != null)
         {
-            bool dirty = Disk.Dirty || _m.Hdd[1]?.Dirty == true;
+            bool dirty = Disk.Dirty || _m.Hdd[1]?.Dirty == true || _seatFilesClean;
             if (!dirty && _seatSavesMade) return null;
             var bytes = SeatSaves(); return () => bytes;
         }

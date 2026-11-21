@@ -22,6 +22,10 @@ public sealed class N98Seat
     public string Id = "", Title = "", Machine = "win98-p166-nano", CacheDir = "", ImagePath = "";
     public byte[] Image = Array.Empty<byte>(), Command = Array.Empty<byte>();
     public string? CdPath;
+    /// <summary>The game's save files, kept by the host as files: (saves root)\N98Saves\n98(id)\files\(drive)\(path).</summary>
+    public string SavesDir = "";
+    /// <summary>The manifest's save patterns ("C:/GAME/SAVE/*").</summary>
+    public string[] SavePatterns = Array.Empty<string>();
     /// <summary>The seat's second disk (primary slave) when the package writes D: (StarCraft's install does not fit on the seat C:).</summary>
     public byte[]? Image2; public string? Image2Path;
 
@@ -48,6 +52,8 @@ public sealed class N98Seat
             var r = doc.RootElement;
             if (r.TryGetProperty("schema", out var sc) && sc.GetInt32() > 1) throw new InvalidDataException($"{fileName}: package schema {sc.GetInt32()} is newer than this app knows (1)");
             s.Title = r.TryGetProperty("title", out var t) ? t.GetString() ?? id : id;
+            if (r.TryGetProperty("saves", out var sv) && sv.ValueKind == JsonValueKind.Array)
+                s.SavePatterns = sv.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 3).ToArray();
             string hw = r.TryGetProperty("hardware", out var h) && h.TryGetProperty("machine", out var mm) ? mm.GetString() ?? "" : "";
             // the machine the package names (an optional "3d" note does not switch the card on); the seat is always the floppy-less machine
             bool voodoo = hw.Contains("VOODOO", StringComparison.OrdinalIgnoreCase);
@@ -97,6 +103,9 @@ public sealed class N98Seat
         }
         if (!File.Exists(cmdPath)) RunTool("cmd", $"\"{pkgPath}\" \"{cmdPath}\" --exit poweroff");
         s.Command = File.ReadAllBytes(cmdPath);
+        string savesRoot = Environment.GetEnvironmentVariable("BROKENNES_SAVES_DIR") is { Length: > 0 } sr ? sr
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BrokenNes");
+        s.SavesDir = Path.Combine(savesRoot, "N98Saves", "n98" + s.Id, "files");
         s.ImagePath = baseImg;
         s.Image = Compose(baseImg, Path.Combine(s.CacheDir, "C.n98l"), Path.Combine(s.CacheDir, "C.p256"));
         if (baseD != null) { s.Image2Path = baseD; s.Image2 = Compose(baseD, Path.Combine(s.CacheDir, "D.n98l"), Path.Combine(s.CacheDir, "D.p256")); }
@@ -133,6 +142,29 @@ public sealed class N98Seat
         }
         catch (IOException) { }
         return img;
+    }
+
+    /// <summary>The command port's bytes: the command text + the save patterns, a 0, then (when withFiles) the kept save files as
+    /// [u32 path length][path][u32 size][bytes] records (the launcher writes them back before the game starts), ended by a 0 length.</summary>
+    public byte[] CommandWith(bool withFiles)
+    {
+        var ms = new MemoryStream();
+        string text = System.Text.Encoding.Latin1.GetString(Command).TrimEnd((char)0);
+        if (!text.EndsWith("\n")) text += "\r\n";
+        foreach (var pat in SavePatterns) text += "save=" + pat.Replace('/', '\\') + "\r\n";
+        ms.Write(System.Text.Encoding.Latin1.GetBytes(text)); ms.WriteByte(0);
+        var w = new BinaryWriter(ms);
+        if (withFiles && Directory.Exists(SavesDir))
+            foreach (var f in Directory.GetFiles(SavesDir, "*", SearchOption.AllDirectories))
+            {
+                string rel = Path.GetRelativePath(SavesDir, f);   // C\GAME\SAVE\x.sav
+                if (rel.Length < 3 || rel[1] != Path.DirectorySeparatorChar) continue;
+                string guest = rel[0] + ":\\" + rel[2..];
+                var pb = System.Text.Encoding.Latin1.GetBytes(guest); var data = File.ReadAllBytes(f);
+                w.Write((uint)pb.Length); w.Write(pb); w.Write((uint)data.Length); w.Write(data);
+            }
+        w.Write(0u); w.Flush();
+        return ms.ToArray();
     }
 
     /// <summary>The resume snapshot's folder for this emulator build.</summary>

@@ -42,6 +42,8 @@ public sealed partial class PcMachine : IX86Bus
     /// <summary>nano98 COMMAND PORT (host -> guest, read-only, set before power-on): OUT EAh = rewind, IN EAh = the next byte (0 past the end).
     /// Only the guest's reads move it, so runs replay exactly; saved as block "N98C" when set (older states: none).</summary>
     public byte[]? Command;
+    /// <summary>nano98 upload port EBh (guest -> host, host side only): the bytes of the file the last "N98 FILE" status line announced.</summary>
+    public Action<byte>? UploadByte;
     private int _cmdPos;
     private int _statusFrom;
     /// <summary>Called for a port the board does not answer (for devices added later: sound cards).</summary>
@@ -223,6 +225,7 @@ public sealed partial class PcMachine : IX86Bus
             case 0x92: Kbc.A20 = (v & 2) != 0; if ((v & 1) != 0) CpuResetRequest(); return;
             case 0x80: return;                                // POST code
             case 0xea: _cmdPos = 0; return;                   // nano98 command port: rewind
+            case 0xeb: UploadByte?.Invoke(v); return;         // nano98 upload port: a saved file's bytes (after its "N98 FILE" status line)
             case 0xe9:
                 DebugPort.Append((char)v);
                 if (v == 10) { var l = DebugPort.ToString(_statusFrom, DebugPort.Length - _statusFrom).TrimEnd((char)13, (char)10); _statusFrom = DebugPort.Length; StatusLine?.Invoke(l); }
