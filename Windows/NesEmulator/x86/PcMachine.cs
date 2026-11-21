@@ -422,9 +422,11 @@ public sealed partial class PcMachine : IX86Bus
                 long sleepPit = nextPit == long.MaxValue ? 1000 : Math.Max(1, nextPit - nowPit);
                 long sleepInstr = Math.Max(1, (long)((Int128)sleepPit * InstructionsPerSecond / Pit8254.Freq));
                 _idle += Math.Min(sleepInstr, Batch * 16);
+                if (I386.IdleProf) I386.ProfHaltIdle += Math.Min(sleepInstr, Batch * 16);
                 if ((Cpu.Flags & I386.IF) == 0 && nextPit == long.MaxValue && !Kbc.HasPendingKeys) { }
                 return true;
             }
+            if (I386.IdleProf && I386.ProfIdleNow == null) { I386.ProfOtherIdle0 = _idle; I386.ProfIdleNow = () => _idle; }
             Cpu.Step(Batch);
         }
         catch (I386AbortException e) { Stopped = "CPU stopped: " + e.Message; return false; }
