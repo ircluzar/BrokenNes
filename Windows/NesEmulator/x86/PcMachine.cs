@@ -346,7 +346,7 @@ public sealed partial class PcMachine : IX86Bus
             if (++guard > 100_000_000) { Stopped = "frame never ended"; return false; }
         }
         _lastFrame = target;
-        if (Profiling) { long t0 = System.Diagnostics.Stopwatch.GetTimestamp(); Vga.Render(); RenderTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0; }
+        if (Profiling || TimeProbe) { long t0 = System.Diagnostics.Stopwatch.GetTimestamp(); Vga.Render(); RenderTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0; }
         else if (AllocProbe) { long a0 = GC.GetAllocatedBytesForCurrentThread(); Vga.Render(); AllocRender += GC.GetAllocatedBytesForCurrentThread() - a0; }
         else Vga.Render();
         return Stopped == null;
@@ -367,13 +367,14 @@ public sealed partial class PcMachine : IX86Bus
     public long AllocDevices, AllocCpu, AllocRender;
     /// <summary>X86_TIMEPROBE=1: wall ticks in the CPU batches vs everything between them (devices, frame work), diagnostics.</summary>
     public static readonly bool TimeProbe = Environment.GetEnvironmentVariable("X86_TIMEPROBE") == "1";
-    public long TicksCpu, TicksDevices; private long _tp0;
+    public long TicksCpu, TicksDevices, TicksCard; private long _tp0;
     private bool RunBatch()
     {
         Batches++;
         if (TimeProbe && _tp0 == 0) _tp0 = System.Diagnostics.Stopwatch.GetTimestamp();
         long a0 = AllocProbe ? GC.GetAllocatedBytesForCurrentThread() : 0;
-        Card?.Advance();
+        if (TimeProbe) { long c0 = System.Diagnostics.Stopwatch.GetTimestamp(); Card?.Advance(); TicksCard += System.Diagnostics.Stopwatch.GetTimestamp() - c0; }
+        else Card?.Advance();
         Nic?.Poll();
         Fdc?.Poll();
         Pit.UpdateIrq();
