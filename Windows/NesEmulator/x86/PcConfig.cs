@@ -37,7 +37,7 @@ public sealed record PcConfig
 
     public static PcConfig Preset(string name) => name.ToUpperInvariant() switch
     {
-        "DEFAULT" => Default, "DOS-386" => Dos386, "DOS-486" => Dos486, "WIN98-P166" or "WIN98" => Win98, "WIN98-P166-VOODOO" => Win98Voodoo,
+        "DEFAULT" => Default, "DOS-386" => Dos386, "DOS-486" => Dos486, "WIN98-P166" or "WIN98" => Win98, "WIN98-P166-VOODOO" => Win98Voodoo, "WIN98-P166-WIDE" => Win98,
         _ => throw new ArgumentException($"no x86 machine preset '{name}' (DEFAULT, DOS-386, DOS-486, WIN98-P166)"),
     };
 
@@ -82,6 +82,7 @@ public sealed record PcMachinePreset(string Key, string Label, PcConfig Config, 
         new("dos-386", "DOS 386DX-33, VGA", PcConfig.Dos386, CpuModel.I386DX, PcVideo.Vga),
         new("dos-486", "DOS 486DX2-66, VGA, IDE", PcConfig.Dos486, CpuModel.I486DX2, PcVideo.Vga),
         new("win98-p166", "Win98 Pentium MMX 166, S3 Trio64, PCI", PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.S3Trio64),
+        new("win98-p166-wide", "Win98 Pentium MMX 166, VirtualBox VGA (widescreen, boxv9x), PCI", PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.VBoxVga),
         new("win98-p166-voodoo", "Win98 Pentium MMX 166, S3 Trio64 + 3dfx Voodoo, PCI", PcConfig.Win98Voodoo, CpuModel.PentiumMmx, PcVideo.S3Trio64),
     };
 

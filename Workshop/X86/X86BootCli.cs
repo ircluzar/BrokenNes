@@ -327,6 +327,7 @@ internal static class X86BootCli
                 .Select(i => $"{((i & 0x10000) != 0 ? "out" : "in")}{i & 0xffff:X}={portCount[i]}")));
         if (args.Contains("--vgadump"))   // why a picture is blank: the registers, the palette and how much video memory is non-zero
         {
+            if (m.Vga.S3 is { VBox: true } vb) Console.WriteLine($"dispi on {vb.DispiOn} regs " + string.Join(" ", vb.Dispi.Select(x => x.ToString("X4"))) + $" lfb {vb.LfbBase:X8} lfbwrites {vb.LfbWrites} bankwrites {vb.BankWrites} pcibar {vb.PciRead(0x10):X8} w {vb.Width} h {vb.Height} stride {vb.Stride} bpp {vb.BytesPerPixel}");
             var v = m.Vga;
             string H(byte[] b) => string.Join(" ", b.Select(x => x.ToString("X2")));
             Console.WriteLine($"vga SR {H(v.Sr)}\nvga GR {H(v.Gr[..9])}\nvga AR {H(v.Ar)}\nvga CR {H(v.Cr[..0x19])}\nvga DAC0-15 {H(v.Palette[..48])}");
