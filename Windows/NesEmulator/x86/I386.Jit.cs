@@ -819,15 +819,33 @@ public sealed partial class I386
     private static readonly int IlDeepRegs = Environment.GetEnvironmentVariable("X86_ILDEEP") is string ild ? (int.TryParse(ild, out int ildn) ? ildn : 5) : 0;
     /// <summary>Helpers that neither read nor write R[] and raise nothing: no write-back / reload around them.</summary>
     private static readonly HashSet<string> JRegPure = new() { "JCycle", "JSteps", "JIp", "JNextIp", "JSegBase", "JSegSpan", "JSegLo", "JSBase", "JSSpan", "JSLo",
-        "JSOk", "JSRd", "JSegOk", "JSegRdOk", "JSegLim", "JSSame", "JSSameLive", "JSpm", "JPa", "JCond", "JGetCF", "JSegSel", "JAlu", "JRam", "JPhys", "JFpuNmRefund", "JMmxNmRefund" };
+        "JSOk", "JSRd", "JSegOk", "JSegRdOk", "JSegLim", "JSSame", "JSSameLive", "JSpm", "JPa", "JCond", "JGetCF", "JSegSel", "JAlu", "JRam", "JPhys", "JFpuNmRefund", "JMmxNmRefund", "JRdSlow", "JWrSlow", "CodeWrite", "JPrep" };
     /// <summary>X86_ILDEEPF: the lazy-flag fields (_ccSrc1/2, _ccDst/2, _ccOp, _ccMask) a block touches live in IL locals the same way.</summary>
+    private static readonly bool IlDeepEmitCount = Environment.GetEnvironmentVariable("X86_ILDEEPEMITCOUNT") != null;
     private static readonly bool IlDeepFlags = Environment.GetEnvironmentVariable("X86_ILDEEPF") != null;
+    /// <summary>X86_ILDEEPT: paging on, the last read / write translation (page, xor) is kept in locals; the next access to the same page
+    /// skips the TLB lookup. Forgotten after every helper call (it may change the TLB) and on entry.</summary>
+    private static readonly bool IlDeepTlb = Environment.GetEnvironmentVariable("X86_ILDEEPT") != null;
+    /// <summary>Helpers that touch R[] / the flag fields only when they raise a fault (then the block leaves through JExitFail):
+    /// written back before, nothing reloaded after.</summary>
+    private static readonly HashSet<string> JFaultOnly = new() { "JXlat", "JRdLin", "JWrLin", "JSpinRam", "JLimitFault" };
     private static readonly HashSet<string> JFlagPure = new(JRegPure.Where(x => x is not ("JCond" or "JGetCF" or "JAlu")));
     private JitFn Emit(uint start, uint[] pas, DEntry[] ins, uint lo, uint hi, bool c16, uint memSize, bool ioMem, bool pg, SegSpec? spec)
     {
         if (IlDeepRegs <= 0) return EmitCore(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec, null, 0)!;
         var cnt = new int[14];
-        EmitCore(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec, cnt, 0);
+        if (IlDeepEmitCount) EmitCore(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec, cnt, 0);
+        else foreach (var e in ins)
+        {   // a static estimate (no second emit): register fields, address registers, ESP for stack kinds; the flag fields always
+            bool regField = e.Kind is DK_MOVEG or DK_MOVGE or DK_ALUEG or DK_ALUGE or DK_TESTEG or DK_LEA or DK_MOVX or DK_IMUL or DK_XCHG or DK_MOVRI or DK_INC or DK_DEC or DK_PUSH or DK_POP;
+            int w = e.Kind == DK_JCC ? 0 : 1;
+            if (regField) cnt[e.Bits == 8 ? e.Reg & 3 : e.Reg & 7] += 2;
+            if (DcHasModrm(e.Kind) || e.Kind == DK_XCHG) { if (e.Mod == 3) cnt[e.Bits == 8 ? e.Rm & 3 : e.Rm & 7] += 2; else { if (e.Base < 8) cnt[e.Base]++; if (e.Index < 8) cnt[e.Index]++; } }
+            if (e.Kind is DK_PUSH or DK_POP or DK_CALL or DK_RET or DK_LEAVE or DK_STKOP) cnt[4] += 2;
+            if (e.Kind == DK_ALUAI) cnt[0] += 2;
+            if (e.Kind is DK_STOS or DK_STR) { cnt[7] += 2; cnt[6]++; }
+            for (int j = 0; j < 6; j++) cnt[8 + j] += w;
+        }
         int mask = 0;
         for (int r = 0; r < IlDeepRegs; r++)
         {
@@ -896,6 +914,9 @@ public sealed partial class I386
         for (int i = 0; i < 8; i++) if ((cacheMask >> i & 1) != 0) rc[i] = il.DeclareLocal(typeof(uint));
         void RcFlush() { for (int i = 0; i < 8; i++) if (rc[i] != null) { Ld(rref); if (i != 0) { I4(4 * i); Op(OpCodes.Add); } Ld(rc[i]!); Op(OpCodes.Stind_I4); } }
         void RcLoad() { for (int i = 0; i < 8; i++) if (rc[i] != null) { Ld(rref); if (i != 0) { I4(4 * i); Op(OpCodes.Add); } Op(OpCodes.Ldind_U4); Stl(rc[i]!); } }
+        bool memoOn = IlDeepTlb && pg && regCount == null;
+        var mL = new LocalBuilder?[2]; var mX = new LocalBuilder?[2];
+        if (memoOn) for (int w = 0; w < 2; w++) { mL[w] = il.DeclareLocal(typeof(uint)); mX[w] = il.DeclareLocal(typeof(uint)); }
         var ccF = new[] { FSrc1, FSrc2, FDst, FDst2, FOp, FMask };
         var fc = new LocalBuilder?[6];
         for (int j = 0; j < 6; j++) if ((cacheMask >> (8 + j) & 1) != 0) fc[j] = il.DeclareLocal(ccF[j].FieldType);
@@ -903,15 +924,18 @@ public sealed partial class I386
         void FcLoad() { for (int j = 0; j < 6; j++) if (fc[j] != null) { Ld0(); il.Emit(OpCodes.Ldfld, ccF[j]); Stl(fc[j]!); } }
         void Call(string name)
         {
-            bool sync = rcLive && (cacheMask & 0xff) != 0 && !JRegPure.Contains(name);
-            bool fsync = rcLive && (cacheMask >> 8) != 0 && !JFlagPure.Contains(name);
+            // (JExitFail: always right after a helper that failed, which wrote back first: R[] / the fields are current, maybe changed by the fault)
+            bool sync = rcLive && (cacheMask & 0xff) != 0 && !JRegPure.Contains(name) && name != "JExitFail";
+            bool fsync = rcLive && (cacheMask >> 8) != 0 && !JFlagPure.Contains(name) && name != "JExitFail";
             if (sync) RcFlush();
             if (fsync) FcFlush();
             il.Emit(OpCodes.Call, mm[name]);
-            if (name is "JExitOk" or "JExitFail" or "JExitLink") return;
+            if (name is "JExitOk" or "JExitFail" or "JExitLink" or "JCond" or "JGetCF" || JFaultOnly.Contains(name)) return;
             if (sync) RcLoad();
             if (fsync) FcLoad();
+            if (rcLive && memoOn && !JRegPure.Contains(name)) MemoForget();
         }
+        void MemoForget() { for (int w = 0; w < 2; w++) { I4(-1); Stl(mL[w]!); } }
         void Ld0() => il.Emit(OpCodes.Ldarg_0);
         void I4(int v) => il.Emit(OpCodes.Ldc_I4, v);
         void U4(uint v) => il.Emit(OpCodes.Ldc_I4, unchecked((int)v));
@@ -1174,6 +1198,7 @@ public sealed partial class I386
         Ld0(); Call("JSteps"); il.Emit(OpCodes.Stloc, st);
         LdF(FR); I4(0); il.Emit(OpCodes.Ldelema, typeof(uint)); Stl(rref);
         RcLoad(); FcLoad(); rcLive = true;
+        if (memoOn) MemoForget();
         LdF(FMem); I4(0); il.Emit(OpCodes.Ldelema, typeof(byte)); Stl(mref);
         LdF(FCodeMark); I4(0); il.Emit(OpCodes.Ldelema, typeof(byte)); Stl(cmref);
         if (!spSpec) { LdF(FSpm); Stl(spm); }
@@ -1279,6 +1304,15 @@ public sealed partial class I386
         {
             if (!pg) return;
             var slow = il.DefineLabel(); var done = il.DefineLabel();
+            int wi = write ? 1 : 0;
+            var look = il.DefineLabel(); var kept = il.DefineLabel();
+            if (memoOn)
+            {   // the same page as this run's last access of this kind: its translation again
+                Ld(la); I4(12); Op(OpCodes.Shr_Un); Ld(mL[wi]!); il.Emit(OpCodes.Bne_Un, look);
+                if (size > 1) { Ld(la); I4(0xfff); Op(OpCodes.And); I4(4096 - size); il.Emit(OpCodes.Bgt_Un, look); }
+                Ld(mX[wi]!); Ld(la); Op(OpCodes.Xor); Stl(pax); il.Emit(OpCodes.Br, kept);
+                il.MarkLabel(look);
+            }
             // (_tlbTag: one compare = a TLB hit allowed at this CPL, a write's dirty bit already set; the arrays through refs taken once in
             // the prologue, no bounds checks: the index < 4 * TlbSize)
             Ld(la); I4(12); Op(OpCodes.Shr_Un); Stl(lpn);
@@ -1294,6 +1328,14 @@ public sealed partial class I386
             il.MarkLabel(ok);
             Ld0(); Call("JPa"); Stl(pax);
             il.MarkLabel(done);
+            if (memoOn)
+            {   // remember it (a split access: nothing)
+                var split = il.DefineLabel();
+                Ld(pax); I4(-1); il.Emit(OpCodes.Beq, split);
+                Ld(la); I4(12); Op(OpCodes.Shr_Un); Stl(mL[wi]!); Ld(pax); Ld(la); Op(OpCodes.Xor); Stl(mX[wi]!);
+                il.MarkLabel(split);
+                il.MarkLabel(kept);
+            }
         }
 
         for (int k = 0; k < n; k++)
