@@ -38,6 +38,7 @@ public sealed partial class I386
         public uint[] Addrs = Array.Empty<uint>();   // the instructions, by address (entry k = Addrs[k])
         public bool C16, Pg;   // compiled for this code size, and with paging on or off (the memory accesses differ)
         public long Runs, Instrs, Ticks, Retired;
+        public long NXlat, NSlow, NOol, NCond;   // JITSTAT: TLB misses (JXlat), non-RAM / split accesses, out-of-line instructions, Cond calls
         public uint[] Pages = Array.Empty<uint>(), Gens = Array.Empty<uint>();   // the 4 KB pages Bytes come from, and their code write generations when last checked
         public uint Epoch = 0xffffffff;   // _memEpoch when last checked (FFFFFFFF: never: compare the bytes)
         public bool SpecFail;   // its segment specialization no longer held at a run: compiled again without it
@@ -98,7 +99,7 @@ public sealed partial class I386
     public long JitRuns, JitInvalid, JitDeclines;
     public readonly long[] JitDeclineSeg = new long[6];
     public IEnumerable<string> JitTop(int n) => _jitAll.OrderByDescending(b => b.Ticks).Take(n)
-        .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} retired {b.Retired} ns/retired {b.Ticks * 1e9 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, b.Retired):F2} | {Convert.ToHexString(b.Bytes)}");
+        .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} retired {b.Retired} ns/retired {b.Ticks * 1e9 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, b.Retired):F2} xlat {b.NXlat} slow {b.NSlow} ool {b.NOol} cond {b.NCond} | {Convert.ToHexString(b.Bytes)}");
     private readonly long[] _interpOps = new long[65536];
     public readonly Dictionary<uint, long> InterpAt = new();
     /// <summary>JITSTAT: why an interpreted address is not compiled: its entry's state.</summary>
@@ -206,6 +207,20 @@ public sealed partial class I386
         return rc;
     }
 
+    /// <summary>Live immediates (lane D 2026-11-20; X86_NOLIVEIMM: off): a MOV r32, imm32 whose immediate code keeps patching (StarCraft's campaign:
+    /// a Win98 VxD rewrites the imm32 of `mov edx, imm32` at 006C7982 about once a frame, which threw away and recompiled every block on
+    /// that page) is compiled to read its immediate from memory at run time; its 4 bytes leave the block's byte ranges, so the patch no
+    /// longer invalidates the block. The interpreter reads the same bytes when it runs the instruction, so nothing but the speed changes.</summary>
+    private static readonly bool JitLiveImmOn = Environment.GetEnvironmentVariable("X86_NOLIVEIMM") == null;
+    private readonly Dictionary<uint, int> _smcW = new();
+    private void SmcNote(uint a)
+    {   // a 4-byte store into a code line: counted by address (bounded; only the JIT reads it)
+        if (_smcW.TryGetValue(a, out int c)) _smcW[a] = c + 1;
+        else if (_smcW.Count < 4096) _smcW[a] = 1;
+    }
+    private bool JitLiveImm(uint immAt) => JitLiveImmOn && _smcW.TryGetValue(immAt, out int c) && c >= 2;
+    public long JitLiveImms;
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JitInvalidated(ref JitEntry en)
     {   // the block's bytes changed: a version compiled earlier from these very bytes runs at once; else interpret, and compile again once hot again
@@ -237,12 +252,14 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)]
     private uint JRdSlow(int bits, uint la)
     {
+        if (JitStats && _jitCur != null) _jitCur.NSlow++;
         var r = new OptAddr { A1 = la };
         return bits == 8 ? Load8Slow(ref r) : bits == 16 ? Load16Slow(ref r) : Load32Slow(ref r);
     }
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void JWrSlow(int bits, uint la, uint v)
     {
+        if (JitStats && _jitCur != null) _jitCur.NSlow++;
         var r = new OptAddr { A1 = la };
         if (bits == 8) Store8Slow(ref r, v); else if (bits == 16) Store16Slow(ref r, v); else Store32Slow(ref r, v);
     }
@@ -312,7 +329,7 @@ public sealed partial class I386
         return sp.Mask == 0 ? null : sp;
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegBase(int seg) => SegBase[seg];
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JCond(uint c) { if (JitStats) JCondOps[(_ccOp & 31) * 16 + (c & 15)]++; return Cond(c); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JCond(uint c) { if (JitStats) { JCondOps[(_ccOp & 31) * 16 + (c & 15)]++; if (_jitCur != null) _jitCur.NCond++; } return Cond(c); }
     /// <summary>JITSTAT: the condition tests compiled code made through Cond, by lazy-flag op and condition.</summary>
     public readonly long[] JCondOps = new long[32 * 16];
     [MethodImpl(MethodImplOptions.NoInlining)] private uint JAlu(int op, int bits, uint a, uint b) => Alu(op, bits, a, b);
@@ -394,6 +411,7 @@ public sealed partial class I386
     {
         Cycle = cyc; _steps = st; NextIp = ip;
         uint opa = 0xffffffff;
+        if (JitStats && _jitCur != null) _jitCur.NOol++;
         if (JitStats && _jitCur != null) { uint pa = (_jitCur.Start & ~0xfffu) | ((SegBase[SEG_CS] + ip) & 0xfff); if (pa + 2 < MemSize) { _oolOps[Mem[pa] << 8 | Mem[pa + 1]]++; JitOolAt(pa); opa = pa; } }   // (the region never leaves its 4 KB page)
         if (!PcMachine.TimeProbe) return Step1(false);
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -427,6 +445,7 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)]
     private bool JXlat(uint la, int rwm, int size)
     {
+        if (JitStats && _jitCur != null) _jitCur.NXlat++;
         var r = new OptAddr();
         if (!TranslateLaddr(ref r, rwm, la, size, Cpl)) return false;
         _jpa = r.Two ? 0xffffffff : r.A1;
@@ -437,6 +456,7 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)]
     private uint JRdLin(int bits, uint la)
     {
+        if (JitStats && _jitCur != null) _jitCur.NSlow++;
         var r = new OptAddr();
         if (!TranslateLaddr(ref r, 1, la, bits / 8, Cpl)) return 0;
         return bits == 8 ? Load8Slow(ref r) : bits == 16 ? Load16Slow(ref r) : Load32Slow(ref r);
@@ -444,6 +464,7 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void JWrLin(int bits, uint la, uint v)
     {
+        if (JitStats && _jitCur != null) _jitCur.NSlow++;
         var r = new OptAddr();
         if (!TranslateLaddr(ref r, 2, la, bits / 8, Cpl)) return;
         if (bits == 8) Store8Slow(ref r, v); else if (bits == 16) Store16Slow(ref r, v); else Store32Slow(ref r, v);
@@ -639,6 +660,7 @@ public sealed partial class I386
             DcDecode(ref e, pa);
             if (e.Kind == DK_SLOW) continue;
             uint end = pa + e.Len;
+            if (e.Kind == DK_MOVRI && e.Bits == 32 && e.Len >= 5 && JitLiveImm(end - 4)) { e.Live = true; JitLiveImms++; }   // (live immediate: read from memory)
             if (JitFoldsAt(e, end)) { e.Folds = true; e.FoldNb = (byte)U8(end); e.FoldRel = Sext8(U8(end + 1)); }
             found.Add((pa, e)); if (e.Kind != DK_INTERP) anyCompiled = true;
             if (e.Kind is not (DK_JMP or DK_CALL or DK_RET) && !(e.Kind == DK_INTERP && e.Op == 1)) todo.Enqueue(end);
@@ -655,6 +677,7 @@ public sealed partial class I386
         {
             uint a = pas[k], b = a + ins[k].Len;
             if (ins[k].Folds) b += 2;
+            if (ins[k].Live) b -= 4;   // (a live immediate: its bytes are read at run time, not compared)
             if (ranges.Count > 0 && a <= ranges[^1].b) ranges[^1] = (ranges[^1].a, Math.Max(ranges[^1].b, b));
             else ranges.Add((a, b));
         }
@@ -1362,6 +1385,7 @@ public sealed partial class I386
                     U4(e.Imm); Stl(t); WriteET();
                     break;
                 case DK_MOVRI:
+                    if (e.Live) { uint ia = pas[k] + e.Len - 4; StReg(32, op, () => { Ld(mref); U4(ia); Op(OpCodes.Conv_U); Op(OpCodes.Add); il.Emit(OpCodes.Unaligned, (byte)1); Op(OpCodes.Ldind_U4); }); break; }
                     StReg(bits, op, () => U4(e.Imm));
                     break;
                 case DK_LEA:

@@ -226,6 +226,9 @@ public sealed partial class PcMachine
         };
         Array.Copy(code, 0, m, Rom + Int10Replay, code.Length);
         m[Rom + Int10Table] = 0; m[Rom + Int10Table + 1] = 0;
+        // Windows 98's VMM takes the HIGHEST 63h byte (ARPL) in the F000 ROM as its V86 call-back breakpoint. Without this byte that was a
+        // 63h inside the replay table above, which the next INT 10h rewrote: the VM then ran the table as code (High Color restart hang).
+        m[Rom + 0xffe0] = 0x63;
     }
 
     /// <summary>Fills the replay table with the writes that load the card's current standard registers (the VGA BIOS mode set's order).</summary>

@@ -298,7 +298,7 @@ public sealed class PcSession : IConsoleSession
     /// video memory and disk diff), the packing (CRC + deflate, ~115 ms) is returned to run on any thread. Two payload buffers alternate, so
     /// the caller must finish one pack before it begins the next-but-one (the ring waits on the previous pack before it takes a slot).
     /// </summary>
-    public Func<byte[]> BeginSaveState()
+    public Func<ArraySegment<byte>> BeginSaveState(byte[]? reuse = null)
     {
         if (!_powered) { FirstPowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); }
         _deferFlip ^= 1;
@@ -311,8 +311,8 @@ public sealed class PcSession : IConsoleSession
         int flip = _deferFlip;
         return () =>
         {
-            var file = ConsoleStateFile.Wrap(Console, game, title, units, seg);
-            if (ms.Capacity > 512 << 20) _deferBuf[flip] = null;
+            var file = ConsoleStateFile.WrapInto(Console, game, title, units, seg, reuse);
+            if (ms.Capacity > 1 << 30) _deferBuf[flip] = null;
             return file;
         };
     }

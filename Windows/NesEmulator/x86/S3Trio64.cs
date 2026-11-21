@@ -544,7 +544,9 @@ public sealed class S3Trio64
         int bus = ((_cmd >> 9) & 3) switch { 0 => 8, 1 => 16, _ => 32 };
         if (bits < bus) bus = bits;
         // a write wider than the bus is several bus transfers, the low part first (a 16-bit-bus glyph sends two rows per dword)
-        bool swap = (_cmd & 0x1000) != 0 && bus >= 16;
+        // byte swap (cmd bit 12, "low byte first") only reorders MONO data: colour pixels already arrive in Intel order (a 16 bpp brush
+        // uploaded with 53B1 came out byte-swapped: FreeCell/Hearts green became red)
+        bool swap = (_cmd & 0x1000) != 0 && bus >= 16 && PixSel == 2;
         if (swap) v = bits == 16 ? (uint)(((v & 0xff) << 8) | ((v >> 8) & 0xff)) : (v & 0x00ff00ff) << 8 | (v >> 8) & 0x00ff00ff;
         int dx = (_cmd & 0x20) != 0 ? 1 : -1, dy = (_cmd & 0x80) != 0 ? 1 : -1;
         if (PixSel == 2)

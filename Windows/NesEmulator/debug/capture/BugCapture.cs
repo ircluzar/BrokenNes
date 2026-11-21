@@ -33,7 +33,9 @@ public sealed class BugCaptureSource
     /// Optional: the state split in two (a slow machine, the x86 PC): the call copies the payload (between frames), the function it returns
     /// packs it on a worker thread. Null: <see cref="SaveState"/> is taken whole between frames.
     /// </summary>
-    public Func<Func<byte[]>>? BeginSaveState { get; init; }
+    /// The argument is a buffer the ring no longer needs (the evicted slot's state), for the pack to reuse when it is big enough (or null):
+    /// a new ~45-70 MB array a second was large-object garbage that grew the app to 12-18 GB.
+    public Func<byte[]?, Func<ArraySegment<byte>>>? BeginSaveState { get; init; }
 
     public BugCaptureSource(string consoleKey, Func<byte[]>? saveState, string noStateWhy, Func<ulong> pictureHash, Func<ulong> ramHash, Action<BugPicture> copyPicture, Func<string>? machine = null)
     {
@@ -141,17 +143,22 @@ public sealed class BugCaptureRing
     {
         public long Frame = -1;          // frames run when taken (the state is the start of that frame)
         private byte[]? state;
-        public System.Threading.Tasks.Task<byte[]>? Packing;   // a state still being packed on a worker (BeginSaveState)
+        private ArraySegment<byte> seg;   // a packed state in a reused buffer (BeginSaveState)
+        public System.Threading.Tasks.Task<ArraySegment<byte>>? Packing;   // a state still being packed on a worker (BeginSaveState)
+        private void Settle()
+        {
+            var t = Packing;
+            if (t != null) { try { seg = t.Result; } catch { seg = default; } Packing = null; }
+        }
+        public bool HasState { get { Settle(); return state != null || seg.Array != null; } }
+        /// <summary>The state (a copy when it lives in a reused buffer: the buffer goes to a later state once this slot is evicted).</summary>
         public byte[]? State
         {
-            get
-            {
-                var t = Packing;
-                if (t != null) { try { state = t.Result; } catch { state = null; } Packing = null; }
-                return state;
-            }
-            set { state = value; Packing = null; }
+            get { Settle(); return state ?? (seg.Array == null ? null : seg.AsSpan().ToArray()); }
+            set { state = value; seg = default; Packing = null; }
         }
+        /// <summary>The slot's buffer for the next pack to reuse (the slot is being overwritten); the slot holds nothing after.</summary>
+        public byte[]? TakeBuffer() { Settle(); var b = seg.Array; seg = default; state = null; return b; }
         public ulong Picture, Ram;       // keyframe hashes after Frame frames
         public long AudioPos;            // sound samples queued before it
         public readonly BugPicture Shot = new();
@@ -294,7 +301,7 @@ public sealed class BugCaptureRing
         audioPos += count;
     }
 
-    private System.Threading.Tasks.Task<byte[]>? lastPack;
+    private System.Threading.Tasks.Task<ArraySegment<byte>>? lastPack;
 
     private Slot Newest => slots[(slotHead + slotCount - 1) % slots.Length];
 
@@ -303,6 +310,7 @@ public sealed class BugCaptureRing
         Slot slot;
         if (slotCount < slots.Length) { slot = slots[(slotHead + slotCount) % slots.Length]; slotCount++; }
         else { slot = slots[slotHead]; slotHead = (slotHead + 1) % slots.Length; }
+        byte[]? reuse = slot.TakeBuffer();   // (the evicted state's buffer: the new pack writes into it when it fits)
         slot.Frame = frame;
         slot.AudioPos = audioPos;
         slot.State = null;
@@ -314,8 +322,8 @@ public sealed class BugCaptureRing
                 if (s.BeginSaveState != null)
                 {
                     // the previous pack's buffer is reused by the one after this: it must be finished first (it takes ~0.1 s of the 1 s between)
-                    if (lastPack != null) { try { LastStateBytes = lastPack.Result.Length; } catch (Exception e) { StateError = $"no states after frame {frame}: {e.Message}"; } }
-                    var pack = s.BeginSaveState();
+                    if (lastPack != null) { try { LastStateBytes = lastPack.Result.Count; } catch (Exception e) { StateError = $"no states after frame {frame}: {e.Message}"; } }
+                    var pack = s.BeginSaveState(reuse);
                     slot.Packing = lastPack = System.Threading.Tasks.Task.Run(pack);
                 }
                 else { slot.State = s.SaveState(); LastStateBytes = slot.State?.Length ?? 0; }
@@ -351,7 +359,7 @@ public sealed class BugCaptureRing
         for (int k = 0; k < slotCount; k++)
         {
             var sl = slots[(slotHead + k) % slots.Length];
-            if (sl.State == null) continue;
+            if (!sl.HasState) continue;
             if (startIdx < 0 || sl.Frame <= want) startIdx = k;
             if (sl.Frame > want) break;
         }

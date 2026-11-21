@@ -93,7 +93,7 @@ internal static class X86BootCli
         var sw = Stopwatch.StartNew();
         m.PowerOn();
         // --loadstate: carry on from a --savestate of the same machine (its disks come from the state; the CD stays the one given)
-        if (Arg(args, "--loadstate") is string ls) { m.LoadState(File.ReadAllBytes(ls)); if (_allocs != null) lock (_allocs.ByType) _allocs.ByType.Clear();   /* (count the run, not the load) */ if (args.Contains("--cdchanged")) m.Ata?.Secondary.MediaChanged(0); }   // --cdchanged: the disc was swapped since the state was saved (UNIT ATTENTION)
+        if (Arg(args, "--loadstate") is string ls) { m.LoadState(File.ReadAllBytes(ls)); if (_allocs != null) lock (_allocs.ByType) _allocs.ByType.Clear();   /* (count the run, not the load) */ if (args.Contains("--cdchanged")) m.Ata?.Secondary.MediaChanged(0); if (Arg(args, "--floppy") is string lf) m.Floppy[0] = new DiskImage(File.ReadAllBytes(lf), true); }   // (a floppy inserted into a loaded state)   // --cdchanged: the disc was swapped since the state was saved (UNIT ATTENTION)
         // --net: plug the network card into the built-in NAT (DHCP, DNS, the HTTPS bridge); off by default
         PcNat? nat = null;
         if (Arg(args, "--niclog") is string nl && m.Nic != null)
@@ -299,8 +299,12 @@ internal static class X86BootCli
         {
             var tp = ta.Split('-'); uint lo = Convert.ToUInt32(tp[0], 16), hi = Convert.ToUInt32(tp[1], 16); long sl = 0; int tslice = int.Parse(Arg(args, "--traceslice") ?? "1");
             int thits = int.Parse(Arg(args, "--tracehit") ?? "1"), th = 0; bool inR = false;   // --tracehit N: the Nth entry into the range (not the first)
-            while (sl++ < 400_000_000) { uint l = m.Cpu.SegBase[1] + m.Cpu.Ip; bool r = l >= lo && l < hi; if (r && !inR && ++th >= thits) break; inR = r; m.RunClock(tslice); }
+            var tring = new Queue<string>(); bool tr = args.Contains("--tracering");   // --tracering: print the last 80 instructions before the stop
+            while (sl++ < 400_000_000) { uint l = m.Cpu.SegBase[1] + m.Cpu.NextIp; if (tr) { tring.Enqueue($"{m.Cpu.SegSel[1]:X4}:{m.Cpu.NextIp:X8} SS:SP {m.Cpu.SegSel[2]:X4}:{m.Cpu.R[4]:X4} AX {m.Cpu.R[0]:X4} vm{(m.Cpu.Flags >> 17) & 1} | {LinBytes(m, l, 6)}"); if (tring.Count > 400) tring.Dequeue(); } bool r = l >= lo && l < hi; if (r && !inR) { th++; if (args.Contains("--tracehitlog")) Console.WriteLine($"hit {th}: SS:SP {m.Cpu.SegSel[2]:X4}:{m.Cpu.R[4]:X8} frame {LinBytes(m, m.Cpu.SegBase[2] + (m.Cpu.R[4] & 0xffff), 16)} AX {m.Cpu.R[0]:X8}"); if (th >= thits) break; }
+                if (Arg(args, "--tracestopcs") is string tsc && m.Cpu.SegSel[1] == Convert.ToUInt32(tsc, 16)) break;
+                if (Arg(args, "--tracestopbytes") is string tsb && LinBytes(m, l, tsb.Length / 3 + 1) == tsb) break;   /* stop when the code at CS:EIP starts with these bytes ("20 07 20 07") */ inR = r; m.RunClock(tslice); }
             Console.WriteLine($"traceat: at {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} after {sl} slices");
+            foreach (var t in tring) Console.WriteLine("  ring " + t);
         }
         if (Arg(args, "--trace") is string trc)   // one instruction at a time: where a hang loops
         {
@@ -381,6 +385,8 @@ internal static class X86BootCli
                 ulong fh = 14695981039346656037UL; var smem = m.Cpu.Mem; for (int i = 0; i < smem.Length; i++) { fh ^= smem[i]; fh *= 1099511628211UL; } double tFnv = sbw.Elapsed.TotalMilliseconds;
                 uint rc = 0xFFFFFFFF; foreach (byte cb in st) { rc ^= cb; for (int k = 0; k < 8; k++) rc = (rc & 1) != 0 ? (rc >> 1) ^ 0xEDB88320u : rc >> 1; }
                 Console.WriteLine($"savebench: crc {(~rc == crc ? "EQUALS" : "DIFFERS FROM")} the bitwise definition");
+                var into = NesEmulator.Systems.ConsoleStateFile.WrapInto(NesEmulator.Systems.ConsoleKind.Pc, "g", "t", new Dictionary<string, string>(), st, new byte[wrapped.Length + 4096]);
+                Console.WriteLine($"savebench: WrapInto a reused buffer {(into.AsSpan().SequenceEqual(wrapped) ? "EQUALS" : "DIFFERS FROM")} Wrap");
                 bool same = NesEmulator.Systems.ConsoleStateFile.PayloadOf(wrapped).AsSpan().SequenceEqual(st);
                 var ms2 = new MemoryStream(); m.SaveState(ms2); bool streamSame = ms2.ToArray().AsSpan().SequenceEqual(st);
                 Console.WriteLine($"savebench: state {st.Length >> 20} MB {tSave:F0} ms, crc {tCrc:F0} ms, wrap(crc+deflate) {tWrap:F0} ms -> {wrapped.Length >> 20} MB, fnv over RAM {smem.Length >> 20} MB {tFnv:F0} ms; round trip {(same ? "EQUAL" : "DIFFERENT")}, stream save {(streamSame ? "EQUAL" : "DIFFERENT")}");
