@@ -49,6 +49,8 @@ public sealed partial class PcMachine : IX86Bus
     public readonly PcConfig Config;
     /// <summary>The PCI network card (an RTL8029 / NE2000; PCI boards only). Its cable (Nic.Link) is host-side and starts unplugged.</summary>
     public readonly Rtl8029? Nic;
+    /// <summary>The 3dfx Voodoo Graphics add-in card (PCI board with PcConfig.Voodoo only; off by default).</summary>
+    public readonly Voodoo1? Voodoo;
     /// <summary>The 82077AA floppy controller (the PCI 430TX board only; the other boards serve floppies through the BIOS alone).</summary>
     public readonly Fdc82077? Fdc;
     private bool BmPort(int port, out int off) { off = 0; if (Ata == null || Pci == null || !Pci.Functions.TryGetValue(PciBus.IdeDevFn, out var f)) return false; int b = f.Bar4Base; if (b < 0 || port < b || port >= b + 16) return false; off = port - b; return true; }
@@ -91,6 +93,7 @@ public sealed partial class PcMachine : IX86Bus
         {
             Nic = new Rtl8029();
             Nic.SetIrq = on => { int irq = Pci!.Isa.Cfg[0x61]; if (irq < 16) Pic.SetIrq(irq, on ? 1 : 0); };
+            if (config.Voodoo) Voodoo = new Voodoo1(() => Vga.FrameIndex(PitNow), () => PitNow % Vga.FrameTicks / Vga.FrameTicks);
             Pci = new PciBus(this);
         }
         if (config.Bus == PcBus.Pci430TX)
@@ -118,17 +121,20 @@ public sealed partial class PcMachine : IX86Bus
     // emulated time and the boot ran at a third of real time. Only the PCI board (the other machines keep their timing byte for byte).
     private void IsaWait() { if (Pci != null) _idle += Math.Max(1, InstructionsPerSecond / 1_000_000); }
     private void VramWait() { if (_vramNs != 0) _idle += Math.Max(1, _vramNs * InstructionsPerSecond / 1_000_000_000); }
-    private byte RawRead8(uint a) => a < 0xc0000 ? Vga.MemRead(a) : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
-    private void RawWrite8(uint a, byte v) { if (a < 0xc0000) Vga.MemWrite(a, v); else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
-    private ushort RawRead16(uint a) => (ushort)(RawRead8(a) | (RawRead8(a + 1) << 8));
+    private PciFunction? Mmio(uint a) => a >= 0xe0000000 && Pci != null && Pci.MmioFns.Length != 0 ? Pci.MmioAt(a) : null;
+    private byte RawRead8(uint a) => Mmio(a) is { } mf ? (byte)mf.Mmio!.MmioRead(a - mf.MemBase, 1) : a < 0xc0000 ? Vga.MemRead(a) : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
+    private void RawWrite8(uint a, byte v) { if (Mmio(a) is { } mf) mf.Mmio!.MmioWrite(a - mf.MemBase, v, 1); else if (a < 0xc0000) Vga.MemWrite(a, v); else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
+    private ushort RawRead16(uint a) => Mmio(a) is { } mf && Mmio(a + 1) == mf ? (ushort)mf.Mmio!.MmioRead(a - mf.MemBase, 2) : (ushort)(RawRead8(a) | (RawRead8(a + 1) << 8));
     private void RawWrite16(uint a, ushort v)
     {
+        if (Mmio(a) is { } mf && Mmio(a + 1) == mf) { mf.Mmio!.MmioWrite(a - mf.MemBase, v, 2); return; }
         if (S3 != null && (S3.InLfb(a) && S3.InLfb(a + 1) ? WriteLfb16(a, v) : a < 0xc0000 && S3.MmioWrite(a, v, 16))) return;
         RawWrite8(a, (byte)v); RawWrite8(a + 1, (byte)(v >> 8));
     }
-    private uint RawRead32(uint a) => S3 != null && S3.InLfb(a) ? S3.LfbRead32(a) : (uint)(RawRead16(a) | (RawRead16(a + 2) << 16));
+    private uint RawRead32(uint a) => Mmio(a) is { } mf && Mmio(a + 3) == mf ? mf.Mmio!.MmioRead(a - mf.MemBase, 4) : S3 != null && S3.InLfb(a) ? S3.LfbRead32(a) : (uint)(RawRead16(a) | (RawRead16(a + 2) << 16));
     private void RawWrite32(uint a, uint v)
     {
+        if (Mmio(a) is { } mf && Mmio(a + 3) == mf) { mf.Mmio!.MmioWrite(a - mf.MemBase, v, 4); return; }
         if (S3 != null)
         {
             if (S3.InLfb(a)) { S3.LfbWrite32(a, v); return; }
@@ -346,9 +352,11 @@ public sealed partial class PcMachine : IX86Bus
             if (++guard > 100_000_000) { Stopped = "frame never ended"; return false; }
         }
         _lastFrame = target;
+        Voodoo?.TickFrame();
         if (Profiling || TimeProbe) { long t0 = System.Diagnostics.Stopwatch.GetTimestamp(); Vga.Render(); RenderTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0; }
         else if (AllocProbe) { long a0 = GC.GetAllocatedBytesForCurrentThread(); Vga.Render(); AllocRender += GC.GetAllocatedBytesForCurrentThread() - a0; }
         else Vga.Render();
+        if (Voodoo is { Active: true }) Voodoo.RenderInto(Vga);   // the pass-through switch: the 3D card drives the monitor
         return Stopped == null;
     }
 
@@ -515,6 +523,7 @@ public sealed partial class PcMachine : IX86Bus
             if (Nic != null) { w.Write(0x3043494e); Nic.Save(w); }   // "NIC0", after the config block
             if (Kbc.HasMouse) { w.Write(0x4d325350); Kbc.SaveMouse(w); }   // "PS2M"
             if (Fdc != null) { w.Write(0x30434446); Fdc.Save(w); }   // "FDC0"
+            if (Voodoo != null) { w.Write(0x314f4456); Voodoo.Save(w); }   // "VDO1"
             if (Ata != null && (Ata.Primary.BmActive || Ata.Secondary.BmActive)) { w.Write(0x4d424449); Ata.Primary.SaveBm(w); Ata.Secondary.SaveBm(w); }   // "IDBM": bus-master DMA
             if (Ata != null && Ata.Secondary.AudioActive) { w.Write(0x41444443); Ata.Secondary.SaveAudio(w); }   // "CDDA": CD audio playing or paused
             if (Ata != null && (Ata.Primary.AnyMediaChanged || Ata.Secondary.AnyMediaChanged)) { w.Write(0x434d4443); Ata.Primary.SaveMediaChanged(w); Ata.Secondary.SaveMediaChanged(w); }   // "CDMC": a disc change not yet reported (UNIT ATTENTION)
@@ -581,7 +590,7 @@ public sealed partial class PcMachine : IX86Bus
         string? picId = null; byte[]? picBlob = null;
         string? svgaId = null; byte[]? svgaBlob = null;
         PcConfig? saved = null; bool mouse = false;
-        bool nicLoaded = false, fdcLoaded = false, cdda = false, idbm = false, cdmc = false;
+        bool nicLoaded = false, fdcLoaded = false, vdoLoaded = false, cdda = false, idbm = false, cdmc = false;
         while (r.BaseStream.Position + 4 <= r.BaseStream.Length)
         {
             int magic = r.ReadInt32();
@@ -599,6 +608,7 @@ public sealed partial class PcMachine : IX86Bus
             }
             else if (magic == 0x3043494e && Nic != null) { Nic.Load(r); nicLoaded = true; }
             else if (magic == 0x30434446 && Fdc != null) { Fdc.Load(r); fdcLoaded = true; }
+            else if (magic == 0x314f4456 && Voodoo != null) { Voodoo.Load(r); vdoLoaded = true; }
             else if (magic == 0x4d424449 && Ata != null) { Ata.Primary.LoadBm(r); Ata.Secondary.LoadBm(r); idbm = true; }
             else if (magic == 0x41444443 && Ata != null) { Ata.Secondary.LoadAudio(r); cdda = true; }
             else if (magic == 0x434d4443 && Ata != null) { Ata.Primary.LoadMediaChanged(r); Ata.Secondary.LoadMediaChanged(r); cdmc = true; }
@@ -616,7 +626,8 @@ public sealed partial class PcMachine : IX86Bus
         if (!idbm) { Ata?.Primary.ClearBm(); Ata?.Secondary.ClearBm(); }
         if (Nic != null && !nicLoaded) Nic.Reset();   // a state from before the card: it sits there as after a cold boot, unconfigured
         if (!mouse) Kbc.ResetMouse();
-        if (Fdc != null && !fdcLoaded) Fdc.PowerOn();   // a state from before the controller: it starts as after a cold boot
+        if (Fdc != null && !fdcLoaded) Fdc.PowerOn();
+        if (Voodoo != null && !vdoLoaded) throw new InvalidDataException("this x86 state has no Voodoo card state, this machine has the Voodoo");   // a state from before the controller: it starts as after a cold boot
         if (saved == null && ConfigInState) throw new InvalidDataException($"this x86 state is for the classic machine (486, BIOS disks), this machine is {Config}");
         WireAta();
         // the video card must be the one the state was saved on: a mismatch is an error, never a guess

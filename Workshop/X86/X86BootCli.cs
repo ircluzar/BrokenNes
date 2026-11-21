@@ -71,6 +71,7 @@ internal static class X86BootCli
         if (Environment.GetEnvironmentVariable("X86_GCLAT") != "0") System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
         var cfg = Arg(args, "--machine") is string mp ? PcConfig.Preset(mp) : PcConfig.Default;
         if (Arg(args, "--mem") is string mem) cfg = cfg with { MemoryMB = int.Parse(mem) };
+        if (args.Contains("--voodoo")) cfg = cfg with { Voodoo = true };
         if (Arg(args, "--bootorder") is string bo) cfg = cfg with { BootOrder = bo.ToUpperInvariant() };
         // --machine names a whole machine (the desktop's presets): its CPU model and video card, unless --cpu / --video say otherwise
         var preset = Arg(args, "--machine") is string mk && PcMachinePreset.Known(mk) ? PcMachinePreset.Find(mk) : null;
