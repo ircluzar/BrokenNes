@@ -96,6 +96,7 @@ namespace BrokenNes.Windows
             var c = s.Console;
             if (!BugPrepare(s, () => BugCaptureSource.For(s, () => SessionCores(c)), s.FramesPerSecond)) return;
             bugRing.Frame(p1, p2);
+            if (s is NesEmulator.X86.PcSession pc && pc.InputTap == null) pc.InputTap = bugRing.Input;   // its keyboard and mouse go into the history too
         }
 
         private string SessionCores(ConsoleKind c) => $"{SelectedCore(c, CoreSlot.Cpu)}/{SelectedCore(c, CoreSlot.Ppu)}/{SelectedCore(c, CoreSlot.Apu)}";
@@ -190,6 +191,12 @@ namespace BrokenNes.Windows
         {
             server.ExternalChange = BugBreak;
             server.GetBugStatus = BugStatus;
+            server.PcKey = (scan, ext, down) => pcKeys.Enqueue((scan, ext, down));
+            server.PcMouse = (dx, dy, buttons) =>
+            {
+                Interlocked.Add(ref pcMouseDx, dx); Interlocked.Add(ref pcMouseDy, dy);
+                Interlocked.Exchange(ref pcMouseButtons, buttons); Interlocked.Exchange(ref pcMouseDirty, 1);
+            };
             server.SetBugCaptureEnabled = on => SetBugCaptureEnabled(on);
             server.CaptureBug = async note =>
             {
