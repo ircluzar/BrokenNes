@@ -93,7 +93,7 @@ public sealed partial class PcMachine : IX86Bus
         {
             Nic = new Rtl8029();
             Nic.SetIrq = on => { int irq = Pci!.Isa.Cfg[0x61]; if (irq < 16) Pic.SetIrq(irq, on ? 1 : 0); };
-            if (config.Voodoo) Voodoo = new Voodoo1(() => Vga.FrameIndex(PitNow), () => PitNow % Vga.FrameTicks / Vga.FrameTicks);
+            if (config.Voodoo) Voodoo = new Voodoo1();
             Pci = new PciBus(this);
         }
         if (config.Bus == PcBus.Pci430TX)

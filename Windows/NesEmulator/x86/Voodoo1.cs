@@ -52,21 +52,19 @@ public sealed partial class Voodoo1 : IPciMmio
     private int _swapsPending, _vblankCount, _vblankSwap;
     private bool _vblankSwapPending;
     private long _lastFrame = -1;
+    /// <summary>Status / vRetrace reads since the last retrace: the retrace window is the first <see cref="VBlankReads"/> of them (see Sync).</summary>
+    private int _readsSinceRetrace;
+    private const int VBlankReads = 2;
     private int _rgbOffs0, _rgbOffs1, _rgbOffs2 = -1, _auxOffs = -1, _rowPixels = 64;
 
-    private readonly Func<long> _frameIndex;
-    private readonly Func<double> _framePhase;
-
-    /// <param name="frameIndex">The machine's video frame counter (a new frame starts at vertical retrace).</param>
-    /// <param name="framePhase">Position inside the current frame, 0..1 (retrace = the last ~8%).</param>
-    public Voodoo1(Func<long> frameIndex, Func<double> framePhase) { _frameIndex = frameIndex; _framePhase = framePhase; Reset(); }
+    public Voodoo1() { Reset(); }
 
     public void Reset()
     {
         Array.Clear(Reg); Array.Clear(TReg); Array.Clear(Fb); Array.Clear(Tex); Array.Clear(_dac); Array.Clear(_fogBlend); Array.Clear(_fogDelta);
         Array.Clear(_palette); Array.Clear(_paletteA);
         _startW = _dwdx = _dwdy = _tS = _tT = _tW = _tdSdX = _tdTdX = _tdWdX = _tdSdY = _tdTdY = _tdWdY = 0;
-        _dacRead = 0; _front = 0; _back = 1; _swapsPending = _vblankCount = _vblankSwap = 0; _vblankSwapPending = false; _lastFrame = -1;
+        _dacRead = 0; _front = 0; _back = 1; _swapsPending = _vblankCount = _vblankSwap = 0; _vblankSwapPending = false; _lastFrame = -1; _readsSinceRetrace = 0;
         for (int p = 0; p < 32; p++) _clut[p] = Raster3D.Argb(p, Raster3D.Pal5(p), Raster3D.Pal5(p), Raster3D.Pal5(p));
         _clut[32] = Raster3D.Argb(32, 0xff, 0xff, 0xff);
         _clutDirty = true;
@@ -93,7 +91,6 @@ public sealed partial class Voodoo1 : IPciMmio
     /// <summary>Draws the front buffer through the CLUT into <paramref name="vga"/>'s picture (when <see cref="Active"/>).</summary>
     public void RenderInto(Vga vga)
     {
-        Sync();
         int w = Math.Max(8, Width), h = Math.Max(8, Height);
         vga.Ensure(w, h);
         w = vga.Width; h = vga.Height;
@@ -134,20 +131,21 @@ public sealed partial class Voodoo1 : IPciMmio
 
     // ================= retrace / swaps (on the machine's frame clock) =================
 
-    /// <summary>Applies every vertical-retrace start the machine clock has passed since the last call.</summary>
-    private void Sync()
+    // Retrace timing is NOT read from the machine clock: compiled (JIT) code updates the instruction clock only at block exits, so a
+    // clock-derived status read inside a block would differ from the interpreter's and break jit parity. Instead: the retrace starts at
+    // the machine's frame boundary (TickFrame, the same point in both modes) and lasts for the next VBlankReads status / vRetrace reads
+    // (the same instruction stream in both modes). Glide's "wait for retrace / wait for display" loops see both edges every frame.
+
+    /// <summary>Once per machine frame (vertical retrace start): pending vsync'd swaps.</summary>
+    public void TickFrame()
     {
-        long f = _frameIndex();
-        if (_lastFrame < 0) { _lastFrame = f; return; }
-        while (_lastFrame < f)
-        {
-            _lastFrame++;
-            _vblankCount = Math.Min(_vblankCount + 1, 250);
-            if (_vblankSwapPending && _vblankCount >= _vblankSwap) SwapBuffers();
-        }
+        _lastFrame++;
+        _readsSinceRetrace = 0;
+        _vblankCount = Math.Min(_vblankCount + 1, 250);
+        if (_vblankSwapPending && _vblankCount >= _vblankSwap) SwapBuffers();
     }
-    private bool InVBlank => _framePhase() >= 412.0 / 449.0;
-    public void TickFrame() => Sync();
+    private bool InVBlank => _readsSinceRetrace < VBlankReads;
+    private void CountRead() { if (_readsSinceRetrace < int.MaxValue) _readsSinceRetrace++; }
 
     private void SwapBuffers()
     {
@@ -272,23 +270,25 @@ public sealed partial class Voodoo1 : IPciMmio
 
     private uint RegRead(uint dword)
     {
-        Sync();
         int chips = ChipsFromOffset(dword), reg = (int)(dword & 0xff);
         var e = Table[reg];
         uint r = e.Kind switch
         {
             KStatus => Status(),
-            KVRetrace => InVBlank ? 0u : (uint)(_framePhase() * 449.0 * Math.Max(1, Height) / 412.0),
+            KVRetrace => VRetrace(),
             KPassive or KFbiInit or KVideo or KStats => reg == RFbiInit2 && (InitEnable & 4) != 0 ? _dacRead : Reg[reg],
             _ => 0,
         };
         return r & e.Mask;
     }
 
+    private uint VRetrace() { uint r = InVBlank ? 0u : (uint)Math.Min((long)(_readsSinceRetrace - VBlankReads + 1) * 16, Math.Max(1, Height) - 1); CountRead(); return r; }
+
     private uint Status()
     {
+        bool vb = InVBlank; CountRead();
         uint r = 0x3f;                                       // PCI FIFO free (never fills)
-        if (InVBlank) r |= 1 << 6;
+        if (vb) r |= 1 << 6;
         r |= (uint)_front << 10;
         r |= 0xffffu << 12;                                  // memory FIFO free
         r |= (uint)Math.Min(_swapsPending, 7) << 28;
@@ -299,7 +299,6 @@ public sealed partial class Voodoo1 : IPciMmio
 
     private void RegWrite(uint dword, uint data)
     {
-        Sync();
         int chips = ChipsFromOffset(dword);
         int reg = (int)(dword & 0xff);
         if ((dword & (1 << 18)) != 0 && (Reg[RFbiInit0] & 8) != 0) data = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(data);
@@ -551,7 +550,7 @@ public sealed partial class Voodoo1 : IPciMmio
 
     public void Save(BinaryWriter w)
     {
-        w.Write(2);   // version
+        w.Write(3);   // version
         foreach (var v in Reg) w.Write(v);
         foreach (var v in TReg) w.Write(v);
         foreach (var v in new[] { _startW, _dwdx, _dwdy, _tS, _tT, _tW, _tdSdX, _tdTdX, _tdWdX, _tdSdY, _tdTdY, _tdWdY }) w.Write(v);
@@ -560,13 +559,13 @@ public sealed partial class Voodoo1 : IPciMmio
         w.Write(_fogBlend); w.Write(_fogDelta);
         foreach (var v in _palette) w.Write(v);
         foreach (var v in _paletteA) w.Write(v);
-        w.Write(_front); w.Write(_back); w.Write(_swapsPending); w.Write(_vblankCount); w.Write(_vblankSwap); w.Write(_vblankSwapPending); w.Write(_lastFrame);
+        w.Write(_front); w.Write(_back); w.Write(_swapsPending); w.Write(_vblankCount); w.Write(_vblankSwap); w.Write(_vblankSwapPending); w.Write(_lastFrame); w.Write(_readsSinceRetrace);
         w.Write(Triangles); w.Write(Pixels);
     }
 
     public void Load(BinaryReader r)
     {
-        if (r.ReadInt32() != 2) throw new InvalidDataException("this x86 state's Voodoo block version is not known");
+        int ver = r.ReadInt32(); if (ver is not (2 or 3)) throw new InvalidDataException("this x86 state's Voodoo block version is not known");
         for (int i = 0; i < 256; i++) Reg[i] = r.ReadUInt32();
         for (int i = 0; i < 256; i++) TReg[i] = r.ReadUInt32();
         _startW = r.ReadInt64(); _dwdx = r.ReadInt64(); _dwdy = r.ReadInt64(); _tS = r.ReadInt64(); _tT = r.ReadInt64(); _tW = r.ReadInt64();
@@ -576,7 +575,7 @@ public sealed partial class Voodoo1 : IPciMmio
         r.Read(_fogBlend, 0, 64); r.Read(_fogDelta, 0, 64);
         for (int i = 0; i < 256; i++) _palette[i] = r.ReadUInt32();
         for (int i = 0; i < 256; i++) _paletteA[i] = r.ReadUInt32();
-        _front = r.ReadInt32(); _back = r.ReadInt32(); _swapsPending = r.ReadInt32(); _vblankCount = r.ReadInt32(); _vblankSwap = r.ReadInt32(); _vblankSwapPending = r.ReadBoolean(); _lastFrame = r.ReadInt64();
+        _front = r.ReadInt32(); _back = r.ReadInt32(); _swapsPending = r.ReadInt32(); _vblankCount = r.ReadInt32(); _vblankSwap = r.ReadInt32(); _vblankSwapPending = r.ReadBoolean(); _lastFrame = r.ReadInt64(); _readsSinceRetrace = ver >= 3 ? r.ReadInt32() : 0;
         Triangles = r.ReadInt64(); Pixels = r.ReadInt64();
         RecomputeVideoMemory();
         _clutDirty = true; _texDirty = true; _paletteDirty = 0xf;
