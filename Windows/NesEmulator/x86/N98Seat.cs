@@ -69,7 +69,7 @@ public sealed class N98Seat
         if (dName != null)
         {
             baseD = Environment.GetEnvironmentVariable("BROKENNES_N98_BASE_D") is { Length: > 0 } bd ? bd
-                : new[] { Path.GetDirectoryName(baseImg), Environment.GetEnvironmentVariable("BROKENNES_N98_CDS") }.Where(x => !string.IsNullOrEmpty(x))
+                : new[] { Path.GetDirectoryName(baseImg), Environment.GetEnvironmentVariable("BROKENNES_N98_CDS"), LocalRoot, @"C:\BrokenNes-work\sc98" }.Where(x => !string.IsNullOrEmpty(x))
                     .Select(x => Path.Combine(x!, dName)).FirstOrDefault(File.Exists);
             if (baseD == null || !File.Exists(baseD)) throw new FileNotFoundException($"{fileName} writes drive D: and its D base image ({dName}) was not found; set BROKENNES_N98_BASE_D");
             s.Image2Path = Path.Combine(s.CacheDir, "D.img");

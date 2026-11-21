@@ -175,6 +175,7 @@ public static class RomDetect
     {
         innerName = fileName;
         bool zip = data.Length > 4 && data[0] == 'P' && data[1] == 'K' && data[2] == 3 && data[3] == 4;
+        if (zip && fileName.EndsWith(".n98", StringComparison.OrdinalIgnoreCase)) return data;   // a nano98 game package is a zip itself, opened whole (not a ROM inside a zip)
         if (!zip)
         {
             // an archive format the apps cannot open (the browser build has no 7-Zip): say so, rather than failing to recognise a ROM
