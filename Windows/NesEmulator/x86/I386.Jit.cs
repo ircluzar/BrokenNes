@@ -42,6 +42,7 @@ public sealed partial class I386
         public uint[] Pages = Array.Empty<uint>(), Gens = Array.Empty<uint>();   // the 4 KB pages Bytes come from, and their code write generations when last checked
         public uint Epoch = 0xffffffff;   // _memEpoch when last checked (FFFFFFFF: never: compare the bytes)
         public bool SpecFail;   // its segment specialization no longer held at a run: compiled again without it
+        public DEntry[]? Ins; public SegSpec? Spec; public NativeInfo? NI;   // (the native backend, I386.Native.cs: X86_NATIVE)
     }
 
     /// <summary>One instruction address: how often it was reached, and the compiled block (and instruction in it) that starts there.</summary>
@@ -155,6 +156,7 @@ public sealed partial class I386
                 {
                     _jitCur = code;
                     if (PcMachine.TimeProbe) return JitRunTimed(code, en.K);
+                    if (code.NI != null && en.K == 0) return NativeStat ? NativeStatRun(code) : NativeRun(code);
                     if (!JitStats) return code.Fn(this, en.K);
                     return JitRunCounted(code, en.K);
                 }
@@ -689,13 +691,14 @@ public sealed partial class I386
         {
             Start = start, Count = pas.Length, C16 = _c16, Pg = pg, Bytes = bytes,
             RunAt = ranges.Select(r => (int)r.a).ToArray(), RunLen = ranges.Select(r => (int)(r.b - r.a)).ToArray(),
-            Addrs = pas,
+            Addrs = pas, Ins = ins,
         };
         JitStamp(code);   // (a store to these bytes from now on moves their pages on: the install compares them then)
         uint lo = ranges[0].a, hi = ranges[^1].b;
         bool c16 = _c16, ioMem = _ioMem;
         uint memSize = MemSize;
         var spec = JitSegSpec(key, ins);
+        code.Spec = spec;
         if (!JitAsync)
         {
             try { code.Fn = Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec); code.Fn(this, -1); }   // (entry -1: only compiles it, the .NET JIT, and declines)
@@ -730,6 +733,7 @@ public sealed partial class I386
     private void JitInstall(JitCode code, ulong key)
     {
         JitCompiled++;
+        if ((NativeOn || NativeStat) && code.NI == null) code.NI = NativeCompile(code);
         if (JitStats) _jitAll.Add(code);
         if (_jitCodes.Count >= JitKeep) { _jitCodes.Clear(); JitKeepClears++; }   // a long session that has run a lot of different code: let the old code go
         if (!_jitCodes.TryGetValue(key, out var vs) || vs.Length != JitVariants) _jitCodes[key] = vs = new JitCode[JitVariants];
