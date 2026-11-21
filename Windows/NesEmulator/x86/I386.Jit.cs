@@ -525,7 +525,7 @@ public sealed partial class I386
     private int JExitLink(uint ip, uint nextIp, long cyc, int st)
     {
         Ip = ip; NextIp = nextIp; Cycle = cyc; _steps = st + 1;
-        if (st <= 0 || !JitLink || _linkDepth >= 64) { if (JitStats) LinkWhy[st <= 0 ? 0 : 1]++; return OK; }   // (each link nests a call: at most 64 deep)
+        if (st <= 0 || !JitLink || _linkDepth >= LinkDepthMax) { if (JitStats) LinkWhy[st <= 0 ? 0 : 1]++; return OK; }   // (each link nests a call: at most 64 deep)
         _steps = st;   // (Exec1's loop step for the block that just ran)
         _c16 = Code16; _spm = SpMask;
         uint laddr = SegBase[SEG_CS] + nextIp;
@@ -553,6 +553,8 @@ public sealed partial class I386
         return OK;
     }
     private int _linkDepth;
+    /// <summary>X86_LINKDEPTH: how many linked blocks may nest (each link is a nested native call; default 64).</summary>
+    private static readonly int LinkDepthMax = int.TryParse(Environment.GetEnvironmentVariable("X86_LINKDEPTH"), out int ld) && ld > 0 ? ld : 64;
     /// <summary>JITSTAT: why the last compiled block declined (2 entry index, 1x segment at the prologue, 3x segment at the entry instruction).</summary>
     private int _declWhy;
     public readonly long[] DeclineWhy = new long[64];
