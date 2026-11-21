@@ -422,6 +422,7 @@ internal static class X86BootCli
         if (PcMachine.TimeProbe)
         {
             double tf = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            Console.WriteLine($"timeprobe: parts: sound card (Advance: DMA + mixing) {m.TicksCard * tf:F0} ms, VGA/S3 render {m.RenderTicks * tf:F0} ms");
             Console.WriteLine($"timeprobe: steps without a compiled block {m.Cpu.InterpCount.Sum()}, {m.Cpu.InterpTicks.Sum() * tf:F0} ms; top by time (first byte, 100 = fetch off the cached page):");
             Console.WriteLine("timeprobe: by decline path (none,invalid,failed,pending,compile,counting,new): " + string.Join(" ", Enumerable.Range(0, 7).Select(i => $"{m.Cpu.WhyCount[i]}/{m.Cpu.WhyTicks[i] * tf:F0}ms")));
             foreach (int i in Enumerable.Range(0, 257).OrderByDescending(i => m.Cpu.InterpTicks[i]).Take(16))

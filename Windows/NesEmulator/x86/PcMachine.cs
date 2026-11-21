@@ -346,7 +346,7 @@ public sealed partial class PcMachine : IX86Bus
             if (++guard > 100_000_000) { Stopped = "frame never ended"; return false; }
         }
         _lastFrame = target;
-        if (Profiling) { long t0 = System.Diagnostics.Stopwatch.GetTimestamp(); Vga.Render(); RenderTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0; }
+        if (Profiling || TimeProbe) { long t0 = System.Diagnostics.Stopwatch.GetTimestamp(); Vga.Render(); RenderTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0; }
         else if (AllocProbe) { long a0 = GC.GetAllocatedBytesForCurrentThread(); Vga.Render(); AllocRender += GC.GetAllocatedBytesForCurrentThread() - a0; }
         else Vga.Render();
         return Stopped == null;
@@ -367,13 +367,14 @@ public sealed partial class PcMachine : IX86Bus
     public long AllocDevices, AllocCpu, AllocRender;
     /// <summary>X86_TIMEPROBE=1: wall ticks in the CPU batches vs everything between them (devices, frame work), diagnostics.</summary>
     public static readonly bool TimeProbe = Environment.GetEnvironmentVariable("X86_TIMEPROBE") == "1";
-    public long TicksCpu, TicksDevices; private long _tp0;
+    public long TicksCpu, TicksDevices, TicksCard; private long _tp0;
     private bool RunBatch()
     {
         Batches++;
         if (TimeProbe && _tp0 == 0) _tp0 = System.Diagnostics.Stopwatch.GetTimestamp();
         long a0 = AllocProbe ? GC.GetAllocatedBytesForCurrentThread() : 0;
-        Card?.Advance();
+        if (TimeProbe) { long c0 = System.Diagnostics.Stopwatch.GetTimestamp(); Card?.Advance(); TicksCard += System.Diagnostics.Stopwatch.GetTimestamp() - c0; }
+        else Card?.Advance();
         Nic?.Poll();
         Fdc?.Poll();
         Pit.UpdateIrq();
@@ -462,7 +463,10 @@ public sealed partial class PcMachine : IX86Bus
     }
 
     /// <summary>The state written to <paramref name="stream"/> (left open): the same bytes as <see cref="SaveState()"/> (the bug capture's state a second reuses one buffer).</summary>
-    public void SaveState(Stream stream)
+    public void SaveState(Stream stream) => SaveState(stream, false);
+
+    /// <summary><paramref name="undo"/>: a copy only this process loads back (LoadState's undo): the disks named by object, not by hash (no wait for a hash).</summary>
+    private void SaveState(Stream stream, bool undo)
     {
         using (var w = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
         {
@@ -519,7 +523,7 @@ public sealed partial class PcMachine : IX86Bus
             foreach (var d in new[] { Floppy[0], Floppy[1], Hdd[0], Hdd[1] })
             {
                 w.Write(d != null);
-                d?.SaveDiff(w);
+                d?.SaveDiff(w, undo);
             }
         }
     }
@@ -528,7 +532,7 @@ public sealed partial class PcMachine : IX86Bus
     public void LoadState(byte[] s)
     {
         if (S3 == null) { LoadStateCore(s); return; }       // the plain VGA: exactly as before
-        var undo = SaveState();
+        var um = new MemoryStream(); SaveState(um, undo: true); var undo = um.ToArray();
         try { LoadStateCore(s); }
         catch { LoadStateCore(undo); throw; }
     }
