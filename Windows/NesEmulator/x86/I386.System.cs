@@ -39,7 +39,7 @@ public sealed partial class I386
         {
             uint a = GdtBase + (tss & ~7u);
             Try1(TranslateLaddr(ref m, 3, a + 4, 4, 0), "ts"); Store32(ref m, Load32(ref m) | (1u << 9));
-            SegFlags[SEG_TR] |= 2;
+            SegFlags[SEG_TR] |= 2; SegGen++;
         }
 
         Cr0 |= 1 << 3; // TS

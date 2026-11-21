@@ -27,6 +27,28 @@ namespace BrokenNes.Windows
 
         public void Reset() { _len = 0; _pos = 0; _nat = -1; Array.Clear(_ola); }
 
+        /// <summary>Leaving the stretch: what it still holds, joined to the plain path without a click (the last grain's tail crossfaded into the
+        /// natural continuation, then the rest of the input as it is); the next samples the caller plays directly follow on exactly.</summary>
+        public int Flush(ref float[] output)
+        {
+            int o = 0;
+            if (_nat < 0) { o = Emit(ref output, 0, _buf, 0, _len); Reset(); return o; }
+            int n = Math.Min(Hs, _len - _nat);
+            if (output.Length < n + (_len - _nat)) Array.Resize(ref output, n + (_len - _nat) + 16);
+            for (int i = 0; i < n; i++) output[o++] = _ola[i] + Win[i] * _buf[_nat + i];
+            o = Emit(ref output, o, _buf, _nat + n, _len - _nat - n);
+            Reset();
+            return o;
+        }
+
+        private static int Emit(ref float[] output, int o, float[] src, int at, int count)
+        {
+            if (count <= 0) return o;
+            if (o + count > output.Length) Array.Resize(ref output, o + count + 16);
+            Array.Copy(src, at, output, o, count);
+            return o + count;
+        }
+
         /// <summary>Takes <paramref name="count"/> samples, gives about <paramref name="factor"/> times as many (>= 1) into <paramref name="output"/> (grown as needed); returns the count.</summary>
         public int Process(float[] input, int count, double factor, ref float[] output)
         {
@@ -50,7 +72,9 @@ namespace BrokenNes.Windows
                         if (c > bestC) { bestC = c; best = k; }
                     }
                 }
-                for (int i = 0; i < N; i++) _ola[i] += Win[i] * _buf[best + i];
+                // the first grain joins the plain sound before it: its first half unwindowed (the sound played up to its start), no dip
+                if (_nat < 0) { for (int i = 0; i < Hs; i++) _ola[i] += _buf[best + i]; for (int i = Hs; i < N; i++) _ola[i] += Win[i] * _buf[best + i]; }
+                else for (int i = 0; i < N; i++) _ola[i] += Win[i] * _buf[best + i];
                 if (o + Hs > output.Length) Array.Resize(ref output, Math.Max(output.Length * 2, o + Hs));
                 Array.Copy(_ola, 0, output, o, Hs); o += Hs;
                 Array.Copy(_ola, Hs, _ola, 0, N - Hs); Array.Clear(_ola, N - Hs, Hs);
