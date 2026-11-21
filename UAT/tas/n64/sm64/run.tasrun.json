@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "console": "n64",
+  "game": "sm64",
+  "title": "Super Mario 64",
+  "rom_sha1": "",
+  "chapters": [
+    { "id": "sm64", "title": "Boot -> castle -> Bob-omb Battlefield (the compat certification script)", "start": "power-on",
+      "script": "../../../n64/compat/scripts/sm64.txt" }
+  ]
+}

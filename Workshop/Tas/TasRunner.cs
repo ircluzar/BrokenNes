@@ -137,7 +137,6 @@ public static class TasRunner
         if (run.Cores.Length > 0 && o.Open.Cores.Length == 0) o.Open.Cores = run.Cores;
         o.Open.PowerOn = run.PowerOn; o.Open.Ntsc = run.Ntsc;
         Directory.CreateDirectory(o.OutDir);
-        o.Open.PakDir ??= Path.Combine(o.OutDir, "pak");
         var a = Pass(run, rom, o, true, out var info);
         TasPass? b = null;
         if (o.Twice) { var keep = o.Sink; o.Sink = null; b = Pass(run, rom, o, false, out _); o.Sink = keep; }
@@ -157,9 +156,12 @@ public static class TasRunner
             {
                 if (i >= a.Checkpoints.Count || i >= b.Checkpoints.Count) { diffs.Add($"checkpoint count {a.Checkpoints.Count} vs {b.Checkpoints.Count}"); break; }
                 var x = a.Checkpoints[i]; var y = b.Checkpoints[i];
-                if (x.Video != y.Video || x.Audio != y.Audio || x.Ram != y.Ram || x.Frame != y.Frame) diffs.Add($"{x.Chapter}/{x.Name}");
+                var f = new List<string>();
+                if (x.Frame != y.Frame) f.Add("frame"); if (x.Video != y.Video) f.Add("video"); if (x.Audio != y.Audio) f.Add("audio"); if (x.Ram != y.Ram) f.Add("ram");
+                if (f.Count > 0) diffs.Add($"{x.Chapter}/{x.Name} ({string.Join(",", f)})");
             }
-            rep["determinism"] = new JsonObject { ["checked"] = true, ["identical"] = diffs.Count == 0 && a.Error == b.Error, ["differing"] = J(diffs), ["secondError"] = b.Error };
+            rep["determinism"] = new JsonObject { ["checked"] = true, ["identical"] = diffs.Count == 0 && a.Error == b.Error, ["differing"] = J(diffs), ["secondError"] = b.Error,
+                ["second"] = diffs.Count == 0 ? null : new JsonArray(b.Checkpoints.Select(c => (JsonNode)c.ToJson()).ToArray()) };
         }
         else rep["determinism"] = new JsonObject { ["checked"] = false };
         rep["expect"] = Check(run, a);
@@ -220,13 +222,17 @@ public static class TasRunner
                 if (ch.Start == "power-on" || t == null)
                 {
                     t?.Dispose();
-                    t = TasTargets.Open(run.Console, rom, o.Open);
+                    // each pass is a fresh machine: its own (empty) Controller Pak folder, so pass 1's pak writes never reach pass 2
+                    var oo = new TasOpenOptions { Cores = o.Open.Cores, PowerOn = o.Open.PowerOn, Ntsc = o.Open.Ntsc, N64Renderer = o.Open.N64Renderer,
+                        PakDir = o.Open.PakDir ?? Path.Combine(o.OutDir, primary ? "pak" : Path.Combine("pass2", "pak")) };
+                    Directory.CreateDirectory(oo.PakDir);
+                    t = TasTargets.Open(run.Console, rom, oo);
                     info = (t.RomSha1, t.Cores, t.Title);
                     if (primary) o.Sink?.Begin(t.Width, t.Height, t.Fps, t.SampleRate);
                     if (ch.Start != "power-on" && ch.Start != "previous" && !ch.Start.StartsWith("state:")) throw new FormatException($"chapter {ch.Id}: start '{ch.Start}' (power-on | previous | state:FILE)");
                 }
                 if (ch.Start.StartsWith("state:")) { t.LoadState(File.ReadAllBytes(run.Resolve(ch.Start[6..]))); while (t.ReadSamples(buf) > 0) { } }
-                string dir = Path.Combine(o.OutDir, ch.Id); Directory.CreateDirectory(dir);
+                string dir = primary ? Path.Combine(o.OutDir, ch.Id) : Path.Combine(o.OutDir, "pass2", ch.Id); Directory.CreateDirectory(dir);
                 var prog = Expand(run, ch, t.Fps);
                 int stop = o.Only == ch.Id ? o.StopAtFrame : -1;
                 int frames = RunChapter(t, prog, ch, run, dir, primary && o.Screenshots, primary ? o.Sink : null, p, buf, stop);
