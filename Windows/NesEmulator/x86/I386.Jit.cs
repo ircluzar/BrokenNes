@@ -41,7 +41,8 @@ public sealed partial class I386
         public long NXlat, NSlow, NOol, NCond;   // JITSTAT: TLB misses (JXlat), non-RAM / split accesses, out-of-line instructions, Cond calls
         public uint[] Pages = Array.Empty<uint>(), Gens = Array.Empty<uint>();   // the 4 KB pages Bytes come from, and their code write generations when last checked
         public uint Epoch = 0xffffffff;   // _memEpoch when last checked (FFFFFFFF: never: compare the bytes)
-        public bool SpecFail;   // its segment specialization no longer held at a run: compiled again without it
+        public bool SpecFail;
+        public uint SegKey = 0xffffffff;   // the JSegKey its last full segment check passed with (segment generation)   // its segment specialization no longer held at a run: compiled again without it
     }
 
     /// <summary>One instruction address: how often it was reached, and the compiled block (and instruction in it) that starts there.</summary>
@@ -92,7 +93,7 @@ public sealed partial class I386
     public long JitPosted, JitDropped, JitRecompiles, JitKeepClears, JitInstrCompiled;
     public static long JitEmitTicks;
     private readonly HashSet<ulong> _jitSeenKeys = new();
-    public string JitPipeStat() => $"jitpipe: posted {JitPosted} installed {JitCompiled} dropped {JitDropped} recompiles(same key) {JitRecompiles} keep-clears {JitKeepClears} unseen-cut {JitUnseenCut} instrs-compiled {JitInstrCompiled} worker-compile {JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms ({JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, JitPosted):F2} ms/region; IL build {JitBuildTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms, IL {JitIlBytes / Math.Max(1, JitPosted)} bytes/region)";
+    public string JitPipeStat() => $"jitpipe: posted {JitPosted} installed {JitCompiled} dropped {JitDropped} recompiles(same key) {JitRecompiles} keep-clears {JitKeepClears} unseen-cut {JitUnseenCut} instrs-compiled {JitInstrCompiled} worker-compile {JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms ({JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, JitPosted):F2} ms/region; IL build {JitBuildTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms, IL {JitIlBytes / Math.Max(1, JitPosted)} bytes/region)" + (JcOn ? " | " + JcStat() : "");
 
     // statistics (Workshop --x86boot --jitstat)
     public int JitCompiled { get; private set; }
@@ -305,6 +306,9 @@ public sealed partial class I386
     private static readonly bool NoRamRange = Environment.GetEnvironmentVariable("X86_NORAMRANGE") != null;
     /// <summary>X86_SHAREDEXIT: one shared budget-out exit per block (opt-in: A/B 2026-11-20 +5.9% ns/retired, no gain).</summary>
     private static readonly bool NoSharedExit = Environment.GetEnvironmentVariable("X86_SHAREDEXIT") == null;
+    /// <summary>X86_SEGGEN: the segment-generation prologue fast path (opt-in: Garage2 6 rounds AoE +2.7%, StarCraft +0.9%, no gain).</summary>
+    private static readonly bool NoSegGen = Environment.GetEnvironmentVariable("X86_SEGGEN") == null;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegKey() => SegGen << 2 | ((Flags >> 16) & 2) | (Cr0 & 1);
     private static readonly bool NoSegSpec = Environment.GetEnvironmentVariable("X86_NOSEGSPEC") != null;
     private readonly HashSet<ulong> _segSpecOff = new();   // blocks whose specialization failed once: compiled without it from then on
     public long JitSpecFails;
@@ -558,14 +562,15 @@ public sealed partial class I386
         ?? throw new MissingFieldException(nameof(I386), name);
     private static readonly FieldInfo FSrc1 = Fld("_ccSrc1"), FSrc2 = Fld("_ccSrc2"), FDst = Fld("_ccDst"), FDst2 = Fld("_ccDst2"), FOp = Fld("_ccOp"),
         FMask = Fld("_ccMask"), FFlags = Fld("Flags"), FR = Fld("R"), FMem = Fld("Mem"), FSpm = Fld("_spm"),
-        FTlbL = Fld("_tlbLpgno"), FTlbX = Fld("_tlbXaddr"), FTlbT = Fld("_tlbTag"), FCpl = Fld("Cpl"), FCodeMark = Fld("_codeMark"), FDeclWhy = Fld("_declWhy");
+        FTlbL = Fld("_tlbLpgno"), FTlbX = Fld("_tlbXaddr"), FTlbT = Fld("_tlbTag"), FCpl = Fld("Cpl"), FCodeMark = Fld("_codeMark"), FDeclWhy = Fld("_declWhy"), FJitCur = Fld("_jitCur"),
+        FSegKey = typeof(JitCode).GetField("SegKey")!;
 
     private static MethodInfo M(string name) => typeof(I386).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
         ?? throw new MissingMethodException(nameof(I386), name);
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JGetCF", "JSegLoad", "JSSame", "JSSameLive", "JSpecFail", "JSOk", "JSRd", "JSBase", "JSSpan", "JSLo", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JFpuNmRefund", "JMmxNmRefund", "JMmx", "JCodeSame", "JCall", "JRet",
+        foreach (var n in new[] { "JRam", "JSegKey", "JGetCF", "JSegLoad", "JSSame", "JSSameLive", "JSpecFail", "JSOk", "JSRd", "JSBase", "JSSpan", "JSLo", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JFpuNmRefund", "JMmxNmRefund", "JMmx", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
                      "JXlat", "JFlagOp", "JStk", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
@@ -696,9 +701,13 @@ public sealed partial class I386
         bool c16 = _c16, ioMem = _ioMem;
         uint memSize = MemSize;
         var spec = JitSegSpec(key, ins);
+        // X86_JITCACHE (I386.JitCache.cs): the same region compiled before (this run or an earlier one, same bytes, same assumptions) -> its code
+        JcReq? jc = JcOn ? JcRequest(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec) : null;
+        if (jc != null && jc.Ready != null) { code.Fn = jc.Ready; JcHitsReady++; JitInstall(code, key); return; }
+        int[]? xc = jc?.Extra;
         if (!JitAsync)
         {
-            try { code.Fn = Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec); code.Fn(this, -1); }   // (entry -1: only compiles it, the .NET JIT, and declines)
+            try { code.Fn = jc?.Hit ?? Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec, xc); code.Fn(this, -1); if (jc != null) JcCompiled(jc, code.Fn); }   // (entry -1: only compiles it, the .NET JIT, and declines)
             catch (Exception) { en.Failed = true; return; }
             JitInstall(code, key);
             return;
@@ -719,8 +728,9 @@ public sealed partial class I386
         if (!_jitSeenKeys.Add(key)) JitRecompiles++;
         JitWorker.Post(() =>
         {
+            if (JitDelay > 0) { int ms; lock (_jitDelayRng) ms = _jitDelayRng.Next(4); if (ms > 0) System.Threading.Thread.Sleep(ms); }
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-            try { code.Fn = Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec); System.Threading.Interlocked.Add(ref JitBuildTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0); code.Fn(this, -1); }
+            try { code.Fn = jc?.Hit ?? Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec, xc); System.Threading.Interlocked.Add(ref JitBuildTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0); code.Fn(this, -1); if (JitDelay > 0) for (int r = 0; r < 2000; r++) code.Fn(this, -1); if (jc != null) JcCompiled(jc, code.Fn); }
             catch (Exception ex) { code.Fn = null!; if (JitStats) Console.Error.WriteLine($"jit: {start:X8} failed: {ex.GetType().Name} {ex.Message}"); }
             System.Threading.Interlocked.Add(ref JitEmitTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0);
             _jitDone.Enqueue((code, key));
@@ -742,6 +752,7 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void JitDrain()
     {
+        if (JitDelay > 0) { int r; lock (_jitDelayRng) r = _jitDelayRng.Next(JitDelay); if (r != 0) return; }   // X86_JITDELAY: install at a random later batch
         while (_jitDone.TryDequeue(out var d))
         {
             _jitPending--;
@@ -766,6 +777,11 @@ public sealed partial class I386
     }
 
     private readonly System.Collections.Concurrent.ConcurrentQueue<(JitCode, ulong)> _jitDone = new();
+    /// <summary>X86_JITDELAY=N (tests): the background compiler sleeps 0-3 ms per block, repeats its trial call 2000 times (it must not touch the
+    /// running CPU) and each drain installs only 1 time in N, so compiled
+    /// code takes over at random moments (the jit-parity gate's async-vs-NOJIT run: async JIT must be exact whatever the timing).</summary>
+    private static readonly int JitDelay = int.TryParse(Environment.GetEnvironmentVariable("X86_JITDELAY"), out int jd) ? Math.Max(0, jd) : 0;
+    private readonly Random _jitDelayRng = new();
     private int _jitPending;
     /// <summary>X86_JITSYNC: compile on the CPU's own thread, at once (as before: a hitch, but the compiled code runs from the 32nd visit).</summary>
     private static readonly bool JitAsync = Environment.GetEnvironmentVariable("X86_JITSYNC") == null;
@@ -775,13 +791,16 @@ public sealed partial class I386
     {
         // newest first: the block hot right now matters more than one queued while a burst of new code went by
         private static readonly System.Collections.Concurrent.BlockingCollection<Action> Q = new(new System.Collections.Concurrent.ConcurrentStack<Action>());
-        public static readonly int Threads = int.TryParse(Environment.GetEnvironmentVariable("X86_JITTHREADS"), out int jt) ? Math.Max(1, jt) : Math.Clamp(Environment.ProcessorCount / 2, 1, 6);
+        public static readonly int Threads = int.TryParse(Environment.GetEnvironmentVariable("X86_JITTHREADS"), out int jt) ? Math.Max(1, jt) : Math.Clamp(Math.Min(Environment.ProcessorCount / 2, Environment.ProcessorCount - 2), 1, 6);
+        /// <summary>The compilers run below normal priority (a game load's ~1000 regions must not starve the CPU / sound threads);
+        /// X86_JITPRIONORMAL: normal priority (before 2026-11-21).</summary>
+        private static readonly bool NormalPrio = Environment.GetEnvironmentVariable("X86_JITPRIONORMAL") != null;
         static JitWorker()
         {
             // half the host threads (at most 6): a game's start asks for ~1000 blocks at once
             for (int i = 0; i < Threads; i++)
                 new System.Threading.Thread(() => { foreach (var a in Q.GetConsumingEnumerable()) a(); })
-                { IsBackground = true, Name = "x86 block compiler" }.Start();
+                { IsBackground = true, Name = "x86 block compiler", Priority = NormalPrio ? System.Threading.ThreadPriority.Normal : System.Threading.ThreadPriority.BelowNormal }.Start();
         }
         public static void Post(Action a) => Q.Add(a);
     }
@@ -806,12 +825,20 @@ public sealed partial class I386
         }
     }
 
-    private JitFn Emit(uint start, uint[] pas, DEntry[] ins, uint lo, uint hi, bool c16, uint memSize, bool ioMem, bool pg, SegSpec? spec)
-    {
+    private JitFn Emit(uint start, uint[] pas, DEntry[] ins, uint lo, uint hi, bool c16, uint memSize, bool ioMem, bool pg, SegSpec? spec,
+        int[]? extraCost = null, System.Reflection.Emit.ModuleBuilder? into = null, string? intoName = null, bool intoOpt = false)
+    {   // (extraCost: JitExtraCost per instruction, taken on the CPU's thread; into: emit a static method into that module instead, X86_JITCACHE, I386.JitCache.cs)
         var mm = JitMethods.Value;
         DynamicMethod? dm = null; System.Reflection.Emit.TypeBuilder? tb = null;
         ILGenerator il;
-        if (JitTier)
+        if (into != null)
+        {   // (the translation cache's persisted copy: a static method x86blk of type intoName)
+            var mbp = (tb = into.DefineType(intoName!, TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Abstract))
+                .DefineMethod("x86blk", MethodAttributes.Public | MethodAttributes.Static, typeof(int), new[] { typeof(I386), typeof(int) });
+            if (intoOpt) mbp.SetImplementationFlags(MethodImplAttributes.AggressiveOptimization);
+            il = mbp.GetILGenerator();
+        }
+        else if (JitTier)
         {   // a static method of a (collectible) emitted type: the runtime's tiered compilation applies (DynamicMethod is always fully
             // optimized): a quick tier-0 compile now, the optimized one in the background once the block has run 30 times
             var mb0 = (tb = JitTierModule().DefineType("x86blk" + System.Threading.Interlocked.Increment(ref _jitTierN), TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Abstract))
@@ -1008,6 +1035,12 @@ public sealed partial class I386
             }
         }
 
+        // entry -1 (the compile's trial call, which only makes .NET JIT the method): leave before touching ANY CPU state. The trial runs on the
+        // background compiler's thread: the prologue's JSegLoad wrote the live CPU's _jsOk / _jsBase / ... meanwhile (a block running at that
+        // moment then saw another block's segment values: the rare async-only divergence, 2026-11-21), and segGen read _jitCur
+        il.Emit(OpCodes.Ldarg_1); il.Emit(OpCodes.Ldc_I4_0); var notTrial = il.DefineLabel(); il.Emit(OpCodes.Bge, notTrial);
+        il.Emit(OpCodes.Ldc_I4, JIT_DECLINE); il.Emit(OpCodes.Ret);
+        il.MarkLabel(notTrial);
         // prologue: decline when a segment the region uses has a null selector (the translation would fault)
         var usedSegs = new SortedSet<int>();
         foreach (var e in ins) { int m = InsSegs(e); for (int sg = 0; sg < 6; sg++) if ((m >> sg & 1) != 0) usedSegs.Add(sg); }
@@ -1018,6 +1051,15 @@ public sealed partial class I386
         int segMask = 0;
         foreach (int s in usedSegs) segMask |= 1 << s;
         bool segLoad = !NoSegLoad && segMask != 0;
+        // segment generation (X86_SEGGEN: on; off by default): when every segment the block uses is specialized, the block remembers the SegGen / VM / PE
+        // key its last full check passed with; the same key again = nothing segment-related changed: no JSegLoad, no per-segment checks
+        bool segGenFast = !NoSegGen && segLoad && spec != null && spec.Mask != 0 && (segMask & ~spec.Mask) == 0;
+        var segKeyL = segGenFast ? il.DeclareLocal(typeof(uint)) : null; var segFastOk = il.DefineLabel(); var segAfter = il.DefineLabel();
+        if (segGenFast)
+        {
+            Ld0(); Call("JSegKey"); Stl(segKeyL!);
+            Ld0(); il.Emit(OpCodes.Ldfld, FJitCur); il.Emit(OpCodes.Ldfld, FSegKey); Ld(segKeyL!); il.Emit(OpCodes.Beq, segFastOk);
+        }
         if (segLoad) { Ld0(); I4(segMask); Call("JSegLoad"); }
         // segment specialization (X86_NOSEGSPEC: off): a segment usable when the block was compiled has its base / span / lo as constants and
         // no per-instruction usability test; the prologue checks it still holds those values (else: decline, and the block is compiled again
@@ -1039,7 +1081,17 @@ public sealed partial class I386
             Ld0(); il.Emit(OpCodes.Ldarg_1); Call("JSpecFail");
             Ld0(); I4(40); il.Emit(OpCodes.Stfld, FDeclWhy); I4(JIT_DECLINE); il.Emit(OpCodes.Ret);
             il.MarkLabel(good);
+            if (segGenFast)
+            {   // (a real run only: entry -1 is the compile's trial call, _jitCur is some other block then)
+                il.Emit(OpCodes.Ldarg_1); Op(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Blt, segAfter);
+                Ld0(); il.Emit(OpCodes.Ldfld, FJitCur); Ld(segKeyL!); il.Emit(OpCodes.Stfld, FSegKey);
+                il.Emit(OpCodes.Br, segAfter);
+                il.MarkLabel(segFastOk);
+                LdF(FSpm); U4(spec!.Spm); il.Emit(OpCodes.Bne_Un, bad);
+            }
         }
+        il.MarkLabel(segAfter);
+        if (!segGenFast) il.MarkLabel(segFastOk);
         foreach (int s in usedSegs)
         {
             if (IsSpec(s)) continue;
@@ -1091,7 +1143,7 @@ public sealed partial class I386
         for (int k = 0; k < n; k++)
         {
             var e = ins[k];
-            cost[k] = 1 + JitExtraCost(pas[k], e.Kind, e.Reg, e.Bits, DcHasModrm(e.Kind) && e.Mod != 3);
+            cost[k] = 1 + (extraCost != null ? extraCost[k] : JitExtraCost(pas[k], e.Kind, e.Reg, e.Bits, DcHasModrm(e.Kind) && e.Mod != 3));
             if (!UsePend || k == 0 || pas[k - 1] + ins[k - 1].Len != pas[k] || ins[k - 1].Kind is DK_JMP or DK_CALL or DK_RET or DK_INTERP or DK_REPSTR) continue;
             P[k] = P[k - 1] + cost[k - 1]; Q[k] = Q[k - 1] + 1;
             if (P[k] > 1 << 20) { P[k] = 0; Q[k] = 0; }
@@ -1790,6 +1842,7 @@ public sealed partial class I386
             Ld0(); Ld(ip0); Ld(xOff); Op(OpCodes.Add); Ld(ip0); Ld(xNext!); Op(OpCodes.Add); Ld(cyc); Ld(st); Call("JExitLink"); il.Emit(OpCodes.Ret);
         }
         System.Threading.Interlocked.Add(ref JitIlBytes, il.ILOffset);
+        if (into != null) { tb!.CreateType(); return null!; }
         if (tb != null) return (JitFn)tb.CreateType()!.GetMethod("x86blk")!.CreateDelegate(typeof(JitFn));
         return (JitFn)dm!.CreateDelegate(typeof(JitFn));
     }

@@ -298,6 +298,23 @@ namespace cor64.Mips.R4300I
         // of games that hit it (South Park Rally); the per-step path (all segments forced cold) gives the fixed result.
         internal static readonly bool s_Cat17CadFix = Environment.GetEnvironmentVariable("COR64_SPDCAT17_CADFIX") != "0";
         internal static readonly bool s_Cat17Br = Environment.GetEnvironmentVariable("COR64_SPDCAT17_BR") != "0";
+        // [n64_speed] lane levers (each exact: same steps, same interrupt-check points, same machine state):
+        // COR64_SPD_BRFPU=1 (lever 1): a simple branch whose delay slot is a native FPU op (lwc1/swc1/ldc1/sdc1, mtc1/mfc1,
+        // add/sub/mul/div, cvt/trunc/neg/c.cond...) also closes a batched segment (FastBranch's load/store delay path: the
+        // delay slot's slow path stores the branch state, then the XDSlow exit), instead of the per-step tick bookkeeping.
+        internal static readonly bool s_SpdBrFpu = Environment.GetEnvironmentVariable("COR64_SPD_BRFPU") == "1";
+        // COR64_SPD_LAZYBR=1 (lever 2; jumps, likely branches, bc1f/bc1t; see EmitBranch for the other modes): a per-step branch keeps its taken flag / target in ctx only; the interpreter's branch
+        // fields (target, cond / uncond, ExecuteBranchDelay, PC = delay slot) are written only on the delay slot's exit paths
+        // (budget end, interrupt check that leaves, delay-slot slow exit), which are the only places the managed side reads them.
+        internal static readonly int s_SpdLazyBrM = int.TryParse(Environment.GetEnvironmentVariable("COR64_SPD_LAZYBR"), out int lzb) ? lzb : 0;
+        internal static readonly bool s_SpdLazyBr = s_SpdLazyBrM > 0;
+        // COR64_SPD_SRHOIST (lever 3; default on, =0 off): inside a batched segment the Status CU1/FR test is done by the first FPU op only
+        // (nothing in a segment's hot path can change Status CU1/FR, and it has no entry point after its head); that first
+        // test's other-FR-mode case takes the op's slow exit (the per-step copy, with the dual-FR code, runs the rest).
+        internal static readonly bool s_SpdSrHoist = Environment.GetEnvironmentVariable("COR64_SPD_SRHOIST") != "0"; // default on 2026-11-21 (6-round Garage2 A/B: no game slower, exact)
+        // COR64_SPD_SRALT (default on with SRHOIST; =0: old slow exit): the first test's failure runs the segment's per-step copy
+        // from that op (ticks of the op and the later steps taken back) instead of leaving through the slow exit
+        internal static readonly bool s_SpdSrAlt = Environment.GetEnvironmentVariable("COR64_SPD_SRALT") != "0";
         internal static readonly bool s_Cat17Seg = Environment.GetEnvironmentVariable("COR64_SPDCAT17_SEG") != "0";
         internal static readonly bool s_Cat16Chk = Environment.GetEnvironmentVariable("COR64_SPDCAT16_CHK") != "0";
         internal static readonly bool s_Cat13Brk = Environment.GetEnvironmentVariable("COR64_SPDCAT13_BRK") != "0";
@@ -646,6 +663,8 @@ namespace cor64.Mips.R4300I
             }
 
             // FPU ops on the raw FPR path (rbp = &Status): falls through on success, jumps to slow otherwise
+            int lazyBr = -1; // [n64_speed] lever 2: index of the branch whose fields are not written yet (its delay slot is being emitted)
+            bool srOn = false, srValid = false; int srJ = -1, srEnd = -1, srHead = -1; XLabel srHeadL = null; // [n64_speed] srJ: step of the op being emitted (-1: no alt entry) // [n64_speed] lever 3 state (only inside a segment's hot path)
             var fpuSt = StateR4000I.FPR;
             bool frc = fpuSt.FullMode;
             long fpr = (long)fpuSt.RawPointer;
@@ -667,8 +686,22 @@ namespace cor64.Mips.R4300I
                     return;
                 }
                 a.MovRI(R.R8, fpr);
+                if (srOn && srValid) { EmitFpuBody(d, slow); return; } // [n64_speed] lever 3: tested by an earlier op of this segment
                 a.MovRM(R.Rax, new M(R.Rbp, 0), false);
                 a.AluRI(X64Asm.Alu8.And, R.Rax, (int)srMask, false); a.AluRI(X64Asm.Alu8.Cmp, R.Rax, (int)srWant, false);
+                if (srOn) {
+                    XLabel altL = slow;
+                    if (s_X64DualFr && srJ >= 0) {
+                        // [n64_speed] other FR mode (or CU1 clear): take back the ticks of steps srJ..srEnd and run the segment's
+                        // per-step copy from step srJ (dual-FR code per op), exactly as if the segment had taken its cold path there
+                        altL = a.NewLabel(); int r = srEnd - srJ + 1, every = s_IntCheckEvery; var tgt = srJ == srHead ? srHeadL : step[srJ];
+                        cold.Add(() => { a.Bind(altL);
+                            a.AluRI(X64Asm.Alu8.Sub, PT, r, false); a.AluRI(X64Asm.Alu8.Sub, PCN, r, false); a.AluRI(X64Asm.Alu8.Sub, CAD, r, false);
+                            if ((every & (every - 1)) == 0) a.AluRI(X64Asm.Alu8.And, CAD, every - 1, false);
+                            a.Jmp(tgt); });
+                    }
+                    a.Jcc(Cc.NE, altL); EmitFpuBody(d, slow); srValid = true; return;
+                }
                 if (!s_X64DualFr) { a.Jcc(Cc.NE, slow); EmitFpuBody(d, slow); return; }
                 var alt = a.NewLabel(); var done = a.NewLabel();
                 a.Jcc(Cc.NE, alt);
@@ -1021,10 +1054,32 @@ namespace cor64.Mips.R4300I
                 return t;
             }
 
+            // [n64_speed] lever 2: the interpreter branch fields of the lazy branch at i (from ctx Tk / Tgt), on an exit path only
+            void MatBranch(int i)
+            {
+                var d = b.Insts[i]; string op = d.Op.Op; long pc = b.StartPc + i * 4L;
+                if (op == "j" || op == "jal" || op == "jr" || op == "jalr") { a.MovRM(R.Rax, C(CTgt)); a.MovMR(O(s_OffTarget), R.Rax); a.MovMI8(O(s_OffUncond), 1); }
+                else {
+                    var nt0 = a.NewLabel();
+                    a.MovRM(R.Rdx, C(CTk), false); a.TestRI(R.Rdx, 0xFF); a.Jcc(Cc.E, nt0);
+                    a.MovRM(R.Rcx, C(CTgt)); a.MovMR(O(s_OffTarget), R.Rcx);
+                    a.Bind(nt0);
+                    a.MovMR8(O(s_OffCond), R.Rdx);
+                }
+                a.MovMI8(O(s_OffExecBD), 1);
+                SetPc(pc + 4);
+            }
+            XLabel MatExit(int code, int k) { if (lazyBr < 0) return ColdExit(code, k); var l = a.NewLabel(); int bi = lazyBr; cold.Add(() => { a.Bind(l); MatBranch(bi); ExitCode(code, k); }); return l; }
             void EmitBranch(int i, long pc)
             {
                 var d = b.Insts[i];
                 string op = d.Op.Op;
+                bool lazy = s_SpdLazyBr && i + 1 < n; lazyBr = lazy ? i : -1;
+{ bool jj0 = op == "j" || op == "jal" || op == "jr" || op == "jalr"; bool c1 = d.Op.XferTarget == RegBoundType.Cp1;
+                  // =1: jumps, likely branches and bc1f/bc1t (exact on every game measured); =9 also plain beq/bne/blez/bgtz/bltz/bgez,
+                  // which changes Racer's hashes after ~1500 frames (cause not found: kept off); =2 jumps, =4 bc1, =6 likely only
+                  bool on = s_SpdLazyBrM switch { 1 => jj0 || c1 || d.IsLikely(), 2 => jj0, 3 => !jj0 && !c1, 4 => c1, 5 => !jj0 && !c1 && !d.IsLikely(), 6 => !jj0 && !c1 && d.IsLikely(), 9 => true, _ => false };
+                  if (!on) { lazy = false; lazyBr = -1; } }
                 bool isJump = op == "j" || op == "jal" || op == "jr" || op == "jalr";
                 bool likely = !isJump && d.IsLikely();
                 bool link = op == "jal" || op == "jalr" || (!isJump && op.Contains("al"));
@@ -1037,8 +1092,10 @@ namespace cor64.Mips.R4300I
                         int lr = op == "jalr" && d.Destination != 0 ? d.Destination : 31;
                         a.MovRI(R.Rcx, LinkConst(pc + 8)); StG(lr, R.Rcx);
                     }
+                    if (!lazy) {
                     a.MovMR(O(s_OffTarget), R.Rax);
                     a.MovMI8(O(s_OffUncond), 1);
+                    }
                 }
                 else if (d.Op.XferTarget == RegBoundType.Cp1) {
                     // [fpu_native] bc1f/bc1t(l): CU1 clear -> the interpreter step (raises Coprocessor Unusable and leaves)
@@ -1051,11 +1108,13 @@ namespace cor64.Mips.R4300I
                     a.MovMR(C(CTk), R.Rdx, false);
                     long target = pc + ((long)(short)d.Immediate << 2) + 4;
                     a.MovRI(R.Rcx, target); a.MovMR(C(CTgt), R.Rcx);
+                    if (!lazy) {
                     var nt = a.NewLabel();
                     a.TestRI(R.Rdx, 0xFF); a.Jcc(Cc.E, nt);
                     a.MovMR(O(s_OffTarget), R.Rcx);
                     a.Bind(nt);
                     a.MovMR8(O(s_OffCond), R.Rdx);
+                    }
                 }
                 else {
                     LdG(R.Rax, d.Source);
@@ -1077,10 +1136,10 @@ namespace cor64.Mips.R4300I
                     a.MovRI(R.Rcx, target); a.MovMR(C(CTgt), R.Rcx);
                     var nt = a.NewLabel();
                     a.TestRI(R.Rdx, 0xFF); a.Jcc(Cc.E, nt);
-                    a.MovMR(O(s_OffTarget), R.Rcx);
+                    if (!lazy) a.MovMR(O(s_OffTarget), R.Rcx);
                     a.Bind(nt);
                     if (link) { a.MovRI(R.Rax, LinkConst(pc + 8)); StG(31, R.Rax); }
-                    a.MovMR8(O(s_OffCond), R.Rdx);
+                    if (!lazy) a.MovMR8(O(s_OffCond), R.Rdx);
                 }
                 if (likely) {
                     var taken = a.NewLabel();
@@ -1088,8 +1147,10 @@ namespace cor64.Mips.R4300I
                     SetPc(pc + 8); LinkOrDone(pc, i + 1, pc + 8, false);
                     a.Bind(taken);
                 }
+                if (!lazy) {
                 a.MovMI8(O(s_OffExecBD), 1);
                 SetPc(pc + 4);
+                }
             }
 
             // delay slots, as RecCompile computes them
@@ -1117,8 +1178,10 @@ namespace cor64.Mips.R4300I
                     "beql" or "bnel" or "blezl" or "bgtzl" or "bltzl" or "bgezl" => s_Cat17Likely && bd.IsLikely(), _ => false };
                 bool okd = dd.Op.Op is "addu" or "subu" or "addiu" or "and" or "or" or "xor" or "nor" or "daddu" or "andi" or "ori" or "xori" or "daddiu"
                     or "lui" or "slt" or "sltu" or "slti" or "sltiu" or "sll" or "srl" or "sra" or "sllv" or "srlv" or "srav";
-                return okb && ((okd && X64Inline(dd)) || (s_Cat17BrMem && X64Mem(dd)));
+                return okb && ((okd && X64Inline(dd)) || (s_Cat17BrMem && X64Mem(dd)) || (s_Cat17BrMem && SegFpuD(dd)));
             }
+            bool SegFpuD(in DecodedInstruction dd) => s_SpdBrFpu && X64RawOn && !X64Inline(dd) && !X64Mem(dd) && !X64Generic(dd) && !X64Ovf(dd)
+                && (X64FpuMemSize(dd) > 0 || X64FpuXfer(dd) || X64FpuArith(dd) >= 0 || X64Cvt(dd) != 0 || X64Misc(dd) != 0);
             if (s_X64Batch) {
                 var isHead = new bool[n]; var bad = new bool[n];
                 var segBr = new bool[n];
@@ -1137,7 +1200,9 @@ namespace cor64.Mips.R4300I
             }
             void StepTicks(int i)
             {
-                a.AluMI(X64Asm.Alu8.Cmp, C(CEnd), i, false); a.Jcc(Cc.E, budgetStub);
+                int lb = lazyBr >= 0 && lazyBr == i - 1 ? lazyBr : -1; // [n64_speed] lever 2: the delay slot of a lazy branch
+                if (lb < 0) { a.AluMI(X64Asm.Alu8.Cmp, C(CEnd), i, false); a.Jcc(Cc.E, budgetStub); }
+                else { var bl = a.NewLabel(); cold.Add(() => { a.Bind(bl); MatBranch(lb); a.Jmp(budgetStub); }); a.AluMI(X64Asm.Alu8.Cmp, C(CEnd), i, false); a.Jcc(Cc.E, bl); }
                 a.Inc(PT); a.Inc(CAD);
                 a.AluRI(X64Asm.Alu8.Cmp, CAD, s_IntCheckEvery, false);
                 { var t = a.NewLabel(); int kk = i; cold.Add(() => { a.Bind(t);
@@ -1145,6 +1210,7 @@ namespace cor64.Mips.R4300I
                     // resumes with a direct jump, instead of the shared checkStub's indirect jump through resumeTab (one
                     // indirect branch with every step as a target, taken every s_IntCheckEvery steps of a loop)
                     if (s_Cat16Chk) { a.MovRI(CAD, 0); a.AluRM(X64Asm.Alu8.Cmp, PCN, C(CQuiet), false); a.Jcc(Cc.L, resume[kk]); }
+                    if (lb >= 0) MatBranch(lb);
                     a.MovRI(R.Rax, kk); a.Jmp(checkStub); }); a.Jcc(Cc.GE, t); }
                 a.Bind(resume[i]);
                 a.Inc(PCN);
@@ -1162,7 +1228,7 @@ namespace cor64.Mips.R4300I
                         }
                         ExitCode(XSlow, jj);
                     });
-                    fwdOn = false; fwdReg = -1; EmitC0Status(d, l); fwdReg = -1; return;
+                    fwdOn = false; fwdReg = -1; EmitC0Status(d, l); fwdReg = -1; srValid = false; return;
                 }
                 fwdOn = fast && s_X64Fwd;
                 if (fwdOn) {
@@ -1275,7 +1341,7 @@ namespace cor64.Mips.R4300I
                             if (mask && (s_IntCheckEvery & (s_IntCheckEvery - 1)) == 0) a.AluRI(X64Asm.Alu8.And, CAD, s_IntCheckEvery - 1, false); }
                         ExitCode(XSlow, jj);
                     });
-                    if (X64Mem(d)) EmitMem(d, l); else EmitFpu(d, l);
+                    if (X64Mem(d)) EmitMem(d, l); else { srJ = s_SpdSrAlt ? j : -1; EmitFpu(d, l); srJ = -1; }
                 }
             }
             // [speed_cat17] branch i + its ALU delay slot i + 1 at the end of a batched segment (ticks already added)
@@ -1283,7 +1349,7 @@ namespace cor64.Mips.R4300I
             {
                 var d = b.Insts[i]; string op = d.Op.Op; long pc = b.StartPc + i * 4L, dpc = pc + 4;
                 bool cond = !(op == "j" || op == "jal" || op == "jr");
-                bool mem = X64Mem(b.Insts[i + 1]);
+                bool fpuD = SegFpuD(b.Insts[i + 1]); bool mem = X64Mem(b.Insts[i + 1]) || fpuD;
                 bool likely = cond && d.IsLikely(); var ntL = likely ? a.NewLabel() : null;
                 long target = op == "jr" ? -1 : (long)(uint)(op == "j" || op == "jal" ? ((long)(d.Inst.target << 2) | (pc & 0xF0000000)) : pc + ((long)(short)d.Immediate << 2) + 4);
                 if (cond) {
@@ -1327,7 +1393,7 @@ namespace cor64.Mips.R4300I
                         SetPc(pc + 4);
                         ExitCode(XDSlow, i + 1);
                     });
-                    EmitMem(dd, sl);
+                    if (fpuD) EmitFpu(dd, sl); else EmitMem(dd, sl);
                 }
                 else EmitInline(b.Insts[i + 1], i + 1);
                 if (mem && op == "jr") a.MovRM(R.R10, C(CTgt));
@@ -1377,9 +1443,11 @@ namespace cor64.Mips.R4300I
                 fwdReg = -1;
                 bool br = segHasBr[i0]; curSegBr = br;
                 if (s_Cat17Seg && c0Native) for (int j = i0; j < i0 + m; j++) if (X64C0Status(b.Insts[j])) curSegBr = true; // a longer segment than before
+                srOn = s_SpdSrHoist; srValid = false; srEnd = segEnd; srHead = i0; srHeadL = slowL;
                 for (int j = i0; j <= (br ? segEnd - 2 : segEnd); j++) PlainStep(j, segEnd, true);
                 fwdReg = -1; fwdOn = false;
                 if (br) FastBranch(segEnd - 1);
+                srOn = false; srValid = false;
                 cold.Add(() => {
                     a.Bind(slowL);
                     if (!br) { for (int j = i0; j <= segEnd; j++) { if (j > i0) a.Bind(step[j]); StepTicks(j); PlainStep(j, segEnd, false); } a.Jmp(step[segEnd + 1]); return; }
@@ -1397,10 +1465,11 @@ namespace cor64.Mips.R4300I
                 var d = b.Insts[i];
                 long pc = b.StartPc + i * 4;
                 if (inDelay) {
-                    if (s_Cat13Brk && d.Op.Op == "break") a.Jmp(ColdExit(XDSlow, i)); // [speed_cat13]
+                    if (s_Cat13Brk && d.Op.Op == "break") a.Jmp(MatExit(XDSlow, i)); // [speed_cat13]
                     else if (X64Inline(d)) EmitInline(d, i);
-                    else if (X64Mem(d)) EmitMem(d, ColdExit(XDSlow, i));
-                    else EmitFpu(d, ColdExit(XDSlow, i));
+                    else if (X64Mem(d)) EmitMem(d, MatExit(XDSlow, i));
+                    else EmitFpu(d, MatExit(XDSlow, i));
+                    lazyBr = -1;
                     var nt = a.NewLabel();
                     a.AluMI(X64Asm.Alu8.Cmp, C(CTk), 0, false); a.Jcc(Cc.E, nt);
                     a.MovRM(R.Rax, C(CTgt), false); a.MovMR(O(s_OffPc), R.Rax);

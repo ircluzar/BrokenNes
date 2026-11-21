@@ -381,21 +381,23 @@ public sealed class Vga
     /// <summary>Draws the current picture into <see cref="Frame"/> (once per frame, at vertical retrace).</summary>
     /// <summary>Counts Render calls (S3Trio64's line cache: a frame drawn by another path in between invalidates it).</summary>
     public long RenderSerial;
+    /// <summary>The S3 GUI (enhanced) picture was shown since the last real-mode text mode set: video memory 0+ holds its pixels, not text.</summary>
+    public bool GuiSinceText;
 
     public void Render()
     {
         RenderSerial++;
         FrameCount++;
-        if (S3 != null && S3.Enhanced && (Gr[6] & 1) != 0) { S3.Render(); return; }
+        if (S3 != null && S3.Enhanced && (Gr[6] & 1) != 0) { S3.Render(); GuiSinceText = true; return; }
         if (Picture != null) { Picture.Render(); return; }
         if ((Ar[0x10] & 1) == 0 || (Gr[6] & 1) == 0) RenderText(); else RenderGraphics();
     }
 
-    /// <summary>Sizes <see cref="Frame"/> (clamped to 8..1024 x 8..768).</summary>
+    /// <summary>Sizes <see cref="Frame"/> (clamped to 8..1280 x 8..1024).</summary>
     public void Ensure(int w, int h)
     {
         if (w < 8) w = 8; if (h < 8) h = 8;
-        if (w > 1024) w = 1024; if (h > 768) h = 768;
+        if (w > 1280) w = 1280; if (h > 1024) h = 1024;
         Width = w; Height = h;
         if (Frame.Length != w * h) Frame = new int[w * h];
     }

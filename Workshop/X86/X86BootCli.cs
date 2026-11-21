@@ -213,13 +213,14 @@ internal static class X86BootCli
         int n = 0;
         foreach (var (sf, sp) in shotAt) { n += RunUntil(m, null, sf - n); X86Shots.SavePng(m.Vga, sp); Console.WriteLine($"x86boot: frame {n} at {sw.Elapsed.TotalSeconds:F1} s, cycle {m.Cpu.Cycle}"); }
         var hot = new Dictionary<string, int>();
-        bool sampling = args.Contains("--hot");
+        bool hotVm = args.Contains("--hotvm"), sampling = args.Contains("--hot") || hotVm;
         var sampler = sampling ? new System.Threading.Thread(() =>
         {
             while (sampling)
             {
                 System.Threading.Thread.Sleep(1);
-                string k = $"{m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip & ~0x3fu:X8} vm{(m.Cpu.Flags >> 17) & 1} pe{m.Cpu.Cr0 & 1}";
+                if (hotVm && (m.Cpu.Flags & 0x20000) == 0) continue;   // --hotvm: V86 samples only (what a DOS box is doing)
+                string k = $"{m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip & (hotVm ? ~0u : ~0x3fu):X8} vm{(m.Cpu.Flags >> 17) & 1} pe{m.Cpu.Cr0 & 1}";
                 lock (hot) hot[k] = hot.GetValueOrDefault(k) + 1;
             }
         }) { IsBackground = true } : null;
@@ -372,7 +373,11 @@ internal static class X86BootCli
         }
         CaptureReport();
         if (args.Contains("--frametimes")) Console.WriteLine(FrameTimeReport());
+        if (args.Contains("--frametimes")) foreach (var (w0, w1) in new[] { (0, 600), (600, 1800), (0, 1800) }) if (_frameMs.Count >= w1) Console.WriteLine(FrameWinReport(w0, w1));   // (after a load: the warm-up window first)
         if (args.Contains("--dacdump")) for (int r = 0; r < 256; r += 16) Console.WriteLine($"dac {r:X2}: " + string.Join(" ", Enumerable.Range(r, 16).Select(i => $"{m.Vga.Palette[i * 3]:X2}{m.Vga.Palette[i * 3 + 1]:X2}{m.Vga.Palette[i * 3 + 2]:X2}")));
+        Console.WriteLine($"x86boot: guest clock {m.InstructionsPerSecond:N0} instruction clocks / s (CPU model {m.Cpu.Model.Name}, CPI {m.Cpu.Model.Cpi})");   // a loaded state carries its own
+        if (Environment.GetEnvironmentVariable("X86_VGADUMP") == "1")   // the VGA's register state at the end (text vs graphics decisions)
+            Console.WriteLine($"vgadump: misc {m.Vga.Msr:X2} SR {Convert.ToHexString(m.Vga.Sr)} GR {Convert.ToHexString(m.Vga.Gr)} AR {Convert.ToHexString(m.Vga.Ar)} CR {Convert.ToHexString(m.Vga.Cr.AsSpan(0, 0x19))} S3 enh {m.S3?.Enhanced} BDA mode {m.Phys8(0x449):X2}");
         Console.WriteLine($"vga: DAC writes {m.Vga.DacWrites}, above 3Fh {m.Vga.DacWritesOver63}; S3 CR55 {(m.S3 != null ? m.Vga.Cr[0x55] : 0):X2} CR67 {(m.S3 != null ? m.Vga.Cr[0x67] : 0):X2} SR18 {(m.S3 != null ? m.S3.SrRead(0x18) : 0):X2}; VGA-by-MMIO writes {m.S3?.VgaMmioWrites}, CR53 {(m.S3 != null ? m.Vga.Cr[0x53] : 0):X2}");
         if (args.Contains("--frametimes")) { var gi = GC.GetGCMemoryInfo(GCKind.Ephemeral); Console.WriteLine($"gc last ephemeral: gen {gi.Generation}, pause {(gi.PauseDurations.Length > 0 ? gi.PauseDurations[0].TotalMilliseconds : 0):F1} ms, promoted {gi.PromotedBytes / 1048576} MB, heap {gi.HeapSizeBytes / 1048576} MB, fragmented {gi.FragmentedBytes / 1048576} MB; gen0 budget? total committed {gi.TotalCommittedBytes / 1048576} MB"); }
         if (Environment.GetEnvironmentVariable("X86_SAVEBENCH") == "1")
@@ -486,6 +491,12 @@ internal static class X86BootCli
         double sum = 0; foreach (var v in a) sum += v;
         const double rt = 1000.0 / 70;   // a VGA frame of machine time
         return $"frametimes: {a.Length} frames, mean {sum / a.Length:F2} ms ({rt / (sum / a.Length) * 100:F0}% real time), p50 {P(.5):F2}, p99 {P(.99):F2} ({rt / P(.99) * 100:F0}%), max {a[^1]:F1} ms, frames over 50 ms {a.Count(v => v > 50)}; GC gen0/1/2 {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}, GC pause total {GC.GetTotalPauseDuration().TotalMilliseconds:F0} ms, allocated {GC.GetTotalAllocatedBytes() / 1048576} MB";
+    }
+    public static string FrameWinReport(int w0, int w1)
+    {
+        var a = _frameMs.Skip(w0).Take(w1 - w0).ToArray(); Array.Sort(a);
+        double sum = a.Sum();
+        return $"framewin {w0}-{w1}: mean {sum / a.Length:F2} ms, p50 {a[a.Length / 2]:F2}, p99 {a[Math.Min(a.Length - 1, (int)(.99 * a.Length))]:F2}, over 50 ms {a.Count(v => v > 50)}, over 100 ms {a.Count(v => v > 100)}, total {sum / 1000:F2} s";
     }
     private static PcMachine? _partner; private static PcLanHub? _pairHub; private static PcNat? _pairNat;
     // --bugcapture N: the desktop's bug capture as a soak sees it: every N frames the machine's state is copied between frames (timed with
