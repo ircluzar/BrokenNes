@@ -555,6 +555,18 @@ internal static class X86BootCli
         Console.WriteLine($"bugcapture: {_capCount} states every {_capEvery} frames, between-frames mean {(_capCount > 0 ? _capCopyMs / _capCount : 0):F1} ms max {_capCopyMax:F1} ms (of it waiting on the last pack {_capWaitMs:F0} ms total), last packed {_capBytes >> 20} MB");
     }
 
+    /// <summary>X86_SLOWFRAMES=ms (diagnostic): one line per frame slower than that: GC collections / pause and JIT pipeline moves since the last frame.</summary>
+    private static readonly int SlowMs = int.TryParse(Environment.GetEnvironmentVariable("X86_SLOWFRAMES"), out int sm) ? sm : 0;
+    private static (int g0, int g1, int g2, double pause, long posted, int done, long clears, long alloc) _sfPrev;
+    private static void SlowFrame(PcMachine m, double ms)
+    {
+        var c = m.Cpu;
+        var now = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2), GC.GetTotalPauseDuration().TotalMilliseconds, c.JitPosted, c.JitCompiled, c.JitKeepClears, GC.GetTotalAllocatedBytes());
+        var p = _sfPrev; _sfPrev = now;
+        if (ms < SlowMs || p.alloc == 0) return;
+        Console.WriteLine($"slowframe {_frameMs.Count - 1}: {ms:F0} ms | gc {now.Item1 - p.g0}/{now.Item2 - p.g1}/{now.Item3 - p.g2} pause {now.Item4 - p.pause:F0} ms alloc {(now.Item8 - p.alloc) >> 20} MB | jit posted {now.Item5 - p.posted} installed {now.Item6 - p.done} keep-clears {now.Item7 - p.clears} | ws {Environment.WorkingSet >> 20} MB, host memory load {GC.GetGCMemoryInfo().MemoryLoadBytes >> 20} of {GC.GetGCMemoryInfo().TotalAvailableMemoryBytes >> 20} MB");
+    }
+
     private static bool Frame(PcMachine m)
     {
         _frameSw.Restart();
@@ -562,6 +574,7 @@ internal static class X86BootCli
         if (_partner != null && m != _partner) _partner.RunFrame();
         if (_capEvery > 0 && ++_capFrame % _capEvery == 0) CaptureTick(m);
         _frameMs.Add(_frameSw.Elapsed.TotalMilliseconds);
+        if (SlowMs > 0) SlowFrame(m, _frameMs[^1]);
         if (_cdWav != null && m.Ata != null)
         {
             long now = (long)((Int128)m.PitNow * 44100 / Pit8254.Freq);

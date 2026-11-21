@@ -162,8 +162,9 @@ public sealed partial class I386
                 if (PcMachine.TimeProbe) _jtWhy = 1;
                 return JitInvalidated(ref en);
             }
+            if (en.Pending && JitHotQ) en.Visits++;   // (X86_JITHOTQ: the queue compiles the most-run waiting region first)
             if (en.Failed || en.Pending) { if (PcMachine.TimeProbe) _jtWhy = en.Failed ? 2 : 3; return JIT_DECLINE; }
-            if (++en.Visits >= JitHot) { if (PcMachine.TimeProbe) _jtWhy = 4; JitCompile(ref en); }
+            if (++en.Visits >= _jitHotNow) { if (PcMachine.TimeProbe) _jtWhy = 4; JitCompile(ref en); }
             else if (PcMachine.TimeProbe) _jtWhy = 5;
             return JIT_DECLINE;
         }
@@ -735,9 +736,10 @@ public sealed partial class I386
         }
         en.Pending = true;
         if (JitWatch != 0 && pas.Contains(JitWatch)) Console.Error.WriteLine($"jw: post region {start:X8} n {pas.Length}");
-        _jitPending++; JitPosted++; JitInstrCompiled += pas.Length;
+        _jitPending++; JitHotUpdate(); JitPosted++; JitInstrCompiled += pas.Length;
         if (!_jitSeenKeys.Add(key)) JitRecompiles++;
-        JitWorker.Post(() =>
+        if (JitHotQ) en.Visits = 0;
+        JitWorker.Post(this, start, () =>
         {
             if (JitDelay > 0) { int ms; lock (_jitDelayRng) ms = _jitDelayRng.Next(4); if (ms > 0) System.Threading.Thread.Sleep(ms); }
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -766,7 +768,7 @@ public sealed partial class I386
         if (JitDelay > 0) { int r; lock (_jitDelayRng) r = _jitDelayRng.Next(JitDelay); if (r != 0) return; }   // X86_JITDELAY: install at a random later batch
         while (_jitDone.TryDequeue(out var d))
         {
-            _jitPending--;
+            _jitPending--; JitHotUpdate();
             var (code, key) = d;
             bool ok = code.Fn != null && JitSame(code);
             if (JitWatch != 0 && code.Addrs.Contains(JitWatch)) Console.Error.WriteLine($"jw: drain region {code.Start:X8} ok {ok} fn {code.Fn != null}");
@@ -794,14 +796,34 @@ public sealed partial class I386
     private static readonly int JitDelay = int.TryParse(Environment.GetEnvironmentVariable("X86_JITDELAY"), out int jd) ? Math.Max(0, jd) : 0;
     private readonly Random _jitDelayRng = new();
     private int _jitPending;
+    /// <summary>X86_JITBACKP=k (warm-up): the hot threshold is JitHot + k per region still waiting for the background compiler (at most
+    /// X86_JITBACKMAX, default 8192): a burst of new code (a state load, a level) only queues what stays hot while the compiler is behind.
+    /// Never changes what compiled code does (only when a region is asked for); X86_JITSYNC: nothing is ever pending, so JitHot as before.</summary>
+    private static readonly int JitBackP = int.TryParse(Environment.GetEnvironmentVariable("X86_JITBACKP"), out int bp) ? Math.Max(0, bp) : 0;
+    private static readonly int JitBackMax = int.TryParse(Environment.GetEnvironmentVariable("X86_JITBACKMAX"), out int bm) ? bm : 8192;
+    private int _jitHotNow = JitHot;
+    private void JitHotUpdate() { if (JitBackP > 0) _jitHotNow = (int)Math.Min(JitBackMax, JitHot + (long)JitBackP * _jitPending); }
     /// <summary>X86_JITSYNC: compile on the CPU's own thread, at once (as before: a hitch, but the compiled code runs from the 32nd visit).</summary>
     private static readonly bool JitAsync = Environment.GetEnvironmentVariable("X86_JITSYNC") == null;
+
+    /// <summary>The background compiler, shared by every CPU in the process.</summary>
+    /// <summary>X86_JITHOTQ=1: the background compiler takes the waiting region the interpreter has run most often since it was queued
+    /// (its start's visit count, kept counting while pending), newest first on ties; default: newest first. Only the moment a region
+    /// installs changes (the async-JIT parity gate covers any timing).</summary>
+    private static readonly bool JitHotQ = Environment.GetEnvironmentVariable("X86_JITHOTQ") == "1";
+    private int JitPendingHeat(uint start)
+    {
+        ref var e = ref _je[JitIndex(start)];
+        return e.Start == start && e.Pending ? System.Threading.Volatile.Read(ref e.Visits) : -1;
+    }
 
     /// <summary>The background compiler, shared by every CPU in the process.</summary>
     private static class JitWorker
     {
         // newest first: the block hot right now matters more than one queued while a burst of new code went by
         private static readonly System.Collections.Concurrent.BlockingCollection<Action> Q = new(new System.Collections.Concurrent.ConcurrentStack<Action>());
+        private static readonly List<(I386 cpu, uint start, Action a)> HQ = new();
+        private static readonly System.Threading.SemaphoreSlim HSem = new(0);
         public static readonly int Threads = int.TryParse(Environment.GetEnvironmentVariable("X86_JITTHREADS"), out int jt) ? Math.Max(1, jt) : Math.Clamp(Math.Min(Environment.ProcessorCount / 2, Environment.ProcessorCount - 2), 1, 6);
         /// <summary>The compilers run below normal priority (a game load's ~1000 regions must not starve the CPU / sound threads);
         /// X86_JITPRIONORMAL: normal priority (before 2026-11-21).</summary>
@@ -810,10 +832,26 @@ public sealed partial class I386
         {
             // half the host threads (at most 6): a game's start asks for ~1000 blocks at once
             for (int i = 0; i < Threads; i++)
-                new System.Threading.Thread(() => { foreach (var a in Q.GetConsumingEnumerable()) a(); })
+                new System.Threading.Thread(() => { if (JitHotQ) for (;;) TakeHot()(); else foreach (var a in Q.GetConsumingEnumerable()) a(); })
                 { IsBackground = true, Name = "x86 block compiler", Priority = NormalPrio ? System.Threading.ThreadPriority.Normal : System.Threading.ThreadPriority.BelowNormal }.Start();
         }
-        public static void Post(Action a) => Q.Add(a);
+        private static Action TakeHot()
+        {
+            HSem.Wait();
+            lock (HQ)
+            {
+                int best = HQ.Count - 1, bh = int.MinValue;
+                for (int i = HQ.Count - 1; i >= 0; i--) { int h = HQ[i].cpu.JitPendingHeat(HQ[i].start); if (h > bh) { bh = h; best = i; } }
+                var a = HQ[best].a; HQ.RemoveAt(best);
+                return a;
+            }
+        }
+        public static void Post(I386 cpu, uint start, Action a)
+        {
+            if (!JitHotQ) { Q.Add(a); return; }
+            lock (HQ) HQ.Add((cpu, start, a));
+            HSem.Release();
+        }
     }
 
     /// <summary>A CMP / TEST whose next bytes are JZ / JNZ rel8 (tiny386's try_jcc8 folds them).</summary>
