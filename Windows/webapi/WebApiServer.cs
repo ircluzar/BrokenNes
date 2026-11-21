@@ -312,6 +312,7 @@ namespace BrokenNes.Windows.WebApi
             RegisterInputEndpoints(app);
             RegisterConsoleEndpoints(app);   // BrokenNes 2: SNES / Game Boy sessions, console + core selection
             RegisterWideMessEndpoints(app);  // WideMess milestone 6: the SNES games' enhancements on the WideMess console
+            RegisterX86InputEndpoints(app);   // the x86 PC keyboard / mouse script (behind enableDebuggerControl)
             RegisterDebugEndpoints(app);     // the debugger (BrokenDev D1): state always readable, control behind enableDebuggerControl
             RegisterBugEndpoints(app);
             RegisterTimeflowEndpoints(app);   // Timeflow (BrokenDev T1/T2): status, timelines, an agent's request (the user answers in the app)
