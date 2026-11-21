@@ -775,13 +775,16 @@ public sealed partial class I386
     {
         // newest first: the block hot right now matters more than one queued while a burst of new code went by
         private static readonly System.Collections.Concurrent.BlockingCollection<Action> Q = new(new System.Collections.Concurrent.ConcurrentStack<Action>());
-        public static readonly int Threads = int.TryParse(Environment.GetEnvironmentVariable("X86_JITTHREADS"), out int jt) ? Math.Max(1, jt) : Math.Clamp(Environment.ProcessorCount / 2, 1, 6);
+        public static readonly int Threads = int.TryParse(Environment.GetEnvironmentVariable("X86_JITTHREADS"), out int jt) ? Math.Max(1, jt) : Math.Clamp(Math.Min(Environment.ProcessorCount / 2, Environment.ProcessorCount - 2), 1, 6);
+        /// <summary>The compilers run below normal priority (a game load's ~1000 regions must not starve the CPU / sound threads);
+        /// X86_JITPRIONORMAL: normal priority (before 2026-11-21).</summary>
+        private static readonly bool NormalPrio = Environment.GetEnvironmentVariable("X86_JITPRIONORMAL") != null;
         static JitWorker()
         {
             // half the host threads (at most 6): a game's start asks for ~1000 blocks at once
             for (int i = 0; i < Threads; i++)
                 new System.Threading.Thread(() => { foreach (var a in Q.GetConsumingEnumerable()) a(); })
-                { IsBackground = true, Name = "x86 block compiler" }.Start();
+                { IsBackground = true, Name = "x86 block compiler", Priority = NormalPrio ? System.Threading.ThreadPriority.Normal : System.Threading.ThreadPriority.BelowNormal }.Start();
         }
         public static void Post(Action a) => Q.Add(a);
     }
