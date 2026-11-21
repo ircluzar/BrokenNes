@@ -207,6 +207,17 @@ def capture(a):
             man['registry'][name] = {'drive': drv, 'root': root, 'ops': kept, 'noise_ops_dropped': dropped}
             z.writestr(f'registry/{name}.reg', creg.to_reg(kept, root).encode('latin1'))
     man['stats']['payload_bytes'] = nbytes
+    # the launch exe must be a captured file (or already on the capture base): fix its case to the disk's, refuse a miss
+    L = man['launch']
+    if L.get('exe'):
+        have = {f['path'].upper(): f['path'] for f in man['files']}
+        e = L['exe'].replace(chr(92), '/')
+        if e.upper() in have:
+            L['exe'] = have[e.upper()]
+        else:
+            d0, _, rel = e.partition(':/')
+            if d0 not in bef or fat32.Fat32(bef[d0]).lookup(rel)[0] is None:
+                raise SystemExit(f'launch exe {e} is neither in the package nor on the base; fix the profile')
     if a.snapshot:
         z.write(a.snapshot, 'snapshot/' + os.path.basename(a.snapshot))
         man['snapshot'] = {'zip': 'snapshot/' + os.path.basename(a.snapshot), 'sha256': sha256_file(a.snapshot),

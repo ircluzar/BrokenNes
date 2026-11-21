@@ -96,11 +96,16 @@ Fields:
 
 | package | base | result |
 |---|---|---|
-| StarCraft (C: + D:, 249 files, 1.30 GB, reg 10+21 ops) | hd_r7c + hd_sc_d (no StarCraft) | round trip exact; FAT clean; boot see below |
-| Age of Empires (177 files, 67 MB, reg 72+25, 2 INI) | hd_scpairC_256 | round trip exact; FAT clean; boot see below |
-| Half-Life Uplink (74 files, 93 MB, reg 3 ops) | nano98 hd_d1 | round trip exact; FAT clean |
+| StarCraft (C: + D:, 249 files, 1.30 GB, reg 10+21 ops) | hd_r7c + hd_sc_d (no StarCraft) | round trip exact; FAT clean; hive invariants ok |
+| Age of Empires (177 files, 67 MB, reg 72+25, 2 INI) | hd_scpairC_256 | round trip exact; FAT clean; hive invariants ok; boots (base asks to restart for new hardware first) |
+| Half-Life Uplink (74 files, 93 MB, reg 3 ops) | nano98 hd_d1 / seat_base | round trip exact; FAT clean; seat_base + package cold-boots clean (no Registry Checker) |
 
 Round trip = capture(base, applied) gives the same files (sha256) and the same registry ops as the package.
+
+Hive validity: `regcheck.py BEFORE.img AFTER.img` checks the free-list invariants Windows' Registry Checker enforces
+(RGDB free records chained through their `used` field from the block's free head at +0x10, block unused count at +8 =
+their sum, RGKN ending in a free node with inuse 0x80000000 and +4 = free bytes). A re-parse by creg.py alone is not proof.
+The launch exe is checked at capture: it must be a captured file or exist on the base (case fixed to the disk's).
 
 ## Commands
 
