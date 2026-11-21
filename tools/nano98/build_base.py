@@ -78,6 +78,12 @@ VRC=0
 NoPrompt2Boot=1
 ProductKey="{key}"
 
+[Network]
+ComputerName="NANO98"
+Workgroup="WORKGROUP"
+Description="nano98"
+Display=0
+
 [NameAndOrg]
 Name="nano98"
 Org="nano98"
