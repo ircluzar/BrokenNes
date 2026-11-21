@@ -308,10 +308,13 @@ namespace cor64.Mips.R4300I
         // (budget end, interrupt check that leaves, delay-slot slow exit), which are the only places the managed side reads them.
         internal static readonly int s_SpdLazyBrM = int.TryParse(Environment.GetEnvironmentVariable("COR64_SPD_LAZYBR"), out int lzb) ? lzb : 0;
         internal static readonly bool s_SpdLazyBr = s_SpdLazyBrM > 0;
-        // COR64_SPD_SRHOIST=1 (lever 3): inside a batched segment the Status CU1/FR test is done by the first FPU op only
+        // COR64_SPD_SRHOIST (lever 3; default on, =0 off): inside a batched segment the Status CU1/FR test is done by the first FPU op only
         // (nothing in a segment's hot path can change Status CU1/FR, and it has no entry point after its head); that first
         // test's other-FR-mode case takes the op's slow exit (the per-step copy, with the dual-FR code, runs the rest).
-        internal static readonly bool s_SpdSrHoist = Environment.GetEnvironmentVariable("COR64_SPD_SRHOIST") == "1";
+        internal static readonly bool s_SpdSrHoist = Environment.GetEnvironmentVariable("COR64_SPD_SRHOIST") != "0"; // default on 2026-11-21 (6-round Garage2 A/B: no game slower, exact)
+        // COR64_SPD_SRALT (default on with SRHOIST; =0: old slow exit): the first test's failure runs the segment's per-step copy
+        // from that op (ticks of the op and the later steps taken back) instead of leaving through the slow exit
+        internal static readonly bool s_SpdSrAlt = Environment.GetEnvironmentVariable("COR64_SPD_SRALT") != "0";
         internal static readonly bool s_Cat17Seg = Environment.GetEnvironmentVariable("COR64_SPDCAT17_SEG") != "0";
         internal static readonly bool s_Cat16Chk = Environment.GetEnvironmentVariable("COR64_SPDCAT16_CHK") != "0";
         internal static readonly bool s_Cat13Brk = Environment.GetEnvironmentVariable("COR64_SPDCAT13_BRK") != "0";
@@ -661,7 +664,7 @@ namespace cor64.Mips.R4300I
 
             // FPU ops on the raw FPR path (rbp = &Status): falls through on success, jumps to slow otherwise
             int lazyBr = -1; // [n64_speed] lever 2: index of the branch whose fields are not written yet (its delay slot is being emitted)
-            bool srOn = false, srValid = false; // [n64_speed] lever 3 state (only inside a segment's hot path)
+            bool srOn = false, srValid = false; int srJ = -1, srEnd = -1, srHead = -1; XLabel srHeadL = null; // [n64_speed] srJ: step of the op being emitted (-1: no alt entry) // [n64_speed] lever 3 state (only inside a segment's hot path)
             var fpuSt = StateR4000I.FPR;
             bool frc = fpuSt.FullMode;
             long fpr = (long)fpuSt.RawPointer;
@@ -686,7 +689,19 @@ namespace cor64.Mips.R4300I
                 if (srOn && srValid) { EmitFpuBody(d, slow); return; } // [n64_speed] lever 3: tested by an earlier op of this segment
                 a.MovRM(R.Rax, new M(R.Rbp, 0), false);
                 a.AluRI(X64Asm.Alu8.And, R.Rax, (int)srMask, false); a.AluRI(X64Asm.Alu8.Cmp, R.Rax, (int)srWant, false);
-                if (srOn) { a.Jcc(Cc.NE, slow); EmitFpuBody(d, slow); srValid = true; return; }
+                if (srOn) {
+                    XLabel altL = slow;
+                    if (s_X64DualFr && srJ >= 0) {
+                        // [n64_speed] other FR mode (or CU1 clear): take back the ticks of steps srJ..srEnd and run the segment's
+                        // per-step copy from step srJ (dual-FR code per op), exactly as if the segment had taken its cold path there
+                        altL = a.NewLabel(); int r = srEnd - srJ + 1, every = s_IntCheckEvery; var tgt = srJ == srHead ? srHeadL : step[srJ];
+                        cold.Add(() => { a.Bind(altL);
+                            a.AluRI(X64Asm.Alu8.Sub, PT, r, false); a.AluRI(X64Asm.Alu8.Sub, PCN, r, false); a.AluRI(X64Asm.Alu8.Sub, CAD, r, false);
+                            if ((every & (every - 1)) == 0) a.AluRI(X64Asm.Alu8.And, CAD, every - 1, false);
+                            a.Jmp(tgt); });
+                    }
+                    a.Jcc(Cc.NE, altL); EmitFpuBody(d, slow); srValid = true; return;
+                }
                 if (!s_X64DualFr) { a.Jcc(Cc.NE, slow); EmitFpuBody(d, slow); return; }
                 var alt = a.NewLabel(); var done = a.NewLabel();
                 a.Jcc(Cc.NE, alt);
@@ -1326,7 +1341,7 @@ namespace cor64.Mips.R4300I
                             if (mask && (s_IntCheckEvery & (s_IntCheckEvery - 1)) == 0) a.AluRI(X64Asm.Alu8.And, CAD, s_IntCheckEvery - 1, false); }
                         ExitCode(XSlow, jj);
                     });
-                    if (X64Mem(d)) EmitMem(d, l); else EmitFpu(d, l);
+                    if (X64Mem(d)) EmitMem(d, l); else { srJ = s_SpdSrAlt ? j : -1; EmitFpu(d, l); srJ = -1; }
                 }
             }
             // [speed_cat17] branch i + its ALU delay slot i + 1 at the end of a batched segment (ticks already added)
@@ -1428,7 +1443,7 @@ namespace cor64.Mips.R4300I
                 fwdReg = -1;
                 bool br = segHasBr[i0]; curSegBr = br;
                 if (s_Cat17Seg && c0Native) for (int j = i0; j < i0 + m; j++) if (X64C0Status(b.Insts[j])) curSegBr = true; // a longer segment than before
-                srOn = s_SpdSrHoist; srValid = false;
+                srOn = s_SpdSrHoist; srValid = false; srEnd = segEnd; srHead = i0; srHeadL = slowL;
                 for (int j = i0; j <= (br ? segEnd - 2 : segEnd); j++) PlainStep(j, segEnd, true);
                 fwdReg = -1; fwdOn = false;
                 if (br) FastBranch(segEnd - 1);
