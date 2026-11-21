@@ -48,7 +48,14 @@ function Note($m, $c = 'Gray') { Write-Host ("[{0:HH:mm:ss}] {1}" -f (Get-Date),
 Note "building into $Build" White
 $exe = Join-Path $Build 'bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe'
 & dotnet build (Join-Path $Repo 'Workshop') -c Release --artifacts-path $Build 2>&1 | Select-String -Pattern ' error ' | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+$buildRc = $LASTEXITCODE
 if (-not (Test-Path $exe)) { throw "Workshop build failed (no $exe)" }
+# a failed build leaves the OLD exe in place (a locked exe, a compile error): never test that and report green
+if ($buildRc -ne 0) { throw "Workshop build failed (dotnet exit $buildRc): the battery would test a stale $exe" }
+$dll = Join-Path (Split-Path $exe) 'BrokenNes.Workshop.dll'
+$newest = Get-ChildItem -Recurse -File -Include *.cs, *.csproj -Path (Join-Path $Repo 'Workshop'), (Join-Path $Repo 'Core'), (Join-Path $Repo 'Windows') -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+if ($newest -and (Test-Path $dll) -and (Get-Item $dll).LastWriteTimeUtc -lt $newest.LastWriteTimeUtc) { throw "Workshop build is stale: $dll is older than $($newest.FullName)" }
 $fuzz = Join-Path $Build 'bfuzz\bfuzz.exe'; $scen = Join-Path $Build 'bscen\bscen.exe'
 & dotnet build (Join-Path $Repo 'tools\butcher-fuzz') -c Release -o (Join-Path $Build 'bfuzz') 2>&1 | Select-String ' error ' | ForEach-Object { Write-Host $_ -ForegroundColor Red }
 & dotnet build (Join-Path $Repo 'tools\butcher-scenarios') -c Release -o (Join-Path $Build 'bscen') 2>&1 | Select-String ' error ' | ForEach-Object { Write-Host $_ -ForegroundColor Red }
