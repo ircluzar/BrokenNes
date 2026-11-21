@@ -331,6 +331,9 @@ internal static class X86BootCli
             string H(byte[] b) => string.Join(" ", b.Select(x => x.ToString("X2")));
             Console.WriteLine($"vga SR {H(v.Sr)}\nvga GR {H(v.Gr[..9])}\nvga AR {H(v.Ar)}\nvga CR {H(v.Cr[..0x19])}\nvga DAC0-15 {H(v.Palette[..48])}");
             Console.WriteLine($"vga ram non-zero bytes {v.Ram.Count(b => b != 0)} of {v.Ram.Length}; S3 {(m.S3 != null ? "yes" : "no")}; CR30-6F {H(v.Cr[0x30..0x70])}");
+            Console.WriteLine($"cpu CS:EIP {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} csbase {m.Cpu.SegBase[1]:X8} ES {m.Cpu.SegSel[0]:X4} base {m.Cpu.SegBase[0]:X8} EBP {m.Cpu.R[5]:X8}");
+            if (m.Nv is { } nv2) Console.WriteLine("nv fifo " + string.Join(" ", new uint[] { 0x2100, 0x2140, 0x2500, 0x2504, 0x3200, 0x3204, 0x3210, 0x3220, 0x3240, 0x3244, 0x3250, 0x3270, 0x400100, 0x400140 }.Select(r => $"{r:X}={nv2.MmioRead(r, 4):X}")));
+            if (m.Nv is { } nv) Console.WriteLine($"nv CR19-4F {H(v.Cr[0x19..0x50])} depth {nv.Depth} {nv.Width}x{nv.Height} stride {nv.Stride} start {nv.StartByte:X} 565 {nv.Is565} methods {nv.Methods} push {nv.PushWords} nonzero-first-2MB {v.Ram.Take(2 << 20).Count(b => b != 0)}");
             { int cb = ((v.Cr[0x4c] & 0x0f) << 8 | v.Cr[0x4d]) * 1024; for (int l = 0; l < 4; l++) Console.WriteLine($"vga cursor@{cb:X} line {l}: {H(v.Ram[(cb + l * 16)..(cb + l * 16 + 16)])}"); }
             { var nz = new List<string>(); int run = -1; for (int k = 0x4b000; k < v.Ram.Length; k += 256) { bool any = false; for (int q = 0; q < 256; q++) if (v.Ram[k + q] != 0) { any = true; break; } if (any && run < 0) run = k; if (!any && run >= 0) { nz.Add($"{run:X}-{k:X}"); run = -1; } } Console.WriteLine("vga offscreen non-zero: " + string.Join(" ", nz.Take(30))); }
             Console.WriteLine($"system RAM A0000-BFFFF non-zero bytes {m.Cpu.Mem.AsSpan(0xa0000, 0x20000).ToArray().Count(b => b != 0)} (should stay 0: the VGA owns it)");

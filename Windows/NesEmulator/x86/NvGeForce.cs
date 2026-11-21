@@ -16,7 +16,7 @@ using System.IO;
 
 namespace NesEmulator.X86;
 
-public sealed class NvGeForce : IPciMmio
+public sealed partial class NvGeForce : IPciMmio
 {
     public const ushort Vendor = 0x10de, Device = 0x0101;
     public const string Id = "NV10";
@@ -50,6 +50,7 @@ public sealed class NvGeForce : IPciMmio
     public void Reset()
     {
         _reg.Clear();
+        ResetFifo();
         Unlocked = false; Frame = 0; _timerReads = 0;
         PcrtcIntr = PcrtcIntrEn = PcrtcStart = PmcIntrEn = 0;
         PmcEnable = 0x00000000;
@@ -62,6 +63,7 @@ public sealed class NvGeForce : IPciMmio
         _reg[0x680508] = 0x00010c0d;   // VPLL
         _reg[0x680600] = 0x00100000;   // PRAMDAC_GENERAL_CONTROL: 8-bit DAC off, 555 (bit 12 off)
         for (int i = 0x19; i < 0x100; i++) _v.Cr[i] = 0;
+        _v.Cr[0x37] = _v.Cr[0x3f] = _v.Cr[0x51] = 0x31;   // DDC lines released
     }
 
     // ================= the extended CRTC (3D4/3D5) =================
@@ -74,7 +76,9 @@ public sealed class NvGeForce : IPciMmio
         if (!Unlocked) return 0;
         return i switch
         {
-            0x3e => 0x0c,              // DDC: both I2C lines idle high, no monitor answers
+            // DDC buses (CR36/37, CR3E/3F, CR50/51: read / drive): open drain, no monitor on them, so each line reads what the card drives
+            // (bit 5 of the drive register = SCL -> bit 2, bit 4 = SDA -> bit 3); a released line reads high
+            0x36 or 0x3e or 0x50 => (byte)(((_v.Cr[i + 1] & 0x20) != 0 ? 4 : 0) | ((_v.Cr[i + 1] & 0x10) != 0 ? 8 : 0)),
             _ => _v.Cr[i],
         };
     }
@@ -164,9 +168,17 @@ public sealed class NvGeForce : IPciMmio
 
     // ================= once per frame =================
 
+    // PTIMER: frames x 1/70 s + 1 us per read, plus the base the driver set by writing TIME_0/TIME_1 (kept in the register store at
+    // 9404h/9414h, so it is in the savestate); ALARM_0 (9420h) raises PTIMER_INTR bit 0 when the low word passes it
+    private long TimeBase => (long)((ulong)Reg(0x009414) << 32 | Reg(0x009404));
+    private long TimeNs(long reads) => TimeBase + Frame * 14_285_714 + reads * 1000;
+
     public void TickFrame()
     {
+        uint lo0 = (uint)TimeNs(0);
         Frame++; _timerReads = 0;
+        uint lo1 = (uint)TimeNs(0), alarm = Reg(0x009420);
+        if (unchecked(alarm - lo0) < unchecked(lo1 - lo0) || alarm == lo1) { _reg[0x009100] = Reg(0x009100) | 1; }
         PcrtcIntr |= 1;   // vblank
         UpdateIrq();
     }
@@ -177,7 +189,9 @@ public sealed class NvGeForce : IPciMmio
 
     /// <summary>The card's interrupt line (INTA#): PMC's enabled sources.</summary>
     public bool Irq => (PmcIntrEn & 1) != 0 && PmcIntr != 0;
-    private uint PmcIntr => ((PcrtcIntr & PcrtcIntrEn) != 0 ? 1u << 24 : 0);
+    private uint PmcIntr => ((PcrtcIntr & PcrtcIntrEn) != 0 ? 1u << 24 : 0)
+        | ((Reg(0x002100) & Reg(0x002140)) != 0 ? 1u << 8 : 0) | ((Reg(0x400100) & Reg(0x400140)) != 0 ? 1u << 12 : 0)
+        | ((Reg(0x009100) & Reg(0x009140)) != 0 ? 1u << 20 : 0);
 
     // ================= BAR0 =================
 
@@ -254,7 +268,7 @@ public sealed class NvGeForce : IPciMmio
             case 0x009400:                                       // PTIMER TIME_0 / TIME_1: frames x 1/70 s + 1 us per read (deterministic)
             case 0x009410:
             {
-                long ns = Frame * 14_285_714 + ++_timerReads * 1000;
+                long ns = TimeNs(++_timerReads);
                 return a == 0x009400 ? (uint)ns & 0xffffffe0 : (uint)(ns >> 32);
             }
             case 0x100200: return Reg(a);
@@ -265,7 +279,7 @@ public sealed class NvGeForce : IPciMmio
             case 0x600800: return PcrtcStart;
         }
         if (a is >= 0x001800 and < 0x001900) return Pci?.Read32((int)(a - 0x001800)) ?? 0;   // PBUS: the PCI configuration mirror
-        if (a is >= 0x800000 and < 0x1000000 && (a & 0xffff) == 0x10) return 0x7c;          // USER: PIO FIFO free bytes
+        if (a is >= 0x800000 and < 0x1000000) return UserRead(a);                             // USER: the channels' submission areas
         return Reg(a);
     }
 
@@ -279,9 +293,20 @@ public sealed class NvGeForce : IPciMmio
             case 0x600100: PcrtcIntr &= ~v; UpdateIrq(); return;   // write 1 to clear
             case 0x600140: PcrtcIntrEn = v & 1; UpdateIrq(); return;
             case 0x600800: PcrtcStart = v & (VramBytes - 1) & ~3u; return;
+            case 0x009400: case 0x009410:
+            {
+                long now = TimeNs(_timerReads);
+                long want = a == 0x009400 ? (long)(((ulong)now & 0xffffffff00000000) | v) : (long)(((ulong)v << 32) | ((ulong)now & 0xffffffff));
+                long nb = TimeBase + (want - now);
+                _reg[0x009404] = (uint)nb; _reg[0x009414] = (uint)((ulong)nb >> 32);
+                return;
+            }
         }
         if (a is >= 0x001800 and < 0x001900) { if (Pci != null) for (int i = 0; i < 4; i++) Pci.WriteByte((int)(a - 0x001800) + i, (byte)(v >> (8 * i))); return; }
+        if (a is >= 0x800000 and < 0x1000000) { UserWrite(a, v); return; }
+        if (a is 0x001100 or 0x002100 or 0x009100 or 0x400100) { _reg[a] = Reg(a) & ~v; UpdateIrq(); if (a == 0x002100 && (v & 1) != 0) { _reg[0x003270] = Reg(0x003210); RunPusher(); } return; }   // (the NVIDIA driver's ISR does not advance CACHE1 GET: clearing CACHE_ERROR = the method was taken)   // interrupt status: write 1 to clear
         _reg[a] = v;
+        if (a is 0x003240 or 0x003220 or 0x003200 or 0x003250 or 0x003270 or 0x002500) RunPusher();
     }
 
     // ================= BAR1: the VRAM aperture =================
@@ -309,22 +334,25 @@ public sealed class NvGeForce : IPciMmio
 
     public void Save(BinaryWriter w)
     {
-        w.Write(1);   // version
+        w.Write(3);   // version (3: PFIFO/PGRAPH state)
         w.Write(Unlocked); w.Write(Frame); w.Write(_timerReads);
         w.Write(PcrtcIntr); w.Write(PcrtcIntrEn); w.Write(PcrtcStart); w.Write(PmcIntrEn); w.Write(PmcEnable);
         w.Write(Bank); w.Write(VbeMode);
         w.Write(_reg.Count);
         foreach (var (k, v) in _reg) { w.Write(k); w.Write(v); }
+        SaveFifo(w);
     }
 
     public void Load(BinaryReader r)
     {
-        if (r.ReadInt32() != 1) throw new InvalidDataException("unknown GeForce state version");
+        int ver = r.ReadInt32();
+        if (ver is not (1 or 2 or 3)) throw new InvalidDataException("unknown GeForce state version");
         Unlocked = r.ReadBoolean(); Frame = r.ReadInt64(); _timerReads = r.ReadInt64();
         PcrtcIntr = r.ReadUInt32(); PcrtcIntrEn = r.ReadUInt32(); PcrtcStart = r.ReadUInt32(); PmcIntrEn = r.ReadUInt32(); PmcEnable = r.ReadUInt32();
         Bank = r.ReadInt32(); VbeMode = r.ReadInt32();
         _reg.Clear();
         int n = r.ReadInt32();
         for (int i = 0; i < n; i++) { uint k = r.ReadUInt32(); _reg[k] = r.ReadUInt32(); }
+        if (ver >= 3) LoadFifo(r); else ResetFifo();
     }
 }

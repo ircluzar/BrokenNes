@@ -100,6 +100,14 @@ public sealed partial class PcMachine : IX86Bus
             if (Nv != null)
             {
                 Nv.SetIrq = on => { int irq = Pci!.Isa.Cfg[0x60]; if (irq < 16) Pic.SetIrq(irq, on ? 1 : 0); };
+                if (Environment.GetEnvironmentVariable("X86_NVLOG") is string nvl and not "")
+                {
+                    var lw = new System.IO.StreamWriter(nvl) { AutoFlush = true }; long nlog = 0;
+                    Nv.MethodLog = (ch, sc, cl, mt, d) => { if (nlog++ < 300_000) lw.WriteLine($"{Vga.FrameCount} M ch{ch} s{sc} c{cl:X3} {mt:X4} {d:X8}"); };
+                    Nv.Log = (o, v, sz, wr) => { if (nlog++ < 300_000) lw.WriteLine($"{Vga.FrameCount} {(wr ? 'W' : 'R')}{sz} {o:X6} {v:X8} {Cpu.SegSel[1]:X4}:{Cpu.Ip:X8}"); };
+                }
+                Nv.SysRead32 = a => a <= Cpu.MemSize - 4 ? BitConverter.ToUInt32(Cpu.Mem, (int)a) : 0xffffffff;
+                Nv.SysWrite32 = (a, v) => { if (a <= Cpu.MemSize - 4) { BitConverter.TryWriteBytes(Cpu.Mem.AsSpan((int)a), v); Cpu.MemTouched(); } };
                 Nv.RomByte = i => i < 0x8000 && VRom + i < Cpu.MemSize ? Cpu.Mem[VRom + i] : (byte)0xff;
             }
         }
