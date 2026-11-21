@@ -62,7 +62,7 @@ Express=1
 InstallDir="C:\\WINDOWS"
 InstallType=0
 EBD=0
-ShowEula={0 if a.accept_eula else 1}
+
 ChangeDir=0
 OptionalComponents=1
 Network=0
@@ -80,7 +80,7 @@ ProductKey="{key}"
 
 [NameAndOrg]
 Name="nano98"
-Org=""
+Org="nano98"
 Display=0
 
 [OptionalComponents]
@@ -97,7 +97,21 @@ Display=0
 "Outlook Express"=0
 "Windows Scripting Host"=0
 """
-if not a.accept_eula: print('NOTE: --accept-eula not given: ShowEula=1, Setup will stop on the licence page')
+# ---- stage 2 steps (x86boot --stepsfile; frame counts measured 2026-11-21 on win98-p166-nano, deterministic) ----
+NL = chr(92) + 'n'   # x86boot's Enter escape
+steps = ['Enter your choice=>2' + NL,                    # CD menu: boot from CD (the compilation's 98 boot disk starts the CD's Setup)
+         'To continue with Setup, press ENTER=>{f3}',    # quit that Setup (it would install the first-edition files from D:)
+         '@200=>{f3}',
+         '@300=>C:\WIN98\SETUP.EXE C:\WIN98\MSBATCH.INF /IS' + NL,   # SE Setup from C: with the answer file
+         '@24100=>' + NL]                                # after the first restart: User Information page -> Next
+if a.accept_eula:
+    steps += ['@800=>{alt+a}', '@60=>' + NL,           # Licence Agreement: "I accept" (user approved the Win98 SE licence 2026-11-21)
+              '@600=>' + NL,                             # Product Key (filled from MSBATCH.INF) -> Next
+              '@800=>' + NL]                             # Start Wizard -> Finish: hardware setup + restarts follow
+else:
+    steps += ['@800=>']                                  # stop on the licence page
+open(os.path.join(a.work, 'stage2.steps'), 'w').write('\n'.join(steps) + '\n')
+print('stage 2: x86boot --machine win98-p166-nano --hdd hd_setup.img --cd ISO --bootorder CH --frames 1 --stepsfile stage2.steps' + ('' if a.accept_eula else '  (stops at the licence page: no --accept-eula)'))
 
 # ---- disk: MBR + FAT32 partition ----
 from pyfatfs.PyFat import PyFat
