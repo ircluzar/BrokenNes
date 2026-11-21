@@ -96,7 +96,7 @@ public sealed partial class PcMachine : IX86Bus
             if (config.Voodoo) Voodoo = new Voodoo1();
             Pci = new PciBus(this);
         }
-        if (config.Bus == PcBus.Pci430TX)
+        if (config.Bus == PcBus.Pci430TX && !config.NoFloppy)
             Fdc = new Fdc82077(n => Floppy[n], Dma[2], on => Pic.SetIrq(6, on ? 1 : 0), () => (long)((Int128)Clock * 1_000_000 / InstructionsPerSecond));
         Pic.Raise = () => Cpu.RaiseIrq();
         RegisterTraps();
@@ -337,7 +337,7 @@ public sealed partial class PcMachine : IX86Bus
 
     private long _lastFrame = -1;
     /// <summary>Instructions per batch between device updates (an interrupt waits at most this long).</summary>
-    public int Batch = int.TryParse(Environment.GetEnvironmentVariable("X86_BATCH"), out int xb) ? xb : 256;   // (X86_BATCH: an experiment knob)
+    public int Batch = int.TryParse(Environment.GetEnvironmentVariable("X86_BATCH"), out int xb) ? xb : 1024;   // (X86_BATCH; 256 before 2026-11-21: suite geomean -5.4% at 1024 - device polling + Step entry per batch; interrupts wait at most ~7 us of guest time)
 
     /// <summary>Runs until the VGA starts its next frame (vertical retrace), renders the picture. False when the machine has stopped.</summary>
     public bool RunFrame()

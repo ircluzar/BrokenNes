@@ -26,18 +26,22 @@ public sealed record PcConfig
     public PcBus Bus { get; init; } = PcBus.Isa;
     /// <summary>A 3dfx Voodoo Graphics (Voodoo 1) PCI add-in card beside the 2D card (PCI board only; off by default). Config block version 3.</summary>
     public bool Voodoo { get; init; }
+    /// <summary>No floppy controller and no drive (CMOS 10h = 0): the nano98 game seat (floppy games belong to the DOS path). Config block version 4.</summary>
+    public bool NoFloppy { get; init; }
 
     public static readonly PcConfig Default = new();
     public static readonly PcConfig Dos386 = new() { CpuGen = 3 };
     public static readonly PcConfig Dos486 = new() { CpuGen = 4, MemoryMB = 16, Storage = PcStorage.Ide };
     public static readonly PcConfig Win98 = new() { CpuGen = 5, MemoryMB = 64, Storage = PcStorage.Ide, BootOrder = "CHF", Bus = PcBus.Pci430TX };
     public static readonly PcConfig Win98Voodoo = Win98 with { Voodoo = true };
+    public static readonly PcConfig Win98Nano = Win98 with { NoFloppy = true, BootOrder = "CH" };
 
     public bool IsDefault => this == Default;
 
     public static PcConfig Preset(string name) => name.ToUpperInvariant() switch
     {
-        "DEFAULT" => Default, "DOS-386" => Dos386, "DOS-486" => Dos486, "WIN98-P166" or "WIN98" => Win98, "WIN98-P166-VOODOO" => Win98Voodoo, "WIN98-P166-WIDE" => Win98,
+        "DEFAULT" => Default, "DOS-386" => Dos386, "DOS-486" => Dos486, "WIN98-P166" or "WIN98" => Win98, "WIN98-P166-VOODOO" => Win98Voodoo, "WIN98-P166-NANO" => Win98Nano, "WIN98-P166-VOODOO-NANO" => Win98Voodoo with { NoFloppy = true, BootOrder = "CH" },
+        "WIN98-P166-WIDE" => Win98, "WIN98-P166-WIDE-NANO" => Win98Nano,
         _ => throw new ArgumentException($"no x86 machine preset '{name}' (DEFAULT, DOS-386, DOS-486, WIN98-P166)"),
     };
 
@@ -52,21 +56,23 @@ public sealed record PcConfig
     // version 1 (no bus field) is still written for an ISA board, so those states stay byte for byte what they were
     public void Write(BinaryWriter w)
     {
-        w.Write(Voodoo ? 3 : Bus == PcBus.Isa ? 1 : 2); w.Write(CpuGen); w.Write(MemoryMB); w.Write((int)Storage); w.Write(BootOrder);
+        w.Write(NoFloppy ? 4 : Voodoo ? 3 : Bus == PcBus.Isa ? 1 : 2); w.Write(CpuGen); w.Write(MemoryMB); w.Write((int)Storage); w.Write(BootOrder);
         if (Bus != PcBus.Isa) w.Write((int)Bus);
-        if (Voodoo) w.Write(1);   // version 3: the 3D card
+        if (Voodoo || NoFloppy) w.Write(Voodoo ? 1 : 0);   // version 3: the 3D card
+        if (NoFloppy) w.Write(1);   // version 4: no floppy controller
     }
     public static PcConfig Read(BinaryReader r)
     {
         int v = r.ReadInt32();
-        if (v is not (1 or 2 or 3)) throw new InvalidDataException($"x86 machine config block version {v} is not known");
+        if (v is not (1 or 2 or 3 or 4)) throw new InvalidDataException($"x86 machine config block version {v} is not known");
         var c = new PcConfig { CpuGen = r.ReadInt32(), MemoryMB = r.ReadInt32(), Storage = (PcStorage)r.ReadInt32(), BootOrder = r.ReadString() };
         if (v >= 2) c = c with { Bus = (PcBus)r.ReadInt32() };
         if (v >= 3) c = c with { Voodoo = r.ReadInt32() != 0 };
+        if (v >= 4) c = c with { NoFloppy = r.ReadInt32() != 0 };
         return c;
     }
 
-    public override string ToString() => $"{(CpuGen == 3 ? "386" : CpuGen == 4 ? "486" : "586")}, {MemoryMB} MB, {(Storage == PcStorage.Ide ? "IDE" : "BIOS disks")}, boot {BootOrder}{(Bus == PcBus.Pci430TX ? ", PCI 430TX" : "")}{(Voodoo ? ", Voodoo" : "")}";
+    public override string ToString() => $"{(CpuGen == 3 ? "386" : CpuGen == 4 ? "486" : "586")}, {MemoryMB} MB, {(Storage == PcStorage.Ide ? "IDE" : "BIOS disks")}, boot {BootOrder}{(Bus == PcBus.Pci430TX ? ", PCI 430TX" : "")}{(Voodoo ? ", Voodoo" : "")}{(NoFloppy ? ", no floppy" : "")}";
 }
 
 /// <summary>A whole machine the app offers (the desktop's "x86 machine" menu): the board config, the CPU model and the video card.</summary>
@@ -83,7 +89,10 @@ public sealed record PcMachinePreset(string Key, string Label, PcConfig Config, 
         new("dos-486", "DOS 486DX2-66, VGA, IDE", PcConfig.Dos486, CpuModel.I486DX2, PcVideo.Vga),
         new("win98-p166", "Win98 Pentium MMX 166, S3 Trio64, PCI", PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.S3Trio64),
         new("win98-p166-wide", "Win98 Pentium MMX 166, VirtualBox VGA (widescreen, boxv9x), PCI", PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.VBoxVga),
+        new("win98-p166-wide-nano", "Win98 Pentium MMX 166, VirtualBox VGA (widescreen, boxv9x), PCI, no floppy", PcConfig.Win98Nano, CpuModel.PentiumMmx, PcVideo.VBoxVga),
         new("win98-p166-voodoo", "Win98 Pentium MMX 166, S3 Trio64 + 3dfx Voodoo, PCI", PcConfig.Win98Voodoo, CpuModel.PentiumMmx, PcVideo.S3Trio64),
+        new("win98-p166-nano", "nano98 seat: Win98 Pentium MMX 166, S3 Trio64, PCI, no floppy", PcConfig.Win98Nano, CpuModel.PentiumMmx, PcVideo.S3Trio64),
+        new("win98-p166-voodoo-nano", "nano98 seat: Win98 Pentium MMX 166, S3 Trio64 + 3dfx Voodoo, PCI, no floppy", PcConfig.Win98Voodoo with { NoFloppy = true, BootOrder = "CH" }, CpuModel.PentiumMmx, PcVideo.S3Trio64),
     };
 
     /// <summary>The preset for a key (case-insensitive); an unknown or empty key is the classic machine.</summary>

@@ -82,8 +82,8 @@ internal static class X86BootCli
         if (Arg(args, "--wav") != null) _wav = new System.IO.MemoryStream();
         if (Arg(args, "--cdwav") != null) _cdWav = new System.IO.MemoryStream();
         if (Arg(args, "--apu") is string apu && !PcSound.Apply(m, apu)) { Console.WriteLine($"x86boot: no sound card {apu}"); return 1; }
-        if (Arg(args, "--hdd") is string h) m.Hdd[0] = new DiskImage(File.ReadAllBytes(h), false);
-        if (Arg(args, "--hdd2") is string h2) m.Hdd[1] = new DiskImage(File.ReadAllBytes(h2), false);
+        if (Arg(args, "--hdd") is string h) m.Hdd[0] = new DiskImage(DiskImage.ReadImageFile(h), false);
+        if (Arg(args, "--hdd2") is string h2) m.Hdd[1] = new DiskImage(DiskImage.ReadImageFile(h2), false);
         if (Arg(args, "--cd") is string cdp) { m.Cd = CdImage.Open(cdp); Console.WriteLine(m.Cd); }
         if (Arg(args, "--floppy") is string f) m.Floppy[0] = new DiskImage(File.ReadAllBytes(f), true);
         int frames = int.Parse(Arg(args, "--frames") ?? "3000");
@@ -94,7 +94,7 @@ internal static class X86BootCli
         var sw = Stopwatch.StartNew();
         m.PowerOn();
         // --loadstate: carry on from a --savestate of the same machine (its disks come from the state; the CD stays the one given)
-        if (Arg(args, "--loadstate") is string ls) { m.LoadState(File.ReadAllBytes(ls)); if (_allocs != null) lock (_allocs.ByType) _allocs.ByType.Clear();   /* (count the run, not the load) */ if (args.Contains("--cdchanged")) m.Ata?.Secondary.MediaChanged(0); if (Arg(args, "--floppy") is string lf) m.Floppy[0] = new DiskImage(File.ReadAllBytes(lf), true); }   // (a floppy inserted into a loaded state)   // --cdchanged: the disc was swapped since the state was saved (UNIT ATTENTION)
+        if (Arg(args, "--loadstate") is string ls) { var lsw = System.Diagnostics.Stopwatch.StartNew(); var lsb = File.ReadAllBytes(ls); double lsr = lsw.Elapsed.TotalMilliseconds; m.LoadState(lsb); Console.WriteLine($"x86boot: loadstate {lsb.Length / 1024 / 1024} MB: read {lsr:F0} ms + load {lsw.Elapsed.TotalMilliseconds - lsr:F0} ms"); if (_allocs != null) lock (_allocs.ByType) _allocs.ByType.Clear();   /* (count the run, not the load) */ if (args.Contains("--cdchanged")) m.Ata?.Secondary.MediaChanged(0); if (Arg(args, "--floppy") is string lf) m.Floppy[0] = new DiskImage(File.ReadAllBytes(lf), true); }   // (a floppy inserted into a loaded state)   // --cdchanged: the disc was swapped since the state was saved (UNIT ATTENTION)
         // --net: plug the network card into the built-in NAT (DHCP, DNS, the HTTPS bridge); off by default
         PcNat? nat = null;
         if (Arg(args, "--niclog") is string nl && m.Nic != null)
@@ -213,12 +213,19 @@ internal static class X86BootCli
         int n = 0;
         foreach (var (sf, sp) in shotAt) { n += RunUntil(m, null, sf - n); X86Shots.SavePng(m.Vga, sp); Console.WriteLine($"x86boot: frame {n} at {sw.Elapsed.TotalSeconds:F1} s, cycle {m.Cpu.Cycle}"); }
         var hot = new Dictionary<string, int>();
-        bool hotVm = args.Contains("--hotvm"), sampling = args.Contains("--hot") || hotVm;
+        bool hotVm = args.Contains("--hotvm"), hotMod = args.Contains("--hotmod"), sampling = args.Contains("--hot") || hotVm || hotMod;
+        var hotLin = new Dictionary<uint, int>();   // --hotmod: flat 32-bit samples by 64 KB page of the linear address (named by the PE image holding it at the end)
         var sampler = sampling ? new System.Threading.Thread(() =>
         {
             while (sampling)
             {
                 System.Threading.Thread.Sleep(1);
+                if (hotMod)
+                {
+                    string mk = m.Cpu.Halt ? "idle (HLT)" : (m.Cpu.Flags & 0x20000) != 0 ? "V86" : (m.Cpu.Cr0 & 1) == 0 ? "real mode" : m.Cpu.Code16 ? $"pm16 CS={m.Cpu.SegSel[1]:X4}" : "";
+                    lock (hot) { if (mk != "") hot[mk] = hot.GetValueOrDefault(mk) + 1; else { uint pg = (m.Cpu.SegBase[1] + m.Cpu.Ip) & 0xffff0000; hotLin[pg] = hotLin.GetValueOrDefault(pg) + 1; } }
+                    continue;
+                }
                 if (hotVm && (m.Cpu.Flags & 0x20000) == 0) continue;   // --hotvm: V86 samples only (what a DOS box is doing)
                 string k = $"{m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip & (hotVm ? ~0u : ~0x3fu):X8} vm{(m.Cpu.Flags >> 17) & 1} pe{m.Cpu.Cr0 & 1}";
                 lock (hot) hot[k] = hot.GetValueOrDefault(k) + 1;
@@ -245,9 +252,11 @@ internal static class X86BootCli
                 }
             }
         }
+        long v86a = m.Cpu.V86Enters; int n0 = n; var irqa = (long[])m.IrqCount.Clone(); var swa = sw.Elapsed;
         n += RunUntil(m, until, frames - n);
         sampling = false;
-        if (sampler != null) foreach (var kv in hot.OrderByDescending(x => x.Value).Take(30)) Console.WriteLine($"  hot {kv.Key} {kv.Value}");
+        if (hotMod) HotModReport(m, hot, hotLin, n - n0, m.Cpu.V86Enters - v86a, irqa, sw.Elapsed - swa);
+        else if (sampler != null) foreach (var kv in hot.OrderByDescending(x => x.Value).Take(30)) Console.WriteLine($"  hot {kv.Key} {kv.Value}");
         bool found = until == null || Screen(m).Contains(until) || m.Teletype.ToString().Contains(until);
         Console.WriteLine($"x86boot: {n} frames ({n / 70.0:F1} s machine time) in {sw.Elapsed.TotalSeconds:F1} s, {(m.Cpu.Cycle / Math.Max(0.001, sw.Elapsed.TotalSeconds)) / 1e6:F1} M instr/s{(m.Stopped != null ? ", STOPPED: " + m.Stopped : "")}");
         if (until != null) Console.WriteLine(found ? $"x86boot: found \"{until}\"" : $"x86boot: \"{until}\" NOT found");
@@ -630,7 +639,7 @@ internal static class X86BootCli
                 if (tok.StartsWith("click:")) { var mv = tok[6..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), 0); Frame(m); Frame(m); m.Kbc.MouseInput(0, 0, 1); Frame(m); Frame(m); m.Kbc.MouseInput(0, 0, 0); Frame(m); Frame(m); continue; }   // {click:dx,dy}: move then left click
                 if (tok.StartsWith("save:")) { File.WriteAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5), m.SaveState()); _wavMark = _wav?.Length ?? 0; continue; }   // {save:PATH}: a savestate right here (the run goes on; --wav also writes the sound from here on as FILE.after.wav)
                 if (tok.StartsWith("cd:")) { var cd = CdImage.Open(text.Substring(ci - tok.Length + 3, tok.Length - 3)); m.Cd = cd; if (m.Ata != null) { m.Ata.Secondary.Cd[0] = cd; m.Ata.Secondary.MediaChanged(0); } continue; }   // {cd:PATH}: change the disc (the drive reports the media change)
-                if (tok.StartsWith("load:")) { m.LoadState(File.ReadAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5))); continue; }   // {load:PATH}: load a savestate right here, in this process (the run goes on from it)
+                if (tok.StartsWith("load:")) { var lw = System.Diagnostics.Stopwatch.StartNew(); m.LoadState(File.ReadAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5))); Console.WriteLine($"x86boot: {{load}} (warm, same process) {lw.Elapsed.TotalMilliseconds:F0} ms"); continue; }   // {load:PATH}: load a savestate right here, in this process (the run goes on from it)
                 if (tok.StartsWith("wait:")) { int wn = int.Parse(tok[5..]); for (int q = 0; q < wn; q++) Frame(m); continue; }
                 if (tok.StartsWith("typefile:")) { TypeText(m, File.ReadAllText(tok[9..]).Trim()); continue; }   // {typefile:PATH}: type a file's text (a key kept out of command lines and logs)
                 var parts = tok.Split('+'); var mods = new List<byte[]>();
@@ -674,6 +683,34 @@ internal static class X86BootCli
             _ when k.Length == 1 && Keys.TryGetValue(k[0], out var kk) => new[] { kk.code },
             _ => throw new ArgumentException("key token " + k),
         };
+    }
+
+    /// <summary>--hotmod report: samples by guest module (PE image name found by walking down from the 64 KB page to an MZ/PE header), plus V86 entries and IRQ vectors per frame.</summary>
+    static void HotModReport(PcMachine m, Dictionary<string, int> hot, Dictionary<uint, int> hotLin, int frames, long v86, long[] irqa, TimeSpan el)
+    {
+        uint R32(uint la) { uint p = LinPhys(m, la); return p == 0xffffffff ? 0xffffffff : m.Phys32(p); }
+        string ModName(uint pg)
+        {
+            for (uint b = pg, k = 0; k < 256 && b >= 0x10000; k++, b -= 0x10000)
+            {
+                uint mz = R32(b); if (mz == 0xffffffff || (mz & 0xffff) != 0x5a4d) continue;
+                uint pe = R32(b + 0x3c); if (pe > 0x1000 || R32(b + pe) != 0x4550) continue;
+                uint size = R32(b + pe + 0x50); if (pg >= b + size) return "?";
+                uint exp = R32(b + pe + 0x78); string nm = "";
+                if (exp != 0 && exp != 0xffffffff) { uint na = R32(b + exp + 12); if (na != 0xffffffff) for (int i = 0; i < 32; i++) { uint p = LinPhys(m, b + na + (uint)i); if (p == 0xffffffff) break; byte c = m.Phys8(p); if (c == 0) break; nm += (char)c; } }
+                return (nm == "" ? "PE" : nm) + $"@{b:X8}";
+            }
+            return pg >= 0xc0000000 ? "ring0 (VMM/VxDs)" : "?";
+        }
+        var all = new Dictionary<string, int>(hot);
+        foreach (var kv in hotLin) { string k = kv.Key >= 0xc0000000 ? "ring0 (VMM/VxDs)" : ModName(kv.Key); if (k == "?") k = $"unknown {kv.Key:X8}"; all[k] = all.GetValueOrDefault(k) + kv.Value; }
+        int tot = Math.Max(1, all.Values.Sum());
+        Console.WriteLine($"hotmod: {frames} frames, {el.TotalSeconds:F1} s host, {tot} samples");
+        foreach (var kv in all.OrderByDescending(x => x.Value).Take(40)) Console.WriteLine($"  mod {kv.Value * 100.0 / tot,5:F1}%  {kv.Key}");
+        foreach (var kv in hotLin.Where(x => x.Key >= 0xc0000000).OrderByDescending(x => x.Value).Take(12)) Console.WriteLine($"  ring0 page {kv.Key:X8} {kv.Value * 100.0 / tot:F1}%");
+        double f = Math.Max(1, frames);
+        Console.WriteLine($"  V86 entries {v86} = {v86 / f:F1}/frame");
+        Console.WriteLine("  irq vectors/frame: " + string.Join(" ", Enumerable.Range(0, 256).Where(i => m.IrqCount[i] - irqa[i] > 0).Select(i => $"{i:X2}h={(m.IrqCount[i] - irqa[i]) / f:F2}")));
     }
 
     /// <summary>A linear address through the page tables (when paging is on), for the tools: 0xffffffff when not present.</summary>

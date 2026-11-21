@@ -438,6 +438,7 @@ public sealed partial class I386
         if (isiret && (newflags & VM) != 0)
         {
             // return to virtual-8086 mode
+            V86Enters++;   // (profiling only: not in the savestate)
             if (Cpl != 0) Abort("iret to v86 from cpl != 0");
             if (opsz16) Abort("16-bit iret to v86");
             var mes = new OptAddr(); var mds = new OptAddr(); var mfs = new OptAddr(); var mgs = new OptAddr();

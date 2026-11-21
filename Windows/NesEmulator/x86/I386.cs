@@ -935,6 +935,7 @@ public sealed partial class I386
     }
 
     /// <summary>tiny386 cpui386_step: take a pending interrupt, then run up to <paramref name="stepcount"/> instructions; a fault is delivered through the IDT/IVT.</summary>
+    public long V86Enters;                           // IRETs into V86 mode (nano98 profiling; not saved)
     public long TicksExec1;
     public void Step(int stepcount)
     {
