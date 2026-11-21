@@ -300,7 +300,9 @@ public sealed partial class NvGeForce : IPciMmio
             case 0x600800: return PcrtcStart;
         }
         if (a is >= 0x001800 and < 0x001900) return Pci?.Read32((int)(a - 0x001800)) ?? 0;   // PBUS: the PCI configuration mirror
-        if (a is >= 0x800000 and < 0x1000000) return UserRead(a);                             // USER: the channels' submission areas
+        if (a is >= 0x800000 and < 0x1000000) return UserRead(a);
+        if (a is >= 0x003800 and < 0x003900 && (a & 4) != 0 && Reg(0x003ff0) != 0) { _reg[0x003ff0] = Reg(0x003ff0) - 1; }   // the ISR read an entry's data: taken
+        if (a is >= 0x003800 and < 0x003a00 && (a & 4) == 0 && TracePut == 0x80000000u + (Reg(a) & 0x1ffc)) PutHit = true;   // (--nvtrace: the ISR takes that method)                             // USER: the channels' submission areas
         return Reg(a);
     }
 
@@ -325,8 +327,18 @@ public sealed partial class NvGeForce : IPciMmio
         }
         if (a is >= 0x001800 and < 0x001900) { if (Pci != null) for (int i = 0; i < 4; i++) Pci.WriteByte((int)(a - 0x001800) + i, (byte)(v >> (8 * i))); return; }
         if (a is >= 0x800000 and < 0x1000000) { UserWrite(a, v); return; }
-        if (a is 0x001100 or 0x002100 or 0x009100 or 0x400100) { _reg[a] = Reg(a) & ~v; UpdateIrq(); if (a == 0x002100 && (v & 1) != 0) { _reg[0x003270] = Reg(0x003210); _reg[0x003250] = Reg(0x003250) & ~0x1110u; RunPusher(); } return; }   // (the NVIDIA driver's ISR does not advance CACHE1 GET: clearing CACHE_ERROR = the method was taken)   // interrupt status: write 1 to clear
-        if (a == 0x003250) v = (v & 1) | (Reg(a) & 0x1110);   // PULL0: bits 4/8/12 are the puller's status (hash failed / software device), read-only
+        if (a is 0x001100 or 0x002100 or 0x009100 or 0x400100)   // interrupt status: write 1 to clear
+        {
+            _reg[a] = Reg(a) & ~v; UpdateIrq();
+            if (a == 0x002100 && (v & 1) != 0)
+            {
+                if (Reg(0x003ff0) != 0) { _reg[a] |= 1; UpdateIrq(); }   // a software method still in CACHE1: the puller raises CACHE_ERROR again
+                else { _reg[0x003250] = Reg(0x003250) & ~0x1110u; RunPusher(); }
+            }   // (the ISR takes a method by moving CACHE1 GET; the pusher resumes once GET == PUT)
+            return;
+        }
+        if (a == 0x003250) v = (v & 1) | (Reg(a) & 0x1110);
+        if (a is 0x003210 or 0x003270) v &= 0x7c;   // CACHE1 PUT / GET: 32 entries   // PULL0: bits 4/8/12 are the puller's status (hash failed / software device), read-only
         _reg[a] = v;
         if (a is 0x003240 or 0x003220 or 0x003200 or 0x003270 or 0x002500) RunPusher();
     }

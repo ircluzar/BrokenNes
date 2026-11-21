@@ -62,6 +62,7 @@ public sealed partial class NvGeForce
             case 0x61 or 0x65 or 0x21: Ifc(inst, mthd, data); break;
             case 0x60 or 0x64: Index(inst, mthd, data); break;
             case 0x56 or 0x96 or 0x98 or 0x99: Celsius(inst, mthd, data); break;
+            case 0x5e or 0x1e: if (mthd is >= 0x400 and < 0x480 && (mthd & 4) != 0) SolidRect(inst, mthd, data); break;
         }
     }
 
@@ -246,6 +247,18 @@ public sealed partial class NvGeForce
             if (y >= h) return;
             if (((data >> (b ^ 7)) & 1) != 0) Draw(inst, d, px + x, py + y, col, rop, clip);
         }
+    }
+
+    // 0x5E solid rectangle (D3D Clear): colour 0x304, point 0x400 + 8i (y << 16 | x), size 0x404 + 8i (h << 16 | w)
+    private void SolidRect(uint inst, int mthd, uint data)
+    {
+        var d = SurfOf(inst, false);
+        if (!d.Ok) return;
+        uint pt = G(inst, mthd - 4), col = G(inst, 0x304);
+        int x = (short)(pt & 0xffff), y = (short)(pt >> 16), w = (int)(data & 0xffff), h = (int)(data >> 16);
+        int rop = Rop(inst); var clip = ClipOf(inst);
+        OpLog?.Invoke($"solid {x},{y} {w}x{h} col {col:X} surf {d.Base:X}/{d.Pitch}/{d.Bpp}");
+        for (int yy = y; yy < y + h; yy++) for (int xx = x; xx < x + w; xx++) Draw(inst, d, xx, yy, col, rop, clip);
     }
 
     // ================= 0x5F blit =================

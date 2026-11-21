@@ -33,7 +33,9 @@ public sealed partial class NvGeForce
     private int Sc(int subc) => ActiveChid * 8 + subc;
 
     /// <summary>CACHE1 holds a method the driver must run (a software object's): the pusher waits until its ISR took it (GET == PUT).</summary>
-    private bool Stalled => (Reg(0x002100) & 1) != 0;   // (CACHE1 GET/PUT are the driver's to move while it holds the channel)
+    // software methods queued in CACHE1 and not yet read by the driver's ISR (its DATA register read = taken); kept in the register store (3FF0h) so it is in the state
+    private uint SwPending { get => Reg(0x003ff0); set => _reg[0x003ff0] = value; }
+    private bool Stalled => (Reg(0x002100) & 1) != 0 || SwPending != 0;   // (CACHE1 GET/PUT are the driver's to move while it holds the channel)
 
     public uint Ramin32(uint off) => off < 0x100000 - 3 ? BitConverter.ToUInt32(_v.Ram, RaminBase + (int)off) : 0;
     public void RaminW32(uint off, uint v) { if (off < 0x100000 - 3) BitConverter.TryWriteBytes(_v.Ram.AsSpan(RaminBase + (int)off), v); }
@@ -187,11 +189,11 @@ public sealed partial class NvGeForce
     /// stops until the driver's ISR has taken it (it advances CACHE1 GET, clears the interrupt and turns pulling back on).</summary>
     private void SoftwareMethod(int subc, int mthd, uint data)
     {
-        if (TracePut == 0x80000000u + (uint)mthd) PutHit = true;   // (--nvtrace 8000xxxx: stop at this software method)
-        uint put = Reg(0x003210) & 0x1fc;
+        uint put = Reg(0x003210) & 0x7c;   // (CACHE1 has 32 entries: the ISR wraps GET at 0x80)
         _reg[0x003800 + put * 2] = (uint)(subc << 13) | (uint)mthd;
         _reg[0x003804 + put * 2] = data;
-        _reg[0x003210] = (put + 4) & 0x1fc;
+        _reg[0x003210] = (put + 4) & 0x7c;
+        SwPending++;
         _reg[0x002100] = Reg(0x002100) | 1;      // CACHE_ERROR
         _reg[0x003250] = Reg(0x003250) | 0x100;  // PULL0: hash failed (no engine took it)
         UpdateIrq();
