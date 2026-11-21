@@ -96,7 +96,7 @@ public sealed partial class PcMachine : IX86Bus
             if (config.Voodoo) Voodoo = new Voodoo1();
             Pci = new PciBus(this);
         }
-        if (config.Bus == PcBus.Pci430TX)
+        if (config.Bus == PcBus.Pci430TX && !config.NoFloppy)
             Fdc = new Fdc82077(n => Floppy[n], Dma[2], on => Pic.SetIrq(6, on ? 1 : 0), () => (long)((Int128)Clock * 1_000_000 / InstructionsPerSecond));
         Pic.Raise = () => Cpu.RaiseIrq();
         RegisterTraps();
