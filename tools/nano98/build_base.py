@@ -11,7 +11,7 @@ import argparse, io, os, struct, sys, zipfile
 ap = argparse.ArgumentParser()
 ap.add_argument('--iso', required=True)
 ap.add_argument('--work', required=True)
-ap.add_argument('--size-mb', type=int, default=2048)
+ap.add_argument('--size-mb', type=int, default=2000)   # (x86boot reads the disk with File.ReadAllBytes: < 2 GiB)
 ap.add_argument('--keyfile', default='T:/BrokenDev/Archive/win98_m7_c/productkey.txt')
 ap.add_argument('--accept-eula', action='store_true')
 ap.add_argument('--zip', default='/WIN98SE.ZIP', help='the SE files inside the ISO (the user\'s disc is a 95/98/98SE/ME compilation)')
