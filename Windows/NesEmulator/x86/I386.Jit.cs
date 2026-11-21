@@ -281,6 +281,22 @@ public sealed partial class I386
     private int _jsOk, _jsRd;
     private uint _jsGen = 0xffffffffu, _jsMode = 0xffffffffu;   // JSegLoad's memo key (not saved: SegGen moves on at every state load)
     private static readonly bool NoSegMemo = Environment.GetEnvironmentVariable("X86_NOSEGMEMO") != null;
+    private static readonly bool FlagDse = Environment.GetEnvironmentVariable("X86_FLAGDSE") != null;
+    /// <summary>Flag DSE: the lazy-flag fields a register-only ALU instruction writes inline (Src1 1, Src2 2, Dst 4, Op 8, Mask 16), 0 for anything else
+    /// (a memory operand, ADC / SBB, a helper: it may fault, exit or read the flags before writing them).</summary>
+    private static int DseWrites(DEntry e)
+    {
+        int aop;
+        switch (e.Kind)
+        {
+            case DK_ALUAI: aop = e.Op; break;
+            case DK_ALUEG: case DK_ALUGE: if (e.Mod != 3) return 0; aop = e.Op; break;
+            case DK_GRP1: if (e.Mod != 3) return 0; aop = e.Reg; break;
+            case DK_TESTEG: case DK_G3TEST: if (e.Mod != 3) return 0; aop = 4; break;
+            default: return 0;
+        }
+        return aop is 0 or 5 or 7 ? 31 : aop is 1 or 4 or 6 ? 4 | 8 | 16 : 0;
+    }
     private static readonly bool NoSegInl = Environment.GetEnvironmentVariable("X86_NOSEGINL") != null;
     private static readonly bool NoSegLoad = Environment.GetEnvironmentVariable("X86_NOSEGLOAD") != null;
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -882,6 +898,10 @@ public sealed partial class I386
         var A = il.DeclareLocal(typeof(uint));
         var B = il.DeclareLocal(typeof(uint));
         var D = il.DeclareLocal(typeof(uint));
+        // dead lazy-flag stores (X86_FLAGDSE, opt-in): the fields (bit 1 Src1, 2 Src2, 4 Dst, 8 Op, 16 Mask) this instruction's flag write leaves
+        // out because the next instruction overwrites them before anything can read them; the values wait in locals for the budget-out exit
+        int dseSkip = 0, dsePend = 0, dseOp = 0; uint dseMaskV = 0;
+        var fsA = il.DeclareLocal(typeof(uint)); var fsB = il.DeclareLocal(typeof(uint)); var fsD = il.DeclareLocal(typeof(uint));
         var V = il.DeclareLocal(typeof(uint));
         var Y = il.DeclareLocal(typeof(int));
         var pax = il.DeclareLocal(typeof(uint));   // paging on: the physical address of `la` (FFFFFFFF: split over two pages)
@@ -1000,14 +1020,22 @@ public sealed partial class I386
             {
                 case 0: case 5: case 7:
                     Ld(A); SextTop(bits); Stl(A); Ld(B); SextTop(bits); Stl(B);
-                    StF(FSrc1, () => Ld(A)); StF(FSrc2, () => Ld(B));
+                {
+                    int sk = dseSkip; dseSkip = 0; int cop = op == 0 ? (int)Cc.ADD : (int)Cc.SUB;
+                    if ((sk & 1) == 0) StF(FSrc1, () => Ld(A)); if ((sk & 2) == 0) StF(FSrc2, () => Ld(B));
                     Ld(A); Ld(B); Op(op == 0 ? OpCodes.Add : OpCodes.Sub); SextTop(bits); Stl(D);
-                    StF(FDst, () => Ld(D)); StF(FOp, () => I4(op == 0 ? (int)Cc.ADD : (int)Cc.SUB)); StF(FMask, () => U4(ALL));
+                    if ((sk & 4) == 0) StF(FDst, () => Ld(D)); if ((sk & 8) == 0) StF(FOp, () => I4(cop)); if ((sk & 16) == 0) StF(FMask, () => U4(ALL));
+                    if (sk != 0) { Ld(A); Stl(fsA); Ld(B); Stl(fsB); Ld(D); Stl(fsD); dsePend = sk; dseOp = cop; dseMaskV = ALL; }
                     break;
+                }
                 case 1: case 4: case 6:
+                {
+                    int sk = dseSkip; dseSkip = 0; int cop = op == 1 ? (int)Cc.OR : op == 4 ? (int)Cc.AND : (int)Cc.XOR;
                     Ld(A); Ld(B); Op(op == 1 ? OpCodes.Or : op == 4 ? OpCodes.And : OpCodes.Xor); SextTop(bits); Stl(D);
-                    StF(FDst, () => Ld(D)); StF(FOp, () => I4(op == 1 ? (int)Cc.OR : op == 4 ? (int)Cc.AND : (int)Cc.XOR)); StF(FMask, () => U4(LOGIC));
+                    if ((sk & 4) == 0) StF(FDst, () => Ld(D)); if ((sk & 8) == 0) StF(FOp, () => I4(cop)); if ((sk & 16) == 0) StF(FMask, () => U4(LOGIC));
+                    if (sk != 0) { Ld(D); Stl(fsD); dsePend = sk; dseOp = cop; dseMaskV = LOGIC; }
                     break;
+                }
                 default:
                     Ld0(); I4(op); I4(bits); Ld(A); Ld(B); Call("JAlu"); Stl(D);
                     break;
@@ -1199,6 +1227,13 @@ public sealed partial class I386
 
         // after instruction k (st already counted down): go on at Ip `next` (on the stack-free action), inside the region when it is the
         // region's address `target` and the step budget allows, else leave with Ip = instruction k, NextIp = next
+        void DseFlush()
+        {
+            int p = dsePend; if (p == 0) return;
+            if ((p & 1) != 0) StF(FSrc1, () => Ld(fsA)); if ((p & 2) != 0) StF(FSrc2, () => Ld(fsB)); if ((p & 4) != 0) StF(FDst, () => Ld(fsD));
+            int o = dseOp; uint m = dseMaskV;
+            if ((p & 8) != 0) StF(FOp, () => I4(o)); if ((p & 16) != 0) StF(FMask, () => U4(m));
+        }
         void Continue(int k, Action next, uint? target, bool fallsInto)
         {
             var leave = il.DefineLabel();
@@ -1215,12 +1250,14 @@ public sealed partial class I386
                     Adj(P[j], Q[j]);
                     il.Emit(OpCodes.Br, go);
                     il.MarkLabel(leave);
+                    DseFlush(); dsePend = 0;
                     LeaveFall(k, tg);
                     il.MarkLabel(go);
                     return;
                 }
             }
             il.MarkLabel(leave);
+            DseFlush(); dsePend = 0;
             if (fallsInto && target is uint ft) LeaveFall(k, ft);
             else { Ld0(); IpAt(pas[k]); next(); LdCyc(); LdSt(); Call("JExitLink"); il.Emit(OpCodes.Ret); }
         }
@@ -1432,6 +1469,8 @@ public sealed partial class I386
                 il.MarkLabel(ok);
             }
 
+            if (dsePend != 0) throw new InvalidOperationException("flag DSE: pending flag stores crossed an instruction");
+            dseSkip = FlagDse && k + 1 < n && pas[k + 1] == pe && !e.Folds ? DseWrites(e) & DseWrites(ins[k + 1]) : 0;
             int op = e.Op;
             bool ends = false;   // the instruction leaves the region itself
             switch (e.Kind)
