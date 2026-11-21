@@ -29,6 +29,22 @@ param(
     [int]      $Seed = 0,
     [string]   $Out
 )
+# the battery is HEAVY (fuzz runners, parallel suite): it holds one C:\BrokenNes-work\heavylock.sh slot for its whole run and waits while
+# none is free (the dev PC rebooted from overload twice). BROKENNES_HEAVYSLOT set = the caller already holds one: no second claim.
+$heavySlot = $null; $heavyTok = $null
+if (-not $env:BROKENNES_HEAVYSLOT) {
+    $lockSh = 'C:/BrokenNes-work/heavylock.sh'
+    if (Test-Path $lockSh) {
+        while ($true) {
+            $c = & sh $lockSh claim "battery.ps1 pid $PID" 2>$null
+            if ($LASTEXITCODE -eq 0 -and "$c" -match '^(slot\d+) (\S+)') { $heavySlot = $Matches[1]; $heavyTok = $Matches[2]; break }
+            Write-Host "battery: all heavy slots taken, waiting..." -ForegroundColor Yellow; Start-Sleep 30
+        }
+        Write-Host "battery: holding heavy $heavySlot" -ForegroundColor DarkGray
+        $env:BROKENNES_HEAVYSLOT = $heavySlot
+    }
+}
+try {
 $ErrorActionPreference = 'Stop'
 $Repo = Split-Path -Parent $PSScriptRoot
 $env:BN_REPO = $Repo   # bscen runs from the scratch build folder: tell it where the repo (and the NES ROM corpus) is
@@ -199,3 +215,6 @@ $md.ToString() | Set-Content -LiteralPath (Join-Path $Out 'report.md') -Encoding
 ([ordered]@{ ok = $allOk; minutes = [Math]::Round($mins, 1); seed = $Seed; groups = $groups } | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath (Join-Path $Out 'report.json') -Encoding UTF8
 Write-Host ''; Write-Host $md.ToString()
 if ($allOk) { exit 0 } else { exit 1 }
+} finally {
+    if ($heavySlot) { & sh C:/BrokenNes-work/heavylock.sh release $heavySlot $heavyTok | Out-Null; Remove-Item Env:BROKENNES_HEAVYSLOT -ErrorAction SilentlyContinue }
+}
