@@ -170,7 +170,7 @@ public static class X86P6Cli
         if (args.Contains("--parity"))
         {
             var interp = RunChild(seeds, ("X86_NOJIT", "1"));
-            var jit = RunChild(seeds, ("X86_JITSYNC", "1"), ("X86_JITHOT", "2"));
+            var jit = RunChild(seeds, ("X86_JITSYNC", "1"), ("X86_JITHOT", "2"), ("X86_JITSTAT", "1"));
             int same = 0;
             for (int i = 0; i < seeds; i++)
             {
@@ -259,7 +259,7 @@ public static class X86P6Cli
         void Mix(ReadOnlySpan<byte> s) { foreach (byte x in s) { h ^= x; h *= 1099511628211UL; } }
         Mix(Save(c)); Mix(c.Mem.AsSpan(0, 0x60000));
         Mix(BitConverter.GetBytes(c.Cycle));
-        return ($"{h:x16}", c.JitRuns);
+        return ($"{h:x16}", c.JitCompiled * 1_000_000L + c.JitRuns);
     }
 
     private static void RunRealLong(I386 cpu, byte[] code)
