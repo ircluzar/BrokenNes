@@ -234,7 +234,7 @@ public sealed partial class I386
             ref var e2 = ref _je[JitIndex(en.Start)];
             if (e2.Used && e2.Code == v) { _jitCur = v; return v.Fn(this, e2.K); }
         }
-        en.Code = null; en.Visits = 0; en.Failed = false; en.Pending = false;
+        en.Code = null; en.Visits = ReVisits; en.Failed = false; en.Pending = false;
         return JIT_DECLINE;
     }
 
@@ -298,6 +298,10 @@ public sealed partial class I386
         }
         return aop is 0 or 5 or 7 ? 31 : aop is 1 or 4 or 6 ? 4 | 8 | 16 : 0;
     }
+    /// <summary>X86_REHOT=N: an address whose compiled code went stale (its bytes changed, or the compile was dropped) was hot: it waits only
+    /// N more visits before it is compiled again (default: counted again from 0, the full JITHOT).</summary>
+    private static readonly int ReHot = int.TryParse(Environment.GetEnvironmentVariable("X86_REHOT"), out int rh) ? rh : -1;
+    private static int ReVisits => ReHot < 0 ? 0 : Math.Max(0, JitHot - ReHot);
     private static readonly bool NoSegInl = Environment.GetEnvironmentVariable("X86_NOSEGINL") != null;
     private static readonly bool NoSegLoad = Environment.GetEnvironmentVariable("X86_NOSEGLOAD") != null;
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -791,7 +795,7 @@ public sealed partial class I386
             {   // the addresses that waited for it: interpreted again, counted again from 0 (a failed start: never again)
                 ref var e = ref _je[JitIndex(pa)];
                 if (!e.Used || e.Start != pa || e.C16 != code.C16 || e.Pg != code.Pg || !e.Pending) continue;
-                e.Pending = false; e.Visits = 0;
+                e.Pending = false; e.Visits = ReVisits;
                 if (code.Fn == null && pa == code.Start) e.Failed = true;
             }
             if (ok) JitInstall(code, key); else JitDropped++;
