@@ -77,6 +77,7 @@ public sealed class PcSession : IConsoleSession
         {
             Seat = seat;
             _m.Command = seat.Command;
+            if (seat.Image2 != null && _m.Ata != null) _m.Hdd[1] = new DiskImage(seat.Image2, false);   // the package's D: (primary slave)
             if (seat.CdPath != null && _m.Cd == null) InsertCd(CdImage.Open(seat.CdPath));
             _m.StatusLine += OnSeatStatus;
         }
