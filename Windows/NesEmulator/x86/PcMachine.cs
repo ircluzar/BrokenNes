@@ -463,7 +463,10 @@ public sealed partial class PcMachine : IX86Bus
     }
 
     /// <summary>The state written to <paramref name="stream"/> (left open): the same bytes as <see cref="SaveState()"/> (the bug capture's state a second reuses one buffer).</summary>
-    public void SaveState(Stream stream)
+    public void SaveState(Stream stream) => SaveState(stream, false);
+
+    /// <summary><paramref name="undo"/>: a copy only this process loads back (LoadState's undo): the disks named by object, not by hash (no wait for a hash).</summary>
+    private void SaveState(Stream stream, bool undo)
     {
         using (var w = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
         {
@@ -520,7 +523,7 @@ public sealed partial class PcMachine : IX86Bus
             foreach (var d in new[] { Floppy[0], Floppy[1], Hdd[0], Hdd[1] })
             {
                 w.Write(d != null);
-                d?.SaveDiff(w);
+                d?.SaveDiff(w, undo);
             }
         }
     }
@@ -529,7 +532,7 @@ public sealed partial class PcMachine : IX86Bus
     public void LoadState(byte[] s)
     {
         if (S3 == null) { LoadStateCore(s); return; }       // the plain VGA: exactly as before
-        var undo = SaveState();
+        var um = new MemoryStream(); SaveState(um, undo: true); var undo = um.ToArray();
         try { LoadStateCore(s); }
         catch { LoadStateCore(undo); throw; }
     }
