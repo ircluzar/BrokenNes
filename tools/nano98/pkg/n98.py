@@ -322,7 +322,13 @@ def launch_cmd(a):
     import seat
     win = lambda p: p.replace('/', chr(92))
     kv = ['run=' + win(L['exe'])]
-    if L.get('args'): kv.append('args=' + L['args'])
+    args = L.get('args', '')
+    if getattr(a, 'preset', None):   # a preset's extra launch args (its video_arg is for the emulator, not the guest)
+        pr = (man.get('presets') or {}).get(a.preset)
+        if pr is None:
+            raise SystemExit(f'package has no preset {a.preset} (has: {", ".join(man.get("presets") or {})})')
+        args = (args + ' ' + pr.get('args', '')).strip()
+    if args: kv.append('args=' + args)
     if L.get('cwd'): kv.append('dir=' + win(L['cwd']))
     kv.append('exit=' + a.exit)
     seat.cmd(a.out, kv)
@@ -338,7 +344,7 @@ def main():
     i = sp.add_parser('info'); i.add_argument('pkg')
     p = sp.add_parser('apply'); p.add_argument('pkg'); p.add_argument('--base', nargs='+', required=True)
     p.add_argument('--out', required=True); p.add_argument('--full', action='store_true'); p.add_argument('--saves')
-    k = sp.add_parser('cmd'); k.add_argument('pkg'); k.add_argument('out'); k.add_argument('--exit', default='poweroff')
+    k = sp.add_parser('cmd'); k.add_argument('pkg'); k.add_argument('out'); k.add_argument('--exit', default='poweroff'); k.add_argument('--preset')
     a = ap.parse_args()
     {'capture': capture, 'info': info, 'apply': apply, 'cmd': launch_cmd}[a.cmd](a)
 

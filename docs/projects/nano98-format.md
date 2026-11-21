@@ -115,3 +115,16 @@ The launch exe is checked at capture: it must be a captured file or exist on the
 
     n98.py info PKG.n98                       # summary
     n98.py cmd PKG.n98 OUT.txt [--exit poweroff|shell|restart]   # seat command for x86boot --n98cmd (needs tools/nano98/seat.py)
+
+## Quake II + desktop resume timing (2026-11-21)
+- Quake II package (`profiles/quake2.json`, local only): seat_base + GeForce 256 NVIDIA 5.32 (Add New Hardware, CD search on nv532.iso, one reboot)
+  + Quake II copied by a seat-command `XCOPY D:\INSTALL\DATA C:\QUAKE2 /S /I` (the seat has no Explorer shell, so Win+R does nothing).
+  Captured with `--keep-reg-noise`: without the Enum/Config keys the applied disk stops at "new hardware, restart?".
+  228 files, 358 MB, SYSTEM.DAT 221 ops. Presets via `n98.py cmd --preset NAME` (adds the preset's guest args; `video_arg` is for the emulator).
+  Proof (fleet, `--n98cmd`): software (`--video s3`, `+set vid_ref soft +set sw_mode 3`) runs the attract demo at 640x480
+  (Releases
+ano98_seat_quake2_package_software.png); geforce (`+set vid_ref gl`) reaches N98 RUN and Quake II initializes, but the
+  GL picture is still garbage (the GeForce rung's open GL bug, not the package).
+- Desktop path (`Workshop --n98seat`, same PcSession as the app), time to N98 RUN, cold / resumed: StarCraft 60.3 s (44 s first apply) / 7.1 s,
+  AoE 24.7 s / 3.5 s, HL Uplink (voodoo-nano) 63.4 s / 2.7 s. Packages that write D: (StarCraft) now get their D base
+  (`BROKENNES_N98_BASE_D`, or the manifest's D image beside the seat base / in BROKENNES_N98_CDS) as the primary slave.

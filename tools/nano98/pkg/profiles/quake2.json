@@ -9,13 +9,13 @@
  },
  "launch": {
   "exe": "C:/QUAKE2/quake2.exe",
-  "args": "+set cddir d:/install/data",
+  "args": "",
   "cwd": "C:/QUAKE2"
  },
- "cd": [{"label": "Quake2", "ref": "quake2.cue", "required": true, "note": "user's own disc rip (BIN/CUE for CD audio); never shipped"}],
+ "cd": [{"label": "Quake2", "ref": "quake2.cue", "required": false, "note": "CD audio only (pak0 is installed); user's own disc rip (BIN/CUE for CD audio); never shipped"}],
  "presets": {
   "geforce": {"video_arg": "--video geforce", "args": "+set vid_ref gl", "renderer": "opengl"},
-  "software": {"video_arg": "--video s3", "args": "+set vid_ref soft", "renderer": "software"}
+  "software": {"video_arg": "--video s3", "args": "+set vid_ref soft +set sw_mode 3", "renderer": "software"}
  },
  "saves": ["C:/QUAKE2/baseq2/save/*", "C:/QUAKE2/baseq2/config.cfg"]
 }
