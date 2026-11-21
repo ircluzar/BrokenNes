@@ -26,6 +26,7 @@ public sealed partial class PcMachine
         new(0x110, 640, 480, 15), new(0x111, 640, 480, 16), new(0x112, 640, 480, 32),
         new(0x113, 800, 600, 15), new(0x114, 800, 600, 16), new(0x115, 800, 600, 32),
         new(0x116, 1024, 768, 15), new(0x117, 1024, 768, 16), new(0x118, 1024, 768, 32),
+        new(0x107, 1280, 1024, 8), new(0x119, 1280, 1024, 15), new(0x11a, 1280, 1024, 16),   // (4 MB: a Trio64 offers 1280x1024 up to 16 bpp)
     };
     private static int BytesPP(int bpp) => (bpp + 7) / 8;
 
