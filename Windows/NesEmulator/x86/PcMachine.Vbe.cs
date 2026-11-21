@@ -184,8 +184,45 @@ public sealed partial class PcMachine
                 VbeOk();
                 break;
             }
+            case 0x15:                                               // VBE/DDC: the monitor's EDID (Windows 98 then installs "Plug and Play Monitor" with its real limits)
+                if (BL == 0x00) { BX = 0x0102; VbeOk(); break; }      // DDC2 supported, ~1 s per block
+                if (BL == 0x01 && DX == 0) { uint b = EsDi; var e = Edid(); for (int i = 0; i < 128; i++) LinW8(b + (uint)i, e[i]); VbeOk(); break; }
+                VbeFail(); break;
             default: VbeFail(); break;                               // 4F0A (protected-mode interface) and later: not offered
         }
+    }
+
+    /// <summary>EDID 1.3 of a period 17" multisync CRT ("BrokenNes 17"): 30-70 kHz, 50-120 Hz, 1280x1024 preferred (60 Hz), the VESA
+    /// established modes up to 1280x1024@75 Hz and standard timings 1152x864@75 / 1280x1024@60. Our own block (no copied monitor data).</summary>
+    public static byte[] Edid()
+    {
+        var e = new byte[128];
+        byte[] hdr = { 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00 }; hdr.CopyTo(e, 0);
+        ushort mfg = (ushort)((('B' - 64) << 10) | (('N' - 64) << 5) | ('S' - 64)); e[8] = (byte)(mfg >> 8); e[9] = (byte)mfg;   // "BNS"
+        e[10] = 0x17; e[11] = 0x00;                       // product 0017h
+        e[16] = 1; e[17] = 1998 - 1990;                   // week 1, 1998
+        e[18] = 1; e[19] = 3;                             // EDID 1.3
+        e[20] = 0x0e;                                     // analog, 0.7/0.3 V, separate syncs
+        e[21] = 32; e[22] = 24;                           // 32 x 24 cm (17")
+        e[23] = 120;                                      // gamma 2.20
+        e[24] = 0xea;                                     // DPMS standby/suspend/off, RGB colour, preferred timing in block 1
+        byte[] chroma = { 0xee, 0x95, 0xa3, 0x54, 0x4c, 0x99, 0x26, 0x0f, 0x50, 0x54 }; chroma.CopyTo(e, 25);   // typical sRGB-like phosphors
+        e[35] = 0xff; e[36] = 0xef; e[37] = 0x80;         // established: 720x400@70/88, 640x480@60/67/72/75, 800x600@56/60/72/75, 832x624, 1024x768@60/70/75, 1280x1024@75
+        // standard timings: 1152x864@75, 1280x1024@60, unused = 01 01
+        e[38] = (byte)(1152 / 8 - 31); e[39] = 0x40 | (75 - 60);
+        e[40] = (byte)(1280 / 8 - 31); e[41] = 0x80 | (60 - 60);
+        for (int i = 42; i < 54; i += 2) { e[i] = 1; e[i + 1] = 1; }
+        // detailed timing: 1280x1024@60 Hz (VESA DMT), 108 MHz
+        byte[] dt = { 0x30, 0x2a, 0x00, 0x98, 0x51, 0x00, 0x2a, 0x40, 0x30, 0x70, 0x13, 0x00, 0x40, 0xf0, 0x10, 0x00, 0x00, 0x1e };
+        dt.CopyTo(e, 54);
+        // range limits: 50-120 Hz, 30-70 kHz, 110 MHz max pixel clock
+        byte[] rl = { 0, 0, 0, 0xfd, 0, 50, 120, 30, 70, 11, 0, 0x0a, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20 }; rl.CopyTo(e, 72);
+        // monitor name
+        byte[] nm = { 0, 0, 0, 0xfc, 0 }; nm.CopyTo(e, 90); var name = System.Text.Encoding.ASCII.GetBytes("BrokenNes 17" + (char)10 + " "); Array.Copy(name, 0, e, 95, 13);
+        byte[] sn = { 0, 0, 0, 0x10, 0 }; sn.CopyTo(e, 108);   // dummy descriptor
+        e[126] = 0;                                       // no extensions
+        int sum = 0; for (int i = 0; i < 127; i++) sum += e[i]; e[127] = (byte)(-sum & 0xff);
+        return e;
     }
 
     private void CrOut(int i, int v) { Out8(0x3d4, (byte)i); Out8(0x3d5, (byte)v); }
