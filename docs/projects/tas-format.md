@@ -70,7 +70,7 @@ N64: the target sets `COR64_VI_SPEEDUP=1` unless already set (real VI pace, the 
 
 `--tas branch RUN --chapter ID --frame F --out D [--tail FILE]` (MCP `tas_branch`): runs to frame F of the chapter, saves `branch.state`, writes
 `branch.tasrun.json` (one chapter from that state) with the tail script, or without one the rest of the original as an exact `.tlog`.
-Running the untouched branch reproduces the original's end picture (MCP client-test `tas_branch_replays`).
+Running the untouched branch reproduces the original's end picture and RAM.
 
 ## Offline replay hook (video)
 
@@ -89,4 +89,9 @@ Running the untouched branch reproduces the original's end picture (MCP client-t
 - NES SMB1 World 1 (AutoTAS package `T:\BrokenDev\Catalog\tas\nes\smb1\v1`, imported to `UAT/tas/nes/smb1`): 5 chained chapters, 9381 frames,
   all 5 chapter-end picture + RAM hashes equal the package's key_picture/key_ram, deterministic twice. Script -> tlog -> run gives the same video
   hash; script -> fm2 -> script is identical.
-- N64 SM64 compat script (`UAT/n64/compat/scripts/sm64.txt`, 21426 frames): see the results section of the T1 report below.
+- N64 SM64 compat script, unchanged (`UAT/n64/compat/scripts/sm64.txt`, 21426 frames; run file `UAT/tas/n64/sm64`, expect blessed): on Garage2
+  (PRDP) deterministic twice, and all 23 checkpoints equal SessionProbe's compat report (video, audio, frameHash) from the fleet.
+  Found on the way: parallel-rdp's deferred writes reach RDRAM at a GPU-timing moment, so the N64 RAM hash drains the RDP first (as a save state does);
+  each pass gets its own Controller Pak folder.
+- Branch: SMB1 1-1 branched at frame 1000 and replayed reaches the chapter's end picture + RAM exactly; MCP client-test tas_run / tas_branch /
+  tas_branch_replays pass (162/162).
