@@ -109,12 +109,12 @@ steps = ['Enter your choice=>2' + NL,                    # CD menu: boot from CD
          'To continue with Setup, press ENTER=>{f3}',    # quit that Setup (it would install the first-edition files from D:)
          '@200=>{f3}',
          '@300=>C:\WIN98\SETUP.EXE C:\WIN98\MSBATCH.INF /IS' + NL,   # SE Setup from C: with the answer file
-         '@24100=>' + NL]                                # after the first restart: User Information page -> Next
+         '@51250=>' + NL]                                # after the first restart (~52000 frames from power-on): User Information page -> Next
 if a.accept_eula:
     steps += ['@800=>{alt+a}', '@60=>' + NL,           # Licence Agreement: "I accept" (user approved the Win98 SE licence 2026-11-21)
               '@600=>' + NL,                             # Product Key (filled from MSBATCH.INF) -> Next
               '@800=>' + NL,                             # Start Wizard -> Finish: hardware setup + restarts follow
-              '@36000=>' + NL,                           # Enter Windows Password: user nano98, blank password -> OK
+              '@66000=>' + NL,                           # (hardware setup + restarts take ~50-60k frames) Enter Windows Password: user nano98, blank password -> OK
               '@3000=>{alt+f4}',                         # close the Welcome window
               '@300=>']                                  # the desktop (save the state here)
 else:
