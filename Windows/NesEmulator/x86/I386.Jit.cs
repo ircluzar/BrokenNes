@@ -728,8 +728,9 @@ public sealed partial class I386
         if (!_jitSeenKeys.Add(key)) JitRecompiles++;
         JitWorker.Post(() =>
         {
+            if (JitDelay > 0) { int ms; lock (_jitDelayRng) ms = _jitDelayRng.Next(4); if (ms > 0) System.Threading.Thread.Sleep(ms); }
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-            try { code.Fn = jc?.Hit ?? Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec, xc); System.Threading.Interlocked.Add(ref JitBuildTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0); code.Fn(this, -1); if (jc != null) JcCompiled(jc, code.Fn); }
+            try { code.Fn = jc?.Hit ?? Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec, xc); System.Threading.Interlocked.Add(ref JitBuildTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0); code.Fn(this, -1); if (JitDelay > 0) for (int r = 0; r < 2000; r++) code.Fn(this, -1); if (jc != null) JcCompiled(jc, code.Fn); }
             catch (Exception ex) { code.Fn = null!; if (JitStats) Console.Error.WriteLine($"jit: {start:X8} failed: {ex.GetType().Name} {ex.Message}"); }
             System.Threading.Interlocked.Add(ref JitEmitTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0);
             _jitDone.Enqueue((code, key));
@@ -751,6 +752,7 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void JitDrain()
     {
+        if (JitDelay > 0) { int r; lock (_jitDelayRng) r = _jitDelayRng.Next(JitDelay); if (r != 0) return; }   // X86_JITDELAY: install at a random later batch
         while (_jitDone.TryDequeue(out var d))
         {
             _jitPending--;
@@ -775,6 +777,11 @@ public sealed partial class I386
     }
 
     private readonly System.Collections.Concurrent.ConcurrentQueue<(JitCode, ulong)> _jitDone = new();
+    /// <summary>X86_JITDELAY=N (tests): the background compiler sleeps 0-3 ms per block, repeats its trial call 2000 times (it must not touch the
+    /// running CPU) and each drain installs only 1 time in N, so compiled
+    /// code takes over at random moments (the jit-parity gate's async-vs-NOJIT run: async JIT must be exact whatever the timing).</summary>
+    private static readonly int JitDelay = int.TryParse(Environment.GetEnvironmentVariable("X86_JITDELAY"), out int jd) ? Math.Max(0, jd) : 0;
+    private readonly Random _jitDelayRng = new();
     private int _jitPending;
     /// <summary>X86_JITSYNC: compile on the CPU's own thread, at once (as before: a hitch, but the compiled code runs from the 32nd visit).</summary>
     private static readonly bool JitAsync = Environment.GetEnvironmentVariable("X86_JITSYNC") == null;
@@ -1028,6 +1035,12 @@ public sealed partial class I386
             }
         }
 
+        // entry -1 (the compile's trial call, which only makes .NET JIT the method): leave before touching ANY CPU state. The trial runs on the
+        // background compiler's thread: the prologue's JSegLoad wrote the live CPU's _jsOk / _jsBase / ... meanwhile (a block running at that
+        // moment then saw another block's segment values: the rare async-only divergence, 2026-11-21), and segGen read _jitCur
+        il.Emit(OpCodes.Ldarg_1); il.Emit(OpCodes.Ldc_I4_0); var notTrial = il.DefineLabel(); il.Emit(OpCodes.Bge, notTrial);
+        il.Emit(OpCodes.Ldc_I4, JIT_DECLINE); il.Emit(OpCodes.Ret);
+        il.MarkLabel(notTrial);
         // prologue: decline when a segment the region uses has a null selector (the translation would fault)
         var usedSegs = new SortedSet<int>();
         foreach (var e in ins) { int m = InsSegs(e); for (int sg = 0; sg < 6; sg++) if ((m >> sg & 1) != 0) usedSegs.Add(sg); }
