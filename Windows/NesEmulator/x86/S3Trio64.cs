@@ -30,13 +30,20 @@ public sealed class S3Trio64
     public int Bank;                                      // 64 KB units
     public int VbeMode;                                   // the VBE mode the BIOS set (0: a VGA mode)
 
-    public S3Trio64(Vga v) { _v = v; Reset(); }
+    /// <summary>The same S3 core as the ViRGE (86C325, PCI 5333:5631): chip id, no 8514 engine use, the S3d engine behind the new MMIO window (x86/S3Virge.cs).</summary>
+    public readonly bool IsVirge;
+    public readonly S3Virge? Virge;
+    public const string VirgeId = "S3VIRGE";
+    public string ChipId => IsVirge ? VirgeId : Id;
+    public Vga Core => _v;
+
+    public S3Trio64(Vga v, bool virge = false) { _v = v; IsVirge = virge; if (virge) Virge = new S3Virge(this, v); Reset(); }
 
     public void Reset()
     {
         Array.Clear(SrExt);
         Array.Clear(PciConfig);
-        W16(0x00, 0x5333); W16(0x02, 0x8811);             // vendor S3, device Trio32/64
+        W16(0x00, 0x5333); W16(0x02, IsVirge ? 0x5631 : 0x8811);   // vendor S3, device Trio32/64 or ViRGE
         W16(0x04, 0x0003);                                // I/O + memory decode on
         PciConfig[0x08] = 0x00; PciConfig[0x0b] = 0x03;  // class 030000: VGA-compatible display
         PciConfig[0x0e] = 0x00;
@@ -47,10 +54,12 @@ public sealed class S3Trio64
         var cr = _v.Cr;
         for (int i = 0x2d; i < 0x100; i++) cr[i] = 0;
         cr[0x2d] = 0x88; cr[0x2e] = 0x11; cr[0x2f] = 0x00; cr[0x30] = 0xe1;
+        if (IsVirge) { cr[0x2d] = 0x56; cr[0x2e] = 0x31; cr[0x2f] = 0x06; PciConfig[0x08] = 0x06; }
         cr[0x36] = 0x19;                                  // 4 MB, PCI
         cr[0x37] = 0xff;
         cr[0x59] = (byte)(LfbBase >> 24); cr[0x5a] = (byte)(LfbBase >> 16);
         ResetEngine();
+        Virge?.Reset();
     }
 
     private void W16(int o, int v) { PciConfig[o] = (byte)v; PciConfig[o + 1] = (byte)(v >> 8); }
@@ -111,18 +120,19 @@ public sealed class S3Trio64
     /// <summary>CR31 bit 3 (enhanced memory mapping) changes CPU access only together with chain 4 (SR4 bit 3): in a planar/odd-even VGA
     /// mode (a full-screen DOS box, Windows' text-mode screens) the A0000-BFFFF window stays the VGA's (the text was swallowed: garbage).</summary>
     private bool EnhancedMap => Enhanced && (_v.Sr[4] & 0x08) != 0;
-    public bool LinearOn => (_v.Cr[0x58] & 0x10) != 0;
+    public bool LinearOn => (_v.Cr[0x58] & 0x10) != 0 || (Virge != null && (Virge.AdvFunc & 0x10) != 0);
     /// <summary>CR58 bits 1-0: the linear window's size. The 64 KB one (at A0000) is still banked.</summary>
     public int LfbSize => (_v.Cr[0x58] & 3) switch { 0 => 0x10000, 1 => 0x100000, 2 => 0x200000, _ => 0x400000 };
     private bool Window64K => LinearOn && LfbSize == 0x10000;
     public long VgaMmioWrites;   // diagnostics
-    public bool OldMmio => (_v.Cr[0x53] & 0x10) != 0 && (_v.Sr[4] & 0x08) != 0;   // (not in a planar VGA mode: Windows' VDD loads the text font through A0000 with CR53 still set)
-    public int BytesPerPixel => (_v.Cr[0x67] >> 4) switch { 0x3 or 0x5 => 2, 0xd => 4, _ => 1 };
+    public bool OldMmio => ((_v.Cr[0x53] & 0x10) != 0 || (Virge != null && (Virge.AdvFunc & 0x20) != 0)) && (_v.Sr[4] & 0x08) != 0;   // (not in a planar VGA mode: Windows' VDD loads the text font through A0000 with CR53 still set)
+    public int BytesPerPixel => (_v.Cr[0x67] >> 4) switch { 0x3 or 0x5 => 2, 0x7 when IsVirge => 3, 0xd => 4, _ => 1 };
 
     /// <summary>A0000-BFFFF access the S3 takes over (MMIO, enhanced banking, the window off while linear is on); false: the VGA's.</summary>
     public bool MemWrite(uint addr, byte v)
     {
         uint off = addr - 0xa0000;
+        if (IsVirge && OldMmio && off < 0x10000) { Virge!.Write(off, v, 8); return true; }
         if (OldMmio && off < 0x10000)
         {
             if (off < 0x8000) PixelData(v, 8);
@@ -142,6 +152,7 @@ public sealed class S3Trio64
     {
         uint off = addr - 0xa0000;
         v = 0xff;
+        if (IsVirge && OldMmio && off < 0x10000) { v = (byte)(Virge!.Read32(off & ~3u) >> (int)(8 * (off & 3))); return true; }
         if (OldMmio && off < 0x10000)
         {
             if ((addr & 0xffe0) == 0x83c0) v = _v.In((int)(addr & 0xffff) - 0x8000);
@@ -161,6 +172,7 @@ public sealed class S3Trio64
         if (!OldMmio) return false;
         uint off = addr - 0xa0000;
         if (off >= 0x10000) return false;
+        if (IsVirge) { Virge!.Write(off, v, bits); return true; }
         if (off < 0x8000) { PixelData(v, bits); return true; }
         int port = (int)(addr & 0xffff);
         if ((port & 0xffe0) == 0x83c0) { VgaMmioWrites++; for (int i = 0; i < bits / 8; i++) _v.Out(port - 0x8000 + i, (byte)(v >> (8 * i))); return true; }   // VGA registers by MMIO, byte by byte
@@ -169,12 +181,18 @@ public sealed class S3Trio64
         return true;
     }
 
-    public bool InLfb(uint a) => LinearOn && !Window64K && a - LfbBase < Math.Min(VramBytes, LfbSize);
-    public byte LfbRead8(uint a) => _v.Ram[a - LfbBase];
-    public void LfbWrite8(uint a, byte v) => _v.Ram[a - LfbBase] = v;
-    public uint LfbRead32(uint a) { uint o = a - LfbBase; return o <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)o) : LfbRead8(a); }
+    /// <summary>ViRGE: CR53 bit 3 maps the new MMIO (64 KB) at the PCI window's base + 16 MB.</summary>
+    public bool NewMmio => IsVirge && (_v.Cr[0x53] & 0x08) != 0;
+    private uint MmioBase => (uint)(_v.Cr[0x59] << 24 | _v.Cr[0x5a] << 16) + 0x1000000;
+    private bool InMmio(uint a) => NewMmio && a - MmioBase < 0x10000;
+    public bool InLfb(uint a) => (LinearOn && !Window64K && a - LfbBase < Math.Min(VramBytes, LfbSize)) || InMmio(a);
+    public byte LfbRead8(uint a) => InMmio(a) ? (byte)(Virge!.Read32((a - MmioBase) & ~3u) >> (int)(8 * (a & 3))) : _v.Ram[a - LfbBase];
+    public void LfbWrite8(uint a, byte v) { if (InMmio(a)) Virge!.Write(a - MmioBase, v, 8); else _v.Ram[a - LfbBase] = v; }
+    public void LfbWrite16(uint a, ushort v) { if (InMmio(a)) Virge!.Write(a - MmioBase, v, 16); else { LfbWrite8(a, (byte)v); LfbWrite8(a + 1, (byte)(v >> 8)); } }
+    public uint LfbRead32(uint a) { if (InMmio(a)) return Virge!.Read32(a - MmioBase); uint o = a - LfbBase; return o <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)o) : LfbRead8(a); }
     public void LfbWrite32(uint a, uint v)
     {
+        if (InMmio(a)) { Virge!.Write(a - MmioBase, v, 32); return; }
         uint o = a - LfbBase;
         if (o <= VramBytes - 4) BitConverter.TryWriteBytes(_v.Ram.AsSpan((int)o), v);
         else for (int i = 0; i < 4 && o + i < VramBytes; i++) _v.Ram[o + i] = (byte)(v >> (8 * i));
@@ -194,8 +212,8 @@ public sealed class S3Trio64
 
     public int Width => ((_v.Cr[1] + 1) | ((_v.Cr[0x5d] & 2) << 7)) * 8;
     public int Height => (_v.Cr[0x12] | ((_v.Cr[7] & 2) << 7) | ((_v.Cr[7] & 0x40) << 3) | ((_v.Cr[0x5e] & 2) << 9)) + 1;
-    public int Stride => (_v.Cr[0x13] | ((_v.Cr[0x51] & 0x30) << 4)) * 8;
-    public int StartByte => ((_v.Cr[0x0d] | (_v.Cr[0x0c] << 8) | ((_v.Cr[0x31] & 0x30) << 12) | ((_v.Cr[0x69] & 0x1f) << 16))) * 4;
+    public int Stride => Virge != null && Virge.StreamsOn && Virge.PriStride != 0 ? Virge.PriStride : (_v.Cr[0x13] | ((_v.Cr[0x51] & 0x30) << 4)) * 8;
+    public int StartByte => Virge != null && Virge.StreamsOn ? (int)((Virge.BufferCtrl & 1) != 0 ? Virge.PriFb1 : Virge.PriFb0) : ((_v.Cr[0x0d] | (_v.Cr[0x0c] << 8) | ((_v.Cr[0x31] & 0x30) << 12) | ((_v.Cr[0x69] & 0x1f) << 16))) * 4;
 
     private readonly int[] _pal = new int[256];
 
@@ -252,6 +270,7 @@ public sealed class S3Trio64
                         fr[o + x] = unchecked((int)0xff000000) | r << 16 | g << 8 | b;
                     }
                     break;
+                case 3: for (int x = 0; x < w; x++) fr[o + x] = unchecked((int)0xff000000) | ram[src + 3 * x] | ram[src + 3 * x + 1] << 8 | ram[src + 3 * x + 2] << 16; break;
                 default: for (int x = 0; x < w; x++) fr[o + x] = unchecked((int)0xff000000) | (BitConverter.ToInt32(ram, src + 4 * x) & 0xffffff); break;
             }
         }
@@ -330,7 +349,7 @@ public sealed class S3Trio64
         switch (port & 0xfffe)
         {
             case 0x42e8: _subsysCtl = v; break;
-            case 0x4ae8: _advCtl = v; break;
+            case 0x4ae8: _advCtl = v; Virge?.SetAdvFunc(v); break;
             case 0x82e8: _curY = v & 0xfff; break;
             case 0x86e8: _curX = v & 0xfff; break;
             case 0x8ae8: _destY = (short)v; break;        // also the axial step
@@ -599,6 +618,7 @@ public sealed class S3Trio64
             _px, _py, _pw, _ph, _cntX, _cntY }) w.Write(v);
         foreach (uint v in new[] { _bkColor, _fgColor, _wrtMask, _rdMask, _colorCmp }) w.Write(v);
         w.Write(_subsysCtl); w.Write(_advCtl); w.Write(_waitCpu); w.Write(_hiWordNext);
+        Virge?.Save(w);
     }
 
     public void Load(BinaryReader r)
@@ -610,5 +630,6 @@ public sealed class S3Trio64
         (_px, _py, _pw, _ph, _cntX, _cntY) = (a[16], a[17], a[18], a[19], a[20], a[21]);
         _bkColor = r.ReadUInt32(); _fgColor = r.ReadUInt32(); _wrtMask = r.ReadUInt32(); _rdMask = r.ReadUInt32(); _colorCmp = r.ReadUInt32();
         _subsysCtl = r.ReadUInt16(); _advCtl = r.ReadUInt16(); _waitCpu = r.ReadBoolean(); _hiWordNext = r.ReadBoolean();
+        Virge?.Load(r);
     }
 }

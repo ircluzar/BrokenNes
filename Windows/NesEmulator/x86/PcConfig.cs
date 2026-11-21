@@ -83,6 +83,7 @@ public sealed record PcMachinePreset(string Key, string Label, PcConfig Config, 
         new("dos-486", "DOS 486DX2-66, VGA, IDE", PcConfig.Dos486, CpuModel.I486DX2, PcVideo.Vga),
         new("win98-p166", "Win98 Pentium MMX 166, S3 Trio64, PCI", PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.S3Trio64),
         new("win98-p166-voodoo", "Win98 Pentium MMX 166, S3 Trio64 + 3dfx Voodoo, PCI", PcConfig.Win98Voodoo, CpuModel.PentiumMmx, PcVideo.S3Trio64),
+        new("win98-p166-virge", "Win98 Pentium MMX 166, S3 ViRGE (3D), PCI", PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.S3Virge),
     };
 
     /// <summary>The preset for a key (case-insensitive); an unknown or empty key is the classic machine.</summary>

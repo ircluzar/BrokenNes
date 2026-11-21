@@ -8,7 +8,7 @@ using System.Text;
 namespace NesEmulator.X86;
 
 /// <summary>The video card on the board.</summary>
-public enum PcVideo { Vga, S3Trio64 }
+public enum PcVideo { Vga, S3Trio64, S3Virge }
 
 public sealed partial class PcMachine
 {
