@@ -93,11 +93,11 @@ public sealed partial class I386
     public long JitPosted, JitDropped, JitRecompiles, JitKeepClears, JitInstrCompiled;
     public static long JitEmitTicks;
     private readonly HashSet<ulong> _jitSeenKeys = new();
-    public string JitPipeStat() => $"jitpipe: posted {JitPosted} installed {JitCompiled} dropped {JitDropped} recompiles(same key) {JitRecompiles} keep-clears {JitKeepClears} unseen-cut {JitUnseenCut} instrs-compiled {JitInstrCompiled} worker-compile {JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms ({JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, JitPosted):F2} ms/region; IL build {JitBuildTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms, IL {JitIlBytes / Math.Max(1, JitPosted)} bytes/region)" + (JcOn ? " | " + JcStat() : "");
+    public string JitPipeStat() => $"jitpipe: posted {JitPosted} installed {JitCompiled} dropped {JitDropped} recompiles(same key) {JitRecompiles} keep-clears {JitKeepClears} unseen-cut {JitUnseenCut} instrs-compiled {JitInstrCompiled} worker-compile {JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms ({JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, JitPosted):F2} ms/region; IL build {JitBuildTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms, IL {JitIlBytes / Math.Max(1, JitPosted)} bytes/region)" + $" takeovers {JitTakeovers} (had code {JitTakeoversCode}, warm>=64 {JitTakeoversWarm})" + (JcOn ? " | " + JcStat() : "");
 
     // statistics (Workshop --x86boot --jitstat)
     public int JitCompiled { get; private set; }
-    public long JitRuns, JitInvalid, JitDeclines;
+    public long JitRuns, JitInvalid, JitDeclines, JitTakeovers, JitTakeoversCode, JitTakeoversWarm;
     public readonly long[] JitDeclineSeg = new long[6];
     public IEnumerable<string> JitTop(int n) => _jitAll.OrderByDescending(b => b.Ticks).Take(n)
         .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} retired {b.Retired} ns/retired {b.Ticks * 1e9 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, b.Retired):F2} xlat {b.NXlat} slow {b.NSlow} ool {b.NOol} cond {b.NCond} | {Convert.ToHexString(b.Bytes)}");
@@ -242,6 +242,7 @@ public sealed partial class I386
     private int JitVisit(uint paddr)
     {
         ref var en = ref _je[JitIndex(paddr)];
+        if (en.Used) { JitTakeovers++; if (en.Code != null) JitTakeoversCode++; else if (en.Visits >= 64) JitTakeoversWarm++; }
         en.Used = true;
         en.Start = paddr; en.C16 = _c16; en.Pg = (Cr0 & CR0_PG) != 0; en.Visits = 1; en.Failed = false; en.Pending = false; en.Code = null; en.K = 0;
         return JIT_DECLINE;
