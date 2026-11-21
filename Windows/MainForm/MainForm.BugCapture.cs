@@ -37,7 +37,14 @@ namespace BrokenNes.Windows
         private void BugGameLoaded(byte[] rom, string romName)
         {
             bugRom = rom; bugRomName = romName;
-            bugRomSha = rom == null ? null : (rom, Task.Run(() => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(rom)).ToLowerInvariant()));   // ready before the first F9
+            // ready before the first F9: the sha, then one BrokenDev project lookup to warm its build records (cold, it took 4.4 s of the first F9;
+            // its answer is not kept: a build made later must still be found)
+            bugRomSha = rom == null ? null : (rom, Task.Run(() =>
+            {
+                string sha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(rom)).ToLowerInvariant();
+                try { BugPlaces.FindProject(sha, null, out _); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+                return sha;
+            }));
             TfGameLoaded();   // Timeflow: frames count from this game's power-on
             AtGameLoaded(rom, romName);   // AutoTAS: offer the activity when this ROM has a package (MainForm.AutoTas.cs)
             bugPowerOn = true;
@@ -127,11 +134,16 @@ namespace BrokenNes.Windows
         {
             var rom = bugRom;
             if (rom == null) { why = "no game is running: the default folder"; project = null; return BugPlaces.DefaultFolder(); }
-            return BugPlaces.For(BugRomSha(rom), out project, out why, symbols);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            string sha = BugRomSha(rom); double shaMs = sw.Elapsed.TotalMilliseconds;
+            string dir = BugPlaces.For(sha, out project, out why, symbols);
+            bugFolderTiming = $"rom sha {shaMs:F0} ms, project lookup {sw.Elapsed.TotalMilliseconds - shaMs:F0} ms";
+            return dir;
         }
 
         // the running ROM's sha256, hashed once per game (on a worker as it loads): a 1 GB x86 disk image took ~3.6 s per F9 and per status
         private (byte[] Rom, Task<string> Sha)? bugRomSha;
+        private string bugFolderTiming = "";
         private string BugRomSha(byte[] rom)
         {
             var c = bugRomSha;
@@ -261,7 +273,7 @@ namespace BrokenNes.Windows
                 double hopMs = hopSw.Elapsed.TotalMilliseconds; hopSw.Restart();
                 SortedDictionary<string, byte[]>? bf = null; double filesMs = 0;
                 string path = await Task.Run(() => { var f = BugBundle.Files(data, meta); filesMs = hopSw.Elapsed.TotalMilliseconds; bf = f; return BugBundle.WriteFolder(dir, f, meta.CapturedLocal); });
-                string tline = $"[Bugs] timing: emulation-thread hop {hopIn:F0} ms, Capture() {capMs:F0} ms, total {hopMs:F0} ms, files {filesMs:F0} ms, write {hopSw.Elapsed.TotalMilliseconds - filesMs:F0} ms";
+                string tline = $"[Bugs] timing: emulation-thread hop {hopIn:F0} ms, Capture() {capMs:F0} ms, total {hopMs:F0} ms, {bugFolderTiming}, files {filesMs:F0} ms, write {hopSw.Elapsed.TotalMilliseconds - filesMs:F0} ms";
                 Console.WriteLine(tline);
                 if (Environment.GetEnvironmentVariable("BROKENNES_BUGTIMING") == "1") try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "brokennes_bugtiming.txt"), tline + Environment.NewLine); } catch (IOException) { }
                 bugLastSaved = path;
