@@ -64,7 +64,8 @@ public sealed class N98Seat
             string outDir = Path.Combine(s.CacheDir, "apply.tmp");
             if (Directory.Exists(outDir)) Directory.Delete(outDir, true);
             RunTool("apply", $"\"{pkgPath}\" --base C=\"{baseImg}\" --out \"{outDir}\" --full");
-            File.Move(Path.Combine(outDir, "C.img"), s.ImagePath, true);
+            if (File.Exists(Path.Combine(outDir, "C.img"))) File.Move(Path.Combine(outDir, "C.img"), s.ImagePath, true);
+            else File.Copy(baseImg, s.ImagePath, true);   // a package that changes nothing on C: (a program already on the base)
             Directory.Delete(outDir, true);
             File.Delete(cmdPath);
             foreach (var old in Directory.GetDirectories(s.CacheDir)) Directory.Delete(old, true);   // resume snapshots of the old disk

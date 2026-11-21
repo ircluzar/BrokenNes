@@ -176,7 +176,7 @@ public sealed class PcSession : IConsoleSession
     // ================= nano98 seat =================
     /// <summary>The .n98 package this session boots (null: an ordinary disk).</summary>
     public N98Seat? Seat { get; private set; }
-    /// <summary>The seat launcher's last status line (port E9h: "N98 READY", "N98 RUN ...", "N98 EXIT n", "N98 POWEROFF", "N98 FAIL n").</summary>
+    /// <summary>The seat launcher's last status line (port E9h: "N98 BOOT", "N98 READY", "N98 RUN ...", "N98 EXIT n", "N98 POWEROFF", "N98 FAIL n").</summary>
     public string? SeatStatus { get; private set; }
     /// <summary>Raised on the emulation thread when the seat's game ends: ("exit", code), ("fail", error) or ("poweroff", "").</summary>
     public event Action<string, string>? SeatEnded;
@@ -187,7 +187,7 @@ public sealed class PcSession : IConsoleSession
     private void OnSeatStatus(string line)
     {
         SeatStatus = line;
-        if (line == "N98 READY" && _resumeKey != null) _snapPending = true;   // the machine is up and the launcher has its command: the resume point
+        if (line == "N98 BOOT" && _resumeKey != null) _snapPending = true;   // the machine is up, the launcher waits 1 s before reading its command: the resume point
         else if (line.StartsWith("N98 EXIT ", StringComparison.Ordinal)) { string code = line[9..]; if (code != "0") SeatEnded?.Invoke("exit", code); }
         else if (line.StartsWith("N98 FAIL", StringComparison.Ordinal)) SeatEnded?.Invoke("fail", line.Length > 9 ? line[9..] : "");
     }
@@ -201,7 +201,8 @@ public sealed class PcSession : IConsoleSession
         {
             if (File.Exists(st) && File.Exists(meta) && File.ReadAllText(meta) == key && Environment.GetEnvironmentVariable("BROKENNES_N98_NORESUME") != "1")
             {
-                _m.LoadState(File.ReadAllBytes(st));
+                LoadState(File.ReadAllBytes(st));
+                _m.Command = Seat.Command;   // this run's command (the state holds the one it was made with; the launcher had not read it yet)
                 _m.Ata?.Secondary.ClearMediaChanged(0);
                 return true;
             }

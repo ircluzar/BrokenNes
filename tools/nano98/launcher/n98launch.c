@@ -8,7 +8,7 @@
  *     dir=C:\SIERRA\HALF-L~1
  *     exit=poweroff        (poweroff | shell | restart: what to do when the program ends)
  * Guest -> host: status lines on port E9h ("N98 ..."), written only by this program (deterministic):
- *     N98 READY | N98 NOCMD | N98 RUN <path> | N98 FAIL <error> | N98 EXIT <code> | N98 POWEROFF
+ *     N98 BOOT (resume point) | N98 READY | N98 NOCMD | N98 RUN <path> | N98 FAIL <error> | N98 EXIT <code> | N98 POWEROFF
  * No command disk: Explorer starts as the normal shell.
  * Build: tools/nano98/launcher/build.ps1 (Open Watcom, nt_win, runs on Windows 95/98).
  */
@@ -64,6 +64,8 @@ int PASCAL WinMain(HINSTANCE hi, HINSTANCE hp, LPSTR cl, int show)
     char run[260], args[260], dir[260], ex[32], line[600];
     STARTUPINFOA si; PROCESS_INFORMATION pi; DWORD code = 0;
     memset(g_buf, 0, sizeof g_buf);
+    status("N98 BOOT");   /* the host takes its resume snapshot here (at its next frame end), before the command is read */
+    Sleep(1000);
     if (!read_cmd(g_buf, sizeof g_buf) || strncmp(g_buf, "N98CMD1", 7) != 0) { status("N98 NOCMD"); run_explorer(); return 0; }
     status("N98 READY");
     field("run", run, sizeof run); field("args", args, sizeof args); field("dir", dir, sizeof dir); field("exit", ex, sizeof ex);

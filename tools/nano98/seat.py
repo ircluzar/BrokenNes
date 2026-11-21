@@ -15,6 +15,7 @@ def install(img):
     from pyfatfs.PyFatFS import PyFatFS
     f = PyFatFS(img, offset=PART)
     f.makedir('/N98', recreate=True)
+    if f.exists('/N98/N98LAUNCH.EXE'): f.remove('/N98/N98LAUNCH.EXE')   # (pyfatfs cannot overwrite in place)
     with f.openbin('/N98/N98LAUNCH.EXE', 'w') as o: o.write(open(os.path.join(HERE, 'launcher', 'N98LAUNCH.EXE'), 'rb').read())
     ini = f.openbin('/WINDOWS/SYSTEM.INI').read().decode('latin1')
     lines = ini.split('\r\n'); out = []; done = False
