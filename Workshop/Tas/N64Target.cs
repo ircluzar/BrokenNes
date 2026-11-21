@@ -56,6 +56,8 @@ internal sealed class N64Target : ITasTarget
     public ulong PictureHash() => TasTargets.Fnv(s.Frame, s.FrameWidth * s.FrameHeight);
     public unsafe ulong RamHash()
     {
+        // parallel-rdp (deferred mode) lands a frame's RDP writes in RDRAM later, at a GPU-timing-dependent moment: drain first, as a save state does
+        s.System.DeviceRcp.DeviceRdp?.Drain();
         byte* r = (byte*)s.System.SystemMemory.RDRAM.GetRamPointer(0); ulong h = 1469598103934665603UL;
         for (int i = 0; i < 0x800000; i += 4) { h ^= *(uint*)(r + i); h *= 1099511628211UL; }
         return h;
