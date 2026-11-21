@@ -1,5 +1,5 @@
 # gui_open.ps1 PKG SHOT WAITSEC [PROMPTSHOT]: start our own desktop build, Emulator > Open game package (.n98) via UI Automation, pick PKG in the
-# file dialog, wait, save a picture of the BrokenNes 2 window to SHOT. With PROMPTSHOT: also capture a message box (the seat's restart prompt) if one appears.
+# file dialog, wait, save a picture (of OUR window only: never the whole screen, it shows the user's other apps) of the BrokenNes 2 window to SHOT. With PROMPTSHOT: also capture a message box (the seat's restart prompt) if one appears.
 param([string]$Pkg, [string]$Shot, [int]$Wait = 120, [string]$PromptShot = "")
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms, System.Drawing
 Add-Type @"
@@ -32,10 +32,10 @@ try {
   # keys only ever go to OUR app: abort unless its process owns the foreground window (main window, menu or its file dialog)
   function Assert-Ours { $fg = [W]::GetForegroundWindow(); $fp = 0; [W]::GetWindowThreadProcessId($fg, [ref]$fp) | Out-Null; if ($fp -ne $p.Id) { throw "foreground window is not ours (pid $fp): no keys sent" } }
   Assert-Ours
-  [System.Windows.Forms.SendKeys]::SendWait("%e"); Start-Sleep 1; Save-Screen "$Shot.s1.png"     # Alt+E: the Emulator menu
-  Assert-Ours; [System.Windows.Forms.SendKeys]::SendWait("{DOWN}{ENTER}"); Start-Sleep 3; Save-Screen "$Shot.s2.png"      # Open game &package (.n98)...
+  [System.Windows.Forms.SendKeys]::SendWait("%e"); Start-Sleep 1     # Alt+E: the Emulator menu
+  Assert-Ours; [System.Windows.Forms.SendKeys]::SendWait("{DOWN}{ENTER}"); Start-Sleep 3      # Open game &package (.n98)...
   Assert-Ours; [System.Windows.Forms.SendKeys]::SendWait($Pkg.Replace("(", "{(}").Replace(")", "{)}")); Start-Sleep 1
-  Assert-Ours; [System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep 3; Save-Screen "$Shot.s3.png"
+  Assert-Ours; [System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep 3
   Write-Output "opened $Pkg at $(Get-Date -f HH:mm:ss)"
   for ($t = 0; $t -lt $Wait; $t += 2) {
     Start-Sleep 2
@@ -44,5 +44,5 @@ try {
       if ($mb -and $mb.Current.NativeWindowHandle -ne [int]$hwnd) { Start-Sleep 1; Save-Window ([IntPtr]$mb.Current.NativeWindowHandle) $PromptShot; Write-Output "prompt captured at $t s"; break }
     }
   }
-  Save-Screen "$Shot.end.png"; Save-Window $hwnd $Shot; Write-Output "window saved $Shot"
+  Save-Window $hwnd $Shot; Write-Output "window saved $Shot"
 } finally { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
