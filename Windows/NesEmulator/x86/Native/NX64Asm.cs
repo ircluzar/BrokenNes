@@ -131,6 +131,8 @@ namespace NesEmulator.X86.Native
         }
         public void TestRI(R d, int imm, bool w = false) { OpRR(w, new[] { 0xF7 }, 0, (int)d); D(imm); }
         public void Not(R d, bool w = true) => OpRR(w, new[] { 0xF7 }, 2, (int)d);
+        public void Neg32(R d) => OpRR(false, new[] { 0xF7 }, 3, (int)d);   // (x86 lane D)
+        public void Movzx16RR(R d, R s) => OpRR(false, s_Movzx16, (int)d, (int)s);   // (x86 lane D)
         public void Inc(R d, bool w = false) => OpRR(w, new[] { 0xFF }, 0, (int)d);
         public void IncM(M m, bool w = false) => OpRM(w, new[] { 0xFF }, 0, m);
         public void ImulRR(R d, R s) => OpRR(true, s_Imul, (int)d, (int)s);

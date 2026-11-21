@@ -40,7 +40,7 @@ public sealed class I386AbortException : Exception
 public sealed partial class I386
 {
     // ---- architectural state ----
-    public readonly uint[] R = new uint[8];          // EAX ECX EDX EBX ESP EBP ESI EDI
+    public readonly uint[] R = GC.AllocateArray<uint>(8, pinned: true);          // EAX ECX EDX EBX ESP EBP ESI EDI
     public uint Ip, NextIp;
     public uint Flags;                               // EFLAGS, but the arithmetic flags may be lazy: read them with GetFlags()
     public uint FlagsMask;
@@ -83,12 +83,12 @@ public sealed partial class I386
     private static readonly bool TlbHash = Environment.GetEnvironmentVariable("X86_TLBHASH") != null;
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     private static int TlbIdx(uint lp) => (int)((TlbHash ? lp ^ (lp >> 9) ^ (lp >> 18) : lp) & (TlbSize - 1));
-    private readonly uint[] _tlbLpgno = new uint[TlbSize], _tlbXaddr = new uint[TlbSize];
+    private readonly uint[] _tlbLpgno = new uint[TlbSize], _tlbXaddr = GC.AllocateArray<uint>(TlbSize, pinned: true);
     private readonly int[] _tlbLookup = new int[TlbSize];    // index into PteLookup: wp*4 + ((pte >> 1) & 3)
     private readonly int[] _tlbPpte = new int[TlbSize];      // physical address of the PTE's low byte
     /// <summary>The compiled code's TLB hit test (I386.Jit.cs Xlat): [(user * 2 + write) * TlbSize + entry] = the entry's page number once a translation
     /// at that privilege (and a write: its dirty bit set) passed, else FFFFFFFF; cleared with the entry.</summary>
-    private readonly uint[] _tlbTag = new uint[4 * TlbSize];
+    private readonly uint[] _tlbTag = GC.AllocateArray<uint>(4 * TlbSize, pinned: true);   // (pinned: the native backend keeps pointers)
     private void TagClear(int e) { _tlbTag[e] = _tlbTag[e + TlbSize] = _tlbTag[e + 2 * TlbSize] = _tlbTag[e + 3 * TlbSize] = 0xffffffff; }
 
     public const int SEG_ES = 0, SEG_CS = 1, SEG_SS = 2, SEG_DS = 3, SEG_FS = 4, SEG_GS = 5, SEG_LDT = 6, SEG_TR = 7;
@@ -122,9 +122,9 @@ public sealed partial class I386
         _repCost16 = RepCosts(model);
         _memCost = MemCost(model);
         BuildOpCosts(model, out _opCost, out _opCost0F, out _mulCost, out _divCost);
-        Mem = new byte[memSize + 16];
+        Mem = GC.AllocateArray<byte>(memSize + 16, pinned: true);
         MemSize = (uint)memSize;
-        _codeMark = new byte[(memSize >> 6) + 2];
+        _codeMark = GC.AllocateArray<byte>((memSize >> 6) + 2, pinned: true);
         _pgGen = new uint[(memSize >> 12) + 2];
         _bus = bus;
         _ioMem = bus.MapsIoMem;

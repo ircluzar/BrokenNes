@@ -55,15 +55,17 @@ public sealed partial class I386
         public uint ExitNext;            // 76 (a physical address in the block's page)
         public long Mem, CMark, TlbR, TlbW, TlbX;   // 80 88 96 104 112
         public uint Ip0, CsLim;          // 120 124
+        public long RPtr;                // 128 (the pinned R[])
     }
     private const int CxOp = 32, CxDst = 36, CxSrc1 = 40, CxSrc2 = 44, CxMask = 48, CxFlags = 52, CxCyc = 56, CxSt = 64, CxK = 68, CxKind = 72, CxNext = 76,
-        CxMem = 80, CxCMark = 88, CxTlbR = 96, CxTlbW = 104, CxTlbX = 112, CxIp0 = 120, CxCsLim = 124;
+        CxMem = 80, CxCMark = 88, CxTlbR = 96, CxTlbW = 104, CxTlbX = 112, CxIp0 = 120, CxCsLim = 124, CxRPtr = 128;
     private static readonly NR[] NG = { NR.Rbx, NR.Rbp, NR.Rsi, NR.Rdi, NR.R12, NR.R13, NR.R14, NR.R15 };   // guest EAX..EDI
     private static readonly NR[] NSaved = { NR.Rbx, NR.Rbp, NR.Rsi, NR.Rdi, NR.R12, NR.R13, NR.R14, NR.R15 };
 
     private bool NatSupported(in DEntry e, uint pa)
     {
-        if (e.Bits != 32 || e.O16 || e.A16) return false;
+        if (e.O16 || e.A16) return false;
+        if (e.Bits != 32 && !(e.Kind == DK_MOVX && e.Bits is 8 or 16)) return false;
         bool mem = DcHasModrm(e.Kind) && e.Mod != 3;
         if ((NatKinds >> e.Kind & 1) == 0 || (mem && e.Kind != DK_LEA && (NatKinds >> 63 & 1) == 0)) return false;   // (X86_NATIVEKINDS: a bisect mask)
         switch (e.Kind)
@@ -80,6 +82,10 @@ public sealed partial class I386
                 break;
             case DK_JMP: break;
             case DK_PUSH: case DK_POP: case DK_CALL: break;
+            case DK_INC: case DK_DEC: case DK_MOVX: break;
+            case DK_FLAGOP: if (e.Op is not (0xf8 or 0xf9 or 0xfc or 0xfd)) return false; break;
+            case DK_GRP3: if (e.Reg is not (2 or 3)) return false; break;   // NOT / NEG (MUL / DIV: the IL code's helper)
+            case DK_GRP5: if (e.Reg is not (2 or 4 or 6)) return false; break;   // CALL / JMP / PUSH Ev
             case DK_RET: if (e.Imm > 0xfff0) return false; break;
             default: return false;
         }
@@ -88,7 +94,7 @@ public sealed partial class I386
         return true;
     }
 
-    private static bool NatStackOk(in DEntry e, SegSpec spec) => e.Kind is not (DK_PUSH or DK_POP or DK_CALL or DK_RET) || spec.Spm == 0xffffffff;
+    private static bool NatStackOk(in DEntry e, SegSpec spec) => !(e.Kind is DK_PUSH or DK_POP or DK_CALL or DK_RET || (e.Kind == DK_GRP5 && e.Reg is 2 or 6)) || spec.Spm == 0xffffffff;
 
     /// <summary>Compile the native part of a block (the CPU thread, at install). Null when it is not eligible.</summary>
     private unsafe NativeInfo? NativeCompile(JitCode code)
@@ -118,7 +124,8 @@ public sealed partial class I386
 
         // prologue: save the host's callee-saved registers, load the guest's
         foreach (var r in NSaved) a.Push(r);
-        for (int i = 0; i < 8; i++) a.MovRM(NG[i], C(4 * i), false);
+        a.MovRM(NR.Rax, C(CxRPtr));
+        for (int i = 0; i < 8; i++) a.MovRM(NG[i], new M(NR.Rax, 4 * i), false);
         a.MovRM(NR.R10, C(CxCyc));
         a.MovRM(NR.R11, C(CxSt), false);
         a.Jmp(L[0]);
@@ -148,9 +155,9 @@ public sealed partial class I386
             else a.Lea32(d, new M(NR.Rbp /*unused*/, NG[e.Index], sc, unchecked((int)e.Disp)), noBase: true);
         }
         // a memory operand: physical address into edx (r9 = Mem base), or leave before k
-        void MemAddr(int k, bool write) { Ea(ins[k], NR.Rax); MemLa(k, ins[k].Seg, write); }
+        void MemAddr(int k, bool write, int size = 4) { Ea(ins[k], NR.Rax); MemLa(k, ins[k].Seg, write, size); }
         // eax = the offset in segment s: translate (limit, base, TLB, RAM, code line) into edx, r9 = Mem base, or leave before k
-        void MemLa(int k, int s, bool write)
+        void MemLa(int k, int s, bool write, int size = 4)
         {
             // the segment limit (LimitCheck, the specialized constants)
             uint lo = spec.Lo[s], span = spec.Span[s];
@@ -158,10 +165,10 @@ public sealed partial class I386
             {
                 a.MovRR(NR.Rdx, NR.Rax, false);
                 if (lo != 0) a.AluRI(NAsm.Alu8.Sub, NR.Rdx, unchecked((int)lo), false);
-                a.AluRI(NAsm.Alu8.Cmp, NR.Rdx, unchecked((int)(span - 3)), false);
+                a.AluRI(NAsm.Alu8.Cmp, NR.Rdx, unchecked((int)(span - (uint)(size - 1))), false);
                 a.Jcc(NC.A, Before(k));
             }
-            else { a.AluRI(NAsm.Alu8.Cmp, NR.Rax, unchecked((int)0xfffffffcu), false); a.Jcc(NC.A, Before(k)); }
+            else { a.AluRI(NAsm.Alu8.Cmp, NR.Rax, unchecked((int)(0xffffffffu - (uint)(size - 1))), false); a.Jcc(NC.A, Before(k)); }
             if (spec.Base[s] != 0) a.AluRI(NAsm.Alu8.Add, NR.Rax, unchecked((int)spec.Base[s]), false);
             // the TLB hit for this CPL and access (Xlat)
             a.MovRR(NR.Rdx, NR.Rax, false); a.ShiftI(NAsm.Sh.Shr, NR.Rdx, 12, false);
@@ -169,7 +176,7 @@ public sealed partial class I386
             a.MovRM(NR.R9, C(write ? CxTlbW : CxTlbR));
             a.AluRM(NAsm.Alu8.Cmp, NR.Rdx, new M(NR.R9, NR.R8, 4, 0), false);
             a.Jcc(NC.NE, Before(k));
-            a.MovRR(NR.R9, NR.Rax, false); a.AluRI(NAsm.Alu8.And, NR.R9, 0xfff, false); a.AluRI(NAsm.Alu8.Cmp, NR.R9, 4096 - 4, false); a.Jcc(NC.A, Before(k));
+            a.MovRR(NR.R9, NR.Rax, false); a.AluRI(NAsm.Alu8.And, NR.R9, 0xfff, false); if (size > 1) { a.AluRI(NAsm.Alu8.Cmp, NR.R9, 4096 - size, false); a.Jcc(NC.A, Before(k)); }
             a.MovRM(NR.R9, C(CxTlbX));
             a.MovRM(NR.Rdx, new M(NR.R9, NR.R8, 4, 0), false);
             a.Alu(NAsm.Alu8.Xor, NR.Rdx, NR.Rax, false);   // pax
@@ -332,6 +339,86 @@ public sealed partial class I386
                     else Continue(k, pe);
                     break;
                 }
+                case DK_INC: case DK_DEC:
+                {   // IncDecReg inline: CF made concrete in Flags when lazy (SUB / ADD / logic), else the IL code
+                    var skip = a.NewLabel(); var notSub = a.NewLabel(); var notAdd = a.NewLabel(); var have = a.NewLabel();
+                    a.MovRM(NR.Rax, C(CxMask), false); a.AluRI(NAsm.Alu8.And, NR.Rax, (int)CF, false); a.Jcc(NC.E, skip);
+                    a.AluMI(NAsm.Alu8.Cmp, C(CxOp), (int)Cc.SUB, false); a.Jcc(NC.NE, notSub);
+                    a.MovRM(NR.Rax, C(CxSrc1), false); a.AluRM(NAsm.Alu8.Cmp, NR.Rax, C(CxSrc2), false); a.SetCc(NC.B, NR.Rax); a.Jmp(have);
+                    a.Bind(notSub);
+                    a.AluMI(NAsm.Alu8.Cmp, C(CxOp), (int)Cc.ADD, false); a.Jcc(NC.NE, notAdd);
+                    a.MovRM(NR.Rax, C(CxDst), false); a.AluRM(NAsm.Alu8.Cmp, NR.Rax, C(CxSrc2), false); a.SetCc(NC.B, NR.Rax); a.Jmp(have);
+                    a.Bind(notAdd);
+                    a.MovRM(NR.Rax, C(CxOp), false); a.AluRI(NAsm.Alu8.Sub, NR.Rax, (int)Cc.AND, false); a.AluRI(NAsm.Alu8.Cmp, NR.Rax, 2, false); a.Jcc(NC.A, Before(k));
+                    a.MovRI(NR.Rax, 0);
+                    a.Bind(have);
+                    a.Movzx8RR(NR.Rax, NR.Rax);
+                    a.MovRM(NR.Rdx, C(CxFlags), false); a.AluRI(NAsm.Alu8.And, NR.Rdx, unchecked((int)~CF), false); a.Alu(NAsm.Alu8.Or, NR.Rdx, NR.Rax, false); a.MovMR(C(CxFlags), NR.Rdx, false);
+                    a.Bind(skip);
+                    AddCost(k);
+                    a.MovRR(NR.Rax, NG[e.Op], false); a.AluRI(e.Kind == DK_DEC ? NAsm.Alu8.Sub : NAsm.Alu8.Add, NR.Rax, 1, false);
+                    a.MovMR(C(CxDst), NR.Rax, false); a.MovMI32(C(CxOp), (int)(e.Kind == DK_DEC ? Cc.DEC32 : Cc.INC32), false); a.MovMI32(C(CxMask), (int)(PF | AF | ZF | SF | OF), false);
+                    a.MovRR(NG[e.Op], NR.Rax, false);
+                    Continue(k, pe);
+                    break;
+                }
+                case DK_MOVX:
+                {   // MOVZX / MOVSX r32, Eb / Ew
+                    int sb = e.Bits;
+                    if (mem) { MemAddr(k, false, sb / 8); AddCost(k); if (sb == 8) a.Movzx8RM(NR.Rax, Mem()); else a.Movzx16RM(NR.Rax, Mem()); }
+                    else
+                    {
+                        AddCost(k);
+                        if (sb == 16) a.Movzx16RR(NR.Rax, NG[e.Rm]);
+                        else if (e.Rm < 4) a.Movzx8RR(NR.Rax, NG[e.Rm]);
+                        else { a.MovRR(NR.Rax, NG[e.Rm - 4], false); a.ShiftI(NAsm.Sh.Shr, NR.Rax, 8, false); a.Movzx8RR(NR.Rax, NR.Rax); }
+                    }
+                    if (e.Op == 1) { a.ShiftI(NAsm.Sh.Shl, NR.Rax, 32 - sb, false); a.ShiftI(NAsm.Sh.Sar, NR.Rax, 32 - sb, false); }
+                    a.MovRR(NG[e.Reg], NR.Rax, false);
+                    Continue(k, pe);
+                    break;
+                }
+                case DK_FLAGOP:
+                    AddCost(k);
+                    if (e.Op is 0xf8 or 0xf9) { a.AluMI(NAsm.Alu8.And, C(CxMask), unchecked((int)~CF), false); a.AluMI(e.Op == 0xf8 ? NAsm.Alu8.And : NAsm.Alu8.Or, C(CxFlags), e.Op == 0xf8 ? unchecked((int)~CF) : (int)CF, false); }
+                    else a.AluMI(e.Op == 0xfc ? NAsm.Alu8.And : NAsm.Alu8.Or, C(CxFlags), e.Op == 0xfc ? unchecked((int)~DF) : (int)DF, false);
+                    Continue(k, pe);
+                    break;
+                case DK_GRP3:
+                {   // NOT / NEG Ev (Grp3Body): NEG: Src1 = E, Dst = -E, NEG32, ALL
+                    if (mem) MemAddr(k, true);
+                    AddCost(k);
+                    if (mem) a.MovRM(NR.Rax, Mem(), false); else a.MovRR(NR.Rax, NG[e.Rm], false);
+                    if (e.Reg == 2) a.Not(NR.Rax, false);
+                    else
+                    {
+                        a.MovMR(C(CxSrc1), NR.Rax, false); a.Neg32(NR.Rax);
+                        a.MovMR(C(CxDst), NR.Rax, false); a.MovMI32(C(CxOp), (int)Cc.NEG32, false); a.MovMI32(C(CxMask), unchecked((int)ALL), false);
+                    }
+                    if (mem) a.MovMR(Mem(), NR.Rax, false); else a.MovRR(NG[e.Rm], NR.Rax, false);
+                    Continue(k, pe);
+                    break;
+                }
+                case DK_GRP5:
+                {   // CALL / JMP / PUSH Ev (JGrp5): v = E (read first), then the push; CALL / JMP leave with NextIp = v
+                    if (mem) { MemAddr(k, false); a.MovRM(NR.Rax, Mem(), false); } else a.MovRR(NR.Rax, NG[e.Rm], false);
+                    a.MovMR(C(CxNext), NR.Rax, false);
+                    if (e.Reg is 2 or 6)
+                    {
+                        a.Lea32(NR.Rax, new M(NG[4], -4));
+                        MemLa(k, SEG_SS, true);
+                        AddCost(k);
+                        a.Lea32(NG[4], new M(NG[4], -4));
+                        if (e.Reg == 2) { a.MovRM(NR.Rax, C(CxIp0), false); a.AluRI(NAsm.Alu8.Add, NR.Rax, unchecked((int)(pe - start)), false); }
+                        else a.MovRM(NR.Rax, C(CxNext), false);
+                        a.MovMR(Mem(), NR.Rax, false);
+                    }
+                    else AddCost(k);
+                    if (e.Reg == 6) { Continue(k, pe); break; }
+                    a.AluRI(NAsm.Alu8.Sub, NR.R11, 1, false);
+                    a.MovMI32(C(CxK), k, false); a.MovMI32(C(CxKind), 2, false); a.Jmp(exitCommon);
+                    break;
+                }
                 case DK_POP:
                     a.MovRR(NR.Rax, NG[4], false);
                     MemLa(k, SEG_SS, false);
@@ -368,7 +455,8 @@ public sealed partial class I386
             a.MovMI32(C(CxK), k, false); a.MovMI32(C(CxKind), 1, false); a.MovMI32(C(CxNext), unchecked((int)next), false); a.Jmp(exitCommon);
         }
         a.Bind(exitCommon);
-        for (int i = 0; i < 8; i++) a.MovMR(C(4 * i), NG[i], false);
+        a.MovRM(NR.Rax, C(CxRPtr));
+        for (int i = 0; i < 8; i++) a.MovMR(new M(NR.Rax, 4 * i), NG[i], false);
         a.MovMR(C(CxCyc), NR.R10);
         a.MovMR(C(CxSt), NR.R11, false);
         for (int i = NSaved.Length - 1; i >= 0; i--) a.Pop(NSaved[i]);
@@ -395,26 +483,24 @@ public sealed partial class I386
         JSegLoad(ni.SegMask);
         foreach (int s in ni.SpecSegs) if (!JSSame(s, ni.SBase[s], ni.SSpan[s], ni.SLo[s])) { NatSkipped++; return code.Fn(this, 0); }
         if (_spm != ni.Spm) { NatSkipped++; return code.Fn(this, 0); }
-        NCtx c;
-        for (int i = 0; i < 8; i++) c.R[i] = R[i];
+        NCtx* cp = _nctx;
+        if (cp == null) cp = NatCtxInit();
+        ref NCtx c = ref *cp;
         c.Op = _ccOp; c.Dst = _ccDst; c.Src1 = _ccSrc1; c.Src2 = _ccSrc2; c.Mask = _ccMask; c.Flags = Flags;
-        c.Cyc = Cycle; c.St = _steps; c.ExitK = 0; c.ExitKind = 0; c.ExitNext = 0; c.Ip0 = Ip - (code.Addrs[0] - code.Start); c.CsLim = SegLimit[SEG_CS];
+        c.Cyc = Cycle; c.St = _steps; c.ExitKind = 0; c.Ip0 = Ip - (code.Addrs[0] - code.Start); c.CsLim = SegLimit[SEG_CS];
+        long tag = (long)_nTag + (Cpl == 3 ? 2 * TlbSize * 4 : 0);
+        c.TlbR = tag; c.TlbW = tag + TlbSize * 4;
         int st0 = _steps;
-        fixed (byte* m = Mem) fixed (byte* cm = _codeMark) fixed (uint* tt = _tlbTag) fixed (uint* tx = _tlbXaddr)
-        {
-            int perm = Cpl == 3 ? 2 * TlbSize : 0;
-            c.Mem = (long)m; c.CMark = (long)cm; c.TlbR = (long)(tt + perm); c.TlbW = (long)(tt + perm + TlbSize); c.TlbX = (long)tx;
-            if (NativeStat) { long q0 = System.Diagnostics.Stopwatch.GetTimestamp(); ((delegate* unmanaged[SuppressGCTransition]<NCtx*, int>)ni.Fn)(&c); StatCallTicks += System.Diagnostics.Stopwatch.GetTimestamp() - q0; }
-            else ((delegate* unmanaged[SuppressGCTransition]<NCtx*, int>)ni.Fn)(&c);
-        }
+        uint[] rSave = NativeVerify ? (uint[])R.Clone() : null!;
+        if (NativeStat) { long q0 = System.Diagnostics.Stopwatch.GetTimestamp(); ((delegate* unmanaged[SuppressGCTransition]<NCtx*, int>)ni.Fn)(cp); StatCallTicks += System.Diagnostics.Stopwatch.GetTimestamp() - q0; }
+        else ((delegate* unmanaged[SuppressGCTransition]<NCtx*, int>)ni.Fn)(cp);
         NatRuns++;
         if (c.ExitKind == 0 && c.St == st0)
         {   // left before its first instruction, nothing done: the IL code runs it
             NatNoProgress++;
             return code.Fn(this, 0);
         }
-        if (NativeVerify) { NatVerify(code, ref c, st0); }
-        for (int i = 0; i < 8; i++) R[i] = c.R[i];
+        if (NativeVerify) { NatVerify(code, ref c, st0, rSave); }
         _ccOp = c.Op; _ccDst = c.Dst; _ccSrc1 = c.Src1; _ccSrc2 = c.Src2; _ccMask = c.Mask; Flags = c.Flags;
         NatRetired += st0 - c.St;
         ni.Retired += st0 - c.St;
@@ -438,26 +524,38 @@ public sealed partial class I386
         return rc;
     }
 
+    private unsafe NCtx* _nctx; private unsafe uint* _nTag;
+    private unsafe NCtx* NatCtxInit()
+    {   // one context per CPU, in unmanaged memory; the arrays it points to are pinned (I386.cs)
+        _nctx = (NCtx*)NativeMemory.AllocZeroed((nuint)sizeof(NCtx));
+        _nctx->RPtr = (long)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(R));
+        _nctx->Mem = (long)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(Mem));
+        _nctx->CMark = (long)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_codeMark));
+        _nctx->TlbX = (long)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_tlbXaddr));
+        _nTag = (uint*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_tlbTag));
+        return _nctx;
+    }
     private static readonly bool NativeVerify = Environment.GetEnvironmentVariable("X86_NATIVEVERIFY") == "1";
     private int _nvBad;
     /// <summary>X86_NATIVEVERIFY (debug; blocks without stores only): the interpreter runs the same steps from the same state; compare.</summary>
-    private unsafe void NatVerify(JitCode code, ref NCtx c, int st0)
+    private unsafe void NatVerify(JitCode code, ref NCtx c, int st0, uint[] rPre)
     {
         uint ipE = Ip, ip0 = Ip - (code.Addrs[0] - code.Start); long cyc0 = Cycle; uint nip0 = NextIp;
         int steps = st0 - c.St;
         uint nIp, nNext;
         if (c.ExitKind == 0) { nIp = nNext = ip0 + (code.Addrs[c.ExitK] - code.Start); }
         else { nIp = ip0 + (code.Addrs[c.ExitK] - code.Start); nNext = c.ExitKind == 2 ? c.ExitNext : ip0 + (c.ExitNext - code.Start); }
-        var r0 = (uint[])R.Clone(); int op0 = _ccOp; uint d0 = _ccDst, s10 = _ccSrc1, s20 = _ccSrc2, m0 = _ccMask, f0 = Flags;
+        var rNat = (uint[])R.Clone(); for (int i = 0; i < 8; i++) R[i] = rPre[i];
+        var r0 = rPre; int op0 = _ccOp; uint d0 = _ccDst, s10 = _ccSrc1, s20 = _ccSrc2, m0 = _ccMask, f0 = Flags;
         NextIp = ipE; _steps = st0;
         for (int i = 0; i < steps; i++) { if (Step1(false) != OK) break; }
         string bad = "";
-        for (int i = 0; i < 8; i++) if (R[i] != c.R[i]) bad += $" r{i} {R[i]:X}/{c.R[i]:X}";
+        for (int i = 0; i < 8; i++) if (R[i] != rNat[i]) bad += $" r{i} {R[i]:X}/{rNat[i]:X}";
         if (Cycle != c.Cyc) bad += $" cyc {Cycle - cyc0}/{c.Cyc - cyc0}";
         if (NextIp != nNext) bad += $" next {NextIp:X}/{nNext:X}";
         if (_ccMask != c.Mask || _ccDst != c.Dst) bad += $" cc {_ccOp},{_ccDst:X},{_ccMask:X}/{c.Op},{c.Dst:X},{c.Mask:X}";
         if (bad != "" && ++_nvBad <= 20) Console.Error.WriteLine($"nverify {code.Start:X8} a0 {code.Addrs[0]:X8} steps {steps} exit k{c.ExitK} kind {c.ExitKind}:{bad} | " + Convert.ToHexString(Mem, (int)code.Addrs[0], 24) + " kinds " + string.Join(",", code.Ins!.Take(6).Select(x => x.Kind)));
-        for (int i = 0; i < 8; i++) R[i] = r0[i];
+        for (int i = 0; i < 8; i++) R[i] = rNat[i];
         _ccOp = op0; _ccDst = d0; _ccSrc1 = s10; _ccSrc2 = s20; _ccMask = m0; Flags = f0; Cycle = cyc0; Ip = ipE; NextIp = nip0; _steps = st0;
     }
 
