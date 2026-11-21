@@ -316,6 +316,7 @@ public sealed partial class I386
         0,1, 1,1,   0,0, 1,1,   0,1, 0,1,   0,0, 0,0,   // wp == 1
     };
 
+    private static readonly bool InvlpgAll = Environment.GetEnvironmentVariable("X86_INVLPGALL") != null;
     private void TlbClear()
     {
         for (int i = 0; i < TlbSize; i++) _tlbLpgno[i] = 0xffffffff;

@@ -2093,7 +2093,13 @@ public sealed partial class I386
             }
             case 7: // INVLPG
                 if (_mod == 3 || (!_legacy && !_has486)) return K(Throw0(EX_UD));
-                TlbClear();
+                if (InvlpgAll) TlbClear();
+                else
+                {   // that page's entry only, as the CPU (X86_INVLPGALL: the whole TLB, as before)
+                    uint lp = (SegBase[_curSeg] + _addr) >> 12; int e = TlbIdx(lp);
+                    if (_tlbLpgno[e] == lp) { _tlbLpgno[e] = 0xffffffff; TagClear(e); }
+                    _ifLaddr = ulong.MaxValue; _ifPaddr = 0;
+                }
                 return OK;
         }
         return K(Throw0(EX_UD));
