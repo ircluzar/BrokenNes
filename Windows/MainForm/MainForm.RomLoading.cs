@@ -85,7 +85,7 @@ namespace BrokenNes.Windows
                     return;
                 }
                 
-                byte[] romData = File.ReadAllBytes(path);
+                byte[] romData = NesEmulator.X86.DiskImage.ReadImageFile(path);   // (= File.ReadAllBytes; an x86 disk image also gets its cached base hash, IMAGE.p256)
 
                 LoadRomBytes(Path.GetFileName(path), romData, path, addToRecentRoms: true);
             }
