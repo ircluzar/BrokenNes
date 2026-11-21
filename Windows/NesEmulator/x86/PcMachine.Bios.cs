@@ -553,10 +553,12 @@ public sealed partial class PcMachine
 
     private void DiskStatus(int dl, uint st) { LinW8(dl >= 0x80 ? 0x474u : 0x441u, (byte)st); AH = st; SetCF(st != 0); }
 
+    private static readonly bool I13Log = Environment.GetEnvironmentVariable("X86_I13LOG") == "1";
     private void Int13()
     {
         int dl = (int)DL;
         uint fn = AH;
+        if (I13Log && dl < 0x80) Console.WriteLine($"i13: fn {fn:X2} dl {dl:X2} AX {AX:X4} CX {CX:X4} DX {DX:X4} vm {(C.Flags >> 17) & 1} pe {C.Cr0 & 1} disk {(Floppy[0] != null ? 1 : 0)}");
         if (Int13PioSetup(dl, fn)) return;
         if (Int13FdcSetup(dl, fn)) return;
         if (Ata != null && Int13Ide(dl, fn)) return;
