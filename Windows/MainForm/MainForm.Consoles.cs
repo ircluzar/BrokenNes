@@ -838,6 +838,7 @@ namespace BrokenNes.Windows
                 TfBeforeSessionFrame(s, p1, p2, ptr); // Timeflow (T1): returns at once unless the user switched recording on
                 DrainPcMouse(s);                    // the x86 PC: the captured host mouse's motion and buttons
                 DrainPcKeys(s);                     // the x86 PC: the real keyboard's keys typed since the last frame
+                if (s is NesEmulator.X86.PcSession xpc) BrokenNes.Windows.WebApi.ApiPcInput.BeforeFrame(xpc.Machine);   // the x86 PC: a test's queued keyboard / mouse script (POST /api/x86/input)
                 s.SetPad(0, p1); s.SetPad(1, p2);
                 ApplyPointer(s, ptr);
                 SlowMark(1);
