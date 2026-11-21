@@ -24,23 +24,27 @@ public sealed record PcConfig
     /// <summary>Boot order (IDE machines): 'C' CD-ROM, 'H' hard disk, 'F' floppy.</summary>
     public string BootOrder { get; init; } = "FH";
     public PcBus Bus { get; init; } = PcBus.Isa;
+    /// <summary>A 3dfx Voodoo Graphics (Voodoo 1) PCI add-in card beside the 2D card (PCI board only; off by default). Config block version 3.</summary>
+    public bool Voodoo { get; init; }
 
     public static readonly PcConfig Default = new();
     public static readonly PcConfig Dos386 = new() { CpuGen = 3 };
     public static readonly PcConfig Dos486 = new() { CpuGen = 4, MemoryMB = 16, Storage = PcStorage.Ide };
     public static readonly PcConfig Win98 = new() { CpuGen = 5, MemoryMB = 64, Storage = PcStorage.Ide, BootOrder = "CHF", Bus = PcBus.Pci430TX };
+    public static readonly PcConfig Win98Voodoo = Win98 with { Voodoo = true };
 
     public bool IsDefault => this == Default;
 
     public static PcConfig Preset(string name) => name.ToUpperInvariant() switch
     {
-        "DEFAULT" => Default, "DOS-386" => Dos386, "DOS-486" => Dos486, "WIN98-P166" or "WIN98" => Win98,
+        "DEFAULT" => Default, "DOS-386" => Dos386, "DOS-486" => Dos486, "WIN98-P166" or "WIN98" => Win98, "WIN98-P166-VOODOO" => Win98Voodoo,
         _ => throw new ArgumentException($"no x86 machine preset '{name}' (DEFAULT, DOS-386, DOS-486, WIN98-P166)"),
     };
 
     public void Validate()
     {
         if (CpuGen is < 3 or > 5) throw new ArgumentException("CpuGen is 3, 4 or 5");
+        if (Voodoo && Bus != PcBus.Pci430TX) throw new ArgumentException("the Voodoo needs the PCI board");
         if (MemoryMB is < 1 or > 128) throw new ArgumentException("MemoryMB is 1..128");
         foreach (char c in BootOrder) if (c is not ('C' or 'H' or 'F')) throw new ArgumentException("BootOrder uses C, H, F");
     }
@@ -48,18 +52,21 @@ public sealed record PcConfig
     // version 1 (no bus field) is still written for an ISA board, so those states stay byte for byte what they were
     public void Write(BinaryWriter w)
     {
-        w.Write(Bus == PcBus.Isa ? 1 : 2); w.Write(CpuGen); w.Write(MemoryMB); w.Write((int)Storage); w.Write(BootOrder);
+        w.Write(Voodoo ? 3 : Bus == PcBus.Isa ? 1 : 2); w.Write(CpuGen); w.Write(MemoryMB); w.Write((int)Storage); w.Write(BootOrder);
         if (Bus != PcBus.Isa) w.Write((int)Bus);
+        if (Voodoo) w.Write(1);   // version 3: the 3D card
     }
     public static PcConfig Read(BinaryReader r)
     {
         int v = r.ReadInt32();
-        if (v is not (1 or 2)) throw new InvalidDataException($"x86 machine config block version {v} is not known");
+        if (v is not (1 or 2 or 3)) throw new InvalidDataException($"x86 machine config block version {v} is not known");
         var c = new PcConfig { CpuGen = r.ReadInt32(), MemoryMB = r.ReadInt32(), Storage = (PcStorage)r.ReadInt32(), BootOrder = r.ReadString() };
-        return v == 2 ? c with { Bus = (PcBus)r.ReadInt32() } : c;
+        if (v >= 2) c = c with { Bus = (PcBus)r.ReadInt32() };
+        if (v >= 3) c = c with { Voodoo = r.ReadInt32() != 0 };
+        return c;
     }
 
-    public override string ToString() => $"{(CpuGen == 3 ? "386" : CpuGen == 4 ? "486" : "586")}, {MemoryMB} MB, {(Storage == PcStorage.Ide ? "IDE" : "BIOS disks")}, boot {BootOrder}{(Bus == PcBus.Pci430TX ? ", PCI 430TX" : "")}";
+    public override string ToString() => $"{(CpuGen == 3 ? "386" : CpuGen == 4 ? "486" : "586")}, {MemoryMB} MB, {(Storage == PcStorage.Ide ? "IDE" : "BIOS disks")}, boot {BootOrder}{(Bus == PcBus.Pci430TX ? ", PCI 430TX" : "")}{(Voodoo ? ", Voodoo" : "")}";
 }
 
 /// <summary>A whole machine the app offers (the desktop's "x86 machine" menu): the board config, the CPU model and the video card.</summary>
@@ -75,6 +82,7 @@ public sealed record PcMachinePreset(string Key, string Label, PcConfig Config, 
         new("dos-386", "DOS 386DX-33, VGA", PcConfig.Dos386, CpuModel.I386DX, PcVideo.Vga),
         new("dos-486", "DOS 486DX2-66, VGA, IDE", PcConfig.Dos486, CpuModel.I486DX2, PcVideo.Vga),
         new("win98-p166", "Win98 Pentium MMX 166, S3 Trio64, PCI", PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.S3Trio64),
+        new("win98-p166-voodoo", "Win98 Pentium MMX 166, S3 Trio64 + 3dfx Voodoo, PCI", PcConfig.Win98Voodoo, CpuModel.PentiumMmx, PcVideo.S3Trio64),
     };
 
     /// <summary>The preset for a key (case-insensitive); an unknown or empty key is the classic machine.</summary>
