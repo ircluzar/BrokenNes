@@ -55,7 +55,7 @@ public sealed partial class PcMachine
 
     private static VbeMode? FindVbe(int n) { foreach (var vm in VbeModes) if (vm.Number == n) return vm; return null; }
 
-    private uint EsDi => SegB(I386.SEG_ES) + DI;
+    private uint EsDi => SegB(I386.SEG_ES) + DI;   // a LINEAR address: under Windows 98 a DOS box (V86) is paged, so the buffers go through LinW / Lin8 (PhysW wrote into whatever page sat at ES*16+DI: Quake in a DOS box read a garbage VBE block, 2026-11-20)
     private void VbeOk() => AX = 0x004f;
     private void VbeFail() => AX = 0x014f;
 
@@ -67,18 +67,18 @@ public sealed partial class PcMachine
             case 0x00:
             {
                 uint b = EsDi;
-                bool v2 = Phys32(b) == 0x32454256;                   // "VBE2": the caller has room for the 2.0 fields
-                for (uint i = 0; i < (v2 ? 512u : 256u); i++) PhysW8(b + i, 0);
-                PhysW32(b, 0x41534556);                              // "VESA"
-                PhysW16(b + 4, 0x0200);
-                PhysW16(b + 6, OemOff); PhysW16(b + 8, (ushort)VRomSeg);
-                PhysW32(b + 10, 0);                                  // capabilities: 6-bit DAC, VGA compatible
-                PhysW16(b + 14, ModeListOff); PhysW16(b + 16, (ushort)VRomSeg);
-                PhysW16(b + 18, (ushort)(S3Trio64.VramBytes / 65536));
-                PhysW16(b + 20, 0x0100);
-                PhysW16(b + 22, VendorOff); PhysW16(b + 24, (ushort)VRomSeg);
-                PhysW16(b + 26, ProductOff); PhysW16(b + 28, (ushort)VRomSeg);
-                PhysW16(b + 30, RevOff); PhysW16(b + 32, (ushort)VRomSeg);
+                bool v2 = (Lin8(b) | (uint)Lin8(b + 1) << 8 | (uint)Lin8(b + 2) << 16 | (uint)Lin8(b + 3) << 24) == 0x32454256;                   // "VBE2": the caller has room for the 2.0 fields
+                for (uint i = 0; i < (v2 ? 512u : 256u); i++) LinW8(b + i, 0);
+                LinW32(b, 0x41534556);                              // "VESA"
+                LinW16(b + 4, 0x0200);
+                LinW16(b + 6, OemOff); LinW16(b + 8, (ushort)VRomSeg);
+                LinW32(b + 10, 0);                                  // capabilities: 6-bit DAC, VGA compatible
+                LinW16(b + 14, ModeListOff); LinW16(b + 16, (ushort)VRomSeg);
+                LinW16(b + 18, (ushort)(S3Trio64.VramBytes / 65536));
+                LinW16(b + 20, 0x0100);
+                LinW16(b + 22, VendorOff); LinW16(b + 24, (ushort)VRomSeg);
+                LinW16(b + 26, ProductOff); LinW16(b + 28, (ushort)VRomSeg);
+                LinW16(b + 30, RevOff); LinW16(b + 32, (ushort)VRomSeg);
                 VbeOk();
                 break;
             }
@@ -88,21 +88,21 @@ public sealed partial class PcMachine
                 if (vm == null) { VbeFail(); break; }
                 var v = vm.Value;
                 uint b = EsDi;
-                for (uint i = 0; i < 256; i++) PhysW8(b + i, 0);
+                for (uint i = 0; i < 256; i++) LinW8(b + i, 0);
                 int bpl = v.W * BytesPP(v.Bpp);
-                PhysW16(b + 0x00, 0x009b);                           // supported, colour, graphics, linear framebuffer
-                PhysW8(b + 0x02, 7); PhysW8(b + 0x03, 0);            // window A: read/write, no window B
-                PhysW16(b + 0x04, 64); PhysW16(b + 0x06, 64);
-                PhysW16(b + 0x08, 0xa000); PhysW16(b + 0x0a, 0);
-                PhysW16(b + 0x0c, WinFuncOff); PhysW16(b + 0x0e, (ushort)VRomSeg);
-                PhysW16(b + 0x10, (ushort)bpl);
-                PhysW16(b + 0x12, (ushort)v.W); PhysW16(b + 0x14, (ushort)v.H);
-                PhysW8(b + 0x16, 8); PhysW8(b + 0x17, 16);
-                PhysW8(b + 0x18, 1); PhysW8(b + 0x19, (byte)v.Bpp); PhysW8(b + 0x1a, 1);
-                PhysW8(b + 0x1b, (byte)(v.Bpp == 8 ? 4 : 6));        // packed pixel / direct colour
-                PhysW8(b + 0x1c, 0);
-                PhysW8(b + 0x1d, (byte)Math.Max(0, S3Trio64.VramBytes / (bpl * v.H) - 1));
-                PhysW8(b + 0x1e, 1);
+                LinW16(b + 0x00, 0x009b);                           // supported, colour, graphics, linear framebuffer
+                LinW8(b + 0x02, 7); LinW8(b + 0x03, 0);            // window A: read/write, no window B
+                LinW16(b + 0x04, 64); LinW16(b + 0x06, 64);
+                LinW16(b + 0x08, 0xa000); LinW16(b + 0x0a, 0);
+                LinW16(b + 0x0c, WinFuncOff); LinW16(b + 0x0e, (ushort)VRomSeg);
+                LinW16(b + 0x10, (ushort)bpl);
+                LinW16(b + 0x12, (ushort)v.W); LinW16(b + 0x14, (ushort)v.H);
+                LinW8(b + 0x16, 8); LinW8(b + 0x17, 16);
+                LinW8(b + 0x18, 1); LinW8(b + 0x19, (byte)v.Bpp); LinW8(b + 0x1a, 1);
+                LinW8(b + 0x1b, (byte)(v.Bpp == 8 ? 4 : 6));        // packed pixel / direct colour
+                LinW8(b + 0x1c, 0);
+                LinW8(b + 0x1d, (byte)Math.Max(0, S3Trio64.VramBytes / (bpl * v.H) - 1));
+                LinW8(b + 0x1e, 1);
                 (int rs, int rp, int gs, int gp, int bs, int bp, int xs, int xp) = v.Bpp switch
                 {
                     15 => (5, 10, 5, 5, 5, 0, 1, 15),
@@ -110,10 +110,10 @@ public sealed partial class PcMachine
                     32 => (8, 16, 8, 8, 8, 0, 8, 24),
                     _ => (0, 0, 0, 0, 0, 0, 0, 0),
                 };
-                PhysW8(b + 0x1f, (byte)rs); PhysW8(b + 0x20, (byte)rp); PhysW8(b + 0x21, (byte)gs); PhysW8(b + 0x22, (byte)gp);
-                PhysW8(b + 0x23, (byte)bs); PhysW8(b + 0x24, (byte)bp); PhysW8(b + 0x25, (byte)xs); PhysW8(b + 0x26, (byte)xp);
-                PhysW8(b + 0x27, 0);
-                PhysW32(b + 0x28, s3.LfbBase);
+                LinW8(b + 0x1f, (byte)rs); LinW8(b + 0x20, (byte)rp); LinW8(b + 0x21, (byte)gs); LinW8(b + 0x22, (byte)gp);
+                LinW8(b + 0x23, (byte)bs); LinW8(b + 0x24, (byte)bp); LinW8(b + 0x25, (byte)xs); LinW8(b + 0x26, (byte)xp);
+                LinW8(b + 0x27, 0);
+                LinW32(b + 0x28, s3.LfbBase);
                 VbeOk();
                 break;
             }
@@ -177,8 +177,8 @@ public sealed partial class PcMachine
                 for (int i = 0; i < count && start + i < 256; i++, b += 4)
                 {
                     int p = (start + i) * 3;
-                    if ((BL & 0x7f) == 0) { Vga.Palette[p] = (byte)(Phys8(b + 2) & 63); Vga.Palette[p + 1] = (byte)(Phys8(b + 1) & 63); Vga.Palette[p + 2] = (byte)(Phys8(b) & 63); }
-                    else if (BL == 1) { PhysW8(b + 2, Vga.Palette[p]); PhysW8(b + 1, Vga.Palette[p + 1]); PhysW8(b, Vga.Palette[p + 2]); PhysW8(b + 3, 0); }
+                    if ((BL & 0x7f) == 0) { Vga.Palette[p] = (byte)(Lin8(b + 2) & 63); Vga.Palette[p + 1] = (byte)(Lin8(b + 1) & 63); Vga.Palette[p + 2] = (byte)(Lin8(b) & 63); }
+                    else if (BL == 1) { LinW8(b + 2, Vga.Palette[p]); LinW8(b + 1, Vga.Palette[p + 1]); LinW8(b, Vga.Palette[p + 2]); LinW8(b + 3, 0); }
                 }
                 VbeOk();
                 break;

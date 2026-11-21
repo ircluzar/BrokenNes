@@ -373,6 +373,8 @@ internal static class X86BootCli
         CaptureReport();
         if (args.Contains("--frametimes")) Console.WriteLine(FrameTimeReport());
         if (args.Contains("--dacdump")) for (int r = 0; r < 256; r += 16) Console.WriteLine($"dac {r:X2}: " + string.Join(" ", Enumerable.Range(r, 16).Select(i => $"{m.Vga.Palette[i * 3]:X2}{m.Vga.Palette[i * 3 + 1]:X2}{m.Vga.Palette[i * 3 + 2]:X2}")));
+        if (Environment.GetEnvironmentVariable("X86_VGADUMP") == "1")   // the VGA's register state at the end (text vs graphics decisions)
+            Console.WriteLine($"vgadump: misc {m.Vga.Msr:X2} SR {Convert.ToHexString(m.Vga.Sr)} GR {Convert.ToHexString(m.Vga.Gr)} AR {Convert.ToHexString(m.Vga.Ar)} CR {Convert.ToHexString(m.Vga.Cr.AsSpan(0, 0x19))} S3 enh {m.S3?.Enhanced} BDA mode {m.Phys8(0x449):X2}");
         Console.WriteLine($"vga: DAC writes {m.Vga.DacWrites}, above 3Fh {m.Vga.DacWritesOver63}; S3 CR55 {(m.S3 != null ? m.Vga.Cr[0x55] : 0):X2} CR67 {(m.S3 != null ? m.Vga.Cr[0x67] : 0):X2} SR18 {(m.S3 != null ? m.S3.SrRead(0x18) : 0):X2}; VGA-by-MMIO writes {m.S3?.VgaMmioWrites}, CR53 {(m.S3 != null ? m.Vga.Cr[0x53] : 0):X2}");
         if (args.Contains("--frametimes")) { var gi = GC.GetGCMemoryInfo(GCKind.Ephemeral); Console.WriteLine($"gc last ephemeral: gen {gi.Generation}, pause {(gi.PauseDurations.Length > 0 ? gi.PauseDurations[0].TotalMilliseconds : 0):F1} ms, promoted {gi.PromotedBytes / 1048576} MB, heap {gi.HeapSizeBytes / 1048576} MB, fragmented {gi.FragmentedBytes / 1048576} MB; gen0 budget? total committed {gi.TotalCommittedBytes / 1048576} MB"); }
         if (Environment.GetEnvironmentVariable("X86_SAVEBENCH") == "1")
