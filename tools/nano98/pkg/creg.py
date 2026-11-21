@@ -172,9 +172,8 @@ class Hive:
         blk_no = len(self.blocks)
         cur, cur_id = [], 0
         for k in keys:
-            if k.off is not None and k.rec in self.recs:
-                _, _, p = self.recs[k.rec]
-                struct.pack_into('<HHI', d, p + 4, 0xFFFF, 0xFFFF, NONE)   # old record -> free
+            if k.off is not None:
+                self._free_record(k.rec)
             if cur_id >= 0xFE:
                 new_blocks.append(cur); cur, cur_id = [], 0; blk_no += 1
             k.rec = (blk_no, cur_id)
@@ -182,8 +181,16 @@ class Hive:
         if cur:
             new_blocks.append(cur)
         # 3. new RGKN nodes (appended after the last used node; RGKN grows in 4 KB steps)
-        free_off = struct.unpack_from('<I', d, rk + 12)[0]
-        end = free_off if free_off != NONE else self.rgkn_size
+        # the top of RGKN: the free node that runs to the end of the area (Windows keeps one there); new nodes go there
+        end, prev_link = self.rgkn_size, None
+        f, link = struct.unpack_from('<I', d, rk + 12)[0], rk + 12
+        while f not in (NONE, 0) and f < self.rgkn_size:
+            fn = self._node(f)
+            if fn[0] == 0x80000000 and f + fn[1] == self.rgkn_size:
+                end, prev_link = f, link
+                break
+            link, f = rk + f + 8, fn[2]
+        top = end
         news = []
 
         def assign(k):
@@ -221,7 +228,13 @@ class Hive:
             n[7], n[6] = k.rec
             struct.pack_into('<IIIIIIHH', out, rk + k.off, *n)
         struct.pack_into('<I', out, rk + 4, newsize)
-        struct.pack_into('<I', out, rk + 12, end if end < newsize else NONE)
+        # unlink the old top free node, then put a fresh one after the new nodes (head of the list)
+        if prev_link is not None:
+            struct.pack_into('<I', out, prev_link, self._node(top)[2])
+        if end + 0x1C <= newsize:
+            struct.pack_into('<IIIIIIHH', out, rk + end, 0x80000000, newsize - end,
+                             struct.unpack_from('<I', out, rk + 12)[0], NONE, NONE, NONE, 0, 0)
+            struct.pack_into('<I', out, rk + 12, end)
         # 4. emit the new RGDB blocks
         for bi, ks in enumerate(new_blocks):
             body = bytearray()
@@ -243,16 +256,31 @@ class Hive:
         struct.pack_into('<H', out, 0x10, len(self.blocks) + len(new_blocks))
         return bytes(out)
 
+    def _free_record(self, rec):
+        """Free a key record the way Windows does: id = block = FFFF, 'used' = next free record offset, and the block's
+        free list head (+0x10) and unused byte count (+8) updated. Registry Checker rejects a hive whose chain is off."""
+        if rec not in self.recs:
+            return
+        p = self.recs.pop(rec)[2]
+        o = next(bo for bo, bs in self.blocks if bo <= p < bo + bs)
+        rsz = struct.unpack_from('<I', self.d, p)[0]
+        head = struct.unpack_from('<I', self.d, o + 0x10)[0]
+        struct.pack_into('<HHI', self.d, p + 4, 0xFFFF, 0xFFFF, head)
+        struct.pack_into('<I', self.d, o + 0x10, p - o)
+        struct.pack_into('<I', self.d, o + 8, struct.unpack_from('<I', self.d, o + 8)[0] + rsz)
+
     def _free_subtree(self, k):
         if k.off is None:
             return
         for ch in k.children.values():
             self._free_subtree(ch)
         n = self._node(k.off)
-        n[0] = 0x80000000
+        # free node: inuse 0x80000000, +4 = free bytes, +8 = next free node; pushed on the RGKN free list (+0x0C)
+        head = struct.unpack_from('<I', self.d, self.rgkn + 12)[0]
+        n[0], n[1], n[2] = 0x80000000, 0x1C, head
         struct.pack_into('<IIIIIIHH', self.d, self.rgkn + k.off, *n)
-        if k.rec in self.recs:
-            struct.pack_into('<HHI', self.d, self.recs[k.rec][2] + 4, 0xFFFF, 0xFFFF, NONE)
+        struct.pack_into('<I', self.d, self.rgkn + 12, k.off)
+        self._free_record(k.rec)
 
 
 def diff(a, b):
