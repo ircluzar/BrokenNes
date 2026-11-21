@@ -64,6 +64,7 @@ namespace cor64.Session
 
             // Reset restores this snapshot (a power cycle), keeping the battery save.
             m_Batch = m_Options.Batch > 0 ? m_Options.Batch : BatchFor(cor64.IO.SaveDb.GameCode(rom));
+            { var vm = Environment.GetEnvironmentVariable("COR64_REVIVE1_VIMOD"); cor64.RCP.Video.ViMod = vm == "1" || (vm != "0" && s_LastFromDefault); } // [n64-revive]
             m_PowerOnState = SaveState();
             UpdateFrame();
         }
@@ -141,13 +142,15 @@ namespace cor64.Session
         // Per-game slice rows (and their COR64_* gates) live in Session/GameDb.cs.
         private static readonly System.Collections.Generic.HashSet<string> s_Cat3ExclEnv = new(
             (Environment.GetEnvironmentVariable("COR64_SPDCAT3_EXCL") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries));
+        private static bool s_LastFromDefault; // [n64-revive] the last BatchFor result came from the speed_cat3 default slice
         public static int BatchFor(string gameCode)
         {
+            s_LastFromDefault = false;
             if (s_Spd2Force > 0) return s_Spd2Force;
             if (gameCode == null || gameCode.Length < 3) return 16;
             var mid = gameCode.Substring(1, 2);
             if (GameDb.TryGet(GameDb.Setting.Slice, mid, out var k)) return k;
-            if (s_Cat3Def > 0 && !GameDb.Has(GameDb.Setting.SliceCert, mid) && !GameDb.Has(GameDb.Setting.SliceExcl, mid) && !s_Cat3ExclEnv.Contains(mid)) return s_Cat3Def;
+            if (s_Cat3Def > 0 && !GameDb.Has(GameDb.Setting.SliceCert, mid) && !GameDb.Has(GameDb.Setting.SliceExcl, mid) && !s_Cat3ExclEnv.Contains(mid)) { s_LastFromDefault = true; return s_Cat3Def; }
             return 16;
         }
         private readonly int m_Batch;

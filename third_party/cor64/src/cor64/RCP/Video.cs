@@ -248,10 +248,13 @@ namespace cor64.RCP
             return b;
         }
 
-        // [n64-revive] COR64_REVIVE1_VIMOD=1 (default off, experiment): with slices of n >= the line wrap (1024-step slices,
-        // V_INTR+100 < 1024) the old wrap set VI_CURRENT to 0 on EVERY batch, so a game polling VI_CURRENT != 0 spins forever
-        // (Pokemon Puzzle League 8003F8DC, likely Roadsters' title_fix3 too). =1: the line wraps modulo instead.
-        private static readonly bool s_ViMod = Environment.GetEnvironmentVariable("COR64_REVIVE1_VIMOD") == "1";
+        // [n64-revive] VI_CURRENT modulo wrap. With slices of n >= the line wrap (1024-step slices, V_INTR+100 < 1024) the old
+        // wrap set VI_CURRENT to 0 on EVERY batch, so a game polling VI_CURRENT != 0 spins forever (Pokemon Puzzle League at
+        // 8003F8DC, Roadsters Trophy at 80001DE8: black + silent). On (set by N64Session) for games on the speed_cat3 default
+        // slice; games with their own GameDb slice row keep the old wrap (ab30: ClayFighter 63 1/3 hash changes with it).
+        // COR64_REVIVE1_VIMOD=0 off everywhere, =1 on for every game (experiment).
+        public static bool ViMod;
+        private static bool s_ViMod => ViMod;
         public void Tick(int n) {
             m_Interface.TickDma(n); // [timing] PI/SI DMA completions (COR64_TIMING_DMADUR)
             if (IsVideoActive) {
