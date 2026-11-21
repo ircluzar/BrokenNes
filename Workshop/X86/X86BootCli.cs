@@ -252,7 +252,7 @@ internal static class X86BootCli
                 }
             }
         }
-        long v86a = m.Cpu.V86Enters, n0 = n; var irqa = (long[])m.IrqCount.Clone(); var swa = sw.Elapsed;
+        long v86a = m.Cpu.V86Enters; int n0 = n; var irqa = (long[])m.IrqCount.Clone(); var swa = sw.Elapsed;
         n += RunUntil(m, until, frames - n);
         sampling = false;
         if (hotMod) HotModReport(m, hot, hotLin, n - n0, m.Cpu.V86Enters - v86a, irqa, sw.Elapsed - swa);
