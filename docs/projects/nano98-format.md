@@ -100,6 +100,10 @@ Fields:
 | Age of Empires (177 files, 67 MB, reg 72+25, 2 INI) | hd_scpairC_256 | round trip exact; FAT clean; hive invariants ok; boots (base asks to restart for new hardware first) |
 | Half-Life Uplink (74 files, 93 MB, reg 3 ops) | nano98 hd_d1 / seat_base | round trip exact; FAT clean; seat_base + package cold-boots clean (no Registry Checker) |
 
+Seat launch proof (2026-11-21, fixed writer): StarCraft (C: + blank D: hd_sc_d) and Age of Empires applied onto the nano98
+`seat_base.img`, booted `--machine win98-p166-nano --n98cmd` (command from `n98.py cmd`): status N98 BOOT -> READY -> RUN,
+both games reach their main menu (Releases\x86\nano98_seat_starcraft_package_menu.png, nano98_seat_aoe_package_menu.png).
+
 Round trip = capture(base, applied) gives the same files (sha256) and the same registry ops as the package.
 
 Hive validity: `regcheck.py BEFORE.img AFTER.img` checks the free-list invariants Windows' Registry Checker enforces
