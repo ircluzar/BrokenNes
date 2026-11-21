@@ -458,7 +458,7 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.NoInlining)]
     private uint JPhys(uint la, int size)
     {
-        uint lp = la >> 12; int e = (int)(lp % TlbSize);
+        uint lp = la >> 12; int e = TlbIdx(lp);
         if (_tlbLpgno[e] != lp || (la & 0xfff) > 4096 - size) return 0xffffffff;
         return _tlbXaddr[e] ^ la;
     }
@@ -484,7 +484,7 @@ public sealed partial class I386
     private void LinkPage(uint laddr, uint ip)
     {
         if ((Cr0 & CR0_PG) == 0) { LPW(0); return; } if ((laddr & 0xfff) >= 4096 - 16) { LPW(1); return; } if ((ulong)ip + 16 > SegLimit[SEG_CS]) { LPW(2); return; }
-        uint lpg = laddr >> 12; int e = (int)(lpg % TlbSize);
+        uint lpg = laddr >> 12; int e = TlbIdx(lpg);
         if (_tlbLpgno[e] != lpg) { LPW(3); return; } if (PteLookup[_tlbLookup[e] * 4 + (Cpl == 3 ? 2 : 0)] != 0) { LPW(4); return; }   // (a read at this CPL: the page walk's own check)
         uint pa = _tlbXaddr[e] ^ laddr;
         if (MemSize <= 4096 || pa >= MemSize - 4096 || InIoMem(pa) || InIoMem(pa + 16)) { LPW(5); return; } LPW(6);
@@ -1160,7 +1160,7 @@ public sealed partial class I386
             // (_tlbTag: one compare = a TLB hit allowed at this CPL, a write's dirty bit already set; the arrays through refs taken once in
             // the prologue, no bounds checks: the index < 4 * TlbSize)
             Ld(la); I4(12); Op(OpCodes.Shr_Un); Stl(lpn);
-            Ld(lpn); I4(TlbSize - 1); Op(OpCodes.And); Op(OpCodes.Conv_U); Stl(te);
+            Ld(lpn); if (TlbHash) { Ld(lpn); I4(9); Op(OpCodes.Shr_Un); Op(OpCodes.Xor); Ld(lpn); I4(18); Op(OpCodes.Shr_Un); Op(OpCodes.Xor); } I4(TlbSize - 1); Op(OpCodes.And); Op(OpCodes.Conv_U); Stl(te);
             Ld(write ? tlbW : tlbR); Ld(te); I4(4); Op(OpCodes.Mul); Op(OpCodes.Add); Op(OpCodes.Ldind_U4);
             Ld(lpn); il.Emit(OpCodes.Bne_Un, slow);
             if (size > 1) { Ld(la); I4(0xfff); Op(OpCodes.And); I4(4096 - size); il.Emit(OpCodes.Bgt_Un, slow); }

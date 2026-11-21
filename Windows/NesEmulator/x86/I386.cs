@@ -78,6 +78,11 @@ public sealed partial class I386
 
     // TLB
     private const int TlbSize = 512;
+    /// <summary>The TLB slot of a linear page: X86_TLBHASH folds bits 9+ in (pages 2 MB apart no longer share a slot: Win98's VMM / Win16
+    /// thunk data against user stacks); default the low bits as before.</summary>
+    private static readonly bool TlbHash = Environment.GetEnvironmentVariable("X86_TLBHASH") != null;
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static int TlbIdx(uint lp) => (int)((TlbHash ? lp ^ (lp >> 9) ^ (lp >> 18) : lp) & (TlbSize - 1));
     private readonly uint[] _tlbLpgno = new uint[TlbSize], _tlbXaddr = new uint[TlbSize];
     private readonly int[] _tlbLookup = new int[TlbSize];    // index into PteLookup: wp*4 + ((pte >> 1) & 3)
     private readonly int[] _tlbPpte = new int[TlbSize];      // physical address of the PTE's low byte
@@ -340,7 +345,7 @@ public sealed partial class I386
     private bool TranslateLpgno(int rwm, uint lpgno, uint laddr, int cpl, out uint paddr)
     {
         paddr = 0;
-        int e = (int)(lpgno % TlbSize);
+        int e = TlbIdx(lpgno);
         if (_tlbLpgno[e] != lpgno)
         {
             if (!TlbRefill(e, lpgno))
@@ -446,7 +451,7 @@ public sealed partial class I386
         if ((Cr0 & CR0_PG) != 0)
         {
             uint lpgno = laddr >> 12;
-            int e = (int)(lpgno % TlbSize);
+            int e = TlbIdx(lpgno);
             if (_tlbLpgno[e] != lpgno && !TlbRefill(e, lpgno))
             {
                 Cr2 = laddr; Excno = EX_PF; Excerr = Cpl == 3 ? 4u : 0u;
