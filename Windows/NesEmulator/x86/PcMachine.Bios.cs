@@ -129,6 +129,7 @@ public sealed partial class PcMachine
         _special[Int09Stub + 3] = I_INT09A;
         // INT 16h: STI first, so waiting for a key can halt until IRQ 1
         Code(Int16Stub, -1, 0xfb); _special[Int16Stub + 1] = I_INT16; Code(Int16Stub + 1, -1, 0xe6, 0xe0, 0xcf);
+        Code(Int16Stub + 4, -1, 0xf4, 0xeb, 0xf9);   // V86 key wait: a real HLT (traps to the V86 monitor = the VM is idle), then STI / OUT again
         Code(IrqMasterStub, -1, 0x50, 0xb0, 0x20, 0xe6, 0x20, 0x58, 0xcf);
         Code(IrqSlaveStub, -1, 0x50, 0xb0, 0x20, 0xe6, 0xa0, 0xe6, 0x20, 0x58, 0xcf);
         Code(Int19Stub, I_INT19, 0xe6, 0xe0, 0xcf);
@@ -368,8 +369,11 @@ public sealed partial class PcMachine
     {
         C.NextIp = C.Ip;
         // In V86 mode (a DOS VM under Windows) a native halt hides the wait from the VMM: the VM never traps, so Windows
-        // cannot switch away from it (setup froze on a hidden VM's INT 16h). Spin instead; the timer preempts it.
+        // cannot switch away from it (setup froze on a hidden VM's INT 16h). Spinning on the OUT was the old answer, but then an idle
+        // DOS box burnt its whole time slice: a Win98 DOS prompt left open took ~60% of the guest CPU from Quake II (2026-11-21).
+        // So in V86 the stub runs a real HLT (F000:Int16Stub+4): it traps to the VMM like a real BIOS's idle loop, which then runs the other VMs.
         if ((C.Flags & I386.VM) == 0) C.Halt = true;
+        else if (Cpu.Mem[Rom + Int16Stub + 4] == 0xf4) C.NextIp = Int16Stub + 4;
         C.EndBatch();
     }
 
