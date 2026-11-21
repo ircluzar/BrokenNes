@@ -1,4 +1,4 @@
-// A typed / clicked input script for the x86 PC, frame-paced like the Workshop's x86boot --type: plain text is typed (make + break, two frames a key),
+// A typed / clicked input script for the x86 PC (through PcSession.HostKey / HostMouse, like the real keyboard and mouse), frame-paced like the Workshop's x86boot --type: plain text is typed (make + break, two frames a key),
 // {m:dx,dy[,buttons]} moves the PS/2 mouse (buttons 1 = left, 2 = right, 4 = middle; held until the next {m:}), {wait:N} waits N frames,
 // {key} / {mod+key} presses a named key (enter, esc, tab, space, bs, f1-f12, up/down/left/right, home, end, pgup, pgdn, del, ins, win, menu, a single character),
 // {down:KEY} / {up:KEY} press or release a key and leave it, {{ is a literal '{'. A held click = {m:0,0,1}{wait:10}{m:0,0,0}. Written for BrokenNes.
@@ -10,7 +10,7 @@ namespace NesEmulator.X86;
 
 public sealed class PcInputScript
 {
-    private readonly Queue<(Action<PcMachine>? Act, int Frames)> _steps = new();
+    private readonly Queue<(Action<PcSession>? Act, int Frames)> _steps = new();
     private int _waiting;
 
     /// <summary>Steps not yet run (0 = done).</summary>
@@ -34,20 +34,20 @@ public sealed class PcInputScript
                     var v = tok[2..].Split(',');
                     if (v.Length is < 2 or > 3 || !int.TryParse(v[0], out int dx) || !int.TryParse(v[1], out int dy)) throw new ArgumentException("{m:dx,dy[,buttons]}: " + tok);
                     int b = v.Length > 2 && int.TryParse(v[2], out int bb) ? bb : 0;
-                    s.Add(m => m.Kbc.MouseInput(dx, dy, b), 2);
+                    s.Add(m => m.HostMouse(dx, dy, b), 2);
                     continue;
                 }
                 if (tok.StartsWith("wait:")) { if (!int.TryParse(tok[5..], out int n) || n < 0) throw new ArgumentException("{wait:N}: " + tok); s.Add(null, n); continue; }
-                if (tok.StartsWith("down:")) { var k = Key(tok[5..]); s.Add(m => m.Kbc.KeyBytes(k), 1); continue; }
-                if (tok.StartsWith("up:")) { var k = Break(Key(tok[3..])); s.Add(m => m.Kbc.KeyBytes(k), 1); continue; }
+                if (tok.StartsWith("down:")) { var k = Key(tok[5..]); s.Add(m => Press(m, k, true), 1); continue; }
+                if (tok.StartsWith("up:")) { var k = Key(tok[3..]); s.Add(m => Press(m, k, false), 1); continue; }
                 var parts = tok.Split('+');
                 var mods = new List<byte[]>();
                 foreach (var p in parts[..^1]) mods.Add(p switch { "ctrl" => new byte[] { 0x1d }, "alt" => new byte[] { 0x38 }, "shift" => new byte[] { 0x2a }, "win" => new byte[] { 0xe0, 0x5b }, _ => throw new ArgumentException("key modifier " + p) });
                 var key = Key(parts[^1]);
-                foreach (var md in mods) s.Add(m => m.Kbc.KeyBytes(md), 1);
-                s.Add(m => m.Kbc.KeyBytes(key), 1);
-                s.Add(m => m.Kbc.KeyBytes(Break(key)), 1);
-                for (int q = mods.Count - 1; q >= 0; q--) { var mb = Break(mods[q]); s.Add(m => m.Kbc.KeyBytes(mb), 1); }
+                foreach (var md in mods) s.Add(m => Press(m, md, true), 1);
+                s.Add(m => Press(m, key, true), 1);
+                s.Add(m => Press(m, key, false), 1);
+                for (int q = mods.Count - 1; q >= 0; q--) { var mb = mods[q]; s.Add(m => Press(m, mb, false), 1); }
                 s.Add(null, 1);
                 continue;
             }
@@ -56,17 +56,17 @@ public sealed class PcInputScript
         return s;
     }
 
-    private void Add(Action<PcMachine>? a, int frames) => _steps.Enqueue((a, frames));
+    private void Add(Action<PcSession>? a, int frames) => _steps.Enqueue((a, frames));
 
     private void Char(char ch)
     {
         if (ch == '\r') return;
         if (!Ascii.TryGetValue(ch, out var k)) throw new ArgumentException($"no key types '{ch}' (U+{(int)ch:X4})");
-        Add(m => { if (k.Shift) m.Kbc.KeyBytes(0x2a); m.Kbc.KeyBytes(k.Code, (byte)(k.Code | 0x80)); if (k.Shift) m.Kbc.KeyBytes(0xaa); }, 2);
+        Add(m => { if (k.Shift) m.HostKey(0x2a, false, true); m.HostKey(k.Code, false, true); m.HostKey(k.Code, false, false); if (k.Shift) m.HostKey(0x2a, false, false); }, 2);
     }
 
     /// <summary>The emulation thread, before each frame: runs the steps that are due.</summary>
-    public void BeforeFrame(PcMachine m)
+    public void BeforeFrame(PcSession m)
     {
         if (_waiting > 0) { _waiting--; return; }
         while (_steps.TryDequeue(out var st))
@@ -76,7 +76,8 @@ public sealed class PcInputScript
         }
     }
 
-    private static byte[] Break(byte[] k) { var b = (byte[])k.Clone(); b[^1] |= 0x80; return b; }
+    // through the session's host keyboard / mouse (PcSession.HostKey / HostMouse), the same path as the real ones, so the bug capture's input tap records it
+    private static void Press(PcSession m, byte[] k, bool down) => m.HostKey(k[^1], k.Length > 1, down);
 
     private static byte[] Key(string k)
     {

@@ -112,7 +112,7 @@ internal static class X86SessionCli
             for (int f = 0; f < 60; f++) s.RunFrame();
             var pic0 = pin.Machine.Vga.Frame.ToArray();
             var sc = PcInputScript.Parse("{down}{down}{wait:30}");
-            for (int f = 0; f < 400 && sc.Pending > 0; f++) { sc.BeforeFrame(pin.Machine); s.RunFrame(); }
+            for (int f = 0; f < 400 && sc.Pending > 0; f++) { sc.BeforeFrame(pin); s.RunFrame(); }
             for (int f = 0; f < 60; f++) s.RunFrame();
             var after = pin.Machine.Vga.Frame.ToArray();
             Check(sc.Pending == 0 && !after.AsSpan().SequenceEqual(pic0), "input script: two Down keys ran and changed the PC's screen");

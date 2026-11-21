@@ -19,7 +19,7 @@ namespace BrokenNes.Windows.WebApi
         public static int Pending { get { lock (gate) { int n = 0; foreach (var s in scripts) n += s.Pending; return n; } } }
 
         /// <summary>The emulation thread, under the emulation lock, before an x86 frame: one volatile read when nothing is queued.</summary>
-        public static void BeforeFrame(PcMachine m)
+        public static void BeforeFrame(PcSession m)
         {
             if (!any) return;
             lock (gate)
