@@ -40,7 +40,8 @@ public sealed class S3Trio64
     public const string VBoxId = "VBOXVGA";
     public readonly ushort[] Dispi = new ushort[16];
     public int DispiIndex;
-    public bool DispiOn => VBox && (Dispi[4] & 1) != 0;
+    public bool DispiOn => VBox && (Dispi[4] & 1) != 0 && !DispiDiagOff;
+    private static readonly bool DispiDiagOff = Environment.GetEnvironmentVariable("X86_DISPIOFF") == "1";   // diagnosis: show the VGA picture
     public static bool IsDispiPort(int port) => port is 0x1ce or 0x1cf or 0x1d0;
     public ushort DispiRead() => DispiIndex switch
     {
@@ -167,7 +168,7 @@ public sealed class S3Trio64
             else EngineOut8((int)(addr & 0xffff), v);
             return true;
         }
-        if (DispiOn) { BankWrites++; if (off < 0x10000 && (uint)(Bank << 16) + off < VramBytes) _v.Ram[(Bank << 16) + (int)off] = v; return true; }   // DISPI: A0000 is a 64 KB bank of the linear memory (any VGA map)
+        if (DispiOn && off < 0x10000) { BankWrites++; if ((uint)(Bank << 16) + off < VramBytes) _v.Ram[(Bank << 16) + (int)off] = v; return true; }   // DISPI: A0000 is a 64 KB bank of the linear memory (any VGA map)
         if (!EnhancedMap && !Window64K) return false;
         if (LinearOn && !Window64K) return true;
         if (off >= 0x10000) return true;
@@ -186,7 +187,7 @@ public sealed class S3Trio64
             else if (off >= 0x8000) v = (byte)EngineIn((int)(addr & 0xfffe), (addr & 1) != 0);
             return true;
         }
-        if (DispiOn) { if (off < 0x10000 && (uint)(Bank << 16) + off < VramBytes) v = _v.Ram[(Bank << 16) + (int)off]; return true; }
+        if (DispiOn && off < 0x10000) { if ((uint)(Bank << 16) + off < VramBytes) v = _v.Ram[(Bank << 16) + (int)off]; return true; }
         if (!EnhancedMap && !Window64K) return false;
         if ((LinearOn && !Window64K) || off >= 0x10000) return true;
         uint a = (uint)(Bank << 16) + off;
@@ -215,6 +216,7 @@ public sealed class S3Trio64
     public uint LfbRead32(uint a) { uint o = a - LfbBase; return o <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)o) : LfbRead8(a); }
     public void LfbWrite32(uint a, uint v)
     {
+        LfbWrites++;
         uint o = a - LfbBase;
         if (o <= VramBytes - 4) BitConverter.TryWriteBytes(_v.Ram.AsSpan((int)o), v);
         else for (int i = 0; i < 4 && o + i < VramBytes; i++) _v.Ram[o + i] = (byte)(v >> (8 * i));
