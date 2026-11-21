@@ -30,6 +30,7 @@ public sealed partial class I386
     {
         for (int i = 0; i < 8; i++) R[i] = r.ReadUInt32();
         Ip = r.ReadUInt32(); NextIp = r.ReadUInt32(); Flags = r.ReadUInt32(); Cpl = r.ReadInt32(); Code16 = r.ReadBoolean(); SpMask = r.ReadUInt32(); Halt = r.ReadBoolean();
+        SegGen++;
         for (int i = 0; i < 8; i++) { SegSel[i] = r.ReadUInt32(); SegBase[i] = r.ReadUInt32(); SegLimit[i] = r.ReadUInt32(); SegFlags[i] = r.ReadUInt32(); }
         IdtBase = r.ReadUInt32(); IdtLimit = r.ReadUInt32(); GdtBase = r.ReadUInt32(); GdtLimit = r.ReadUInt32();
         Cr0 = r.ReadUInt32(); Cr2 = r.ReadUInt32(); Cr3 = r.ReadUInt32();
