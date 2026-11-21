@@ -35,7 +35,7 @@ public sealed partial class NvGeForce
         if (mthd == 0x17fc || mthd == 0xdfc)
         {
             if (data != 0) { _cPrim = (int)data; _cWords.Clear(); _cVerts.Clear(); return; }
-            if (mthd == 0x17fc) DecodeInline(inst);
+            if (_cWords.Count > 0) DecodeInline(inst);   // (inline 0x1800 words come with either begin/end: the GL ICD sends them inside 0xDFC)
             DrawPrim(inst, _cPrim, _cVerts);
             _cPrim = 0; _cWords.Clear(); _cVerts.Clear();
             return;
