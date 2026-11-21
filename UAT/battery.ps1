@@ -89,8 +89,14 @@ if ($Skip -notcontains 'suite') {
 }
 
 function RunPerConsole($tool, $argsFor, $label) {
-    $procs = foreach ($c in $Consoles) { Start-Process -FilePath $tool -ArgumentList (& $argsFor $c) -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $Out "$label-$c.out.txt") -RedirectStandardError (Join-Path $Out "$label-$c.err.txt") }
-    $procs | Wait-Process
+    # at most BROKENNES_BATTERY_PAR (default 4) at once: 8 fuzzers in parallel pushed the dev PC to 90%+ (2026-11-21)
+    $par = 4; if ($env:BROKENNES_BATTERY_PAR -match '^\d+$' -and [int]$env:BROKENNES_BATTERY_PAR -gt 0) { $par = [int]$env:BROKENNES_BATTERY_PAR }
+    $running = @()
+    foreach ($c in $Consoles) {
+        while (@($running | Where-Object { -not $_.HasExited }).Count -ge $par) { Start-Sleep -Milliseconds 500 }
+        $running += Start-Process -FilePath $tool -ArgumentList (& $argsFor $c) -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $Out "$label-$c.out.txt") -RedirectStandardError (Join-Path $Out "$label-$c.err.txt")
+    }
+    $running | Wait-Process
 }
 
 # ---- 3. scenarios
