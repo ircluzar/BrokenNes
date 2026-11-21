@@ -63,6 +63,7 @@ public sealed partial class NvGeForce
             case 0x60 or 0x64: Index(inst, mthd, data); break;
             case 0x56 or 0x96 or 0x98 or 0x99: Celsius(inst, mthd, data); break;
             case 0x7b: SwzUpload(inst, mthd, data); break;
+            case 0x77 or 0x89 or 0x63: if (mthd == 0x40c) Sifm(inst); break;
             case 0x5e or 0x1e: if (mthd is >= 0x400 and < 0x480 && (mthd & 4) != 0) SolidRect(inst, mthd, data); break;
         }
     }
@@ -288,6 +289,57 @@ public sealed partial class NvGeForce
             for (int b = 0; b < bpp; b++) DmaWrite8(dma, a + (uint)b, (byte)(v >> (8 * b)));
         }
     }
+
+    // ================= 0x77 / 0x89 scaled image from memory (stretch blit, colour conversion) =================
+    // 0x300 source format (1 A1R5G5B5, 2 X1R5G5B5, 3 A8R8G8B8, 4 X8R8G8B8, 7 R5G6B5, 8 Y8), 0x308 / 0x30C clip point / size (y << 16 | x,
+    // h << 16 | w), 0x310 / 0x314 out point / size, 0x318 / 0x31C dsdx / dtdy (12.20), 0x400 in size, 0x404 pitch (bits 15:0), origin, filter,
+    // 0x408 in offset (DMA 0x184), 0x40C in point (12.4 t << 16 | s) = go. Destination: the surfaces context. Nearest sampling.
+    private void Sifm(uint inst)
+    {
+        var d = SurfOf(inst, false);
+        if (!d.Ok) return;
+        uint sdma = G(inst, 0x184 | 0x8000);
+        int sf = (int)G(inst, 0x300);
+        int sbpp = sf is 3 or 4 ? 4 : sf == 8 ? 1 : 2;
+        uint cp = G(inst, 0x308), cs = G(inst, 0x30c), op = G(inst, 0x310), os = G(inst, 0x314);
+        int ox = (short)(op & 0xffff), oy = (short)(op >> 16), ow = (int)(os & 0xffff), oh = (int)(os >> 16);
+        var clip = ClipOf(inst);
+        int cx = (short)(cp & 0xffff), cy = (short)(cp >> 16);
+        clip = (Math.Max(clip.x0, cx), Math.Max(clip.y0, cy), Math.Min(clip.x1, cx + (int)(cs & 0xffff)), Math.Min(clip.y1, cy + (int)(cs >> 16)));
+        long dsdx = G(inst, 0x318), dtdy = G(inst, 0x31c);
+        uint isz = G(inst, 0x400); int iw = (int)(isz & 0xffff), ih = (int)(isz >> 16);
+        int pitch = (int)(G(inst, 0x404) & 0xffff); uint ioff = G(inst, 0x408), ipt = G(inst, 0x40c);
+        if (ow <= 0 || oh <= 0 || iw <= 0 || ih <= 0 || (long)ow * oh > 4 << 20) return;
+        long s0 = (long)(ipt & 0xffff) << 16, t0 = (long)(ipt >> 16) << 16;   // 12.4 -> 12.20
+        int rop = Rop(inst);
+        OpLog?.Invoke($"sifm fmt {sf} in {iw}x{ih} pitch {pitch} off {ioff:X} -> {ox},{oy} {ow}x{oh} ds {dsdx:X} dt {dtdy:X} dst {d.Base:X}/{d.Pitch}/{d.Bpp} clip {clip}");
+        for (int y = 0; y < oh; y++)
+        {
+            int sy = (int)Math.Clamp((t0 + y * dtdy) >> 20, 0, ih - 1);
+            for (int x = 0; x < ow; x++)
+            {
+                int dx = ox + x, dy = oy + y;
+                if (dx < clip.x0 || dy < clip.y0 || dx >= clip.x1 || dy >= clip.y1) continue;
+                int sx = (int)Math.Clamp((s0 + x * dsdx) >> 20, 0, iw - 1);
+                uint a = ioff + (uint)(sy * pitch + sx * sbpp);
+                uint raw = sbpp == 4 ? DmaRead32Any(sdma, a) : sbpp == 2 ? (uint)(DmaRead8(sdma, a) | DmaRead8(sdma, a + 1) << 8) : DmaRead8(sdma, a);
+                uint argb = sf switch
+                {
+                    1 or 2 => 0xff000000 | (uint)Raster3D.Pal5((int)(raw >> 10)) << 16 | (uint)Raster3D.Pal5((int)(raw >> 5)) << 8 | (uint)Raster3D.Pal5((int)raw),
+                    7 => 0xff000000 | (uint)Raster3D.Rgb565To888((int)raw),
+                    8 => 0xff000000 | raw * 0x010101,
+                    _ => raw,
+                };
+                uint v = d.Bpp == 2 ? (G(SurfCtx(inst), 0x300) & 0xff) is 2 or 3 ? ((argb >> 9) & 0x7c00) | ((argb >> 6) & 0x03e0) | ((argb >> 3) & 0x1f) : ((argb >> 8) & 0xf800) | ((argb >> 5) & 0x07e0) | ((argb >> 3) & 0x1f)
+                       : d.Bpp == 1 ? argb & 0xff : argb;
+                Draw(inst, d, dx, dy, v, rop, clip);
+            }
+        }
+    }
+
+    private uint SurfCtx(uint inst) => Ctx(inst, 0x42, 0x62);
+
+    private uint DmaRead32Any(uint dma, uint off) => (off & 3) == 0 ? DmaRead32(dma, off) : (uint)(DmaRead8(dma, off) | DmaRead8(dma, off + 1) << 8 | DmaRead8(dma, off + 2) << 16 | DmaRead8(dma, off + 3) << 24);
 
     // ================= 0x5F blit =================
 
