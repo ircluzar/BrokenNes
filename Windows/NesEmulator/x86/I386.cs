@@ -189,6 +189,7 @@ public sealed partial class I386
     private void CodeWrite(uint a, uint n)
     {
         if (a >= MemSize) return;
+        if (n == 4 && JitLiveImmOn) SmcNote(a);
         _pgGen[a >> 12]++;
         uint e = a + n - 1;
         if ((e >> 12) != (a >> 12) && e < MemSize) _pgGen[e >> 12]++;
