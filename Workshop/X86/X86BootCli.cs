@@ -87,6 +87,7 @@ internal static class X86BootCli
         if (Arg(args, "--floppy") is string f) m.Floppy[0] = new DiskImage(File.ReadAllBytes(f), true);
         int frames = int.Parse(Arg(args, "--frames") ?? "3000");
         string? until = Arg(args, "--until"), type = Arg(args, "--type"), shot = Arg(args, "--shot");
+        _capEvery = int.Parse(Arg(args, "--bugcapture") ?? "0");
         // --mac: the card's PROM address (a cold boot reads it; a loaded state keeps the address saved in it)
         if (Arg(args, "--mac") is string macs && m.Nic != null) { m.Nic.Mac = PcMac.Parse(macs); m.Nic.Reset(); }
         var sw = Stopwatch.StartNew();
@@ -262,7 +263,10 @@ internal static class X86BootCli
         }
         // --step "UNTIL=>KEYS" (repeatable, after the rest): run until the screen shows UNTIL (at most --stepframes, default 20000), type KEYS
         int stepMax = int.Parse(Arg(args, "--stepframes") ?? "20000"), si = 0;
-        foreach (var st in Args(args, "--step"))
+        // --stepsfile FILE: more --step values, one per line (keeps "=>" and spaces away from remote shells' quoting)
+        var steps = Args(args, "--step").ToList();
+        if (Arg(args, "--stepsfile") is string stepsFile) steps.AddRange(File.ReadAllLines(stepsFile).Where(l => l.Contains("=>")));
+        foreach (var st in steps)
         {
             int i = st.IndexOf("=>"); string u = st[..i], keys = st[(i + 2)..].Replace("\\n", "\n").Replace("\\e", "\x1b").Replace("\\t", "\t")
                 .Replace("\\u", "\x01").Replace("\\d", "\x02").Replace("\\l", "\x03").Replace("\\r", "\x04").Replace("\\w", "\x05");
@@ -365,6 +369,7 @@ internal static class X86BootCli
             var parts = la.Split(':'); uint a0 = Convert.ToUInt32(parts[0], 16); int np = parts.Length > 1 ? int.Parse(parts[1]) : 1;
             Console.WriteLine($"linmap {a0:X8}: " + string.Join(" ", Enumerable.Range(0, np).Select(k => { uint p = LinPhys(m, a0 + (uint)k * 4096); return p == 0xffffffff ? "--" : (p >> 12).ToString("X"); })) + $" | {LinBytes(m, a0, 16)}");
         }
+        CaptureReport();
         if (args.Contains("--frametimes")) Console.WriteLine(FrameTimeReport());
         if (args.Contains("--dacdump")) for (int r = 0; r < 256; r += 16) Console.WriteLine($"dac {r:X2}: " + string.Join(" ", Enumerable.Range(r, 16).Select(i => $"{m.Vga.Palette[i * 3]:X2}{m.Vga.Palette[i * 3 + 1]:X2}{m.Vga.Palette[i * 3 + 2]:X2}")));
         Console.WriteLine($"vga: DAC writes {m.Vga.DacWrites}, above 3Fh {m.Vga.DacWritesOver63}; S3 CR55 {(m.S3 != null ? m.Vga.Cr[0x55] : 0):X2} CR67 {(m.S3 != null ? m.Vga.Cr[0x67] : 0):X2} SR18 {(m.S3 != null ? m.S3.SrRead(0x18) : 0):X2}; VGA-by-MMIO writes {m.S3?.VgaMmioWrites}, CR53 {(m.S3 != null ? m.Vga.Cr[0x53] : 0):X2}");
@@ -380,11 +385,27 @@ internal static class X86BootCli
                 ulong fh = 14695981039346656037UL; var smem = m.Cpu.Mem; for (int i = 0; i < smem.Length; i++) { fh ^= smem[i]; fh *= 1099511628211UL; } double tFnv = sbw.Elapsed.TotalMilliseconds;
                 uint rc = 0xFFFFFFFF; foreach (byte cb in st) { rc ^= cb; for (int k = 0; k < 8; k++) rc = (rc & 1) != 0 ? (rc >> 1) ^ 0xEDB88320u : rc >> 1; }
                 Console.WriteLine($"savebench: crc {(~rc == crc ? "EQUALS" : "DIFFERS FROM")} the bitwise definition");
+                var into = NesEmulator.Systems.ConsoleStateFile.WrapInto(NesEmulator.Systems.ConsoleKind.Pc, "g", "t", new Dictionary<string, string>(), st, new byte[wrapped.Length + 4096]);
+                Console.WriteLine($"savebench: WrapInto a reused buffer {(into.AsSpan().SequenceEqual(wrapped) ? "EQUALS" : "DIFFERS FROM")} Wrap");
                 bool same = NesEmulator.Systems.ConsoleStateFile.PayloadOf(wrapped).AsSpan().SequenceEqual(st);
                 var ms2 = new MemoryStream(); m.SaveState(ms2); bool streamSame = ms2.ToArray().AsSpan().SequenceEqual(st);
                 Console.WriteLine($"savebench: state {st.Length >> 20} MB {tSave:F0} ms, crc {tCrc:F0} ms, wrap(crc+deflate) {tWrap:F0} ms -> {wrapped.Length >> 20} MB, fnv over RAM {smem.Length >> 20} MB {tFnv:F0} ms; round trip {(same ? "EQUAL" : "DIFFERENT")}, stream save {(streamSame ? "EQUAL" : "DIFFERENT")}");
             }
         }
+        if (Environment.GetEnvironmentVariable("X86_LATENCY") is { Length: > 0 } latSpec)
+        {   // guest input latency (diagnostics): frames from a PS/2 mouse move (or a key, "key") to the first changed picture, 5 tries 30 frames apart
+            static ulong Hash(PcMachine pm) { ulong h = 14695981039346656037UL; var f = pm.Vga.Frame; for (int i = 0; i < f.Length; i++) { h ^= (uint)f[i]; h *= 1099511628211UL; } return h; }
+            for (int t = 0; t < 5; t++)
+            {
+                for (int k = 0; k < 30; k++) m.RunFrame();
+                ulong h0 = Hash(m); m.RunFrame(); bool idle = Hash(m) == h0; h0 = Hash(m);
+                if (latSpec == "key") m.Kbc.KeyBytes(0x39); else m.Kbc.MouseInput(t % 2 == 0 ? 40 : -40, 0, 0);
+                int ln = 0; while (ln < 30) { m.RunFrame(); ln++; if (Hash(m) != h0) break; }
+                if (latSpec == "key") m.Kbc.KeyBytes(0xb9);
+                Console.WriteLine($"latency: try {t} {(idle ? "screen idle before" : "screen was changing")}: first change after {ln} frame(s)");
+            }
+        }
+        if (m.Card is Dosbox072SoundBlaster sbm) Console.WriteLine("sbmixer: " + sbm.MixerSummary());
         if (PcMachine.AllocProbe) Console.WriteLine($"allocprobe: devices {m.AllocDevices / 1048576} MB, cpu {m.AllocCpu / 1048576} MB, render {m.AllocRender / 1048576} MB, total thread {GC.GetAllocatedBytesForCurrentThread() / 1048576} MB");
         if (_allocs != null) lock (_allocs.ByType) foreach (var kv in _allocs.ByType.OrderByDescending(x => x.Value).Take(15)) Console.WriteLine($"  alloc {kv.Value / 1048576,6} MB {kv.Key}");
         if (lanLink != null) Console.WriteLine($"lan: sent {lanLink.Sent} (IPX {lanLink.SentIpx}), received {lanLink.Received} (IPX {lanLink.ReceivedIpx}){(lanLink.Members > 0 ? $", members {lanLink.Members}" : "")}");
@@ -417,7 +438,6 @@ internal static class X86BootCli
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.OolAt.OrderByDescending(x => x.Value).Take(40)) Console.WriteLine($"  oolat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))}");
         if (args.Contains("--irqstat")) Console.WriteLine($"batches {m.Batches} halted {m.HaltBatches} cycle {m.Cpu.Cycle} idle-clock {m.Clock - m.Cpu.Cycle}");
         if (args.Contains("--irqstat")) Console.WriteLine("irqs: " + string.Join(" ", Enumerable.Range(0, 256).Where(i => m.IrqCount[i] > 0).Select(i => $"{i:X2}h={m.IrqCount[i]}")) + $"; PIC imr {m.Pic.MasterImr:X2}/{m.Pic.SlaveImr:X2}; CR0 {m.Cpu.Cr0:X}; CS:EIP {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8}; IF {(m.Cpu.Flags >> 9) & 1}; halt {m.Cpu.Halt}");
-        if (m.Card is Dosbox072SoundBlaster sbm) Console.WriteLine($"sb mixer: {sbm.MixerSummary}");
         Console.WriteLine("---- screen ----");
         Console.WriteLine(Screen(m).TrimEnd());
         Console.WriteLine("----------------");
@@ -466,11 +486,40 @@ internal static class X86BootCli
         return $"frametimes: {a.Length} frames, mean {sum / a.Length:F2} ms ({rt / (sum / a.Length) * 100:F0}% real time), p50 {P(.5):F2}, p99 {P(.99):F2} ({rt / P(.99) * 100:F0}%), max {a[^1]:F1} ms, frames over 50 ms {a.Count(v => v > 50)}; GC gen0/1/2 {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}, GC pause total {GC.GetTotalPauseDuration().TotalMilliseconds:F0} ms, allocated {GC.GetTotalAllocatedBytes() / 1048576} MB";
     }
     private static PcMachine? _partner; private static PcLanHub? _pairHub; private static PcNat? _pairNat;
+    // --bugcapture N: the desktop's bug capture as a soak sees it: every N frames the machine's state is copied between frames (timed with
+    // the frame) into one of two alternating buffers, and packed (ConsoleStateFile.Wrap: CRC + parallel deflate) on a worker; the previous pack
+    // is awaited first, as BugCaptureRing does. Counts and times are printed at the end.
+    private static int _capEvery, _capFrame, _capFlip, _capCount;
+    private static readonly MemoryStream?[] _capBuf = new MemoryStream?[2];
+    private static System.Threading.Tasks.Task<byte[]>? _capPack;
+    private static double _capCopyMs, _capCopyMax, _capWaitMs; private static long _capBytes;
+    private static void CaptureTick(PcMachine m)
+    {
+        var sw = Stopwatch.StartNew();
+        if (_capPack != null) { _capBytes = _capPack.Result.Length; }
+        _capWaitMs += sw.Elapsed.TotalMilliseconds;
+        _capFlip ^= 1;
+        var ms = _capBuf[_capFlip] ??= new MemoryStream();
+        ms.SetLength(0);
+        m.SaveState(ms);
+        var seg = new ArraySegment<byte>(ms.GetBuffer(), 0, (int)ms.Length);
+        _capPack = System.Threading.Tasks.Task.Run(() => NesEmulator.Systems.ConsoleStateFile.Wrap(NesEmulator.Systems.ConsoleKind.Pc, "soak", "soak",
+            new Dictionary<string, string> { ["format"] = "x86-1" }, seg));
+        double t = sw.Elapsed.TotalMilliseconds; _capCopyMs += t; if (t > _capCopyMax) _capCopyMax = t; _capCount++;
+    }
+    private static void CaptureReport()
+    {
+        if (_capEvery <= 0) return;
+        if (_capPack != null) _capBytes = _capPack.Result.Length;
+        Console.WriteLine($"bugcapture: {_capCount} states every {_capEvery} frames, between-frames mean {(_capCount > 0 ? _capCopyMs / _capCount : 0):F1} ms max {_capCopyMax:F1} ms (of it waiting on the last pack {_capWaitMs:F0} ms total), last packed {_capBytes >> 20} MB");
+    }
+
     private static bool Frame(PcMachine m)
     {
         _frameSw.Restart();
         bool r = m.RunFrame();
         if (_partner != null && m != _partner) _partner.RunFrame();
+        if (_capEvery > 0 && ++_capFrame % _capEvery == 0) CaptureTick(m);
         _frameMs.Add(_frameSw.Elapsed.TotalMilliseconds);
         if (_cdWav != null && m.Ata != null)
         {

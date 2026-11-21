@@ -21,6 +21,12 @@ public sealed class BugMeta
     public byte[] Rom = Array.Empty<byte>();
     /// <summary>Where the ROM was loaded from (information: the bundle carries its own copy).</summary>
     public string RomPath = "";
+    /// <summary>
+    /// Disks kept by reference instead of copied (the x86 PC: a 1 GB C: per capture took 10-17 s and 1 GB of disk): slot ("C", "D", "CD")
+    /// and path. When it has entries the ROM (= the C: image) is not copied and its sha256 is a fingerprint (<see cref="BugBundle.Fingerprint"/>).
+    /// A replay opens the same images; the start state carries the machine's writes (copy-on-write), so the images are only read.
+    /// </summary>
+    public readonly List<(string Slot, string Path)> DiskRefs = new();
     /// <summary>CPU/PPU/APU ids, as a movie names them ("FIX/FIX/FIX").</summary>
     public string Cores = "";
     public bool NtscTiming;
@@ -65,12 +71,37 @@ public static class BugBundle
     public static string MovieFile => "capture" + MovieFormat.Extension;
 
     /// <summary>The bundle's files (relative path with '/' -> bytes), from a capture and what the host knows.</summary>
+    /// <summary>A big image's cheap identity: "fp1:" + sha256(its length as 8 bytes LE, its first MB, its last MB).</summary>
+    public static string Fingerprint(ReadOnlySpan<byte> data)
+    {
+        const int Mb = 1 << 20;
+        using var h = System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256);
+        h.AppendData(BitConverter.GetBytes((long)data.Length));
+        h.AppendData(data[..Math.Min(Mb, data.Length)]);
+        h.AppendData(data[Math.Max(0, data.Length - Mb)..]);
+        return "fp1:" + Convert.ToHexString(h.GetHashAndReset()).ToLowerInvariant();
+    }
+
+    /// <summary><see cref="Fingerprint(ReadOnlySpan{byte})"/> of a file, reading only its first and last MB.</summary>
+    public static string FingerprintFile(string path)
+    {
+        const int Mb = 1 << 20;
+        using var f = File.OpenRead(path);
+        long len = f.Length;
+        var head = new byte[(int)Math.Min(Mb, len)]; f.ReadExactly(head);
+        var tail = new byte[(int)Math.Min(Mb, len)]; f.Seek(len - tail.Length, SeekOrigin.Begin); f.ReadExactly(tail);
+        using var h = System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256);
+        h.AppendData(BitConverter.GetBytes(len)); h.AppendData(head); h.AppendData(tail);
+        return "fp1:" + Convert.ToHexString(h.GetHashAndReset()).ToLowerInvariant();
+    }
+
     public static SortedDictionary<string, byte[]> Files(BugCaptureData d, BugMeta meta)
     {
         var files = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
-        string romSha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(meta.Rom)).ToLowerInvariant();
+        bool byRef = meta.DiskRefs.Count > 0;
+        string romSha = byRef ? Fingerprint(meta.Rom) : Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(meta.Rom)).ToLowerInvariant();
         string romFile = "rom/" + SafeName(meta.RomName.Length > 0 ? meta.RomName : "game.bin");
-        if (meta.Rom.Length > 0) files[romFile] = meta.Rom;
+        if (meta.Rom.Length > 0 && !byRef) files[romFile] = meta.Rom;
 
         Movie? mv = null;
         if (d.NoMovieWhy == null)
@@ -115,8 +146,23 @@ public static class BugBundle
             j.WriteString("console", d.ConsoleKey);
             j.WriteStartObject("rom");
             j.WriteString("name", meta.RomName); j.WriteString("sha256", romSha); j.WriteNumber("bytes", meta.Rom.Length);
-            j.WriteString("file", meta.Rom.Length > 0 ? romFile : ""); j.WriteString("loadedFrom", meta.RomPath);
+            j.WriteString("file", meta.Rom.Length > 0 && !byRef ? romFile : ""); j.WriteString("loadedFrom", meta.RomPath);
             j.WriteEndObject();
+            if (byRef)
+            {
+                // the disks by reference: path, size and fingerprint (sha256 of the size, the first and the last MB), checked by a replay
+                j.WriteStartArray("disks");
+                foreach (var (slot, path) in meta.DiskRefs)
+                {
+                    j.WriteStartObject();
+                    j.WriteString("slot", slot); j.WriteString("path", path);
+                    long len = File.Exists(path) ? new FileInfo(path).Length : -1;
+                    j.WriteNumber("bytes", len);
+                    j.WriteString("fingerprint", len >= 0 ? FingerprintFile(path) : "");
+                    j.WriteEndObject();
+                }
+                j.WriteEndArray();
+            }
             if (meta.Project is { } pr)
             {
                 j.WriteStartObject("project");
