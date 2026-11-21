@@ -50,6 +50,7 @@ public sealed partial class NvGeForce
     {
         GraphOps++;
         GSet(inst, mthd, data);
+        if (cls is 0x44 or 0x18 && mthd is >= 0x400 and < 0x800) GSet(inst, 0x7ffc, (uint)(mthd & 0x700));   // which colour pattern block was loaded
         if (mthd is >= 0x180 and <= 0x1a0) { uint ci = RamhtLookup(data, ActiveChid); GSet(inst, mthd | 0x8000, ci); if (mthd == 0x180) _notifyObj[subc] = ci; return; }
         if (mthd == 0x104) { WriteNotify(subc, inst, 0); return; }
         if (mthd == 0x100) return;
@@ -129,6 +130,16 @@ public sealed partial class NvGeForce
     {
         uint p = Ctx(inst, 0x44, 0x18);
         if (p == 0) return 0xffffffff;
+        if (G(p, 0x30c) == 2)   // colour pattern: 8x8 at 0x400 (Y8, 4 a word), 0x500 (R5G6B5, 2 a word), 0x600 (X1R5G5B5), 0x700 (X8R8G8B8)
+        {
+            int i = (y & 7) * 8 + (x & 7);
+            switch (G(p, 0x7ffc))
+            {
+                case 0x400: return (G(p, 0x400 + (i >> 2) * 4) >> ((i & 3) * 8)) & 0xff;
+                case 0x500: case 0x600: return (G(p, (int)G(p, 0x7ffc) + (i >> 1) * 4) >> ((i & 1) * 16)) & 0xffff;
+                default: return G(p, 0x700 + i * 4);
+            }
+        }
         uint b0 = G(p, 0x318), b1 = G(p, 0x31c);
         int bit = (y & 7) * 8 + (x & 7);
         bool on = bit < 32 ? ((b0 >> (bit ^ 7)) & 1) != 0 : ((b1 >> ((bit - 32) ^ 7)) & 1) != 0;
@@ -257,6 +268,7 @@ public sealed partial class NvGeForce
     private void Ifc(uint inst, int mthd, uint data)
     {
         if (mthd is 0x304 or 0x30c) _ifcPix = 0;
+        if (mthd == 0x30c && OpLog != null) OpLog($"ifc {(short)G(inst, 0x304)},{G(inst, 0x304) >> 16} out {G(inst, 0x308) & 0xffff}x{G(inst, 0x308) >> 16} in {data & 0xffff}x{data >> 16} fmt {G(inst, 0x300)} surf {SurfOf(inst, false).Base:X}");
         if (mthd < 0x400 || mthd >= 0x2000) return;
         var d = SurfOf(inst, false);
         if (!d.Ok) return;
@@ -281,6 +293,7 @@ public sealed partial class NvGeForce
     private void Index(uint inst, int mthd, uint data)
     {
         if (mthd is 0x3f4 or 0x3fc) _ifcPix = 0;
+        if (mthd == 0x3fc && OpLog != null) OpLog($"index {(short)G(inst, 0x3f4)},{G(inst, 0x3f4) >> 16} out {G(inst, 0x3f8) & 0xffff}x{G(inst, 0x3f8) >> 16} in {data & 0xffff}x{data >> 16} ifmt {G(inst, 0x3ec)} lut {G(inst, 0x3f0):X} surf {SurfOf(inst, false).Base:X}");
         if (mthd < 0x400 || mthd >= 0x2000) return;
         var d = SurfOf(inst, false);
         if (!d.Ok) return;
@@ -297,8 +310,8 @@ public sealed partial class NvGeForce
             int x = _ifcPix % wi, y = _ifcPix / wi;
             if (y >= hi) return;
             uint idx = (data >> (bits * k)) & (four ? 0xfu : 0xffu);
-            uint la = lut + idx * (uint)d.Bpp;
-            uint v = d.Bpp == 2 ? (uint)(DmaRead8(lutDma, la) | DmaRead8(lutDma, la + 1) << 8) : d.Bpp == 1 ? DmaRead8(lutDma, la) : DmaRead32(lutDma, la);
+            uint c = DmaRead32(lutDma, lut + idx * 4);          // LUT entries are X8R8G8B8 whatever the destination
+            uint v = d.Bpp == 2 ? ((c >> 8) & 0xf800) | ((c >> 5) & 0x07e0) | ((c >> 3) & 0x1f) : d.Bpp == 1 ? c & 0xff : c;
             Draw(inst, d, px + x, py + y, v, rop, clip);
         }
     }

@@ -132,6 +132,26 @@ public sealed partial class NvGeForce : IPciMmio
                 default: for (int x = 0; x < w; x++) fr[o + x] = unchecked((int)0xff000000) | (BitConverter.ToInt32(ram, src + 4 * x) & 0xffffff); break;
             }
         }
+        // the hardware cursor (CR31 bit 0): 32x32 A1R5G5B5 at PCRTC CURSOR (60080Ch), position PRAMDAC CU_START_POS (680300h, y << 16 | x);
+        // alpha 1 = the colour, alpha 0 with a colour = XOR with the picture (Windows' inverting cursors)
+        if ((_v.Cr[0x31] & 1) != 0)
+        {
+            uint pos = Reg(0x680300), ca = Reg(0x60080c) & (VramBytes - 1);
+            int cx = (short)(pos & 0xffff), cy = (short)(pos >> 16);
+            for (int y = 0; y < 32; y++)
+                for (int x = 0; x < 32; x++)
+                {
+                    int sx = cx + x, sy = cy + y;
+                    if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
+                    int a2 = (int)ca + (y * 32 + x) * 2;
+                    if (a2 + 1 >= VramBytes) continue;
+                    int p = ram[a2] | ram[a2 + 1] << 8;
+                    int rgb = ((p >> 10) & 31) << 19 | ((p >> 5) & 31) << 11 | (p & 31) << 3;
+                    rgb |= (rgb >> 5) & 0x070707;
+                    if ((p & 0x8000) != 0) fr[sy * w + sx] = unchecked((int)0xff000000) | rgb;
+                    else if ((p & 0x7fff) != 0) fr[sy * w + sx] ^= rgb;
+                }
+        }
     }
 
     /// <summary>Back to plain VGA (a standard BIOS mode set).</summary>
