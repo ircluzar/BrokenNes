@@ -814,12 +814,37 @@ public sealed partial class I386
         }
     }
 
+    /// <summary>X86_ILDEEP: the block's most-used guest registers live in IL locals (loaded in the prologue, written back before every
+    /// helper call and exit, reloaded after a call); X86_ILDEEP=N keeps the top N (default 5). A counting pass picks them.</summary>
+    private static readonly int IlDeepRegs = Environment.GetEnvironmentVariable("X86_ILDEEP") is string ild ? (int.TryParse(ild, out int ildn) ? ildn : 5) : 0;
+    /// <summary>Helpers that neither read nor write R[] and raise nothing: no write-back / reload around them.</summary>
+    private static readonly HashSet<string> JRegPure = new() { "JCycle", "JSteps", "JIp", "JNextIp", "JSegBase", "JSegSpan", "JSegLo", "JSBase", "JSSpan", "JSLo",
+        "JSOk", "JSRd", "JSegOk", "JSegRdOk", "JSegLim", "JSSame", "JSSameLive", "JSpm", "JPa", "JCond", "JGetCF", "JSegSel", "JAlu", "JRam", "JPhys", "JFpuNmRefund", "JMmxNmRefund" };
+    /// <summary>X86_ILDEEPF: the lazy-flag fields (_ccSrc1/2, _ccDst/2, _ccOp, _ccMask) a block touches live in IL locals the same way.</summary>
+    private static readonly bool IlDeepFlags = Environment.GetEnvironmentVariable("X86_ILDEEPF") != null;
+    private static readonly HashSet<string> JFlagPure = new(JRegPure.Where(x => x is not ("JCond" or "JGetCF" or "JAlu")));
     private JitFn Emit(uint start, uint[] pas, DEntry[] ins, uint lo, uint hi, bool c16, uint memSize, bool ioMem, bool pg, SegSpec? spec)
+    {
+        if (IlDeepRegs <= 0) return EmitCore(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec, null, 0)!;
+        var cnt = new int[14];
+        EmitCore(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec, cnt, 0);
+        int mask = 0;
+        for (int r = 0; r < IlDeepRegs; r++)
+        {
+            int best = -1;
+            for (int i = 0; i < 8; i++) if ((mask >> i & 1) == 0 && cnt[i] >= 2 && (best < 0 || cnt[i] > cnt[best])) best = i;
+            if (best < 0) break;
+            mask |= 1 << best;
+        }
+        if (IlDeepFlags) for (int j = 0; j < 6; j++) if (cnt[8 + j] > 0) mask |= 1 << (8 + j);
+        return EmitCore(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec, null, mask)!;
+    }
+    private JitFn? EmitCore(uint start, uint[] pas, DEntry[] ins, uint lo, uint hi, bool c16, uint memSize, bool ioMem, bool pg, SegSpec? spec, int[]? regCount, int cacheMask)
     {
         var mm = JitMethods.Value;
         DynamicMethod? dm = null; System.Reflection.Emit.TypeBuilder? tb = null;
         ILGenerator il;
-        if (JitTier)
+        if (JitTier && regCount == null)
         {   // a static method of a (collectible) emitted type: the runtime's tiered compilation applies (DynamicMethod is always fully
             // optimized): a quick tier-0 compile now, the optimized one in the background once the block has run 30 times
             var mb0 = (tb = JitTierModule().DefineType("x86blk" + System.Threading.Interlocked.Increment(ref _jitTierN), TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Abstract))
@@ -867,7 +892,26 @@ public sealed partial class I386
             Ld(tlbR); I4(4 * TlbSize); Op(OpCodes.Conv_U); Op(OpCodes.Add); Stl(tlbW);
         }
 
-        void Call(string name) => il.Emit(OpCodes.Call, mm[name]);
+        var rc = new LocalBuilder?[8]; bool rcLive = false;
+        for (int i = 0; i < 8; i++) if ((cacheMask >> i & 1) != 0) rc[i] = il.DeclareLocal(typeof(uint));
+        void RcFlush() { for (int i = 0; i < 8; i++) if (rc[i] != null) { Ld(rref); if (i != 0) { I4(4 * i); Op(OpCodes.Add); } Ld(rc[i]!); Op(OpCodes.Stind_I4); } }
+        void RcLoad() { for (int i = 0; i < 8; i++) if (rc[i] != null) { Ld(rref); if (i != 0) { I4(4 * i); Op(OpCodes.Add); } Op(OpCodes.Ldind_U4); Stl(rc[i]!); } }
+        var ccF = new[] { FSrc1, FSrc2, FDst, FDst2, FOp, FMask };
+        var fc = new LocalBuilder?[6];
+        for (int j = 0; j < 6; j++) if ((cacheMask >> (8 + j) & 1) != 0) fc[j] = il.DeclareLocal(ccF[j].FieldType);
+        void FcFlush() { for (int j = 0; j < 6; j++) if (fc[j] != null) { Ld0(); Ld(fc[j]!); il.Emit(OpCodes.Stfld, ccF[j]); } }
+        void FcLoad() { for (int j = 0; j < 6; j++) if (fc[j] != null) { Ld0(); il.Emit(OpCodes.Ldfld, ccF[j]); Stl(fc[j]!); } }
+        void Call(string name)
+        {
+            bool sync = rcLive && (cacheMask & 0xff) != 0 && !JRegPure.Contains(name);
+            bool fsync = rcLive && (cacheMask >> 8) != 0 && !JFlagPure.Contains(name);
+            if (sync) RcFlush();
+            if (fsync) FcFlush();
+            il.Emit(OpCodes.Call, mm[name]);
+            if (name is "JExitOk" or "JExitFail" or "JExitLink") return;
+            if (sync) RcLoad();
+            if (fsync) FcLoad();
+        }
         void Ld0() => il.Emit(OpCodes.Ldarg_0);
         void I4(int v) => il.Emit(OpCodes.Ldc_I4, v);
         void U4(uint v) => il.Emit(OpCodes.Ldc_I4, unchecked((int)v));
@@ -888,8 +932,20 @@ public sealed partial class I386
         void Ld(LocalBuilder l) => il.Emit(OpCodes.Ldloc, l);
         void Stl(LocalBuilder l) => il.Emit(OpCodes.Stloc, l);
         void Op(OpCode o) => il.Emit(o);
-        void LdF(FieldInfo f) { Ld0(); il.Emit(OpCodes.Ldfld, f); }
-        void StF(FieldInfo f, Action v) { Ld0(); v(); il.Emit(OpCodes.Stfld, f); }
+        void LdF(FieldInfo f)
+        {
+            int j = Array.IndexOf(ccF, f);
+            if (j >= 0 && regCount != null) regCount[8 + j]++;
+            if (rcLive && j >= 0 && fc[j] != null) { Ld(fc[j]!); return; }
+            Ld0(); il.Emit(OpCodes.Ldfld, f);
+        }
+        void StF(FieldInfo f, Action v)
+        {
+            int j = Array.IndexOf(ccF, f);
+            if (j >= 0 && regCount != null) regCount[8 + j]++;
+            if (rcLive && j >= 0 && fc[j] != null) { v(); Stl(fc[j]!); return; }
+            Ld0(); v(); il.Emit(OpCodes.Stfld, f);
+        }
         // sign-extend the uint on the stack from `bits` (as Sext)
         void SextTop(int bits) { if (bits == 8) Op(OpCodes.Conv_I1); else if (bits == 16) Op(OpCodes.Conv_I2); }
 
@@ -897,12 +953,33 @@ public sealed partial class I386
         void RegAddr(int byteOff) { Ld(rref); if (byteOff != 0) { I4(byteOff); Op(OpCodes.Add); } }
         void LdReg(int bits, int i)
         {
+            int ri = bits == 8 ? i & 3 : i;
+            if (regCount != null) regCount[ri]++;
+            if (rcLive && rc[ri] is LocalBuilder rl)
+            {
+                Ld(rl);
+                if (bits == 16) Op(OpCodes.Conv_U2);
+                else if (bits == 8) { if (i > 3) { I4(8); Op(OpCodes.Shr_Un); } Op(OpCodes.Conv_U1); }
+                return;
+            }
             if (bits == 32) { RegAddr(4 * i); Op(OpCodes.Ldind_U4); }
             else if (bits == 16) { RegAddr(4 * i); Op(OpCodes.Ldind_U2); }
             else { RegAddr(i > 3 ? 4 * (i - 4) + 1 : 4 * i); Op(OpCodes.Ldind_U1); }
         }
         void StReg(int bits, int i, Action v)
         {
+            int ri = bits == 8 ? i & 3 : i;
+            if (regCount != null) regCount[ri]++;
+            if (rcLive && rc[ri] is LocalBuilder rl)
+            {
+                if (bits == 32) { v(); Stl(rl); return; }
+                Ld(rl); U4(bits == 16 ? 0xffff0000 : i > 3 ? 0xffff00ffu : 0xffffff00u); Op(OpCodes.And);
+                v();
+                if (bits == 16) Op(OpCodes.Conv_U2);
+                else { Op(OpCodes.Conv_U1); if (i > 3) { I4(8); Op(OpCodes.Shl); } }
+                Op(OpCodes.Or); Stl(rl);
+                return;
+            }
             if (bits == 32) { RegAddr(4 * i); v(); Op(OpCodes.Stind_I4); }
             else if (bits == 16) { RegAddr(4 * i); v(); Op(OpCodes.Stind_I2); }
             else { RegAddr(i > 3 ? 4 * (i - 4) + 1 : 4 * i); v(); Op(OpCodes.Stind_I1); }
@@ -1096,6 +1173,7 @@ public sealed partial class I386
         Ld0(); Call("JCycle"); il.Emit(OpCodes.Stloc, cyc);
         Ld0(); Call("JSteps"); il.Emit(OpCodes.Stloc, st);
         LdF(FR); I4(0); il.Emit(OpCodes.Ldelema, typeof(uint)); Stl(rref);
+        RcLoad(); FcLoad(); rcLive = true;
         LdF(FMem); I4(0); il.Emit(OpCodes.Ldelema, typeof(byte)); Stl(mref);
         LdF(FCodeMark); I4(0); il.Emit(OpCodes.Ldelema, typeof(byte)); Stl(cmref);
         if (!spSpec) { LdF(FSpm); Stl(spm); }
@@ -1816,6 +1894,7 @@ public sealed partial class I386
             il.MarkLabel(sharedLeave);
             Ld0(); Ld(ip0); Ld(xOff); Op(OpCodes.Add); Ld(ip0); Ld(xNext!); Op(OpCodes.Add); Ld(cyc); Ld(st); Call("JExitLink"); il.Emit(OpCodes.Ret);
         }
+        if (regCount != null) return null;
         System.Threading.Interlocked.Add(ref JitIlBytes, il.ILOffset);
         if (tb != null) return (JitFn)tb.CreateType()!.GetMethod("x86blk")!.CreateDelegate(typeof(JitFn));
         return (JitFn)dm!.CreateDelegate(typeof(JitFn));
