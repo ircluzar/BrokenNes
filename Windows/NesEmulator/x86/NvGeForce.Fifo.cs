@@ -7,6 +7,7 @@
 // count bits 28:18, subchannel bits 15:13, method bits 12:2, bit 30 = non-increasing method.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace NesEmulator.X86;
@@ -186,6 +187,7 @@ public sealed partial class NvGeForce
     /// stops until the driver's ISR has taken it (it advances CACHE1 GET, clears the interrupt and turns pulling back on).</summary>
     private void SoftwareMethod(int subc, int mthd, uint data)
     {
+        if (TracePut == 0x80000000u + (uint)mthd) PutHit = true;   // (--nvtrace 8000xxxx: stop at this software method)
         uint put = Reg(0x003210) & 0x1fc;
         _reg[0x003800 + put * 2] = (uint)(subc << 13) | (uint)mthd;
         _reg[0x003804 + put * 2] = data;
@@ -193,6 +195,22 @@ public sealed partial class NvGeForce
         _reg[0x002100] = Reg(0x002100) | 1;      // CACHE_ERROR
         _reg[0x003250] = Reg(0x003250) | 0x100;  // PULL0: hash failed (no engine took it)
         UpdateIrq();
+    }
+
+    /// <summary>Diagnostics: the DMA objects in PRAMIN whose window holds this address, and the handles that name them.</summary>
+    public IEnumerable<string> FindDma(uint phys)
+    {
+        uint cfg = Reg(0x002210), hb = (cfg & 0x1f0) << 8, hs = 0x1000u << (int)((cfg >> 16) & 3);
+        for (uint i = 0; i < 0x100000; i += 16)
+        {
+            uint w0 = Ramin32(i); int cls = (int)(w0 & 0xfff);
+            if (cls is not (2 or 3 or 0x3d)) continue;
+            uint lim = Ramin32(i + 4); var (vr, a) = DmaAddr(i, 0);
+            if (phys < a || phys > a + lim) continue;
+            var names = new List<string>();
+            for (uint o = 0; o < hs; o += 8) { uint c = Ramin32(hb + o + 4); if ((c & 0xffff) << 4 == i && (c & 0x80000000) != 0) names.Add($"{Ramin32(hb + o):X8}/ch{(c >> 24) & 0x1f}"); }
+            yield return $"dma inst {i:X5} class {cls:X2} {(vr ? "vram" : "sys")} base {a:X8} limit {lim:X} offset {phys - a:X} handles {string.Join(",", names)}";
+        }
     }
 
     private void SaveFifo(BinaryWriter w)

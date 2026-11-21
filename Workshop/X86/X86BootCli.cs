@@ -338,6 +338,7 @@ internal static class X86BootCli
         if (args.Contains("--portlog"))
             Console.WriteLine("ports: " + string.Join(" ", Enumerable.Range(0, 0x20000).Where(i => portCount[i] > 0).OrderByDescending(i => portCount[i]).Take(40)
                 .Select(i => $"{((i & 0x10000) != 0 ? "out" : "in")}{i & 0xffff:X}={portCount[i]}")));
+        if (Arg(args, "--nvfind") is string nvf && m.Nv != null) foreach (var l in m.Nv.FindDma(Convert.ToUInt32(nvf, 16))) Console.WriteLine("nvfind " + l);
         if (args.Contains("--vgadump"))   // why a picture is blank: the registers, the palette and how much video memory is non-zero
         {
             var v = m.Vga;
