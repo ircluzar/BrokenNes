@@ -1319,8 +1319,10 @@ public sealed partial class I386
             il.MarkLabel(done);
         }
 
+        int ilK0 = il.ILOffset; System.Threading.Interlocked.Add(ref JitIlKind[63], ilK0); System.Threading.Interlocked.Increment(ref JitIlKindN[63]);
         for (int k = 0; k < n; k++)
         {
+            if (k > 0) { int o = il.ILOffset; System.Threading.Interlocked.Add(ref JitIlKind[ins[k - 1].Kind], o - ilK0); System.Threading.Interlocked.Increment(ref JitIlKindN[ins[k - 1].Kind]); ilK0 = o; }
             var e = ins[k];
             uint pa = pas[k], pe = pa + e.Len;
             int bits = e.Bits;
@@ -1936,6 +1938,7 @@ public sealed partial class I386
             il.MarkLabel(sharedLeave);
             Ld0(); Ld(ip0); Ld(xOff); Op(OpCodes.Add); Ld(ip0); Ld(xNext!); Op(OpCodes.Add); Ld(cyc); Ld(st); Call("JExitLink"); il.Emit(OpCodes.Ret);
         }
+        if (n > 0) { System.Threading.Interlocked.Add(ref JitIlKind[62], il.ILOffset - ilK0); System.Threading.Interlocked.Increment(ref JitIlKindN[62]); }
         System.Threading.Interlocked.Add(ref JitIlBytes, il.ILOffset);
         if (into != null) { tb!.CreateType(); return null!; }
         if (tb != null) return (JitFn)tb.CreateType()!.GetMethod("x86blk")!.CreateDelegate(typeof(JitFn));
@@ -1963,6 +1966,9 @@ public sealed partial class I386
         }
     }
     public static long JitIlBytes, JitBuildTicks;
+    /// <summary>--jitstat: IL bytes per instruction kind (62 = the last instruction + shared tail, 63 = prologue).</summary>
+    public static readonly long[] JitIlKind = new long[64], JitIlKindN = new long[64];
+    public static string JitIlKindStat() => "jitil: " + string.Join(" ", Enumerable.Range(0, 64).Where(i => JitIlKindN[i] > 0).OrderByDescending(i => JitIlKind[i]).Select(i => $"k{i}:{JitIlKind[i] / 1024}KB/{JitIlKindN[i]}={JitIlKind[i] / JitIlKindN[i]}"));
 
     /// <summary>The segments a compiled instruction reads or writes through (bit per segment).</summary>
     private static int InsSegs(DEntry e)
