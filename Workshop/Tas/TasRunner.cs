@@ -92,8 +92,21 @@ public sealed class TasPass
 {
     public readonly List<TasCheckpoint> Checkpoints = new();
     public readonly List<string> Log = new();
-    public readonly Dictionary<string, (int frames, bool? goal, List<string> goalDetail)> Chapters = new();
+    public readonly Dictionary<string, TasChapterResult> Chapters = new();
     public int Frames; public string? Error; public double WallMs;
+}
+
+public sealed class TasChapterResult
+{
+    public int Frames; public bool? Goal; public List<string> GoalDetail = new(); public List<TasGoal> Goals = new();
+    public int Lag = -1; public List<int> LagFrames = new();
+    public JsonObject? Vars;
+    public JsonObject ToJson(string id) => new()
+    {
+        ["id"] = id, ["frames"] = Frames, ["goal"] = Goal, ["goalDetail"] = new JsonArray(GoalDetail.Select(x => (JsonNode)JsonValue.Create(x)!).ToArray()),
+        ["goals"] = new JsonArray(Goals.Select(g => (JsonNode)g.ToJson()).ToArray()),
+        ["lag"] = Lag >= 0 ? Lag : null, ["lagFrames"] = Lag >= 0 ? new JsonArray(LagFrames.Take(500).Select(x => (JsonNode)x).ToArray()) : null, ["vars"] = Vars,
+    };
 }
 
 public sealed class TasRunOptions
@@ -144,7 +157,7 @@ public static class TasRunner
         {
             ["run"] = run.Path, ["console"] = run.Console, ["rom"] = rom, ["romSha1"] = info.sha, ["cores"] = info.cores, ["title"] = info.title,
             ["frames"] = a.Frames, ["error"] = a.Error, ["wallMs"] = Math.Round(a.WallMs),
-            ["chapters"] = new JsonArray(a.Chapters.Select(kv => (JsonNode)new JsonObject { ["id"] = kv.Key, ["frames"] = kv.Value.frames, ["goal"] = kv.Value.goal, ["goalDetail"] = J(kv.Value.goalDetail) }).ToArray()),
+            ["chapters"] = new JsonArray(a.Chapters.Select(kv => (JsonNode)kv.Value.ToJson(kv.Key)).ToArray()),
             ["checkpoints"] = new JsonArray(a.Checkpoints.Select(c => (JsonNode)c.ToJson()).ToArray()),
             ["log"] = J(a.Log),
         };
@@ -179,7 +192,7 @@ public static class TasRunner
         {
             if (ch.Expect == null || !a.Chapters.ContainsKey(ch.Id)) continue;
             var miss = new List<string>();
-            if (ch.Expect["frames"] is JsonNode f && (int)f != a.Chapters[ch.Id].frames) miss.Add($"frames {a.Chapters[ch.Id].frames} != {(int)f}");
+            if (ch.Expect["frames"] is JsonNode f && (int)f != a.Chapters[ch.Id].Frames) miss.Add($"frames {a.Chapters[ch.Id].Frames} != {(int)f}");
             if (ch.Expect["checkpoints"] is JsonObject cps)
                 foreach (var kv in cps)
                 {
@@ -215,6 +228,7 @@ public static class TasRunner
         var p = new TasPass(); var sw = Stopwatch.StartNew();
         ITasTarget? t = null; info = ("", "", "");
         var buf = new short[1 << 16];
+        var map = TasRamMap.For(run);
         try
         {
             foreach (var ch in run.Chapters)
@@ -235,9 +249,15 @@ public static class TasRunner
                 string dir = primary ? Path.Combine(o.OutDir, ch.Id) : Path.Combine(o.OutDir, "pass2", ch.Id); Directory.CreateDirectory(dir);
                 var prog = Expand(run, ch, t.Fps);
                 int stop = o.Only == ch.Id ? o.StopAtFrame : -1;
-                int frames = RunChapter(t, prog, ch, run, dir, primary && o.Screenshots, primary ? o.Sink : null, p, buf, stop);
-                var gd = new List<string>(); bool? goal = ch.Goal.Count == 0 ? null : ch.Goal.All(g => Goal(t, g, gd));
-                p.Chapters[ch.Id] = (frames, goal, gd);
+                var res = new TasChapterResult { Goals = ch.Goal.Select(TasGoal.Parse).ToList() };
+                t.InputPolls();   // polls before the chapter's first frame are not its own
+                int frames = RunChapter(t, prog, ch, run, dir, primary && o.Screenshots, primary ? o.Sink : null, p, buf, stop, res, map);
+                res.Frames = frames;
+                foreach (var g in res.Goals) { var c2 = new TasEvalContext(t, map, run.Dir, frames, Math.Max(0, res.Lag)); g.Finish(c2); res.GoalDetail.Add($"{g.Text}: {g.Detail}"); }
+                res.Goal = res.Goals.Count == 0 ? null : res.Goals.All(g => g.Met == true);
+                if (map != null) res.Vars = map.Snapshot(t);
+                if (res.Lag > 0) p.Log.Add($"LAG {ch.Id} {res.Lag} frames: {string.Join(" ", res.LagFrames.Take(40))}{(res.LagFrames.Count > 40 ? " ..." : "")}");
+                p.Chapters[ch.Id] = res;
                 if (primary) File.WriteAllBytes(Path.Combine(dir, "end.state"), t.SaveState());
                 if (o.Only == ch.Id) break;
             }
@@ -248,21 +268,9 @@ public static class TasRunner
         return p;
     }
 
-    // goal "peek ADDR[:N] OP HEX" (OP == != < <= > >=, N bytes big-endian as read): the T1 memory goal; T2 adds expressions and picture goals
-    private static bool Goal(ITasTarget t, string g, List<string> detail)
+    private static int RunChapter(ITasTarget t, TasProgram prog, TasChapter ch, TasRun run, string dir, bool shots, ITasFrameSink? sink, TasPass p, short[] buf, int stopAt, TasChapterResult res, TasRamMap? map)
     {
-        var x = g.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (x.Length != 4 || x[0] != "peek") throw new FormatException($"goal '{g}': peek ADDR[:N] OP HEX");
-        var ad = x[1].Split(':'); int n = ad.Length > 1 ? int.Parse(ad[1]) : 1;
-        ulong v = 0; foreach (var b in t.Peek(ad[0], n)) v = v << 8 | b;
-        ulong w = Convert.ToUInt64(x[3].TrimStart('$').Replace("0x", ""), 16);
-        bool ok = x[2] switch { "==" => v == w, "!=" => v != w, "<" => v < w, "<=" => v <= w, ">" => v > w, ">=" => v >= w, _ => throw new FormatException($"goal '{g}': operator {x[2]}") };
-        detail.Add($"{g}: {v:X} {(ok ? "ok" : "NOT MET")}");
-        return ok;
-    }
-
-    private static int RunChapter(ITasTarget t, TasProgram prog, TasChapter ch, TasRun run, string dir, bool shots, ITasFrameSink? sink, TasPass p, short[] buf, int stopAt)
-    {
+        var perFrame = res.Goals.Where(g => g.PerFrame).ToList(); int lag = 0; bool lagKnown = true;
         ulong hv = 1469598103934665603UL, ha = hv; double sumSq = 0, peak = 0; long win = 0; int frames = 0;
         TasCheckpoint Mark(string name, string kind)
         {
@@ -289,6 +297,9 @@ public static class TasRunner
                 t.SetPads(s.Pads);
                 t.RunFrame();
                 frames++; p.Frames++;
+                int polls = t.InputPolls();
+                if (polls < 0) lagKnown = false; else if (polls == 0) { lag++; res.LagFrames.Add(frames - 1); }
+                if (perFrame.Count > 0) { var gc = new TasEvalContext(t, map, run.Dir, frames, lag); foreach (var g in perFrame) g.OnFrame(gc); }
                 hv = TasTargets.Fnv(t.Argb, t.Width * t.Height, hv);
                 sink?.Frame(t.Argb, t.Width, t.Height);
                 int got;
@@ -323,7 +334,7 @@ public static class TasRunner
                     var a = s.Args[0];
                     var cand = new[] { a.EndsWith(".state") ? run.Resolve(a) : "", Path.Combine(dir, a + ".state"), run.Resolve(a + ".state") };
                     var f = cand.FirstOrDefault(x => x.Length > 0 && File.Exists(x)) ?? throw new FileNotFoundException($"loadstate {a}: no state (looked in the chapter's folder and next to the run)");
-                    t.LoadState(File.ReadAllBytes(f)); break;
+                    t.LoadState(File.ReadAllBytes(f)); t.InputPolls(); break;
                 }
                 case "reset": t.Reset(); break;
                 case "poke": t.Poke(s.Args[0], Convert.FromHexString(s.Args[1].StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? s.Args[1][2..] : s.Args[1])); break;
@@ -340,6 +351,7 @@ public static class TasRunner
             }
         }
         Mark("end", "end");
+        res.Lag = lagKnown ? lag : -1;
         return frames;
     }
 }

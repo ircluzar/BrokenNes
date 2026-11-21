@@ -94,12 +94,14 @@ internal sealed class N64Target : ITasTarget
         {
             case "pak": s.SetPak(Math.Clamp(a.Length > 0 ? int.Parse(a[0]) : 1, 1, 4) - 1, cor64.PIF.JoybusPorts.ParsePak(a.Length > 1 ? a[1] : "none")); return true;
             case "prenmi": s.PreNmi(); return true;
-            case "reload": { var bat = s.ExportSave(); old.Add(s); s = OpenSession(); s.ImportSave(bat); return true; }
+            case "reload": { var bat = s.ExportSave(); old.Add(s); s = OpenSession(); polls = 0; s.ImportSave(bat); return true; }
             case "clearsave": s.ImportSave(new byte[s.ExportSave().Length]); return true;
             case "dumpram": unsafe { byte* r = (byte*)s.System.SystemMemory.RDRAM.GetRamPointer(0); File.WriteAllBytes(Path.Combine(dir, a[0] + ".ram"), new ReadOnlySpan<byte>(r, 0x800000).ToArray()); } return true;
         }
         return false;
     }
 
+    private long polls;
+    public int InputPolls() { long n = s.System.PIF.Ports.PadReads; int d = (int)Math.Max(0, n - polls); polls = n; return d; }
     public void Dispose() { foreach (var x in old) try { x.Dispose(); } catch { } s.Dispose(); }
 }

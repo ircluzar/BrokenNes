@@ -42,6 +42,8 @@ public interface ITasTarget : IDisposable
     byte[] ExportSave();
     /// <summary>Runs a console-only op (N64: pak, prenmi, reload, clearsave, dumpram). False: not this console's.</summary>
     bool ConsoleOp(string op, string[] args, string outDir);
+    /// <summary>Controller polls since the last call (lag-frame detection: 0 after a frame = the game read no input). -1 = this console can't tell.</summary>
+    int InputPolls();
 }
 
 public sealed class TasOpenOptions
@@ -134,6 +136,7 @@ internal sealed class NesTarget : ITasTarget
     public byte[] Peek(string addr, int n) { int a = TasTargets.Addr(addr); if (a >= 0x2000) throw new ArgumentException($"NES peek {addr}: only CPU RAM $0000-$1FFF"); var r = new byte[n]; for (int i = 0; i < n; i++) r[i] = nes.PeekSystemRam((a + i) & 0x7FF); return r; }
     public byte[] ExportSave() => nes.ExportMapperBatteryMemory() ?? Array.Empty<byte>();
     public bool ConsoleOp(string op, string[] a, string dir) => false;
+    public int InputPolls() => nes.ConsumeP1ReadCount() + nes.ConsumeP2ReadCount();
     public void Dispose() => h.Dispose();
 }
 
@@ -170,5 +173,6 @@ internal sealed class SessionTarget : ITasTarget
     public byte[] Peek(string addr, int n) { var d = Ram(); int a = TasTargets.Addr(addr); var r = new byte[n]; for (int i = 0; i < n; i++) r[i] = d.Peek((a + i) % d.Size); return r; }
     public byte[] ExportSave() => s.HasBattery ? s.ExportSave() : Array.Empty<byte>();
     public bool ConsoleOp(string op, string[] a, string dir) => false;
+    public int InputPolls() => -1;
     public void Dispose() => h.Dispose();
 }

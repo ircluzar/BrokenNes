@@ -22,7 +22,10 @@
             "ram": "22A7F614404378C3"
           }
         }
-      }
+      },
+      "goal": [
+        "oper_mode == 1"
+      ]
     },
     {
       "id": "1-1",
@@ -37,7 +40,14 @@
             "ram": "0289D3A9CB3105C3"
           }
         }
-      }
+      },
+      "goal": [
+        "world == 0 && level == 1",
+        "always: lives == 2",
+        "reach: x >= 3000",
+        "reach: level == 1",
+        "reach: engine == 4"
+      ]
     },
     {
       "id": "1-2",

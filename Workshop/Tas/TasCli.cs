@@ -7,7 +7,15 @@
 //   --tas import-autotas PKGDIR --out DIR                                        an AutoTAS package (seg/*.bnm) as a chaptered run
 //   --tas export SCRIPT|LOG --console nes --fm2 OUT --rom R                      NES movie for FCEUX (power-on only)
 //   --tas branch RUN --chapter ID --frame F --out DIR [--tail FILE]              state at that frame + a new run continuing from it
-//   --tas render RUN|SCRIPT --mp4 OUT.mp4 [run options]                           lag-free video (Media Foundation H.264/AAC)
+//   --tas render RUN|SCRIPT --mp4 OUT.mp4 [--mp4size WxH] [--mp4kbps N] [run options]   lag-free video (Media Foundation H.264/AAC)
+// T2 (goals + precision):
+//   --tas edit   RUN --chapter ID [--set F:BTNS[:N]]... [--insert F:BTNS:N]... [--delete F:N]... [--trim-goal G] --out DIR
+//                applies input edits in order (BTNS: A+B+Right, "-" none, pad 2 after |), plays the chapter with its goals and lag frames,
+//                writes DIR/<id>.tlog + DIR/edited.tasrun.json (the run with that chapter replaced; --trim-goal N cuts it at goal N's first frame)
+//                --variants FILE: one edit set per line (set ...; insert ...; delete ...), each tried from the base; the best (all goals met,
+//                lowest first frame of goal --score N, default the last reach/within goal) is kept, the table goes to DIR/variants.json
+//   --tas diff   A B [--rom R] [--romb R] [--ram-every N] [--max F] --out DIR    first diverging frame (picture / RAM), bytes, vars, input before it
+//   --tas vars   RUN --chapter ID --frame F                                      the RAM map variables at a frame
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -26,7 +34,7 @@ internal static class TasCli
     {
         string Opt(string n, string d = "") { int i = Array.FindIndex(args, 2, a => a.Equals("--" + n, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
         bool Has(string n) => args.Skip(2).Any(a => a.Equals("--" + n, StringComparison.OrdinalIgnoreCase));
-        if (args.Length < 3) { Console.Error.WriteLine("usage: --tas run|check|expand|import|import-autotas|export|branch|render ... (Workshop/Tas/TasCli.cs)"); return 2; }
+        if (args.Length < 3) { Console.Error.WriteLine("usage: --tas run|check|expand|import|import-autotas|export|branch|render|edit|diff|vars ... (Workshop/Tas/TasCli.cs)"); return 2; }
         RomTestCli.EnsureConsole();
         string verb = args[1].ToLowerInvariant(), target = args[2];
         try
@@ -38,11 +46,17 @@ internal static class TasCli
                     var run = LoadRun(target, Opt("console"), Opt("rom"), Opt("start", "power-on"));
                     var o = Options(run, Opt, Has);
                     if (Has("only")) o.Only = Opt("only");
-                    if (verb == "render") { o.Twice = false; o.Sink = new Mp4Sink(Opt("mp4")); }
+                    if (verb == "render")
+                    {
+                        if (Opt("mp4").Length == 0) throw new ArgumentException("--tas render needs --mp4 OUT.mp4");
+                        var sz = Opt("mp4size", "0x0").Split('x');
+                        o.Twice = false; o.Sink = new Mp4Sink(Path.GetFullPath(Opt("mp4")), int.Parse(sz[0]), int.Parse(sz[1]), int.Parse(Opt("mp4kbps", "6000")));
+                    }
                     else if (Opt("frames-dir") is { Length: > 0 } fd) o.Sink = new FrameDirSink(fd);
                     var rep = TasRunner.Run(run, o);
                     if (Has("bless")) { if (run.Raw.Count == 0) throw new ArgumentException("--bless needs a run file"); TasRunner.Bless(run, rep); }
                     Summary(rep, o.OutDir);
+                    if (o.Sink is Mp4Sink ms) Console.WriteLine($"TAS render: {ms.Frames} frames, {ms.Seconds:F1} s -> {Opt("mp4")}");
                     bool ok = rep["error"] == null && ((bool?)rep["determinism"]!["identical"] ?? true);
                     if (verb == "check") ok &= (bool)rep["expect"]!["ok"]! && (int)rep["expect"]!["checked"]! > 0;
                     return ok ? 0 : 1;
@@ -81,6 +95,70 @@ internal static class TasCli
                     return 0;
                 }
                 case "import-autotas": return ImportAutoTas(target, Opt("out"));
+                case "edit":
+                {
+                    var run = LoadRun(target, Opt("console"), Opt("rom"), Opt("start", "power-on"));
+                    string outDir = Path.GetFullPath(Opt("out", "tas_edit"));
+                    var opt = Options(run, Opt, Has);
+                    using var s = new TasSession(run, Opt("chapter", run.Chapters[0].Id), Opt("rom") is { Length: > 0 } r ? r : null, opt.Open, Path.Combine(outDir, "scratch"));
+                    var applied = new List<string>();
+                    for (int i = 2; i + 1 < args.Length; i++)
+                    {
+                        var a = args[i].ToLowerInvariant(); var v = args[i + 1].Split(':');
+                        if (a == "--set") { s.Set(int.Parse(v[0]), v.Length > 2 ? int.Parse(v[2]) : 1, s.Parse(v[1]), append: true); applied.Add($"set {args[i + 1]}"); }
+                        else if (a == "--insert") { s.Insert(int.Parse(v[0]), v.Length > 2 ? int.Parse(v[2]) : 1, s.Parse(v[1])); applied.Add($"insert {args[i + 1]}"); }
+                        else if (a == "--delete") { s.Delete(int.Parse(v[0]), v.Length > 1 ? int.Parse(v[1]) : 1); applied.Add($"delete {args[i + 1]}"); }
+                    }
+                    if (Opt("variants") is { Length: > 0 } vf)
+                    {
+                        // one edit set per line ("set F:BTNS:N; insert F:BTNS:N; delete F:N"), each from the edited base; best = all goals met, lowest
+                        // first frame of goal --score (default: the last reach/within goal)
+                        var baseSteps = s.Snapshot(); var table = new JsonArray(); JsonObject? best = null; string? bestLine = null; int bestScore = int.MaxValue;
+                        var lines = File.ReadAllLines(vf).Where(l => l.Trim().Length > 0 && !l.TrimStart().StartsWith('#')).Prepend("").ToList();
+                        foreach (var line in lines)
+                        {
+                            s.Restore(baseSteps);
+                            foreach (var e in line.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) Apply(s, e);
+                            var rr = s.Evaluate();
+                            var gs = rr["goals"]!.AsArray();
+                            int gi = Opt("score") is { Length: > 0 } sc ? int.Parse(sc) : Enumerable.Range(0, gs.Count).LastOrDefault(i => (string?)gs[i]!["kind"] is "reach" or "within");
+                            bool ok = (bool?)rr["goal"] ?? true; int score = ok && gs.Count > 0 ? (int?)gs[gi]!["firstFrame"] ?? int.MaxValue : int.MaxValue;
+                            table.Add(new JsonObject { ["edits"] = line.Length == 0 ? "(base)" : line, ["ok"] = ok, ["score"] = score == int.MaxValue ? null : score, ["firsts"] = new JsonArray(gs.Select(g => (JsonNode?)g!["firstFrame"]?.DeepClone()).ToArray()) });
+                            Console.WriteLine($"  {(ok ? "ok " : "BAD")} score {(score == int.MaxValue ? "-" : score.ToString())}  {(line.Length == 0 ? "(base)" : line)}");
+                            if (score < bestScore) { bestScore = score; best = rr; bestLine = line; }
+                        }
+                        s.Restore(baseSteps);
+                        if (bestLine != null) foreach (var e in bestLine.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) { Apply(s, e); applied.Add(e); }
+                        File.WriteAllText(Path.Combine(outDir, "variants.json"), table.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                        Console.WriteLine($"TAS edit: {lines.Count} variants, best score {bestScore} ({(string.IsNullOrEmpty(bestLine) ? "(base)" : bestLine)}) -> {Path.Combine(outDir, "variants.json")}");
+                    }
+                    var ev = s.Evaluate();
+                    int trim = -1;
+                    if (Opt("trim-goal") is { Length: > 0 } tg) { var g = ev["goals"]!.AsArray()[int.Parse(tg)]!; trim = (int?)g["firstFrame"] ?? -1; if (trim < 0) throw new ArgumentException($"--trim-goal {tg}: goal not reached"); }
+                    ev["edits"] = new JsonArray(applied.Select(x => (JsonNode)x!).ToArray());
+                    ev["run"] = s.Save(outDir, trim); ev["trimmedTo"] = trim >= 0 ? trim : null;
+                    File.WriteAllText(Path.Combine(outDir, "edit.json"), ev.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                    Console.WriteLine(ev.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                    return 0;
+                }
+                case "diff":
+                {
+                    if (args.Length < 4) throw new ArgumentException("--tas diff A B");
+                    var a = LoadRun(target, Opt("console"), Opt("rom"), Opt("start", "power-on"));
+                    var b = LoadRun(args[3], Opt("console"), Opt("romb") is { Length: > 0 } rb ? rb : Opt("rom"), Opt("start", "power-on"));
+                    var res = TasDiff.Run(a, b, Opt("rom") is { Length: > 0 } ra ? ra : null, Opt("romb") is { Length: > 0 } rb2 ? rb2 : Opt("rom") is { Length: > 0 } ra2 ? ra2 : null,
+                        Opt("out", Path.Combine(Path.GetTempPath(), "brokennes-tas", "diff_" + DateTime.Now.ToString("yyyyMMdd_HHmmss"))), int.Parse(Opt("ram-every", "1")), int.Parse(Opt("max", int.MaxValue.ToString())));
+                    Console.WriteLine(res.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                    return (bool)res["identical"]! ? 0 : 1;
+                }
+                case "vars":
+                {
+                    var run = LoadRun(target, Opt("console"), Opt("rom"), Opt("start", "power-on"));
+                    using var s = new TasSession(run, Opt("chapter", run.Chapters[0].Id), Opt("rom") is { Length: > 0 } r ? r : null, Options(run, Opt, Has).Open, Path.Combine(Path.GetTempPath(), "brokennes-tas", "vars"));
+                    s.Seek(int.Parse(Opt("frame", "0")));
+                    Console.WriteLine(s.Status().ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                    return 0;
+                }
                 case "export":
                 {
                     string console = Opt("console", "nes");
@@ -112,6 +190,19 @@ internal static class TasCli
         }
         catch (Exception e) when (e is ArgumentException or FormatException or FileNotFoundException or NotSupportedException or InvalidDataException) { Console.Error.WriteLine("TAS: " + e.Message); return 2; }
         Console.Error.WriteLine($"--tas {verb}: unknown verb"); return 2;
+    }
+
+    /// <summary>One edit: "set F:BTNS[:N]", "insert F:BTNS[:N]", "delete F[:N]".</summary>
+    internal static void Apply(TasSession s, string e)
+    {
+        var w = e.Split(' ', 2, StringSplitOptions.TrimEntries); var v = w[1].Split(':');
+        switch (w[0])
+        {
+            case "set": s.Set(int.Parse(v[0]), v.Length > 2 ? int.Parse(v[2]) : 1, s.Parse(v[1]), append: true); break;
+            case "insert": s.Insert(int.Parse(v[0]), v.Length > 2 ? int.Parse(v[2]) : 1, s.Parse(v[1])); break;
+            case "delete": s.Delete(int.Parse(v[0]), v.Length > 1 ? int.Parse(v[1]) : 1); break;
+            default: throw new FormatException($"edit '{e}': set F:BTNS[:N] | insert F:BTNS[:N] | delete F[:N]");
+        }
     }
 
     internal static TasRun LoadRun(string target, string console, string rom, string start)
