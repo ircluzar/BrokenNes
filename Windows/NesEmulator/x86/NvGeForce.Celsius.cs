@@ -28,7 +28,8 @@ public sealed partial class NvGeForce
         public float A, R, G, B, SA, SR, SG, SB;         // diffuse / specular 0..1
         public float U0, V0, U1, V1;
         public float NX, NY, NZ;                         // object-space normal (lighting)
-        public float Fog, EyeZ;                          // vertex fog coordinate, eye-space depth (fog sources)
+        public float Fog, EyeZ;
+        public float CX, CY, CZ, CW; public bool Clip;    // clip-space position of a transformed vertex (near-plane clipping)                          // vertex fog coordinate, eye-space depth (fog sources)
     }
 
     private static float F(uint v) => BitConverter.Int32BitsToSingle((int)v);
@@ -124,12 +125,47 @@ public sealed partial class NvGeForce
               cz = m[8] * x + m[9] * y + m[10] * z + m[11] * w, cw = m[12] * x + m[13] * y + m[14] * z + m[15] * w;
         v.EyeZ = cw;   // (clip w = eye distance for a perspective projection: the fog source)
         if (G(inst, 0x314) != 0) Light(inst, ref v);
-        if (cw == 0) cw = 1e-6f;
+        v.CX = cx; v.CY = cy; v.CZ = cz; v.CW = cw; v.Clip = true;
+        Project(inst, ref v);
+    }
+
+    private void Project(uint inst, ref CVert v)
+    {
+        float cw = v.CW == 0 ? 1e-6f : v.CW;
         float iw = 1 / cw;
-        v.X = cx * iw + F(G(inst, 0x6e8)) + 2048; v.Y = cy * iw + F(G(inst, 0x6ec)) + 2048;
+        v.X = v.CX * iw + F(G(inst, 0x6e8)) + 2048; v.Y = v.CY * iw + F(G(inst, 0x6ec)) + 2048;
         bool zz16 = ((G(inst, 0x208) >> 4) & 3) == 1 || (int)(G(inst, 0x20c) >> 16) < (int)(G(inst, 0x200) >> 16) * 4;
         float zmax = zz16 ? 65535f : 16777215f;
-        v.Z = (cz * iw + F(G(inst, 0x6f0))) / zmax; v.W = iw;
+        v.Z = (v.CZ * iw + F(G(inst, 0x6f0))) / zmax; v.W = iw;
+    }
+
+    private const float NearW = 1e-3f;
+
+    private static CVert Lerp(in CVert a, in CVert b, float t)
+    {
+        static float L(float x, float y, float t) => x + (y - x) * t;
+        return new CVert
+        {
+            A = L(a.A, b.A, t), R = L(a.R, b.R, t), G = L(a.G, b.G, t), B = L(a.B, b.B, t), SA = L(a.SA, b.SA, t), SR = L(a.SR, b.SR, t), SG = L(a.SG, b.SG, t), SB = L(a.SB, b.SB, t),
+            U0 = L(a.U0, b.U0, t), V0 = L(a.V0, b.V0, t), U1 = L(a.U1, b.U1, t), V1 = L(a.V1, b.V1, t), NX = L(a.NX, b.NX, t), NY = L(a.NY, b.NY, t), NZ = L(a.NZ, b.NZ, t),
+            Fog = L(a.Fog, b.Fog, t), EyeZ = L(a.EyeZ, b.EyeZ, t), CX = L(a.CX, b.CX, t), CY = L(a.CY, b.CY, t), CZ = L(a.CZ, b.CZ, t), CW = L(a.CW, b.CW, t), Clip = true,
+        };
+    }
+
+    /// <summary>A triangle clipped against the near plane (clip w > NearW) before the divide: vertices behind the eye would wrap across the screen.</summary>
+    private void ClipTri(uint inst, in CVert a, in CVert b, in CVert c)
+    {
+        if (!a.Clip || !b.Clip || !c.Clip || (a.CW > NearW && b.CW > NearW && c.CW > NearW)) { Tri(inst, a, b, c); return; }
+        if (a.CW <= NearW && b.CW <= NearW && c.CW <= NearW) return;
+        var inp = new[] { a, b, c }; var outp = new List<CVert>(4);
+        for (int i = 0; i < 3; i++)
+        {
+            var p = inp[i]; var q = inp[(i + 1) % 3];
+            bool pin = p.CW > NearW, qin = q.CW > NearW;
+            if (pin) outp.Add(p);
+            if (pin != qin) { var r = Lerp(p, q, (NearW - p.CW) / (q.CW - p.CW)); Project(inst, ref r); outp.Add(r); }
+        }
+        for (int i = 1; i + 1 < outp.Count; i++) Tri(inst, outp[0], outp[i], outp[i + 1]);
     }
 
     /// <summary>Fixed-function lighting (ambient + diffuse + specular, the driver pre-multiplies the light colours by the material):
@@ -205,11 +241,11 @@ public sealed partial class NvGeForce
             case 2: for (int i = 0; i + 1 < n; i += 2) Line(inst, v[i], v[i + 1]); break;
             case 3: for (int i = 0; i + 1 < n; i++) Line(inst, v[i], v[i + 1]); if (n > 2) Line(inst, v[n - 1], v[0]); break;
             case 4: for (int i = 0; i + 1 < n; i++) Line(inst, v[i], v[i + 1]); break;
-            case 5: for (int i = 0; i + 2 < n; i += 3) Tri(inst, v[i], v[i + 1], v[i + 2]); break;
-            case 6: for (int i = 0; i + 2 < n; i++) { if ((i & 1) == 0) Tri(inst, v[i], v[i + 1], v[i + 2]); else Tri(inst, v[i + 1], v[i], v[i + 2]); } break;
-            case 7: case 10: for (int i = 1; i + 1 < n; i++) Tri(inst, v[0], v[i], v[i + 1]); break;
-            case 8: for (int i = 0; i + 3 < n; i += 4) { Tri(inst, v[i], v[i + 1], v[i + 2]); Tri(inst, v[i], v[i + 2], v[i + 3]); } break;
-            case 9: for (int i = 0; i + 3 < n; i += 2) { Tri(inst, v[i], v[i + 1], v[i + 3]); Tri(inst, v[i], v[i + 3], v[i + 2]); } break;
+            case 5: for (int i = 0; i + 2 < n; i += 3) ClipTri(inst, v[i], v[i + 1], v[i + 2]); break;
+            case 6: for (int i = 0; i + 2 < n; i++) { if ((i & 1) == 0) ClipTri(inst, v[i], v[i + 1], v[i + 2]); else ClipTri(inst, v[i + 1], v[i], v[i + 2]); } break;
+            case 7: case 10: for (int i = 1; i + 1 < n; i++) ClipTri(inst, v[0], v[i], v[i + 1]); break;
+            case 8: for (int i = 0; i + 3 < n; i += 4) { ClipTri(inst, v[i], v[i + 1], v[i + 2]); ClipTri(inst, v[i], v[i + 2], v[i + 3]); } break;
+            case 9: for (int i = 0; i + 3 < n; i += 2) { ClipTri(inst, v[i], v[i + 1], v[i + 3]); ClipTri(inst, v[i], v[i + 3], v[i + 2]); } break;
         }
     }
 
