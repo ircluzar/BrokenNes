@@ -110,7 +110,7 @@ cut the reference down to the HUD glyph you care about (alpha 0 elsewhere) and i
   appends), `seek` to any frame (in-memory savestate ring: every 10 frames NES, 120 N64, then replay), `set` / `insert` / `delete` input at any frame,
   `status` (cursor, next inputs, RAM-map vars, lag seen, picture), `goals` (plays the chapter with its goals, resuming from the last frame before the
   earliest edit), `save` (DIR/<id>.tlog + DIR/edited.tasrun.json = the run with that chapter replaced, `trim` cuts it).
-- **`--tas edit RUN --chapter ID --set F:BTNS[:N] --insert F:BTNS:N --delete F:N [--trim-goal G] --out DIR`**: the same from the command line.
+- **`--tas edit RUN --chapter ID --set F:BTNS[:N] --insert F:BTNS:N --delete F:N [--trim N | --trim-goal G[+K]] --out DIR`**: the same from the command line.
   `--variants FILE` (one edit set per line, `;`-separated) tries each from the base and keeps the best (all goals met, lowest `firstFrame` of goal
   `--score N`): a hand-written local search; the fleet search is T3.
 - **`--tas diff A B [--ram-every N] --out DIR`** (MCP `tas_diff`): plays both runs in lockstep and reports the first frame whose picture differs and the first

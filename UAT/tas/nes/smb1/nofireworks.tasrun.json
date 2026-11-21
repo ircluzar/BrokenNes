@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "console": "nes",
+  "game": "smb1",
+  "title": "Super Mario Bros. World 1-1 no-fireworks branch (T2 proof)",
+  "rom_sha1": "ea343f4e445a9050d4b4fbac2c77d0693b1d0922",
+  "cores": "FIX/FIX/FIX",
+  "power_on": "fceux",
+  "ntsc": false,
+  "source": "branch of run.tasrun.json",
+  "chapters": [
+    {
+      "id": "boot",
+      "title": "Boot to World 1-1",
+      "start": "power-on",
+      "script": "boot.tas",
+      "goal": [
+        "oper_mode == 1"
+      ],
+      "expect": {
+        "frames": 194,
+        "checkpoints": {
+          "end": {
+            "frame": 194,
+            "video": "48EF1B714A658CA7",
+            "picture": "A8F7EF6D3389E485",
+            "ram": "22A7F614404378C3"
+          }
+        }
+      }
+    },
+    {
+      "id": "1-1",
+      "title": "World 1-1, flag grabbed on timer 345 (no fireworks): 1-2 loads 147 frames earlier",
+      "start": "previous",
+      "script": "1-1_nofireworks.tlog",
+      "goal": [
+        "world == 0 \u0026\u0026 level == 1",
+        "always: lives == 2",
+        "reach: x \u003E= 3000",
+        "reach: level == 1",
+        "reach: engine == 4"
+      ],
+      "notes": "Found with --tas edit --variants (T2): insert 10 idle frames at 1250 so the flag is grabbed after the timer ticks from 346 (last digit 6 = 6 fireworks) to 345; level==1 at 1974 instead of 2121. Trimmed to 2137 frames (the base keeps 163 frames after the load) so 1-2 still plays.",
+      "expect": {
+        "frames": 2137,
+        "checkpoints": {
+          "end": {
+            "frame": 2137,
+            "video": "E658661CF730815F",
+            "picture": "71DBA9BF16ADA325",
+            "ram": "5BAEAF21420073F6"
+          }
+        }
+      }
+    },
+    {
+      "id": "1-2",
+      "title": "World 1-2",
+      "start": "previous",
+      "script": "1-2.tas",
+      "goal": [
+        "world == 0 \u0026\u0026 level == 2",
+        "always: lives == 2"
+      ],
+      "expect": {
+        "frames": 3064,
+        "checkpoints": {
+          "end": {
+            "frame": 3064,
+            "video": "2D8BE40248894A6B",
+            "picture": "71DBA9BF16ADA325",
+            "ram": "A6D26127BD9086AD"
+          }
+        }
+      }
+    }
+  ]
+}

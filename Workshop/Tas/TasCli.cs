@@ -9,7 +9,7 @@
 //   --tas branch RUN --chapter ID --frame F --out DIR [--tail FILE]              state at that frame + a new run continuing from it
 //   --tas render RUN|SCRIPT --mp4 OUT.mp4 [--mp4size WxH] [--mp4kbps N] [run options]   lag-free video (Media Foundation H.264/AAC)
 // T2 (goals + precision):
-//   --tas edit   RUN --chapter ID [--set F:BTNS[:N]]... [--insert F:BTNS:N]... [--delete F:N]... [--trim-goal G] --out DIR
+//   --tas edit   RUN --chapter ID [--set F:BTNS[:N]]... [--insert F:BTNS:N]... [--delete F:N]... [--trim N | --trim-goal G[+K]] --out DIR
 //                applies input edits in order (BTNS: A+B+Right, "-" none, pad 2 after |), plays the chapter with its goals and lag frames,
 //                writes DIR/<id>.tlog + DIR/edited.tasrun.json (the run with that chapter replaced; --trim-goal N cuts it at goal N's first frame)
 //                --variants FILE: one edit set per line (set ...; insert ...; delete ...), each tried from the base; the best (all goals met,
@@ -134,7 +134,8 @@ internal static class TasCli
                     }
                     var ev = s.Evaluate();
                     int trim = -1;
-                    if (Opt("trim-goal") is { Length: > 0 } tg) { var g = ev["goals"]!.AsArray()[int.Parse(tg)]!; trim = (int?)g["firstFrame"] ?? -1; if (trim < 0) throw new ArgumentException($"--trim-goal {tg}: goal not reached"); }
+                    if (Opt("trim") is { Length: > 0 } tn) trim = int.Parse(tn);
+                    if (Opt("trim-goal") is { Length: > 0 } tg) { var gp = tg.Split('+'); var g = ev["goals"]!.AsArray()[int.Parse(gp[0])]!; trim = (int?)g["firstFrame"] ?? -1; if (trim < 0) throw new ArgumentException($"--trim-goal {tg}: goal not reached"); if (gp.Length > 1) trim += int.Parse(gp[1]); }
                     ev["edits"] = new JsonArray(applied.Select(x => (JsonNode)x!).ToArray());
                     ev["run"] = s.Save(outDir, trim); ev["trimmedTo"] = trim >= 0 ? trim : null;
                     File.WriteAllText(Path.Combine(outDir, "edit.json"), ev.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
