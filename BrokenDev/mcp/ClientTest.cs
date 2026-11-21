@@ -146,6 +146,22 @@ internal static class ClientTest
         string md = DebugTestRoms.Write(dir, "debugtest.md", mdr), mdSym = DebugTestRoms.Write(dir, "debugtest_md_symbols.txt", mdn);
         string H(Asm a, string l) => "$" + a[l].ToString("X4");
 
+        // ---------------------------------------------------------------- TAS (T1): run a script twice, branch from a frame, run the branch
+        {
+            string scr = Path.Combine(dir, "tas1.tas");
+            File.WriteAllLines(scr, new[] { "run 20", "press Start 2 10", "hold Right", "run 30", "screenshot mid", "input A+Right 12", "checkpoint done" });
+            var tr = await Call("tas_run", new { path = scr, rom = nes, @out = Path.Combine(dir, "tas1_out") });
+            Check("tas_run", !tr.IsError && tr["error"] == null && tr["determinism"]?["identical"]?.GetValue<bool>() == true && L(tr["frames"]) == 74 && tr.Images.Count == 1, tr.ToString());
+            var tb = await Call("tas_branch", new { path = scr, rom = nes, chapter = "tas1", frame = 40, @out = Path.Combine(dir, "tas1_branch") });
+            Check("tas_branch", !tb.IsError && File.Exists(S(tb["branch"])), tb.ToString());
+            if (!tb.IsError)
+            {
+                var tr2 = await Call("tas_run", new { path = S(tb["branch"]), rom = nes, @out = Path.Combine(dir, "tas1_branch_out") });
+                string e1 = S(tr["checkpoints"]?.AsArray().Last()?["picture"]), e2 = S(tr2["checkpoints"]?.AsArray().Last()?["picture"]);
+                Check("tas_branch_replays", !tr2.IsError && L(tr2["frames"]) == 34 && e1 == e2 && e1.Length > 0, $"branch end picture {e2} vs straight {e1}");
+            }
+        }
+
         // ---------------------------------------------------------------- NES: a session, a breakpoint on a symbol, the stack, the trace, stepping
         var o = await Call("open_rom", new { path = nes, symbols = new[] { nesSym } });
         string h1 = S(o["session"]);

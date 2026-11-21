@@ -115,6 +115,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--debug-test", StringComparison.OrdinalIgnoreCase)) return Debug.DebugTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--debug", StringComparison.OrdinalIgnoreCase)) return Debug.DebugRunCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--movie", StringComparison.OrdinalIgnoreCase)) return Movies.MovieCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--tas", StringComparison.OrdinalIgnoreCase)) return Tas.TasCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--movie-test", StringComparison.OrdinalIgnoreCase)) return Movies.MovieTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--determinism-test", StringComparison.OrdinalIgnoreCase)) return Movies.DeterminismTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--bug", StringComparison.OrdinalIgnoreCase)) return Bugs.BugCli.Run(args);

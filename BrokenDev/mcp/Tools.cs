@@ -732,6 +732,7 @@ internal static partial class Tools
             a => BrokenDevBridge.RunVerb(a.Req("verb"), a.Str("project") ?? "", a.List("emu"), a.List("scenario"), a.Int("timeout_sec", 1800)));
 
         AgentLoopTools(Add);
+        TasTools(Add);
 
         return t;
     }
