@@ -250,6 +250,7 @@ namespace BrokenNes.Windows
                         meta.Cores = SessionCores(session.Console);
                         if (SegaMachineOf(session) is { } sega) { meta.Settings.Add(("region", sega.region)); meta.Settings.Add(("model", sega.model)); }
                         meta.Settings.Add(("description", session.Description));
+                        if (session is NesEmulator.X86.PcSession pcs) meta.Settings.Add(("machine", pcs.MachineKey));   // the PC preset a replay must build
                     }
                     return d;
                 });

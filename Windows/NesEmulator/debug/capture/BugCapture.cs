@@ -69,6 +69,18 @@ public sealed class BugCaptureSource
     /// <summary>Whether the NES runs NTSC's frame length (60.0988) rather than BrokenNes's 60 fps frames.</summary>
     public static bool NesNtsc(NES nes) => nes.GetSpeedConfig()?.NtscAccurateFrameRate == true;
 
+    /// <summary>
+    /// The x86 PC's keyframe RAM hash: all of its physical RAM, 8 bytes at a time (64 MB ~ 10 ms, once a second). The PC offers no memory
+    /// domains (its RAM is not open to the corruption tools), so without this every PC keyframe hashed nothing and only the picture could catch a divergence.
+    /// </summary>
+    public static ulong PcRamHash(byte[] mem)
+    {
+        var q = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, ulong>(mem.AsSpan(0, mem.Length & ~7));
+        ulong h = 0xcbf29ce484222325UL;
+        foreach (ulong v in q) { h ^= v; h *= 0x100000001b3UL; h ^= h >> 29; }
+        return h;
+    }
+
     /// <summary>A console session: its own state (or why it has none), its ARGB picture, its work-RAM domains; <paramref name="machine"/>: its cores, watched.</summary>
     public static BugCaptureSource For(IConsoleSession s, Func<string>? machine = null)
     {
@@ -77,7 +89,7 @@ public sealed class BugCaptureSource
         return new BugCaptureSource(Consoles.Key(s.Console),
             states ? s.SaveState : null, states ? "" : s.StateUnsupportedReason,
             () => MovieHash.Picture(s.Frame, s.FrameWidth * s.FrameHeight),
-            () => MovieHash.Ram(domains),
+            s is NesEmulator.X86.PcSession pcRam ? () => PcRamHash(pcRam.Machine.Cpu.Mem) : () => MovieHash.Ram(domains),
             p => p.FromArgb(s.Frame, s.FrameWidth, s.FrameHeight), machine)
         {
             BeginSaveState = states && s is NesEmulator.X86.PcSession pc ? pc.BeginSaveState : null,
