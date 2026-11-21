@@ -27,6 +27,7 @@ public sealed partial class NvGeForce
         public float X, Y, Z, W;                         // after transform: screen x, y, depth 0..1, 1/w
         public float A, R, G, B, SA, SR, SG, SB;         // diffuse / specular 0..1
         public float U0, V0, U1, V1;
+        public float NX, NY, NZ;                         // object-space normal (lighting)
         public float Fog, EyeZ;                          // vertex fog coordinate, eye-space depth (fog sources)
     }
 
@@ -56,6 +57,7 @@ public sealed partial class NvGeForce
             case 0xc8c: SetColor(ref _cCur, data, true); break;
             case 0xc90: _cCur.U0 = F(data); break; case 0xc94: _cCur.V0 = F(data); break;
             case 0xce0: _cCur.Fog = F(data); break;
+            case 0xc30: _cCur.NX = F(data); break; case 0xc34: _cCur.NY = F(data); break; case 0xc38: _cCur.NZ = F(data); break;
             case 0xcb8: _cCur.U1 = F(data); break; case 0xcbc: _cCur.V1 = F(data); break;
             case 0xc50: _cCur.R = F(data); break; case 0xc54: _cCur.G = F(data); break; case 0xc58: _cCur.B = F(data); break; case 0xc5c: _cCur.A = F(data); break;
             case 0xc08:   // VERTEX_POS_3F z: emits
@@ -98,6 +100,7 @@ public sealed partial class NvGeForce
                     case 2: if ((fmt[i] & 15) == 0) SetColor(ref v, _cWords[o], true); else { v.SR = F(_cWords[o]); v.SG = F(_cWords[o + 1]); v.SB = F(_cWords[o + 2]); } break;
                     case 3: v.U0 = F(_cWords[o]); v.V0 = n > 1 ? F(_cWords[o + 1]) : 0; if (n > 3) { float q = F(_cWords[o + 3]); if (q != 0) { v.U0 /= q; v.V0 /= q; } } break;
                     case 7: v.Fog = F(_cWords[o]); break;
+                    case 5: if ((fmt[i] & 15) == 2 && n >= 3) { v.NX = F(_cWords[o]); v.NY = F(_cWords[o + 1]); v.NZ = F(_cWords[o + 2]); } break;
                     case 4: v.U1 = F(_cWords[o]); v.V1 = n > 1 ? F(_cWords[o + 1]) : 0; if (n > 3) { float q = F(_cWords[o + 3]); if (q != 0) { v.U1 /= q; v.V1 /= q; } } break;
                 }
                 o += n;
@@ -120,12 +123,66 @@ public sealed partial class NvGeForce
         float cx = m[0] * x + m[1] * y + m[2] * z + m[3] * w, cy = m[4] * x + m[5] * y + m[6] * z + m[7] * w,
               cz = m[8] * x + m[9] * y + m[10] * z + m[11] * w, cw = m[12] * x + m[13] * y + m[14] * z + m[15] * w;
         v.EyeZ = cw;   // (clip w = eye distance for a perspective projection: the fog source)
+        if (G(inst, 0x314) != 0) Light(inst, ref v);
         if (cw == 0) cw = 1e-6f;
         float iw = 1 / cw;
         v.X = cx * iw + F(G(inst, 0x6e8)) + 2048; v.Y = cy * iw + F(G(inst, 0x6ec)) + 2048;
         bool zz16 = ((G(inst, 0x208) >> 4) & 3) == 1 || (int)(G(inst, 0x20c) >> 16) < (int)(G(inst, 0x200) >> 16) * 4;
         float zmax = zz16 ? 65535f : 16777215f;
         v.Z = (cz * iw + F(G(inst, 0x6f0))) / zmax; v.W = iw;
+    }
+
+    /// <summary>Fixed-function lighting (ambient + diffuse + specular, the driver pre-multiplies the light colours by the material):
+    /// the normal goes to eye space through the inverse modelview (0x480, 3 rows of 4, applied as n x M); lights are treated as
+    /// directional (DIRECTION / POSITION normalised, HALF_VECTOR for the specular). Positional attenuation and spots: not yet.</summary>
+    private void Light(uint inst, ref CVert v)
+    {
+        float nx = v.NX, ny = v.NY, nz = v.NZ;
+        if (G(inst, 0x480) != 0 || G(inst, 0x494) != 0 || G(inst, 0x4a8) != 0)
+        {
+            float M(int r, int c) => F(G(inst, 0x480 + (r * 4 + c) * 4));
+            float ex = nx * M(0, 0) + ny * M(1, 0) + nz * M(2, 0), ey = nx * M(0, 1) + ny * M(1, 1) + nz * M(2, 1), ez = nx * M(0, 2) + ny * M(1, 2) + nz * M(2, 2);
+            nx = ex; ny = ey; nz = ez;
+        }
+        float len = MathF.Sqrt(nx * nx + ny * ny + nz * nz); if (len > 0) { nx /= len; ny /= len; nz /= len; }
+        uint cm = G(inst, 0x298);
+        // scene ambient + emission (the driver folds the material in); colour-material: the vertex colour replaces the material term
+        float r = F(G(inst, 0x6c4)), g = F(G(inst, 0x6c8)), b = F(G(inst, 0x6cc));
+        float sr = 0, sg = 0, sb = 0;
+        uint en = G(inst, 0x3bc);
+        for (int i = 0; i < 8; i++)
+        {
+            int mode = (int)(en >> (i * 2)) & 3; if (mode == 0) continue;
+            int L = 0x800 + i * 0x80;
+            float lx, ly, lz;
+            if (mode == 2) { lx = F(G(inst, L + 0x5c)); ly = F(G(inst, L + 0x60)); lz = F(G(inst, L + 0x64)); }
+            else { lx = F(G(inst, L + 0x34)); ly = F(G(inst, L + 0x38)); lz = F(G(inst, L + 0x3c)); }
+            float ll = MathF.Sqrt(lx * lx + ly * ly + lz * lz); if (ll > 0) { lx /= ll; ly /= ll; lz /= ll; }
+            float nl = MathF.Max(0, nx * lx + ny * ly + nz * lz);
+            float ar = F(G(inst, L)), ag = F(G(inst, L + 4)), ab = F(G(inst, L + 8));
+            float dr = F(G(inst, L + 0xc)), dg = F(G(inst, L + 0x10)), db = F(G(inst, L + 0x14));
+            if ((cm & 2) != 0) { ar *= v.R; ag *= v.G; ab *= v.B; }
+            if ((cm & 4) != 0) { dr *= v.R; dg *= v.G; db *= v.B; }
+            r += ar + dr * nl; g += ag + dg * nl; b += ab + db * nl;
+            if (nl > 0)
+            {
+                float hx = F(G(inst, L + 0x28)), hy = F(G(inst, L + 0x2c)), hz = F(G(inst, L + 0x30));
+                float hl = MathF.Sqrt(hx * hx + hy * hy + hz * hz);
+                if (hl > 0)
+                {
+                    float nh = MathF.Max(0, (nx * hx + ny * hy + nz * hz) / hl);
+                    float shin = F(G(inst, 0x6a0)); float e = shin > 0 && shin < 128 ? shin : 16;   // (the 6 shininess words are curve coefficients; first used as the exponent: approximate)
+                    float sp = MathF.Pow(nh, e);
+                    float pr = F(G(inst, L + 0x18)), pg = F(G(inst, L + 0x1c)), pb = F(G(inst, L + 0x20));
+                    sr += pr * sp; sg += pg * sp; sb += pb * sp;
+                }
+            }
+        }
+        float a = (cm & 4) != 0 ? v.A : F(G(inst, 0x3b4));
+        if (a == 0 && (cm & 4) == 0 && G(inst, 0x3b4) == 0) a = 1;
+        bool sep = G(inst, 0x3b8) != 0;
+        v.R = Math.Clamp(r + (sep ? 0 : sr), 0, 1); v.G = Math.Clamp(g + (sep ? 0 : sg), 0, 1); v.B = Math.Clamp(b + (sep ? 0 : sb), 0, 1); v.A = Math.Clamp(a, 0, 1);
+        if (sep) { v.SR = Math.Clamp(sr, 0, 1); v.SG = Math.Clamp(sg, 0, 1); v.SB = Math.Clamp(sb, 0, 1); }
     }
 
     private float[] Mat(uint inst, int b)
