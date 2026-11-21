@@ -453,11 +453,14 @@ public sealed partial class PcMachine
 
     // ================= APM 1.2 (INT 15h 53xxh and the protected-mode interface) =================
 
+    private static readonly bool ApmLog = Environment.GetEnvironmentVariable("X86_APMLOG") == "1";
+    private int _apmEvent;   // a pending APM event for 53h/0Bh (not saved: a state is never taken inside the standby call)
     private void ApmCall(bool frame)
     {
         void Done(uint ah) { if (ah != 0) AH = ah; Carry(frame, ah != 0); }
         if (AH != 0x53) { AH = 0x86; Carry(frame, true); return; }
         uint fn = AL;
+        if (ApmLog) Console.WriteLine($"apm: fn {fn:X2} BX {BX:X4} CX {CX:X4} frame {frame} vm {(C.Flags >> 17) & 1} conn {_apmConnected}");
         bool needConn = fn is not (0x00 or 0x01 or 0x02 or 0x03);
         if (needConn && !_apmConnected && fn != 0x04) { Done(0x03); return; }
         switch (fn)
@@ -491,15 +494,18 @@ public sealed partial class PcMachine
                     C.EndBatch();
                     return;
                 }
+                // standby (1) / suspend (2) of the whole system: we resume at once; the next Get PM Event reports the resume (APM 1.2: 000Bh standby
+                // resume, 0003h normal resume), as a BIOS does when the user presses a key. (Windows 98's "Stand by" in the Shut Down dialog.)
+                if ((BX == 0x0001 || BX == 0x0000 || (BX & 0xff00) == 0x0100) && (CX == 1 || CX == 2)) _apmEvent = CX == 1 ? 0x000b : 0x0003;
                 Done(0); return;
             case 0x08: case 0x09: case 0x0d: case 0x0f: Done(0); return;
             case 0x0a:
                 BH = 0x01; BL = 0xff; CH = 0x80; CL = 0xff; DX = 0xffff;   // on AC, no battery
                 Done(0); return;
-            case 0x0b: Done(0x80); return;                          // no power management events
+            case 0x0b: if (_apmEvent != 0) { BX = (uint)_apmEvent; _apmEvent = 0; CX = 0; Done(0); return; } Done(0x80); return;   // no events (but a resume after standby/suspend)
             case 0x0c: CX = 0; Done(0); return;
             case 0x0e: AH = 0x01; AL = 0x02; Carry(frame, false); return;
-            case 0x10: BL = 0; CX = 0; Done(0); return;
+            case 0x10: BL = 0; CX = 0x0003; Done(0); return;   // capabilities: global standby + global suspend (Windows 98 then offers "Stand by")
         }
         Done(0x0c);
     }
