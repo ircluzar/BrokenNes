@@ -411,7 +411,16 @@ public sealed partial class PcMachine
     private void Int10()
     {
         if (_int10Log) Console.WriteLine($"int10: AX={AX:X4} BX={BX:X4} vm={(C.Flags & I386.VM) != 0} cs:ip={Cpu.SegSel[1]:X4}:{Cpu.Ip:X4} GR6={Vga.Gr[6]:X2} AR10={Vga.Ar[0x10]:X2} S3enh={Vga.S3?.Enhanced}");
-        if ((C.Flags & I386.VM) == 0) { Int10Core(); return; }
+        if ((C.Flags & I386.VM) == 0)
+        {
+            // Windows 98 leaving to real mode ("Restart in MS-DOS mode", exit to DOS) set text mode with V86 INT 10h calls, which our replay
+            // undid in video memory (right for a background DOS box): the text planes still held the GUI's pixels and DOS printed among them.
+            // The first real-mode INT 10h in text mode after the S3 GUI was shown clears the text page first.
+            if ((C.Cr0 & 1) == 0 && Vga.GuiSinceText && TextMode && AH != 0x00)
+                for (int i = 0; i < 0x4000; i++) { Vga.Ram[i * 4] = 0x20; Vga.Ram[i * 4 + 1] = 0x07; }
+            if ((C.Cr0 & 1) == 0) Vga.GuiSinceText = false;
+            Int10Core(); return;
+        }
         var v = Vga;
         byte[] sr = (byte[])v.Sr.Clone(), gr = (byte[])v.Gr.Clone(), cr = (byte[])v.Cr.Clone(), ar = (byte[])v.Ar.Clone(), pal = (byte[])v.Palette.Clone();
         byte msr = v.Msr, sri = v.SrIndex, gri = v.GrIndex, cri = v.CrIndex, ari = v.ArIndex, aff = v.ArFlipFlop;

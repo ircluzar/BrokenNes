@@ -381,12 +381,14 @@ public sealed class Vga
     /// <summary>Draws the current picture into <see cref="Frame"/> (once per frame, at vertical retrace).</summary>
     /// <summary>Counts Render calls (S3Trio64's line cache: a frame drawn by another path in between invalidates it).</summary>
     public long RenderSerial;
+    /// <summary>The S3 GUI (enhanced) picture was shown since the last real-mode text mode set: video memory 0+ holds its pixels, not text.</summary>
+    public bool GuiSinceText;
 
     public void Render()
     {
         RenderSerial++;
         FrameCount++;
-        if (S3 != null && S3.Enhanced && (Gr[6] & 1) != 0) { S3.Render(); return; }
+        if (S3 != null && S3.Enhanced && (Gr[6] & 1) != 0) { S3.Render(); GuiSinceText = true; return; }
         if (Picture != null) { Picture.Render(); return; }
         if ((Ar[0x10] & 1) == 0 || (Gr[6] & 1) == 0) RenderText(); else RenderGraphics();
     }
