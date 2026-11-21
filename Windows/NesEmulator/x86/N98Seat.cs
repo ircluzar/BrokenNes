@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Linq;
 using System.Text.Json;
 
 namespace NesEmulator.X86;
@@ -73,24 +74,65 @@ public sealed class N98Seat
             if (baseD == null || !File.Exists(baseD)) throw new FileNotFoundException($"{fileName} writes drive D: and its D base image ({dName}) was not found; set BROKENNES_N98_BASE_D");
             s.Image2Path = Path.Combine(s.CacheDir, "D.img");
         }
-        string cmdPath = Path.Combine(s.CacheDir, "command.txt");
-        if (!File.Exists(s.ImagePath) || (s.Image2Path != null && !File.Exists(s.Image2Path)) || File.GetLastWriteTimeUtc(s.ImagePath) < File.GetLastWriteTimeUtc(baseImg))
+        string cmdPath = Path.Combine(s.CacheDir, "command.txt"), stamp = Path.Combine(s.CacheDir, "layers.ok");
+        // the applied game is kept as copy-on-write LAYERS over the seat base (C.n98l / D.n98l, only the sectors the package changes),
+        // not as whole disks: the drive is composed in memory at start (base + layer), its identity hash cached beside the layer
+        DateTime newest = new[] { File.GetLastWriteTimeUtc(baseImg), baseD != null ? File.GetLastWriteTimeUtc(baseD) : DateTime.MinValue, File.GetLastWriteTimeUtc(pkgPath) }.Max();
+        if (!File.Exists(stamp) || File.GetLastWriteTimeUtc(stamp) < newest)
         {
             string outDir = Path.Combine(s.CacheDir, "apply.tmp");
             if (Directory.Exists(outDir)) Directory.Delete(outDir, true);
-            RunTool("apply", $"\"{pkgPath}\" --base C=\"{baseImg}\"" + (baseD != null ? $" D=\"{baseD}\"" : "") + $" --out \"{outDir}\" --full");
-            if (s.Image2Path != null) File.Move(Path.Combine(outDir, "D.img"), s.Image2Path, true);
-            if (File.Exists(Path.Combine(outDir, "C.img"))) File.Move(Path.Combine(outDir, "C.img"), s.ImagePath, true);
-            else File.Copy(baseImg, s.ImagePath, true);   // a package that changes nothing on C: (a program already on the base)
+            RunTool("apply", $"\"{pkgPath}\" --base C=\"{baseImg}\"" + (baseD != null ? $" D=\"{baseD}\"" : "") + $" --out \"{outDir}\"");
+            foreach (var dl in new[] { "C", "D" })
+            {
+                string from = Path.Combine(outDir, dl + ".n98l"), to = Path.Combine(s.CacheDir, dl + ".n98l");
+                if (File.Exists(from)) File.Move(from, to, true); else File.Delete(to);
+                File.Delete(Path.Combine(s.CacheDir, dl + ".p256"));
+            }
             Directory.Delete(outDir, true);
+            foreach (var old in new[] { "C.img", "D.img" }) File.Delete(Path.Combine(s.CacheDir, old));   // (whole disks from older builds)
             File.Delete(cmdPath);
             foreach (var old in Directory.GetDirectories(s.CacheDir)) Directory.Delete(old, true);   // resume snapshots of the old disk
+            File.WriteAllText(stamp, DateTime.UtcNow.ToString("o"));
         }
         if (!File.Exists(cmdPath)) RunTool("cmd", $"\"{pkgPath}\" \"{cmdPath}\" --exit poweroff");
         s.Command = File.ReadAllBytes(cmdPath);
-        s.Image = DiskImage.ReadImageFile(s.ImagePath);   // (+ its cached base hash: the resume snapshot's disk diff is against it)
-        if (s.Image2Path != null) s.Image2 = DiskImage.ReadImageFile(s.Image2Path);
+        s.ImagePath = baseImg;
+        s.Image = Compose(baseImg, Path.Combine(s.CacheDir, "C.n98l"), Path.Combine(s.CacheDir, "C.p256"));
+        if (baseD != null) { s.Image2Path = baseD; s.Image2 = Compose(baseD, Path.Combine(s.CacheDir, "D.n98l"), Path.Combine(s.CacheDir, "D.p256")); }
         return s;
+    }
+
+    /// <summary>A drive = its base image with the package's layer applied (a new array; the base file is only read). No layer: the base itself
+    /// (with its own cached hash). The composed drive's identity hash (what savestates name it by) comes from PATH.p256 when that still matches
+    /// the base and the layer (size + time), else it is made once in the background and written there.</summary>
+    private static byte[] Compose(string basePath, string layerPath, string hashPath)
+    {
+        if (!File.Exists(layerPath)) return DiskImage.ReadImageFile(basePath);
+        var bi = new FileInfo(basePath); var li = new FileInfo(layerPath);
+        string key = $"{bi.Length}|{bi.LastWriteTimeUtc.Ticks}|{li.Length}|{li.LastWriteTimeUtc.Ticks}";
+        var img = new byte[bi.Length];
+        using (var f = File.OpenRead(basePath)) { int at = 0; while (at < img.Length) { int n = f.Read(img, at, Math.Min(1 << 24, img.Length - at)); if (n <= 0) break; at += n; } }
+        using (var r = new BinaryReader(File.OpenRead(layerPath)))
+        {
+            if (new string(r.ReadChars(4)) != "N98L" || r.ReadInt32() != 1) throw new InvalidDataException($"{layerPath}: not a version 1 N98L layer");
+            if (r.ReadInt64() != img.LongLength) throw new InvalidDataException($"{layerPath}: made for a base of another size");
+            r.ReadBytes(r.ReadByte());   // the base's hash (the applier checked it)
+            for (int runs = r.ReadInt32(); runs > 0; runs--)
+            {
+                long first = r.ReadInt64(); int count = r.ReadInt32();
+                int got = r.Read(img, checked((int)(first * 512)), count * 512);
+                if (got != count * 512) throw new InvalidDataException($"{layerPath}: truncated");
+            }
+        }
+        try
+        {
+            var l = File.Exists(hashPath) ? File.ReadAllLines(hashPath) : Array.Empty<string>();
+            if (l.Length >= 2 && l[0] == key && l[1].StartsWith("p256:", StringComparison.Ordinal)) DiskImage.SeedHash(img, l[1]);
+            else System.Threading.Tasks.Task.Run(() => { string h = DiskImage.HashOf(img); try { File.WriteAllLines(hashPath, new[] { key, h }); } catch (IOException) { } });
+        }
+        catch (IOException) { }
+        return img;
     }
 
     /// <summary>The resume snapshot's folder for this emulator build.</summary>

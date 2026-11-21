@@ -230,6 +230,8 @@ public sealed class DiskImage
     private static string LegacyHashOf(byte[] image) => LegacyTask(image).GetAwaiter().GetResult();
 
     public static string HashOf(byte[] image) => HashTask(image).GetAwaiter().GetResult();
+    /// <summary>Gives an array its identity hash from a trusted cache (nano98's composed seat drives: base + package layer, hash cached beside the layer).</summary>
+    public static void SeedHash(byte[] image, string hash) { lock (_lock) _hashes.AddOrUpdate(image, Task.FromResult(hash)); }
 
     /// <summary>The image's hash in the form <paramref name="like"/> is written in ("p256:" now, "sha256:" in older states).</summary>
     private static string HashLike(byte[] image, string like) => like.StartsWith("sha256:", StringComparison.Ordinal) ? LegacyHashOf(image) : HashOf(image);
