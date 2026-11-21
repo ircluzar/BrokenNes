@@ -356,7 +356,7 @@ public sealed partial class NvGeForce : IPciMmio
 
     public void Save(BinaryWriter w)
     {
-        w.Write(4);   // version (4: PFIFO/PGRAPH state)
+        w.Write(6);   // version (6: the Celsius primitive in flight)
         w.Write(Unlocked); w.Write(Frame); w.Write(_timerReads);
         w.Write(PcrtcIntr); w.Write(PcrtcIntrEn); w.Write(PcrtcStart); w.Write(PmcIntrEn); w.Write(PmcEnable);
         w.Write(Bank); w.Write(VbeMode);
@@ -368,13 +368,13 @@ public sealed partial class NvGeForce : IPciMmio
     public void Load(BinaryReader r)
     {
         int ver = r.ReadInt32();
-        if (ver is not (1 or 2 or 3 or 4)) throw new InvalidDataException("unknown GeForce state version");
+        if (ver is not (1 or 2 or 3 or 4 or 5 or 6)) throw new InvalidDataException("unknown GeForce state version");
         Unlocked = r.ReadBoolean(); Frame = r.ReadInt64(); _timerReads = r.ReadInt64();
         PcrtcIntr = r.ReadUInt32(); PcrtcIntrEn = r.ReadUInt32(); PcrtcStart = r.ReadUInt32(); PmcIntrEn = r.ReadUInt32(); PmcEnable = r.ReadUInt32();
         Bank = r.ReadInt32(); VbeMode = r.ReadInt32();
         _reg.Clear();
         int n = r.ReadInt32();
         for (int i = 0; i < n; i++) { uint k = r.ReadUInt32(); _reg[k] = r.ReadUInt32(); }
-        if (ver >= 4) LoadFifo(r); else ResetFifo();
+        if (ver >= 4) LoadFifo(r, ver); else ResetFifo();
     }
 }

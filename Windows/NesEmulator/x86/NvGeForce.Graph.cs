@@ -61,6 +61,7 @@ public sealed partial class NvGeForce
             case 0x5f or 0x9f: if (mthd == 0x308) Blit(inst); break;
             case 0x61 or 0x65 or 0x21: Ifc(inst, mthd, data); break;
             case 0x60 or 0x64: Index(inst, mthd, data); break;
+            case 0x56 or 0x96 or 0x98 or 0x99: Celsius(inst, mthd, data); break;
         }
     }
 
@@ -322,14 +323,16 @@ public sealed partial class NvGeForce
         w.Write(_ifcPix);
         w.Write(_gs.Count);
         foreach (var (k, v) in _gs) { w.Write(k); w.Write(v); }
+        SaveCelsius(w);
     }
 
-    private void LoadGraph(BinaryReader r)
+    private void LoadGraph(BinaryReader r, int ver)
     {
         for (int i = 0; i < 8; i++) _notifyObj[i] = r.ReadUInt32();
         _ifcPix = r.ReadInt32();
         _gs.Clear();
         int n = r.ReadInt32();
         for (int i = 0; i < n; i++) { ulong k = r.ReadUInt64(); _gs[k] = r.ReadUInt32(); }
+        if (ver >= 6) LoadCelsius(r); else { _cPrim = 0; _cWords.Clear(); _cVerts.Clear(); }
     }
 }

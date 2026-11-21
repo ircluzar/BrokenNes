@@ -20,17 +20,19 @@ public sealed partial class NvGeForce
     // the push buffer decoder (the active channel's, as CACHE1 holds it)
     private int _dmaCount, _dmaMethod, _dmaSubc;
     private bool _dmaNonInc;
-    private readonly uint[] _subcObj = new uint[8];   // PRAMIN instance (bytes) of the object bound to each subchannel
-    private readonly int[] _subcEng = new int[8];      // its engine (RAMHT context bits 17:16): 0 = software (the driver's ISR runs it), 1 = PGRAPH
+    private readonly uint[] _subcObj = new uint[256];   // PRAMIN instance (bytes) of the object bound to each channel's subchannels (chid * 8 + subc): part of the channel context
+    private readonly int[] _subcEng = new int[256];      // its engine (RAMHT context bits 17:16): 0 = software (the driver's ISR runs it), 1 = PGRAPH
     public long Methods, PushWords;                   // diagnostics
     public uint TracePut = 0xffffffff; public bool PutHit;   // diagnostics: x86boot --nvtrace
     /// <summary>Diagnostics: every method executed (chid, subc, class, method, data).</summary>
     public Action<int, int, int, int, uint>? MethodLog;
 
-    private void ResetFifo() { _dmaCount = _dmaMethod = _dmaSubc = 0; _dmaNonInc = false; Array.Clear(_subcObj); Array.Clear(_subcEng); }
+    private void ResetFifo() { ResetDecode(); Array.Clear(_subcObj); Array.Clear(_subcEng); }
+    private void ResetDecode() { _dmaCount = _dmaMethod = _dmaSubc = 0; _dmaNonInc = false; }
+    private int Sc(int subc) => ActiveChid * 8 + subc;
 
     /// <summary>CACHE1 holds a method the driver must run (a software object's): the pusher waits until its ISR took it (GET == PUT).</summary>
-    private bool Stalled => (Reg(0x003270) & 0x1fc) != (Reg(0x003210) & 0x1fc) || (Reg(0x002100) & 1) != 0;
+    private bool Stalled => (Reg(0x002100) & 1) != 0;   // (CACHE1 GET/PUT are the driver's to move while it holds the channel)
 
     public uint Ramin32(uint off) => off < 0x100000 - 3 ? BitConverter.ToUInt32(_v.Ram, RaminBase + (int)off) : 0;
     public void RaminW32(uint off, uint v) { if (off < 0x100000 - 3) BitConverter.TryWriteBytes(_v.Ram.AsSpan(RaminBase + (int)off), v); }
@@ -98,7 +100,7 @@ public sealed partial class NvGeForce
         _reg[0x003240] = Ramin32(nb); _reg[0x003244] = Ramin32(nb + 4); _reg[0x003248] = Ramin32(nb + 8); _reg[0x00322c] = Ramin32(nb + 12);
         _reg[0x003204] = (Reg(0x003204) & ~0x1fu) | (uint)chid | (DmaMode(chid) ? 0x100u : 0);
         if (DmaMode(chid)) _reg[0x003220] = Reg(0x003220) | 1;   // a DMA channel switched in pushes (hardware restores DMA_PUSH with the context)
-        ResetFifo();
+        ResetDecode();
     }
 
     // ================= the DMA pusher =================
@@ -159,7 +161,7 @@ public sealed partial class NvGeForce
         return 0;
     }
 
-    public int ClassOf(int subc) => (int)(Ramin32(_subcObj[subc]) & 0xfff);
+    public int ClassOf(int subc) => (int)(Ramin32(_subcObj[Sc(subc)]) & 0xfff);
 
     private void Method(int chid, int subc, int mthd, uint data)
     {
@@ -167,17 +169,17 @@ public sealed partial class NvGeForce
         if (mthd == 0)
         {
             uint ctx = RamhtContext(data, chid);
-            _subcObj[subc] = (ctx & 0xffff) << 4; _subcEng[subc] = (int)(ctx >> 16) & 3;
+            _subcObj[Sc(subc)] = (ctx & 0xffff) << 4; _subcEng[Sc(subc)] = (int)(ctx >> 16) & 3;
             MethodLog?.Invoke(chid, subc, ClassOf(subc), 0, data);
-            if (_subcEng[subc] == 0) SoftwareMethod(subc, 0, data);   // the driver tracks its own objects' binds too
+            if (_subcEng[Sc(subc)] == 0) SoftwareMethod(subc, 0, data);   // the driver tracks its own objects' binds too
             return;
         }
         if (mthd == 0x50) { _reg[0x003248] = data; return; }                    // REF_CNT
         if (mthd < 0x100) { MethodLog?.Invoke(chid, subc, -1, mthd, data); return; }
-        if (_subcEng[subc] == 0) { MethodLog?.Invoke(chid, subc, -2, mthd, data); SoftwareMethod(subc, mthd, data); return; }
+        if (_subcEng[Sc(subc)] == 0) { MethodLog?.Invoke(chid, subc, -2, mthd, data); SoftwareMethod(subc, mthd, data); return; }
         int cls = ClassOf(subc);
         MethodLog?.Invoke(chid, subc, cls, mthd, data);
-        Graph(subc, _subcObj[subc], cls, mthd, data);
+        Graph(subc, _subcObj[Sc(subc)], cls, mthd, data);
     }
 
     /// <summary>A method for a software object: into CACHE1 (METHOD/DATA at 3800h + 8 x entry), PFIFO CACHE_ERROR raised; the pusher
@@ -201,11 +203,13 @@ public sealed partial class NvGeForce
         SaveGraph(w);
     }
 
-    private void LoadFifo(BinaryReader r)
+    private void LoadFifo(BinaryReader r, int ver)
     {
         _dmaCount = r.ReadInt32(); _dmaMethod = r.ReadInt32(); _dmaSubc = r.ReadInt32(); _dmaNonInc = r.ReadBoolean();
-        for (int i = 0; i < 8; i++) _subcObj[i] = r.ReadUInt32();
-        for (int i = 0; i < 8; i++) _subcEng[i] = r.ReadInt32();
-        LoadGraph(r);
+        Array.Clear(_subcObj); Array.Clear(_subcEng);
+        int n = ver >= 5 ? 256 : 8, o = ver >= 5 ? 0 : ActiveChid * 8;   // (a version 4 state kept one channel's: the active one)
+        for (int i = 0; i < n; i++) _subcObj[o + i] = r.ReadUInt32();
+        for (int i = 0; i < n; i++) _subcEng[o + i] = r.ReadInt32();
+        LoadGraph(r, ver);
     }
 }
