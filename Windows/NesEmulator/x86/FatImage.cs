@@ -183,9 +183,34 @@ public sealed class FatImage
         Delete(path);
     }
 
+    /// <summary>Creates a directory (and its parents) if missing: one cluster with "." and "..".</summary>
+    public void MakeDir(string path)
+    {
+        var parts = path.Replace('/', '\\').Trim('\\').Split('\\', StringSplitOptions.RemoveEmptyEntries);
+        int dir = 0;
+        foreach (var name in parts)
+        {
+            int e = Find(dir, name);
+            if (e >= 0) { if ((_d[e + 11] & 0x10) == 0) throw new System.IO.IOException($"{name} is a file"); dir = BitConverter.ToUInt16(_d, e + 26); continue; }
+            int slot = -1;
+            foreach (int o in Slots(dir)) if (_d[o] == 0 || _d[o] == 0xe5) { slot = o; break; }
+            if (slot < 0) throw new InvalidOperationException("directory full");
+            int c = -1;
+            for (int q = 2; q < _clusters + 2; q++) if (GetFat(q) == 0) { c = q; break; }
+            if (c < 0) throw new InvalidOperationException("disk full");
+            SetFat(c, _fat12 ? 0xfff : 0xffff);
+            int co = ClusterOff(c); Array.Clear(_d, co, ClusterBytes);
+            void Ent(int at, byte[] n83, int clus) { Array.Clear(_d, at, 32); n83.CopyTo(_d, at); _d[at + 11] = 0x10; BitConverter.GetBytes((ushort)(12 << 11)).CopyTo(_d, at + 22); BitConverter.GetBytes((ushort)((14 << 9) | (6 << 5) | 1)).CopyTo(_d, at + 24); BitConverter.GetBytes((ushort)clus).CopyTo(_d, at + 26); }
+            Ent(co, Encoding.Latin1.GetBytes(".          "), c); Ent(co + 32, Encoding.Latin1.GetBytes("..         "), dir);
+            Ent(slot, To83(name), c);
+            dir = c;
+        }
+    }
+
     /// <summary>Creates or replaces a file (the directory must exist). Timestamp: 1994-06-01 12:00 (deterministic images).</summary>
     public void WriteFile(string path, byte[] content)
     {
+        { var pp = path.Replace('/', '\\').Trim('\\'); int ls = pp.LastIndexOf('\\'); if (ls > 0) MakeDir(pp[..ls]); }   // parents are created
         Delete(path);
         var (dir, leaf) = Walk(path);
         int slot = -1;

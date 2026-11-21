@@ -118,6 +118,8 @@ public static class BugBundle
             if (mv.Inputs.Count == 0) mv.SetPads(0, PadButtons.None, PadButtons.None);
             foreach (var k in d.Keys) if (mv.Keys.Count == 0 || k.Frame > mv.Keys[^1].Frame) mv.Keys.Add(k);
             foreach (var nt in d.Notes) if (nt.Kind == "marker") mv.Marks.Add(new MovieMark(nt.Frame, nt.Text));
+            mv.HostInputs.AddRange(d.Inputs);
+            if (d.InputsLost) mv.Comments.Add("host inputs were lost (more than the ring keeps): this movie goes off course");
             files[MovieFile] = new UTF8Encoding(false).GetBytes(mv.ToText());
         }
         T("movie");

@@ -93,7 +93,7 @@ public sealed partial class I386
     public long JitPosted, JitDropped, JitRecompiles, JitKeepClears, JitInstrCompiled;
     public static long JitEmitTicks;
     private readonly HashSet<ulong> _jitSeenKeys = new();
-    public string JitPipeStat() => $"jitpipe: posted {JitPosted} installed {JitCompiled} dropped {JitDropped} recompiles(same key) {JitRecompiles} keep-clears {JitKeepClears} unseen-cut {JitUnseenCut} instrs-compiled {JitInstrCompiled} worker-compile {JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms ({JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, JitPosted):F2} ms/region; IL build {JitBuildTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms, IL {JitIlBytes / Math.Max(1, JitPosted)} bytes/region)";
+    public string JitPipeStat() => $"jitpipe: posted {JitPosted} installed {JitCompiled} dropped {JitDropped} recompiles(same key) {JitRecompiles} keep-clears {JitKeepClears} unseen-cut {JitUnseenCut} instrs-compiled {JitInstrCompiled} worker-compile {JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms ({JitEmitTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, JitPosted):F2} ms/region; IL build {JitBuildTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms, IL {JitIlBytes / Math.Max(1, JitPosted)} bytes/region)" + (JcOn ? " | " + JcStat() : "");
 
     // statistics (Workshop --x86boot --jitstat)
     public int JitCompiled { get; private set; }
@@ -701,9 +701,13 @@ public sealed partial class I386
         bool c16 = _c16, ioMem = _ioMem;
         uint memSize = MemSize;
         var spec = JitSegSpec(key, ins);
+        // X86_JITCACHE (I386.JitCache.cs): the same region compiled before (this run or an earlier one, same bytes, same assumptions) -> its code
+        JcReq? jc = JcOn ? JcRequest(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec) : null;
+        if (jc != null && jc.Ready != null) { code.Fn = jc.Ready; JcHitsReady++; JitInstall(code, key); return; }
+        int[]? xc = jc?.Extra;
         if (!JitAsync)
         {
-            try { code.Fn = Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec); code.Fn(this, -1); }   // (entry -1: only compiles it, the .NET JIT, and declines)
+            try { code.Fn = jc?.Hit ?? Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec, xc); code.Fn(this, -1); if (jc != null) JcCompiled(jc, code.Fn); }   // (entry -1: only compiles it, the .NET JIT, and declines)
             catch (Exception) { en.Failed = true; return; }
             JitInstall(code, key);
             return;
@@ -725,7 +729,7 @@ public sealed partial class I386
         JitWorker.Post(() =>
         {
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-            try { code.Fn = Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec); System.Threading.Interlocked.Add(ref JitBuildTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0); code.Fn(this, -1); }
+            try { code.Fn = jc?.Hit ?? Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec, xc); System.Threading.Interlocked.Add(ref JitBuildTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0); code.Fn(this, -1); if (jc != null) JcCompiled(jc, code.Fn); }
             catch (Exception ex) { code.Fn = null!; if (JitStats) Console.Error.WriteLine($"jit: {start:X8} failed: {ex.GetType().Name} {ex.Message}"); }
             System.Threading.Interlocked.Add(ref JitEmitTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0);
             _jitDone.Enqueue((code, key));
@@ -814,12 +818,20 @@ public sealed partial class I386
         }
     }
 
-    private JitFn Emit(uint start, uint[] pas, DEntry[] ins, uint lo, uint hi, bool c16, uint memSize, bool ioMem, bool pg, SegSpec? spec)
-    {
+    private JitFn Emit(uint start, uint[] pas, DEntry[] ins, uint lo, uint hi, bool c16, uint memSize, bool ioMem, bool pg, SegSpec? spec,
+        int[]? extraCost = null, System.Reflection.Emit.ModuleBuilder? into = null, string? intoName = null, bool intoOpt = false)
+    {   // (extraCost: JitExtraCost per instruction, taken on the CPU's thread; into: emit a static method into that module instead, X86_JITCACHE, I386.JitCache.cs)
         var mm = JitMethods.Value;
         DynamicMethod? dm = null; System.Reflection.Emit.TypeBuilder? tb = null;
         ILGenerator il;
-        if (JitTier)
+        if (into != null)
+        {   // (the translation cache's persisted copy: a static method x86blk of type intoName)
+            var mbp = (tb = into.DefineType(intoName!, TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Abstract))
+                .DefineMethod("x86blk", MethodAttributes.Public | MethodAttributes.Static, typeof(int), new[] { typeof(I386), typeof(int) });
+            if (intoOpt) mbp.SetImplementationFlags(MethodImplAttributes.AggressiveOptimization);
+            il = mbp.GetILGenerator();
+        }
+        else if (JitTier)
         {   // a static method of a (collectible) emitted type: the runtime's tiered compilation applies (DynamicMethod is always fully
             // optimized): a quick tier-0 compile now, the optimized one in the background once the block has run 30 times
             var mb0 = (tb = JitTierModule().DefineType("x86blk" + System.Threading.Interlocked.Increment(ref _jitTierN), TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Abstract))
@@ -1118,7 +1130,7 @@ public sealed partial class I386
         for (int k = 0; k < n; k++)
         {
             var e = ins[k];
-            cost[k] = 1 + JitExtraCost(pas[k], e.Kind, e.Reg, e.Bits, DcHasModrm(e.Kind) && e.Mod != 3);
+            cost[k] = 1 + (extraCost != null ? extraCost[k] : JitExtraCost(pas[k], e.Kind, e.Reg, e.Bits, DcHasModrm(e.Kind) && e.Mod != 3));
             if (!UsePend || k == 0 || pas[k - 1] + ins[k - 1].Len != pas[k] || ins[k - 1].Kind is DK_JMP or DK_CALL or DK_RET or DK_INTERP or DK_REPSTR) continue;
             P[k] = P[k - 1] + cost[k - 1]; Q[k] = Q[k - 1] + 1;
             if (P[k] > 1 << 20) { P[k] = 0; Q[k] = 0; }
@@ -1817,6 +1829,7 @@ public sealed partial class I386
             Ld0(); Ld(ip0); Ld(xOff); Op(OpCodes.Add); Ld(ip0); Ld(xNext!); Op(OpCodes.Add); Ld(cyc); Ld(st); Call("JExitLink"); il.Emit(OpCodes.Ret);
         }
         System.Threading.Interlocked.Add(ref JitIlBytes, il.ILOffset);
+        if (into != null) { tb!.CreateType(); return null!; }
         if (tb != null) return (JitFn)tb.CreateType()!.GetMethod("x86blk")!.CreateDelegate(typeof(JitFn));
         return (JitFn)dm!.CreateDelegate(typeof(JitFn));
     }

@@ -148,6 +148,9 @@ public sealed class PcSession : IConsoleSession
     /// <summary>The host's mouse: relative motion since the last call (x right, y down) and the buttons (bit 0 left, 1 right, 2 middle).</summary>
     public void HostMouse(int dx, int dy, int buttons) => _m.Kbc.MouseInput(dx, dy, buttons);
 
+    /// <summary>Told every key byte and mouse input as it reaches the PC's keyboard controller, from any source (<see cref="Kbc8042.Tap"/>): the bug capture records them.</summary>
+    public Action<char, int, int, int>? InputTap { get => _m.Kbc.Tap; set => _m.Kbc.Tap = value; }
+
     public void HostKey(int scan, bool extended, bool down)
     {
         if (scan <= 0 || scan > 0x7f) return;
