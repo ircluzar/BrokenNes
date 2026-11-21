@@ -47,18 +47,23 @@ public sealed partial class I386
     /// <summary>One instruction address: how often it was reached, and the compiled block (and instruction in it) that starts there.</summary>
     private struct JitEntry   // (a struct in one array: a cold instruction's lookup is one cache miss, not two)
     {
-        public bool Used;
+        // (ordered for 24 bytes, not 32: the reference first, then the ints, the short and the flags)
+        public JitCode? Code;
         public uint Start;
-        public bool C16, Pg;
         public int Visits;
+        public short K;
+        public bool Used;
+        public bool C16, Pg;
         public bool Failed;
         public bool Pending;   // being compiled in the background (interpreted meanwhile)
-        public JitCode? Code;
-        public int K;
     }
 
     private static readonly bool JitOn = RuntimeFeature.IsDynamicCodeCompiled && Environment.GetEnvironmentVariable("X86_NOJIT") == null;
-    private const int JitBits = 20, JitMask = (1 << JitBits) - 1, JIT_DECLINE = 3, JIT_END = 4, JitKeep = 16384;
+    /// <summary>X86_JITBITS (12-22, default 20): the entry table's size (2^bits entries of ~32 bytes; 20 = 32 MB, spread over by the address hash:
+    /// an LLC-miss source in the AoE PMC profile - a layout experiment).</summary>
+    private static readonly int JitBits = int.TryParse(Environment.GetEnvironmentVariable("X86_JITBITS"), out int jb) ? Math.Clamp(jb, 12, 22) : 20;
+    private static readonly int JitMask = (1 << JitBits) - 1;
+    private const int JIT_DECLINE = 3, JIT_END = 4, JitKeep = 16384;
     private static readonly int JitMaxInstr = int.TryParse(Environment.GetEnvironmentVariable("X86_JITMAX"), out int jm) ? jm : 128;
     /// <summary>X86_NOKEEPSEGS: reload the segments after every out-of-line instruction (A/B of DcKeepsSegs).</summary>
     private static readonly bool NoKeepSegs = Environment.GetEnvironmentVariable("X86_NOKEEPSEGS") != null;
@@ -802,7 +807,7 @@ public sealed partial class I386
             ref var e = ref _je[JitIndex(pa)];
             e.Used = true;
             if (pa != code.Start && e.Start == pa && e.C16 == code.C16 && e.Pg == code.Pg && e.Code != null && e.Code.Start == pa) continue;   // keep a region that starts there itself
-            e.Start = pa; e.C16 = code.C16; e.Pg = code.Pg; e.Failed = false; e.Pending = false; e.Code = code; e.K = k;
+            e.Start = pa; e.C16 = code.C16; e.Pg = code.Pg; e.Failed = false; e.Pending = false; e.Code = code; e.K = (short)k;
         }
     }
 
