@@ -54,7 +54,9 @@ public sealed partial class I386
         for (; _steps > 0; _steps--)
         {
             if (JitStats) Step1Calls++;
-            int r = PcMachine.TimeProbe ? Step1Timed() : Step1(true);
+            int r;
+            if (IdleProf) { uint la0 = SegBase[SEG_CS] + NextIp; long c0 = Cycle; _profPa = 0; r = Step1(true); ProfStep(la0, c0); }
+            else r = PcMachine.TimeProbe ? Step1Timed() : Step1(true);
             if (r == OK) continue;
             if (r == FAIL) return false;
             return true;
@@ -77,6 +79,7 @@ public sealed partial class I386
             if (((ulong)laddr ^ _ifLaddr) < 4096 - 16)
             {
                 uint paddr = _ifXaddr ^ laddr;
+                if (IdleProf) _profPa = paddr;
                 if (jit && JitOn)
                 {
                     // a compiled block from here (I386.Jit.cs), else interpret this instruction
@@ -102,6 +105,7 @@ public sealed partial class I386
                 if (!NoPageMissJit && ((ulong)laddr ^ _ifLaddr) < 4096 - 16)
                 {
                     uint paddr = _ifXaddr ^ laddr;
+                    if (IdleProf) _profPa = paddr;
                     if (jit && JitOn)
                     {
                         int rc = JitTry(paddr);
@@ -458,7 +462,7 @@ public sealed partial class I386
             // A spin: CMP / TEST + JZ / JNZ back to itself, reading only registers or plain RAM. Nothing but an interrupt can change what
             // it reads, and interrupts and the devices only run between batches, so the rest of this batch would repeat this very step:
             // count those steps at once (the same instruction clock, the same state, step for step).
-            if (NextIp == Ip && pure && _steps > 1) { Cycle += _steps - 1; _steps = 1; }
+            if (NextIp == Ip && pure && _steps > 1) { if (IdleProf) { ProfSpin += _steps - 1; ProfSpinHits++; } Cycle += _steps - 1; _steps = 1; }
         }
     }
 
