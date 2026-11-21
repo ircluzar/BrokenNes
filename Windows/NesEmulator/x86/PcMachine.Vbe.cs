@@ -184,6 +184,7 @@ public sealed partial class PcMachine
                 VbeOk();
                 break;
             }
+            case 0x15 when !EdidOn: VbeFail(); break;                // DDC off by default (on: existing images would show a new-hardware wizard)
             case 0x15:                                               // VBE/DDC: the monitor's EDID (Windows 98 then installs "Plug and Play Monitor" with its real limits)
                 if (BL == 0x00) { BX = 0x0102; VbeOk(); break; }      // DDC2 supported, ~1 s per block
                 if (BL == 0x01 && DX == 0) { uint b = EsDi; var e = Edid(); for (int i = 0; i < 128; i++) LinW8(b + (uint)i, e[i]); VbeOk(); break; }
@@ -192,6 +193,9 @@ public sealed partial class PcMachine
         }
     }
 
+    /// <summary>Opt-in DDC/EDID (X86_EDID=1 or the machine's <see cref="EdidEnabled"/>).</summary>
+    public bool EdidEnabled = Environment.GetEnvironmentVariable("X86_EDID") == "1";
+    private bool EdidOn => EdidEnabled;
     /// <summary>EDID 1.3 of a period 17" multisync CRT ("BrokenNes 17"): 30-70 kHz, 50-120 Hz, 1280x1024 preferred (60 Hz), the VESA
     /// established modes up to 1280x1024@75 Hz and standard timings 1152x864@75 / 1280x1024@60. Our own block (no copied monitor data).</summary>
     public static byte[] Edid()
