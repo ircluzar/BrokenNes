@@ -44,6 +44,9 @@ if (-not $env:BROKENNES_HEAVYSLOT) {
         $env:BROKENNES_HEAVYSLOT = $heavySlot
     }
 }
+# one battery at a time on this PC: a battery runs ~6-8 emulators in parallel, so two batteries in two heavy slots still hit 100% CPU (2026-11-21)
+$batteryMutex = New-Object System.Threading.Mutex($false, 'Global\brokennes_battery')
+try { while (-not $batteryMutex.WaitOne(30000)) { Write-Host "battery: another battery is running, waiting..." -ForegroundColor Yellow } } catch [System.Threading.AbandonedMutexException] { }
 try {
 $ErrorActionPreference = 'Stop'
 $Repo = Split-Path -Parent $PSScriptRoot
@@ -216,5 +219,6 @@ $md.ToString() | Set-Content -LiteralPath (Join-Path $Out 'report.md') -Encoding
 Write-Host ''; Write-Host $md.ToString()
 if ($allOk) { exit 0 } else { exit 1 }
 } finally {
+    try { $batteryMutex.ReleaseMutex() } catch { }
     if ($heavySlot) { & sh C:/BrokenNes-work/heavylock.sh release $heavySlot $heavyTok | Out-Null; Remove-Item Env:BROKENNES_HEAVYSLOT -ErrorAction SilentlyContinue }
 }
