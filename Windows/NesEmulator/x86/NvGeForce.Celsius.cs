@@ -124,7 +124,7 @@ public sealed partial class NvGeForce
         float cx = m[0] * x + m[1] * y + m[2] * z + m[3] * w, cy = m[4] * x + m[5] * y + m[6] * z + m[7] * w,
               cz = m[8] * x + m[9] * y + m[10] * z + m[11] * w, cw = m[12] * x + m[13] * y + m[14] * z + m[15] * w;
         v.EyeZ = cw;   // (clip w = eye distance for a perspective projection: the fog source)
-        if (G(inst, 0x314) != 0) Light(inst, ref v);
+        if (G(inst, 0x314) != 0) Light(inst, ref v, x, y, z, w);
         v.CX = cx; v.CY = cy; v.CZ = cz; v.CW = cw; v.Clip = true;
         Project(inst, ref v);
     }
@@ -171,9 +171,28 @@ public sealed partial class NvGeForce
     /// <summary>Fixed-function lighting (ambient + diffuse + specular, the driver pre-multiplies the light colours by the material):
     /// the normal goes to eye space through the inverse modelview (0x480, 3 rows of 4, applied as n x M); lights are treated as
     /// directional (DIRECTION / POSITION normalised, HALF_VECTOR for the specular). Positional attenuation and spots: not yet.</summary>
-    private void Light(uint inst, ref CVert v)
+    private void Light(uint inst, ref CVert v, float ox, float oy, float oz, float ow)
     {
         float nx = v.NX, ny = v.NY, nz = v.NZ;
+        // eye-space position: the modelview = the inverse of the inverse modelview (affine 3x4 at 0x480)
+        float px = 0, py = 0, pz = 0; bool havePos = false;
+        {
+            float I(int r, int mc) => F(G(inst, 0x480 + (r * 4 + mc) * 4));
+            float ma = I(0, 0), mb = I(0, 1), mc = I(0, 2), md = I(1, 0), me = I(1, 1), mf = I(1, 2), mg = I(2, 0), mh = I(2, 1), mk = I(2, 2);
+            float det = ma * (me * mk - mf * mh) - mb * (md * mk - mf * mg) + mc * (md * mh - me * mg);
+            if (MathF.Abs(det) > 1e-12f)
+            {
+                float id = 1 / det;
+                float r00 = (me * mk - mf * mh) * id, r01 = (mc * mh - mb * mk) * id, r02 = (mb * mf - mc * me) * id;
+                float r10 = (mf * mg - md * mk) * id, r11 = (ma * mk - mc * mg) * id, r12 = (mc * md - ma * mf) * id;
+                float r20 = (md * mh - me * mg) * id, r21 = (mb * mg - ma * mh) * id, r22 = (ma * me - mb * md) * id;
+                float tx = I(0, 3), ty = I(1, 3), tz = I(2, 3);
+                float qx = ox - tx * ow, qy = oy - ty * ow, qz = oz - tz * ow;   // p_eye = R^-1 (p - t)
+                px = r00 * qx + r01 * qy + r02 * qz; py = r10 * qx + r11 * qy + r12 * qz; pz = r20 * qx + r21 * qy + r22 * qz;
+                if (ow != 0 && ow != 1) { px /= ow; py /= ow; pz /= ow; }
+                havePos = true;
+            }
+        }
         if (G(inst, 0x480) != 0 || G(inst, 0x494) != 0 || G(inst, 0x4a8) != 0)
         {
             float M(int r, int c) => F(G(inst, 0x480 + (r * 4 + c) * 4));
@@ -191,7 +210,19 @@ public sealed partial class NvGeForce
             int mode = (int)(en >> (i * 2)) & 3; if (mode == 0) continue;
             int L = 0x800 + i * 0x80;
             float lx, ly, lz;
-            if (mode == 2) { lx = F(G(inst, L + 0x5c)); ly = F(G(inst, L + 0x60)); lz = F(G(inst, L + 0x64)); }
+            float att = 1;
+            if (mode == 2)
+            {
+                lx = F(G(inst, L + 0x5c)); ly = F(G(inst, L + 0x60)); lz = F(G(inst, L + 0x64));
+                if (havePos)
+                {
+                    lx -= px; ly -= py; lz -= pz;
+                    float dist = MathF.Sqrt(lx * lx + ly * ly + lz * lz);
+                    float k0 = F(G(inst, L + 0x68)), k1 = F(G(inst, L + 0x6c)), k2 = F(G(inst, L + 0x70));
+                    float den = k0 + k1 * dist + k2 * dist * dist;
+                    if (den > 1e-6f && (k0 != 0 || k1 != 0 || k2 != 0)) att = Math.Min(1f / den, 1e6f);
+                }
+            }
             else { lx = F(G(inst, L + 0x34)); ly = F(G(inst, L + 0x38)); lz = F(G(inst, L + 0x3c)); }
             float ll = MathF.Sqrt(lx * lx + ly * ly + lz * lz); if (ll > 0) { lx /= ll; ly /= ll; lz /= ll; }
             float nl = MathF.Max(0, nx * lx + ny * ly + nz * lz);
@@ -199,7 +230,7 @@ public sealed partial class NvGeForce
             float dr = F(G(inst, L + 0xc)), dg = F(G(inst, L + 0x10)), db = F(G(inst, L + 0x14));
             if ((cm & 2) != 0) { ar *= v.R; ag *= v.G; ab *= v.B; }
             if ((cm & 4) != 0) { dr *= v.R; dg *= v.G; db *= v.B; }
-            r += ar + dr * nl; g += ag + dg * nl; b += ab + db * nl;
+            r += (ar + dr * nl) * att; g += (ag + dg * nl) * att; b += (ab + db * nl) * att;
             if (nl > 0)
             {
                 float hx = F(G(inst, L + 0x28)), hy = F(G(inst, L + 0x2c)), hz = F(G(inst, L + 0x30));
@@ -210,7 +241,7 @@ public sealed partial class NvGeForce
                     float shin = F(G(inst, 0x6a0)); float e = shin > 0 && shin < 128 ? shin : 16;   // (the 6 shininess words are curve coefficients; first used as the exponent: approximate)
                     float sp = MathF.Pow(nh, e);
                     float pr = F(G(inst, L + 0x18)), pg = F(G(inst, L + 0x1c)), pb = F(G(inst, L + 0x20));
-                    sr += pr * sp; sg += pg * sp; sb += pb * sp;
+                    sr += pr * sp * att; sg += pg * sp * att; sb += pb * sp * att;
                 }
             }
         }
