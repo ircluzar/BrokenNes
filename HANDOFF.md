@@ -34,3 +34,24 @@ Rules: builds on this PC only under heavylock.sh; timed runs only on Garage2; pa
   SEP reported (Win98 ignores it, but test with SEP masked); CR4 bits Win98 sets on a P6 (PGE / PSE get #GP because they are not reported); the timing
   (400 M IPS) exposing a race. Bisect quickly: boot WIN98-P2 with `--cpu P2` variants (temporarily FeatureEdx = the P55C's, then Signature 0543) to find which one matters.
   Results are in C:\BrokenNes-work\g2\results\p2sc_P2 (sc_step*.png = all the shutdown screen).
+
+## 2026-11-21 evening: shutdown FIXED (d8553ed3), Win98 detects a Pentium II
+- Cause: Win98 VMM (0028:C0380901) does RDMSR 1B (APIC_BASE) on family 6; we #GP'd -> shutdown. Now reads FEE00100 (BSP, APIC off), writes accepted.
+  `X86_MSRLOG=1` logs every P6 MSR access + CR4 writes; `X86_CPUID_SIG` / `X86_CPUID_EDX` (hex) override CPUID 1 for bisects.
+  g2 TRAP: G2ENV takes `K=V;K=V` (semicolons), NOT spaces (the first bisect runs bs_* silently ran without the overrides).
+- Garage2 bin p2c (= d8553ed3). Results: p2c_sc, p2c_aoe, p2c_aoe2 (C:\BrokenNes-work\g2\results).
+  * System Properties: "GenuineIntel / Pentium(r) II Processor / Intel MMX(TM) Technology / 64.0MB RAM" (p2c_aoe2/aoe_step4.png).
+  * First P2 boot: "System Settings Change: new hardware, restart?" (CPU change). AoE disk answered Yes -> "Setup updates configuration" -> settled
+    desktop (Welcome + Registration + Channel Bar dialogs pop up, they steal the steps' keys). p2c_aoe/st_aoe.bin = settled P2 desktop (AoE disk).
+  * StarCraft reached its MAIN MENU on the P2 (p2c_sc/sc_step7.png) but the end state st_menu.bin is NOT at the menu (black / Registration wizard).
+    p2sc_P166/st_menu.bin is NOT at the menu either (desktop + Run dialog). Do not use either for timing.
+  * AoE on the P2 settled desktop: 680% real time, halted 2.81 M of 2.93 M batches (idles fine). AoE menu screenshot not reached yet (steps hit dialogs).
+- PERF FINDING: from p2c_sc/st_menu.bin the P2 sits in a 16-bit busy loop (CS:EIP 17D7:0C4F, Registration wizard up), halted 0:
+  300 fr = 14% real time (87 M instr/s host), 1200 fr = one frame of 1891 s (!) -> investigate (host contention vs an emulator stall).
+  A non-idling P2 needs 400 M guest clocks/s vs 151 M on the P166, so busy code runs ~2.65x slower relative to real time by design.
+## Next
+1. Make settled P2 disks/states per game: boot, answer Yes to the restart, dismiss Welcome (alt+f4), Channel Bar (n), Registration (alt+f4 / Register Later),
+   then launch the game; save states AT the menus (shot just before --savestate to verify). Same for the P166 (fresh, from st_sby-like states).
+2. Then in-game states (skirmish / AoE random map) and timed P2 vs P166 + idle delta (run 300 and 1200 frames, diff idle-clock and clock).
+3. Look at the 1891-s frame (rerun m_sc_P2_1200 alone on an idle slot; --jitstat).
+4. Benchmarks + gate + merge as before (nothing merged yet; branch x86-p2 now d8553ed3 + this note).
