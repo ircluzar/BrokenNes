@@ -206,6 +206,20 @@ public sealed partial class I386
         return rc;
     }
 
+    /// <summary>Live immediates (lane D 2026-11-20; X86_NOLIVEIMM: off): a MOV r32, imm32 whose immediate code keeps patching (StarCraft's campaign:
+    /// a Win98 VxD rewrites the imm32 of `mov edx, imm32` at 006C7982 about once a frame, which threw away and recompiled every block on
+    /// that page) is compiled to read its immediate from memory at run time; its 4 bytes leave the block's byte ranges, so the patch no
+    /// longer invalidates the block. The interpreter reads the same bytes when it runs the instruction, so nothing but the speed changes.</summary>
+    private static readonly bool JitLiveImmOn = Environment.GetEnvironmentVariable("X86_NOLIVEIMM") == null;
+    private readonly Dictionary<uint, int> _smcW = new();
+    private void SmcNote(uint a)
+    {   // a 4-byte store into a code line: counted by address (bounded; only the JIT reads it)
+        if (_smcW.TryGetValue(a, out int c)) _smcW[a] = c + 1;
+        else if (_smcW.Count < 4096) _smcW[a] = 1;
+    }
+    private bool JitLiveImm(uint immAt) => JitLiveImmOn && _smcW.TryGetValue(immAt, out int c) && c >= 2;
+    public long JitLiveImms;
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JitInvalidated(JitEntry en)
     {   // the block's bytes changed: a version compiled earlier from these very bytes runs at once; else interpret, and compile again once hot again
@@ -645,6 +659,7 @@ public sealed partial class I386
             DcDecode(ref e, pa);
             if (e.Kind == DK_SLOW) continue;
             uint end = pa + e.Len;
+            if (e.Kind == DK_MOVRI && e.Bits == 32 && e.Len >= 5 && JitLiveImm(end - 4)) { e.Live = true; JitLiveImms++; }   // (live immediate: read from memory)
             if (JitFoldsAt(e, end)) { e.Folds = true; e.FoldNb = (byte)U8(end); e.FoldRel = Sext8(U8(end + 1)); }
             found.Add((pa, e)); if (e.Kind != DK_INTERP) anyCompiled = true;
             if (e.Kind is not (DK_JMP or DK_CALL or DK_RET) && !(e.Kind == DK_INTERP && e.Op == 1)) todo.Enqueue(end);
@@ -661,6 +676,7 @@ public sealed partial class I386
         {
             uint a = pas[k], b = a + ins[k].Len;
             if (ins[k].Folds) b += 2;
+            if (ins[k].Live) b -= 4;   // (a live immediate: its bytes are read at run time, not compared)
             if (ranges.Count > 0 && a <= ranges[^1].b) ranges[^1] = (ranges[^1].a, Math.Max(ranges[^1].b, b));
             else ranges.Add((a, b));
         }
@@ -1368,6 +1384,7 @@ public sealed partial class I386
                     U4(e.Imm); Stl(t); WriteET();
                     break;
                 case DK_MOVRI:
+                    if (e.Live) { uint ia = pas[k] + e.Len - 4; StReg(32, op, () => { Ld(mref); U4(ia); Op(OpCodes.Conv_U); Op(OpCodes.Add); il.Emit(OpCodes.Unaligned, (byte)1); Op(OpCodes.Ldind_U4); }); break; }
                     StReg(bits, op, () => U4(e.Imm));
                     break;
                 case DK_LEA:
