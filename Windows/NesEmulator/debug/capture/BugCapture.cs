@@ -296,7 +296,7 @@ public sealed class BugCaptureRing
 
     /// <summary>
     /// A host input the machine took for the frame running now (emulation thread, after <see cref="Frame(PadButtons, PadButtons)"/>):
-    /// <paramref name="kind"/> 'K' = a key (a = scan code, b = 1 extended, c = 1 down), 'M' = the mouse (a = dx, b = dy, c = buttons).
+    /// <paramref name="kind"/> 'B' = a key byte into the keyboard controller (a), 'M' = the mouse (a = dx, b = dy, c = buttons).
     /// Kept in order with the frame, so a capture's movie can hand the same inputs to the same frames.
     /// </summary>
     public void Input(char kind, int a, int b, int c)

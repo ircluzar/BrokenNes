@@ -91,7 +91,7 @@ public sealed class Movie
     public readonly List<MovieInput> Inputs = new();
     /// <summary>The WideMess pointer port's input (docs/projects/widemess-spec.md section 10) where it changes: (frame, <c>WmsPointer.Pack</c>), 0 = idle. Empty for every other console.</summary>
     public readonly List<(long Frame, uint Pointer)> Pointers = new();
-    /// <summary>Host inputs that are not pads, in order: the x86 PC's keys ('K' scan, extended 0/1, down 0/1) and mouse ('M' dx, dy, buttons), given before their frame runs.</summary>
+    /// <summary>Host inputs that are not pads, in order: the x86 PC's keyboard-controller bytes ('B' byte; older captures: 'K' scan, extended 0/1, down 0/1) and mouse ('M' dx, dy, buttons), given before their frame runs.</summary>
     public readonly List<(long Frame, char Kind, int A, int B, int C)> HostInputs = new();
     public readonly List<MovieKey> Keys = new();
     public readonly List<MovieMark> Marks = new();
@@ -327,7 +327,7 @@ public sealed class Movie
                     {
                         // a host input that is not a pad (the x86 PC): 'x <frame> K <scan> <extended> <down>' or 'x <frame> M <dx> <dy> <buttons>'
                         var p = val.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                        if (p.Length != 5 || p[1] is not ("K" or "M")) throw new FormatException("a host input line is 'x <frame> K|M <a> <b> <c>'");
+                        if (p.Length != 5 || p[1] is not ("K" or "M" or "B")) throw new FormatException("a host input line is 'x <frame> B|K|M <a> <b> <c>'");
                         long f = long.Parse(p[0], CultureInfo.InvariantCulture);
                         if (m.HostInputs.Count > 0 && f < m.HostInputs[^1].Frame) throw new FormatException($"host input frames must not fall ({f} after {m.HostInputs[^1].Frame})");
                         m.HostInputs.Add((f, p[1][0], int.Parse(p[2], CultureInfo.InvariantCulture), int.Parse(p[3], CultureInfo.InvariantCulture), int.Parse(p[4], CultureInfo.InvariantCulture)));
