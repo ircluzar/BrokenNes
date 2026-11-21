@@ -108,12 +108,15 @@ public sealed class S3Trio64
     // ================= memory =================
 
     public bool Enhanced => (_v.Cr[0x31] & 0x08) != 0;
+    /// <summary>CR31 bit 3 (enhanced memory mapping) changes CPU access only together with chain 4 (SR4 bit 3): in a planar/odd-even VGA
+    /// mode (a full-screen DOS box, Windows' text-mode screens) the A0000-BFFFF window stays the VGA's (the text was swallowed: garbage).</summary>
+    private bool EnhancedMap => Enhanced && (_v.Sr[4] & 0x08) != 0;
     public bool LinearOn => (_v.Cr[0x58] & 0x10) != 0;
     /// <summary>CR58 bits 1-0: the linear window's size. The 64 KB one (at A0000) is still banked.</summary>
     public int LfbSize => (_v.Cr[0x58] & 3) switch { 0 => 0x10000, 1 => 0x100000, 2 => 0x200000, _ => 0x400000 };
     private bool Window64K => LinearOn && LfbSize == 0x10000;
     public long VgaMmioWrites;   // diagnostics
-    public bool OldMmio => (_v.Cr[0x53] & 0x10) != 0;
+    public bool OldMmio => (_v.Cr[0x53] & 0x10) != 0 && (_v.Sr[4] & 0x08) != 0;   // (not in a planar VGA mode: Windows' VDD loads the text font through A0000 with CR53 still set)
     public int BytesPerPixel => (_v.Cr[0x67] >> 4) switch { 0x3 or 0x5 => 2, 0xd => 4, _ => 1 };
 
     /// <summary>A0000-BFFFF access the S3 takes over (MMIO, enhanced banking, the window off while linear is on); false: the VGA's.</summary>
@@ -127,7 +130,7 @@ public sealed class S3Trio64
             else EngineOut8((int)(addr & 0xffff), v);
             return true;
         }
-        if (!Enhanced && !Window64K) return false;
+        if (!EnhancedMap && !Window64K) return false;
         if (LinearOn && !Window64K) return true;
         if (off >= 0x10000) return true;
         uint a = (uint)(Bank << 16) + off;
@@ -145,7 +148,7 @@ public sealed class S3Trio64
             else if (off >= 0x8000) v = (byte)EngineIn((int)(addr & 0xfffe), (addr & 1) != 0);
             return true;
         }
-        if (!Enhanced && !Window64K) return false;
+        if (!EnhancedMap && !Window64K) return false;
         if ((LinearOn && !Window64K) || off >= 0x10000) return true;
         uint a = (uint)(Bank << 16) + off;
         if (a < VramBytes) v = _v.Ram[a];
