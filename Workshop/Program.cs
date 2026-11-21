@@ -75,6 +75,12 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--x86video", StringComparison.OrdinalIgnoreCase)) return X86.X86VideoCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86disk", StringComparison.OrdinalIgnoreCase)) return X86.X86BootCli.Disk(args);
         if (args.Length > 0 && args[0].Equals("--x86boot", StringComparison.OrdinalIgnoreCase)) return X86.X86BootCli.Boot(args);
+        if (args.Length > 1 && args[0].Equals("--mp4check", StringComparison.OrdinalIgnoreCase))   // --mp4check FILE [--grab S,S,..] [--grabprefix P] [--wavout W]: read an MP4 back (frames, timing, audio, PNG grabs)
+        {
+            string? A(string n) { int i = Array.IndexOf(args, n); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
+            var g = (A("--grab") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => double.Parse(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+            Console.WriteLine(Movies.Mp4Writer.Check(args[1], g, A("--grabprefix") ?? System.IO.Path.ChangeExtension(args[1], null), A("--wavout"))); return 0;
+        }
         if (args.Length > 0 && args[0].Equals("--x86nettest", StringComparison.OrdinalIgnoreCase)) return X86.X86NetTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86sst", StringComparison.OrdinalIgnoreCase)) return X86.X86SstCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86t386", StringComparison.OrdinalIgnoreCase)) return X86.X86T386Cli.Run(args);
