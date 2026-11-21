@@ -296,8 +296,16 @@ public sealed partial class NvGeForce
     // 0x408 in offset (DMA 0x184), 0x40C in point (12.4 t << 16 | s) = go. Destination: the surfaces context. Nearest sampling.
     private void Sifm(uint inst)
     {
-        var d = SurfOf(inst, false);
-        if (!d.Ok) return;
+        uint swz = Ctx(inst, 0x52);
+        var d = swz != 0 ? default : SurfOf(inst, false);
+        if (swz == 0 && !d.Ok) return;
+        int sW = 0, sH = 0, swBpp = 0; uint swDma = 0, swOff = 0, swFmt = 0;
+        if (swz != 0)
+        {
+            swFmt = G(swz, 0x300); sW = 1 << (int)((swFmt >> 16) & 15); sH = 1 << (int)((swFmt >> 24) & 15);
+            swBpp = (swFmt & 0xff) is 0xa or 0xb or 6 or 7 or 8 or 9 ? 4 : (swFmt & 0xff) == 1 ? 1 : 2;
+            swDma = G(swz, 0x184 | 0x8000); swOff = G(swz, 0x304);
+        }
         uint sdma = G(inst, 0x184 | 0x8000);
         int sf = (int)G(inst, 0x300);
         int sbpp = sf is 3 or 4 ? 4 : sf == 8 ? 1 : 2;
@@ -312,7 +320,7 @@ public sealed partial class NvGeForce
         if (ow <= 0 || oh <= 0 || iw <= 0 || ih <= 0 || (long)ow * oh > 4 << 20) return;
         long s0 = (long)(ipt & 0xffff) << 16, t0 = (long)(ipt >> 16) << 16;   // 12.4 -> 12.20
         int rop = Rop(inst);
-        OpLog?.Invoke($"sifm fmt {sf} in {iw}x{ih} pitch {pitch} off {ioff:X} -> {ox},{oy} {ow}x{oh} ds {dsdx:X} dt {dtdy:X} dst {d.Base:X}/{d.Pitch}/{d.Bpp} clip {clip}");
+        OpLog?.Invoke($"sifm fmt {sf} in {iw}x{ih} pitch {pitch} off {ioff:X} -> {ox},{oy} {ow}x{oh} ds {dsdx:X} dt {dtdy:X} dst {(swz != 0 ? $"swz {swOff:X} {sW}x{sH} fmt {swFmt & 0xff:X}" : $"{d.Base:X}/{d.Pitch}/{d.Bpp}")} clip {clip}");
         for (int y = 0; y < oh; y++)
         {
             int sy = (int)Math.Clamp((t0 + y * dtdy) >> 20, 0, ih - 1);
@@ -325,11 +333,22 @@ public sealed partial class NvGeForce
                 uint raw = sbpp == 4 ? DmaRead32Any(sdma, a) : sbpp == 2 ? (uint)(DmaRead8(sdma, a) | DmaRead8(sdma, a + 1) << 8) : DmaRead8(sdma, a);
                 uint argb = sf switch
                 {
-                    1 or 2 => 0xff000000 | (uint)Raster3D.Pal5((int)(raw >> 10)) << 16 | (uint)Raster3D.Pal5((int)(raw >> 5)) << 8 | (uint)Raster3D.Pal5((int)raw),
+                    1 or 2 => (sf == 2 || (raw & 0x8000) != 0 ? 0xff000000 : 0) | (uint)Raster3D.Pal5((int)(raw >> 10)) << 16 | (uint)Raster3D.Pal5((int)(raw >> 5)) << 8 | (uint)Raster3D.Pal5((int)raw),
                     7 => 0xff000000 | (uint)Raster3D.Rgb565To888((int)raw),
                     8 => 0xff000000 | raw * 0x010101,
                     _ => raw,
                 };
+                if (swz != 0)
+                {
+                    if (dx < 0 || dy < 0 || dx >= sW || dy >= sH) continue;
+                    uint fm = swFmt & 0xff;
+                    uint sv = swBpp == 4 ? argb : swBpp == 1 ? argb & 0xff
+                        : fm is 2 or 3 ? ((argb >> 9) & 0x7c00) | ((argb >> 6) & 0x03e0) | ((argb >> 3) & 0x1f) | ((argb >> 31) << 15)
+                        : ((argb >> 8) & 0xf800) | ((argb >> 5) & 0x07e0) | ((argb >> 3) & 0x1f);
+                    uint da = swOff + Swz(dx, dy, sW, sH) * (uint)swBpp;
+                    for (int k = 0; k < swBpp; k++) DmaWrite8(swDma, da + (uint)k, (byte)(sv >> (8 * k)));
+                    continue;
+                }
                 uint v = d.Bpp == 2 ? (G(SurfCtx(inst), 0x300) & 0xff) is 2 or 3 ? ((argb >> 9) & 0x7c00) | ((argb >> 6) & 0x03e0) | ((argb >> 3) & 0x1f) : ((argb >> 8) & 0xf800) | ((argb >> 5) & 0x07e0) | ((argb >> 3) & 0x1f)
                        : d.Bpp == 1 ? argb & 0xff : argb;
                 Draw(inst, d, dx, dy, v, rop, clip);
