@@ -364,6 +364,9 @@ public sealed partial class I386
     }
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JGrp3(int bits) => Grp3Body(bits);
     /// <summary>FE / FF: INC / DEC Eb / Ev, CALL / JMP / PUSH Ev (after JPrep; the far forms are never compiled). False = a fault.</summary>
+    private static readonly bool CmOne = Environment.GetEnvironmentVariable("X86_CMONE") != null;
+    private static readonly bool NoGrp5Inl = Environment.GetEnvironmentVariable("X86_NOGRP5INL") != null;
+    private static bool Grp5Inline(in DEntry e) => !NoGrp5Inl && e.Reg is 2 or 4 or 6 && e.Bits != 8;
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JGrp5(int bits)
     {
         if (_reg < 2) { if (!TranslateE(bits, 3)) return false; IncDec(bits, _reg == 1); return true; }
@@ -971,8 +974,19 @@ public sealed partial class I386
             Op(bits == 8 ? OpCodes.Stind_I1 : bits == 16 ? OpCodes.Stind_I2 : OpCodes.Stind_I4);
             // a code line (I386.cs CodeWr): the page moves on
             Ld(cmref); Ld(phys); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1);
-            if (bits != 8) { Ld(cmref); Ld(phys); I4(bits / 8 - 1); Op(OpCodes.Add); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1); Op(OpCodes.Or); }
-            il.Emit(OpCodes.Brfalse, done);
+            if (bits != 8 && !CmOne) { Ld(cmref); Ld(phys); I4(bits / 8 - 1); Op(OpCodes.Add); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1); Op(OpCodes.Or); }
+            if (bits != 8 && CmOne)
+            {   // (X86_CMONE: the second line only when the store crosses into it)
+                var code = il.DefineLabel();
+                il.Emit(OpCodes.Brtrue, code);
+                Ld(phys); I4(63); Op(OpCodes.And); I4(64 - bits / 8); il.Emit(OpCodes.Ble_Un, done);
+                Ld(cmref); Ld(phys); I4(bits / 8 - 1); Op(OpCodes.Add); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1);
+                il.Emit(OpCodes.Brfalse, done);
+                il.MarkLabel(code);
+                Ld0(); Ld(phys); I4(bits / 8); Call("CodeWrite");
+                il.Emit(OpCodes.Br, done);
+            }
+            else il.Emit(OpCodes.Brfalse, done);
             Ld0(); Ld(phys); I4(bits / 8); Call("CodeWrite");
             il.Emit(OpCodes.Br, done);
             il.MarkLabel(slow);
@@ -1344,7 +1358,7 @@ public sealed partial class I386
                     LimitCheck(k, e.Seg, ea, Math.Max(1, bits / 8));
                     LdBase(e.Seg); il.Emit(OpCodes.Ldloc, ea); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, la);
                     // (the forms that run through a helper translate there themselves)
-                    bool helper = e.Kind is DK_GRP3 or DK_GRP5 || (e.Kind == DK_GRP2 && e.Reg is not (4 or 5 or 6 or 7));
+                    bool helper = e.Kind is DK_GRP3 || (e.Kind == DK_GRP5 && !Grp5Inline(e)) || (e.Kind == DK_GRP2 && e.Reg is not (4 or 5 or 6 or 7));
                     bool write = e.Kind is DK_MOVEG or DK_MOVSR or DK_MOVEI or DK_SETCC or DK_GRP2 or DK_XCHG ||
                                  (e.Kind == DK_ALUEG && e.Op != 7) || (e.Kind == DK_GRP1 && e.Reg != 7);
                     if (!helper) Xlat(k, Math.Max(1, bits / 8), write);
@@ -1703,6 +1717,25 @@ public sealed partial class I386
                     StF(FDst, () => Ld(D)); StF(FMask, () => U4(ALL));
                     StReg(bits, e.Reg, () => Ld(D));
                     break;
+                case DK_GRP5 when Grp5Inline(e):
+                {
+                    // CALL / JMP / PUSH Ev inline (X86_NOGRP5INL: through JGrp5): v = E (read first, as the interpreter), then CALL / PUSH as
+                    // DK_CALL / DK_PUSH, JMP: NextIp = v; leave
+                    int pb = e.O16 ? 16 : 32;
+                    ReadE(); Stl(B);
+                    if (e.Reg == 4) { StDec(); LeaveAfter(k, () => Ld(B)); ends = true; break; }
+                    if (e.Reg == 2) IpAt(pe); else Ld(B);
+                    Stl(t);
+                    LdReg(32, 4); I4(pb / 8); Op(OpCodes.Sub); Stl(A);
+                    Ld(A); LdSpm(); Op(OpCodes.And); Stl(ea); LimitCheck(k, SEG_SS, ea, pb / 8);
+                    LdBase(SEG_SS); Ld(A); LdSpm(); Op(OpCodes.And); Op(OpCodes.Add); Stl(la);
+                    Xlat(k, pb / 8, true);
+                    StReg(32, 4, () => { Ld(A); LdSpm(); Op(OpCodes.And); LdReg(32, 4); LdSpm(); Op(OpCodes.Not); Op(OpCodes.And); Op(OpCodes.Or); });
+                    StMem(pb, la, t);
+                    if (e.Reg == 2) { StDec(); LeaveAfter(k, () => Ld(B)); ends = true; }
+                    else SmcCheck(pg ? pax : la, pb / 8);
+                    break;
+                }
                 case DK_GRP5:
                     Prep();
                     Ld0(); I4(bits); Call("JGrp5"); FailIfFalse();
