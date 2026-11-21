@@ -93,6 +93,13 @@ namespace BrokenNes.Windows
             emulatorMenu.DropDownItems.Add(loadRomItem);
             if (NesEmulator.Systems.Consoles.IsAvailable(NesEmulator.Systems.ConsoleKind.Pc))
                 emulatorMenu.DropDownItems.Add(new ToolStripMenuItem("Open game &package (.n98)...", null, OpenN98_Click));   // nano98: a Windows 98 game, booted straight into the game
+            if (NesEmulator.Systems.Consoles.IsAvailable(NesEmulator.Systems.ConsoleKind.Pc))
+            {
+                var games = new ToolStripMenuItem("Windows 98 &games");   // nano98: recent packages + the packages folder
+                games.DropDownItems.Add(new ToolStripMenuItem("(none)") { Enabled = false });
+                games.DropDownOpening += (_, _) => FillN98Menu(games);
+                emulatorMenu.DropDownItems.Add(games);
+            }
             
             var closeRomItem = new ToolStripMenuItem("&Close Rom", null, CloseRom_Click);
             emulatorMenu.DropDownItems.Add(closeRomItem);

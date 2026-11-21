@@ -197,7 +197,7 @@ public sealed class PcSession : IConsoleSession
     private bool SeatResume()
     {
         if (Seat == null) return false;
-        string key = Disk.ContentKey(), dir = Seat.ResumeDir, st = Path.Combine(dir, "resume.bin"), meta = Path.Combine(dir, "resume.key");
+        string key = Disk.ContentKey() + (_m.Hdd[1] != null ? "+" + _m.Hdd[1]!.ContentKey() : ""), dir = Seat.ResumeDir, st = Path.Combine(dir, "resume.bin"), meta = Path.Combine(dir, "resume.key");
         try
         {
             if (File.Exists(st) && File.Exists(meta) && File.ReadAllText(meta) == key && Environment.GetEnvironmentVariable("BROKENNES_N98_NORESUME") != "1")
@@ -230,7 +230,7 @@ public sealed class PcSession : IConsoleSession
     // BROKENNES_X86_MACHINESTATE: start from a machine state saved by the Workshop's x86boot ({save:PATH}) on the same disks (X86-02: StarCraft's menu); used once
     private void FirstPowerOn()
     {
-        _m.PowerOn(); _powered = true; _seatOffSent = false;
+        _m.PowerOn(); _powered = true; _seatOffSent = false; _seatFrames = 0; _seatCrashSent = false; SeatStatus = null;
         if (SeatResume()) return;
         if (!_stateHookUsed && Environment.GetEnvironmentVariable("BROKENNES_X86_MACHINESTATE") is { Length: > 0 } ms && File.Exists(ms))
         {
@@ -251,9 +251,78 @@ public sealed class PcSession : IConsoleSession
         _m.Card?.Advance();
         CopyFrame();
         if (_snapPending) SeatSnapshot();
+        if (Seat != null) SeatWatch();
         if (Seat != null && SeatPoweredOff && !_seatOffSent) { _seatOffSent = true; SeatEnded?.Invoke("poweroff", ""); }
     }
     private bool _seatOffSent;
+
+    // ---- nano98 watchdog: crashes that never reach the launcher's exit code
+    private long _seatFrames; private bool _seatCrashSent;
+    private static readonly int BootTimeoutFrames = int.TryParse(Environment.GetEnvironmentVariable("BROKENNES_N98_BOOTTIMEOUT"), out int bt) ? bt : 30000;   // ~7 min of machine time
+    private static readonly string[] CrashTexts = { "fatal exception", "windows protection error", "invalid vxd", "while initializing device", "has caused an exception", "system halted", "insufficient memory to initialize windows" };
+    private void SeatWatch()
+    {
+        _seatFrames++;
+        if (_seatCrashSent || _seatFrames % 70 != 0) return;
+        string? why = null;
+        if (SeatStatus == null && _seatFrames > BootTimeoutFrames) why = "Windows did not start the game launcher";   // stuck boot (no N98 BOOT/READY line)
+        else if ((_m.Vga.Gr[6] & 1) == 0)   // text mode: a blue screen / protection error
+        {
+            string t = TextScreen().ToLowerInvariant();
+            foreach (var c in CrashTexts) if (t.Contains(c)) { why = "Windows stopped: " + c; break; }
+        }
+        if (why != null) { _seatCrashSent = true; SeatEnded?.Invoke("crash", why); }
+    }
+    private string TextScreen()
+    {
+        var v = _m.Vga; int cols = Math.Clamp(v.Cr[1] + 1, 40, 132), start = v.Cr[0x0d] | (v.Cr[0x0c] << 8);
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < cols * 25; i++) { byte ch = v.Ram[((start + i) & 0xffff) * 4]; sb.Append(ch >= 32 && ch < 127 ? (char)ch : ' '); if (i % cols == cols - 1) sb.Append((char)10); }
+        return sb.ToString();
+    }
+
+    // ---- nano98 SAVES LAYER: what the game (and Windows) changed on the seat drives, kept apart from the game layer and the resume snapshot.
+    // "N98S", version 1, then per drive (C:, D:): present?, the drive's identity hash, the changed sectors. It is the session's battery save
+    // (MainForm keeps it in N98Saves\<id>.n98s), so it survives cache rebuilds and emulator updates and can be backed up. A saves layer made on
+    // another composition of the drive (the package or the seat base changed) is set aside, never applied onto the wrong sectors.
+    private bool _seatSavesMade;
+    private byte[] SeatSaves()
+    {
+        var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms))
+        {
+            w.Write(0x5338394e); w.Write(1);   // "N98S"
+            foreach (var d in new[] { _m.Hdd[0], _m.Hdd[1] })
+            {
+                w.Write(d != null);
+                if (d == null) continue;
+                w.Write(d.BaseHash); d.WriteOverlay(w); d.Dirty = false;
+            }
+        }
+        _seatSavesMade = true;
+        return ms.ToArray();
+    }
+
+    private void SeatLoadSaves(byte[] data)
+    {
+        try
+        {
+            using var r = new BinaryReader(new MemoryStream(data));
+            if (data.Length < 8 || r.ReadInt32() != 0x5338394e || r.ReadInt32() != 1) { System.Console.WriteLine("[nano98] saves layer ignored: not an N98S file"); return; }
+            foreach (var d in new[] { _m.Hdd[0], _m.Hdd[1] })
+            {
+                if (!r.ReadBoolean()) continue;
+                string hash = r.ReadString();
+                if (d == null || d.BaseHash != hash) { System.Console.WriteLine("[nano98] saves layer made on another drive composition: not applied (kept on disk)"); SavesMismatch = true; return; }
+                d.ReadOverlay(r);
+            }
+            _exported = null;
+            if (_powered) { _m.PowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); }
+        }
+        catch (Exception e) when (e is IOException or EndOfStreamException) { System.Console.WriteLine($"[nano98] saves layer damaged: {e.Message}"); SavesMismatch = true; }
+    }
+    /// <summary>The stored saves layer belongs to another composition of the drives (the package or seat base changed): MainForm keeps the file aside.</summary>
+    public bool SavesMismatch { get; private set; }
 
     private void CopyFrame()
     {
@@ -288,6 +357,7 @@ public sealed class PcSession : IConsoleSession
     /// <summary>The disk as it is now. The same array comes back until DOS writes to the disk again (so an unchanged disk costs no copy and compares in no time).</summary>
     public byte[] ExportSave()
     {
+        if (Seat != null) return SeatSaves();
         var d = Disk;
         if (_exported == null || d.Dirty) { _exported = d.ToArray(); d.Dirty = false; }
         return _exported;
@@ -297,6 +367,12 @@ public sealed class PcSession : IConsoleSession
     /// as it is now (run it on another thread: a Win98 disk is 1 GB, building, comparing and writing it on the emulation thread stalled the game for seconds every 10 s).</summary>
     public Func<byte[]>? ExportSaveLater()
     {
+        if (Seat != null)
+        {
+            bool dirty = Disk.Dirty || _m.Hdd[1]?.Dirty == true;
+            if (!dirty && _seatSavesMade) return null;
+            var bytes = SeatSaves(); return () => bytes;
+        }
         var d = Disk;
         if (_exported != null && !d.Dirty) return null;
         var build = d.Snapshot(); d.Dirty = false;
@@ -306,6 +382,7 @@ public sealed class PcSession : IConsoleSession
     /// <summary>A disk saved earlier from this same image: it replaces the disk (before the machine starts, or with a cold boot). Another size is refused, the disk stays as it was.</summary>
     public void ImportSave(byte[] data)
     {
+        if (Seat != null) { SeatLoadSaves(data); return; }
         if (data.Length != _original.Length) return;
         InsertDisk(data);
         if (_powered) { _m.PowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); }

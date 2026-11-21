@@ -103,6 +103,20 @@ public sealed class DiskImage
         return Convert.ToHexString(h.GetHashAndReset());
     }
 
+    /// <summary>The changed sectors as (sector, 512 bytes) records, sorted (nano98's saves layer).</summary>
+    public void WriteOverlay(BinaryWriter w)
+    {
+        w.Write(_overlay.Count);
+        foreach (var s in _overlay.Keys.OrderBy(k => k)) { w.Write(s); w.Write(_overlay[s]); }
+    }
+    /// <summary>Replaces the changed sectors with the ones <see cref="WriteOverlay"/> wrote.</summary>
+    public void ReadOverlay(BinaryReader r)
+    {
+        _overlay.Clear();
+        for (int n = r.ReadInt32(); n > 0; n--) { long s = r.ReadInt64(); var d = r.ReadBytes(SectorSize); if (s >= 0 && s < TotalSectors) _overlay[s] = d; }
+        Dirty = false;
+    }
+
     public byte[] ToArray()
     {
         var a = (byte[])Base.Clone();

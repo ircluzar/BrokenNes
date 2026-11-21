@@ -8,16 +8,19 @@ internal static class N98SeatCli
 {
     public static int Run(string[] args)
     {
-        string pkg = args[1]; int frames = 6000; string? shot = null, apu = "SB16_D072";
+        string pkg = args[1]; int frames = 6000; string? shot = null, apu = "SB16_D072", saveIn = null, saveOut = null;
         for (int i = 2; i + 1 < args.Length; i++)
         {
             if (args[i] == "--frames") frames = int.Parse(args[i + 1]);
             if (args[i] == "--shot") shot = args[i + 1];
             if (args[i] == "--apu") apu = args[i + 1];
+            if (args[i] == "--save-in") saveIn = args[i + 1];     // the saves layer to start from (as the app's N98Saves\<id>.n98s)
+            if (args[i] == "--save-out") saveOut = args[i + 1];   // the saves layer at the end
         }
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var s = new PcSession(File.ReadAllBytes(pkg), Path.GetFileName(pkg), apu, "I386", "VGA");
         Console.WriteLine($"n98seat: {s.Title} on {s.MachineKey}, prepared in {sw.Elapsed.TotalSeconds:F1} s, cache {s.Seat!.CacheDir}");
+        if (saveIn != null) { s.ImportSave(File.ReadAllBytes(saveIn)); Console.WriteLine($"n98seat: saves layer {saveIn} {(s.SavesMismatch ? "NOT applied (other composition)" : "applied")}"); }
         string? ended = null;
         s.Machine.StatusLine += l => Console.WriteLine($"n98seat: status \"{l}\" at {sw.Elapsed.TotalSeconds:F1} s");
         s.SeatEnded += (k, d) => ended = $"{k} {d}";
@@ -25,6 +28,7 @@ internal static class N98SeatCli
         for (; f < frames && ended == null; f++) s.RunFrame();
         Console.WriteLine($"n98seat: {f} frames, {sw.Elapsed.TotalSeconds:F1} s, ended: {ended ?? "no"}");
         if (shot != null) X86Shots.SavePng(s.Machine.Vga, shot);
+        if (saveOut != null) { var b = s.ExportSave(); File.WriteAllBytes(saveOut, b); Console.WriteLine($"n98seat: saves layer {saveOut}: {b.Length / 1024} KB, C: changed {s.Machine.Hdd[0]!.OverlaySectors} sectors"); }
         return 0;
     }
 }

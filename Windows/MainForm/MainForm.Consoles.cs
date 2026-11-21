@@ -555,6 +555,12 @@ namespace BrokenNes.Windows
             Helpers.ConfigHelper.Update(config, c => c.SelectedConsole = Consoles.Key(console));
             FarmAttach(s, rom, romName);        // record the game from its power-on (before the save RAM is loaded, so the farm can note it)
             LoadSessionSave();
+            if (s is NesEmulator.X86.PcSession { Seat: not null, SavesMismatch: true } && SessionSavePath(s) is string sp && File.Exists(sp))
+            {
+                string aside = sp + "." + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".old";   // never lost: set aside, the game starts fresh
+                try { File.Move(sp, aside); } catch (IOException) { }
+                MessageBox.Show(this, $"The saved progress of {s.Title} was made on another version of its package or of the Windows 98 seat, so it was not loaded. It was kept as:" + Environment.NewLine + aside, "BrokenNes 2", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
             ApplySavedWideMessEnhancements();   // WideMess milestone 6: the enhancements kept for this SNES game (MainForm.WideMess.cs)
             RefreshConsoleMenu();
             UpdateCoresMenus();
@@ -572,7 +578,7 @@ namespace BrokenNes.Windows
             if (!ReferenceEquals(session, seat)) return;
             if (kind != "poweroff")
             {
-                string what = kind == "fail" ? $"could not start (error {detail})" : $"ended with exit code {detail}";
+                string what = kind == "fail" ? $"could not start (error {detail})" : kind == "crash" ? $"stopped responding ({detail})" : $"ended with exit code {detail}";
                 var r = MessageBox.Show(this, $"{seat.Title} {what}." + Environment.NewLine + Environment.NewLine + "Restart the game? (No: back to the menu)", "BrokenNes 2", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                 if (r == DialogResult.Yes)
                 {
@@ -638,6 +644,8 @@ namespace BrokenNes.Windows
             ConsoleKind.GameGear => Path.Combine(SaveRoot, "GgSaves", s.GameId + ".sav"),
             ConsoleKind.Genesis => Path.Combine(SaveRoot, "MdSaves", s.GameId + ".srm"),
             // the x86 console: the disk image as DOS left it (its battery is the whole disk), by the original image's id
+            // a nano98 seat: its saves layer (only what the game and Windows changed; nano98 PcSession.SeatSaves), apart from the game cache
+            ConsoleKind.Pc when s is NesEmulator.X86.PcSession { Seat: not null } => Path.Combine(SaveRoot, "N98Saves", s.GameId + ".n98s"),
             ConsoleKind.Pc => Path.Combine(SaveRoot, "PcDisks", s.GameId + ".img"),
             // the N64: the cartridge's EEPROM / SRAM / FlashRAM as raw bytes, sized by its type
             ConsoleKind.N64 => Path.Combine(SaveRoot, "N64Saves", s.GameId + ".sav"),
