@@ -1736,6 +1736,15 @@ public sealed partial class I386
                 case DK_SETCC:
                     CondTop((uint)op); Stl(t); WriteET();
                     break;
+                case DK_CMOV:
+                {   // CMOVcc r, E (P6): the source is read (and may fault) whatever the condition, the register written only when it holds
+                    ReadE(); Stl(t);
+                    var skip = il.DefineLabel();
+                    CondTop((uint)op); il.Emit(OpCodes.Brfalse, skip);
+                    StReg(bits, e.Reg, () => Ld(t));
+                    il.MarkLabel(skip);
+                    break;
+                }
                 case DK_IMUL:
                     // Imul2(bits, reg, a, b): 0F AF a = reg, b = E; 69 / 6B a = E, b = imm
                     if (op == 0) { LdReg(bits, e.Reg); Stl(A); ReadE(); Stl(B); }
@@ -1970,13 +1979,14 @@ public sealed partial class I386
         return m;
     }
     /// <summary>Does this compiled instruction only read its memory operand (so a readable code segment will do)? Conservative: false when unsure.</summary>
-    private static bool InsReadsOnly(DEntry e) => e.Kind is DK_MOVGE or DK_ALUGE or DK_TESTEG or DK_G3TEST or DK_MOVX or DK_IMUL or DK_SRMOV
+    private static bool InsReadsOnly(DEntry e) => e.Kind is DK_MOVGE or DK_ALUGE or DK_TESTEG or DK_G3TEST or DK_MOVX or DK_IMUL or DK_SRMOV or DK_CMOV
         || (e.Kind == DK_ALUEG && e.Op == 7) || (e.Kind == DK_GRP1 && e.Reg == 7) || (e.Kind == DK_GRP5 && e.Reg is 2 or 4 or 6);   // (MOV Sreg / CALL / JMP / PUSH [mem]: reads)
     private static readonly bool SegLazy = Environment.GetEnvironmentVariable("X86_SEGLAZY") != "0";
 
     private static bool DcHasModrm(byte kind) => kind is DK_MOVEG or DK_MOVGE or DK_ALUEG or DK_ALUGE or DK_GRP1 or DK_GRP2 or DK_TESTEG
-        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU or DK_MMX or DK_XCHG;
+        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU or DK_MMX or DK_XCHG or DK_CMOV;
     /// <summary>X86_XCHGMEM: compile XCHG r, mem inline (opt-in: Garage2 A/B 2026-11-20 StarCraft -0.6%, AoE +2.1%, within noise).</summary>
+    private static readonly bool NoCmovJit = Environment.GetEnvironmentVariable("X86_NOCMOVJIT") != null;
     private static readonly bool NoXchgMem = Environment.GetEnvironmentVariable("X86_XCHGMEM") == null;
 }
 

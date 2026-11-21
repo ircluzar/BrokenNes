@@ -132,7 +132,9 @@ internal static class X86CpuCli
             ("EMMS", new byte[] { 0x0f, 0x77 }, m => m.Mmx),
             ("PADDB mm", new byte[] { 0x0f, 0xfc, 0xc1 }, m => m.Mmx),
             ("SSE 0F70", new byte[] { 0x0f, 0x70, 0xc1, 0x00 }, m => false),
-            ("CMOVZ", new byte[] { 0x0f, 0x44, 0xc1 }, m => false),
+            ("CMOVZ", new byte[] { 0x0f, 0x44, 0xc1 }, m => m.Ops686),
+            ("RDPMC", new byte[] { 0x0f, 0x33 }, m => m.Ops686),
+            ("NOP 0F1F", new byte[] { 0x0f, 0x1f, 0xc0 }, m => m.Ops686),
             ("UD2", new byte[] { 0x0f, 0x0b }, m => false),
         };
         Console.WriteLine("opcode gating (#UD = not on this chip):");
