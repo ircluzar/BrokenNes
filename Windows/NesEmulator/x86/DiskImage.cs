@@ -140,7 +140,64 @@ public sealed class DiskImage
     private const int HashPiece = 16 << 20;
     private static Task<string> HashTask(byte[] image)
     {
-        lock (_lock) return _hashes.GetValue(image, a => Task.Run(() => PieceHash(a)));
+        lock (_lock) return _hashes.GetValue(image, a => Task.Run(() => { string h = PieceHash(a); WriteSidecar(a, h); return h; }));
+    }
+
+    // ---- cached base identity (nano98, 2026-11-21): IMAGE.p256 next to a disk file, so a cold state load skips hashing GBs ----
+    // The sidecar holds the file's size, last-write time (UTC ticks), a sampled check (SHA-256 over 64 spread 4 KB pieces + the first and last
+    // 64 KB of the bytes actually read) and the p256. It is trusted only when all three match the image just read; any mismatch -> the normal
+    // full p256 (when a state first needs it), which then rewrites the sidecar. Unwritable folders just mean no cache.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<byte[], string> _sidecarPath = new();
+    private const string SidecarMagic = "brokennes-p256-cache v1";
+
+    /// <summary>Reads a disk image file; a valid IMAGE.p256 sidecar seeds its base hash (no hashing at state load), else the sidecar is written once the hash is made.</summary>
+    public static byte[] ReadImageFile(string path)
+    {
+        var fi = new FileInfo(path);
+        long size = fi.Length, ticks = fi.LastWriteTimeUtc.Ticks;
+        byte[] image = File.ReadAllBytes(path);
+        if (image.Length < 4 << 20 || Environment.GetEnvironmentVariable("X86_NOHASHCACHE") == "1") return image;
+        string side = path + ".p256";
+        lock (_lock) _sidecarPath.AddOrUpdate(image, side);
+        try
+        {
+            if (File.Exists(side))
+            {
+                var l = File.ReadAllLines(side);
+                if (l.Length >= 5 && l[0] == SidecarMagic && l[1] == size.ToString() && l[2] == ticks.ToString() && image.LongLength == size
+                    && l[3] == SampleHash(image) && l[4].StartsWith("p256:", StringComparison.Ordinal)
+                    && new FileInfo(path) is var fi2 && fi2.Length == size && fi2.LastWriteTimeUtc.Ticks == ticks)
+                {
+                    lock (_lock) { _hashes.AddOrUpdate(image, Task.FromResult(l[4])); _sidecarPath.Remove(image); }
+                    if (Environment.GetEnvironmentVariable("X86_HASHCACHE_LOG") == "1") Console.WriteLine($"diskimage: base hash from {side}");
+                }
+            }
+        }
+        catch (IOException) { } catch (UnauthorizedAccessException) { }
+        return image;
+    }
+
+    private static string SampleHash(byte[] a)
+    {
+        using var h = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        int edge = (int)Math.Min(65536, a.LongLength);
+        h.AppendData(a, 0, edge); h.AppendData(a, a.Length - edge, edge);
+        for (int i = 0; i < 64; i++) { long off = (a.LongLength - 4096) * i / 63; h.AppendData(a, (int)off, 4096); }
+        return Convert.ToHexString(h.GetHashAndReset());
+    }
+
+    private static void WriteSidecar(byte[] image, string hash)
+    {
+        string? side; lock (_lock) if (!_sidecarPath.TryGetValue(image, out side)) return;
+        try
+        {
+            string path = side[..^5]; var fi = new FileInfo(path);
+            if (!fi.Exists || fi.Length != image.LongLength) return;
+            string tmp = side + ".tmp" + Environment.ProcessId;
+            File.WriteAllLines(tmp, new[] { SidecarMagic, fi.Length.ToString(), fi.LastWriteTimeUtc.Ticks.ToString(), SampleHash(image), hash });
+            File.Move(tmp, side, true);
+        }
+        catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 
     private static string PieceHash(byte[] a)

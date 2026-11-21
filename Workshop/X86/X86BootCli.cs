@@ -82,8 +82,8 @@ internal static class X86BootCli
         if (Arg(args, "--wav") != null) _wav = new System.IO.MemoryStream();
         if (Arg(args, "--cdwav") != null) _cdWav = new System.IO.MemoryStream();
         if (Arg(args, "--apu") is string apu && !PcSound.Apply(m, apu)) { Console.WriteLine($"x86boot: no sound card {apu}"); return 1; }
-        if (Arg(args, "--hdd") is string h) m.Hdd[0] = new DiskImage(File.ReadAllBytes(h), false);
-        if (Arg(args, "--hdd2") is string h2) m.Hdd[1] = new DiskImage(File.ReadAllBytes(h2), false);
+        if (Arg(args, "--hdd") is string h) m.Hdd[0] = new DiskImage(DiskImage.ReadImageFile(h), false);
+        if (Arg(args, "--hdd2") is string h2) m.Hdd[1] = new DiskImage(DiskImage.ReadImageFile(h2), false);
         if (Arg(args, "--cd") is string cdp) { m.Cd = CdImage.Open(cdp); Console.WriteLine(m.Cd); }
         if (Arg(args, "--floppy") is string f) m.Floppy[0] = new DiskImage(File.ReadAllBytes(f), true);
         int frames = int.Parse(Arg(args, "--frames") ?? "3000");
