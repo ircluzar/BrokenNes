@@ -1,7 +1,7 @@
 /* n98launch.c - the nano98 shell (SYSTEM.INI shell=C:\N98\N98LAUNCH.EXE). A Win32 GUI program, so no DOS box stays open.
  *
- * Host -> guest: the COMMAND DISK = the primary slave hard disk (BIOS drive 81h) with NO partition table, so Windows gives it no
- * drive letter (the CD keeps D:). Its first sectors hold plain text, read through VWIN32's INT 13h service:
+ * Host -> guest: the COMMAND PORT EAh (read-only text the host sets before power-on; a disk would take a drive letter and push
+ * the CD off D:, and VWIN32's INT 13h service only reaches floppies). The text:
  *     N98CMD1
  *     run=C:\SIERRA\HALF-L~1\HLDEMO.EXE
  *     args=-console +map hldemo1
@@ -23,26 +23,14 @@ static void status(const char *s)
     outp(0xe9, '\n');
 }
 
-#pragma pack(push, 1)
-typedef struct { DWORD ebx, edx, ecx, eax, edi, esi, flags; } DIOC_REGS;
-#pragma pack(pop)
-#define VWIN32_DIOC_DOS_INT13 4
-
-/* reads `count` sectors from CHS 0/0/1 of BIOS drive 81h; 0 on failure */
-static int read_cmd_disk(char *buf, int count)
+/* the command: host -> guest through the nano98 COMMAND PORT (EAh): OUT rewinds, each IN returns the next byte, 0 at the end */
+static int read_cmd(char *buf, int n)
 {
-    HANDLE h = CreateFileA("\\\\.\\vwin32", 0, 0, NULL, 0, FILE_FLAG_DELETE_ON_CLOSE, NULL);
-    DIOC_REGS r; DWORD got = 0; BOOL ok;
-    if (h == INVALID_HANDLE_VALUE) return 0;
-    memset(&r, 0, sizeof r);
-    r.eax = 0x0200 | (count & 0xff);      /* AH=02 read, AL=count */
-    r.ecx = 0x0001;                         /* cylinder 0, sector 1 */
-    r.edx = 0x0081;                         /* head 0, drive 81h */
-    r.ebx = (DWORD)buf;
-    r.flags = 1;                            /* carry set: cleared on success */
-    ok = DeviceIoControl(h, VWIN32_DIOC_DOS_INT13, &r, sizeof r, &r, sizeof r, &got, NULL);
-    CloseHandle(h);
-    return ok && !(r.flags & 1);
+    int i = 0, c;
+    outp(0xea, 0);
+    while (i < n - 1 && (c = inp(0xea)) != 0 && c != 0xff) buf[i++] = (char)c;
+    buf[i] = 0;
+    return i;
 }
 
 static char g_buf[8 * 512 + 1];
@@ -76,7 +64,7 @@ int PASCAL WinMain(HINSTANCE hi, HINSTANCE hp, LPSTR cl, int show)
     char run[260], args[260], dir[260], ex[32], line[600];
     STARTUPINFOA si; PROCESS_INFORMATION pi; DWORD code = 0;
     memset(g_buf, 0, sizeof g_buf);
-    if (!read_cmd_disk(g_buf, 8) || strncmp(g_buf, "N98CMD1", 7) != 0) { status("N98 NOCMD"); run_explorer(); return 0; }
+    if (!read_cmd(g_buf, sizeof g_buf) || strncmp(g_buf, "N98CMD1", 7) != 0) { status("N98 NOCMD"); run_explorer(); return 0; }
     status("N98 READY");
     field("run", run, sizeof run); field("args", args, sizeof args); field("dir", dir, sizeof dir); field("exit", ex, sizeof ex);
     sprintf(line, "\"%s\" %s", run, args);

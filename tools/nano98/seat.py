@@ -1,8 +1,7 @@
 # seat.py: nano98 seat tools (run with the pyfatfs venv: C:/BrokenNes-work/tools/pyfat_venv/Scripts/python.exe -I seat.py ...)
 #   seat.py install DISK.img          put C:\N98\N98LAUNCH.EXE on an installed Win98 disk and make it the shell (SYSTEM.INI shell=)
-#   seat.py cmd OUT.img run=PATH [args=...] [dir=...] [exit=poweroff|shell|restart]
-#                                     write a COMMAND DISK: 1 MB, no partition table (Windows gives it no letter), text at sector 0;
-#                                     attach it as the primary slave (x86boot --hdd2 OUT.img); the launcher reads it via BIOS drive 81h
+#   seat.py cmd OUT.txt run=PATH [args=...] [dir=...] [exit=poweroff|shell|restart]
+#                                     write the command text for the COMMAND PORT (x86boot --n98cmd OUT.txt)
 import os, struct, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -31,9 +30,8 @@ def install(img):
 def cmd(out, kv):
     text = 'N98CMD1\r\n' + ''.join(k + '\r\n' for k in kv)
     b = text.encode('latin1')
-    if len(b) > 8 * 512 - 1: sys.exit('command too long (8 sectors)')
-    img = bytearray(1 << 20); img[:len(b)] = b
-    open(out, 'wb').write(img); print(f'{out}: {len(b)} bytes of command')
+    if len(b) > 4095: sys.exit('command too long (4 KB)')
+    open(out, 'wb').write(b); print(f'{out}: {len(b)} bytes of command')
 
 if __name__ == '__main__':
     if len(sys.argv) >= 3 and sys.argv[1] == 'install': install(sys.argv[2])

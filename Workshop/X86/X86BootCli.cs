@@ -211,6 +211,7 @@ internal static class X86BootCli
         }
         // guest status lines (port E9h, the nano98 launcher): printed as they come; --until-status TEXT stops the run at the first line containing TEXT
         string? untilStatus = Arg(args, "--until-status");
+        if (Arg(args, "--n98cmd") is string ncf && m.Command == null) m.Command = File.ReadAllBytes(ncf);   // the nano98 command port's text (a loaded state keeps its own)
         m.StatusLine += l => { Console.WriteLine($"x86boot: status \"{l}\" at cycle {m.Cpu.Cycle}"); if (untilStatus != null && l.Contains(untilStatus)) m.Stopped ??= "status: " + l; };
         var shotAt = Args(args, "--shotat").Select(x => { int i = x.IndexOf('='); return (f: int.Parse(x[..i]), p: x[(i + 1)..]); }).OrderBy(x => x.f).ToList();
         int n = 0;
