@@ -1,0 +1,5 @@
+{"hardware": {"machine": "WIN98-P166", "video": "S3", "ram_mb": 64, "min_cpu": "P90", "sound": "SB16_D072", "net": "optional NE2000 (IPX for LAN)"},
+ "launch": {"exe": "D:/STARCRAFT/StarCraft.exe", "args": "", "cwd": "D:/STARCRAFT", "display": "640x480x8"},
+ "cd": [{"label": "STARCRAFT", "ref": "starcraft.cue", "required": true, "note": "user's own disc rip (BIN/CUE for CD audio); never shipped"}],
+ "presets": {"default": {"desktop_bpp": 8}},
+ "saves": ["D:/STARCRAFT/characters/*", "D:/STARCRAFT/maps/replays/*", "D:/STARCRAFT/*.spa"]}

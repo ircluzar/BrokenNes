@@ -1,0 +1,5 @@
+{"hardware": {"machine": "WIN98-P166-NANO", "video": "S3", "ram_mb": 64, "min_cpu": "P133", "sound": "SB16_D072", "3d": "optional Voodoo 1 (OpenGL via 3dfx MiniGL)"},
+ "launch": {"exe": "C:/Sierra/Half-Life/hl.exe", "args": "", "cwd": "C:/Sierra/Half-Life"},
+ "cd": [],
+ "presets": {"software": {"renderer": "software"}, "voodoo": {"renderer": "opengl", "card": "VOODOO1"}},
+ "saves": ["C:/Sierra/Half-Life/valve/SAVE/*", "C:/Sierra/Half-Life/*/config.cfg"]}

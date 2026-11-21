@@ -1,0 +1,5 @@
+{"hardware": {"machine": "WIN98-P166", "video": "S3", "ram_mb": 64, "min_cpu": "P90", "sound": "SB16_D072"},
+ "launch": {"exe": "C:/Program Files/Microsoft Games/Age of Empires/Empires.exe", "args": "", "cwd": "C:/Program Files/Microsoft Games/Age of Empires", "display": "800x600x8"},
+ "cd": [{"label": "AOE", "ref": "age_of_empires.iso", "required": true, "note": "user's own disc rip; never shipped"}],
+ "presets": {"default": {}},
+ "saves": ["C:/Program Files/Microsoft Games/Age of Empires/savegame/*", "C:/Program Files/Microsoft Games/Age of Empires/*.ply"]}
