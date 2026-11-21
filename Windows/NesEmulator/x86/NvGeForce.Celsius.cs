@@ -5,7 +5,8 @@
 // immediate vertices (0xC00-0xCEC + 0xDFC), pre-transformed (HOMOGENEOUS) and transformed positions (projection x modelview + viewport),
 // triangles / strips / fans / quads, cull, perspective-correct colour + 2 texture units (swizzled + RECT formats, nearest / bilinear),
 // the register combiners (2 general stages + final), alpha test, Z16 / Z24 depth test and write, blending, colour mask.
-// Not yet: lighting, fog, stencil, texgen, mipmaps (level 0 only), points / lines.
+// Also: mipmaps + min/mag filters (LOD from screen derivatives), DXT1/3/5, fog (register 3 of the final combiner), stencil (Z24S8), points / lines.
+// Not yet: lighting, texgen, texture matrices, polygon modes.
 
 using System;
 using System.Collections.Generic;
@@ -26,6 +27,7 @@ public sealed partial class NvGeForce
         public float X, Y, Z, W;                         // after transform: screen x, y, depth 0..1, 1/w
         public float A, R, G, B, SA, SR, SG, SB;         // diffuse / specular 0..1
         public float U0, V0, U1, V1;
+        public float Fog, EyeZ;                          // vertex fog coordinate, eye-space depth (fog sources)
     }
 
     private static float F(uint v) => BitConverter.Int32BitsToSingle((int)v);
@@ -53,6 +55,7 @@ public sealed partial class NvGeForce
             case 0xc6c: SetColor(ref _cCur, data, false); break;
             case 0xc8c: SetColor(ref _cCur, data, true); break;
             case 0xc90: _cCur.U0 = F(data); break; case 0xc94: _cCur.V0 = F(data); break;
+            case 0xce0: _cCur.Fog = F(data); break;
             case 0xcb8: _cCur.U1 = F(data); break; case 0xcbc: _cCur.V1 = F(data); break;
             case 0xc50: _cCur.R = F(data); break; case 0xc54: _cCur.G = F(data); break; case 0xc58: _cCur.B = F(data); break; case 0xc5c: _cCur.A = F(data); break;
             case 0xc08:   // VERTEX_POS_3F z: emits
@@ -94,6 +97,7 @@ public sealed partial class NvGeForce
                     case 1: if ((fmt[i] & 15) == 0) SetColor(ref v, _cWords[o], false); else { v.R = F(_cWords[o]); v.G = F(_cWords[o + 1]); v.B = F(_cWords[o + 2]); v.A = n > 3 ? F(_cWords[o + 3]) : 1; } break;
                     case 2: if ((fmt[i] & 15) == 0) SetColor(ref v, _cWords[o], true); else { v.SR = F(_cWords[o]); v.SG = F(_cWords[o + 1]); v.SB = F(_cWords[o + 2]); } break;
                     case 3: v.U0 = F(_cWords[o]); v.V0 = n > 1 ? F(_cWords[o + 1]) : 0; if (n > 3) { float q = F(_cWords[o + 3]); if (q != 0) { v.U0 /= q; v.V0 /= q; } } break;
+                    case 7: v.Fog = F(_cWords[o]); break;
                     case 4: v.U1 = F(_cWords[o]); v.V1 = n > 1 ? F(_cWords[o + 1]) : 0; if (n > 3) { float q = F(_cWords[o + 3]); if (q != 0) { v.U1 /= q; v.V1 /= q; } } break;
                 }
                 o += n;
@@ -108,13 +112,14 @@ public sealed partial class NvGeForce
     /// <summary>Screen position: pre-transformed vertices carry x, y, z and 1/w; others go through the projection x modelview matrices and the viewport.</summary>
     private void Transform(uint inst, ref CVert v, float x, float y, float z, float w, bool pre)
     {
-        if (pre) { v.X = x; v.Y = y; v.Z = z; v.W = w; return; }
+        if (pre) { v.X = x; v.Y = y; v.Z = z; v.W = w; v.EyeZ = w != 0 ? 1 / w : 0; return; }
         // the ICD loads the composite (projection x modelview x viewport scale) at 0x500, ROW-major (translation in 0x50C / 0x51C / 0x52C);
         // VIEWPORT_TRANSLATE (0x6E8) is in the chip's window space, biased by -2048 (the clip rectangles carry the +0x800); Z comes out in
         // depth-buffer units (0x6F0 = half the range)
         float[] m = Mat(inst, 0x500);
         float cx = m[0] * x + m[1] * y + m[2] * z + m[3] * w, cy = m[4] * x + m[5] * y + m[6] * z + m[7] * w,
               cz = m[8] * x + m[9] * y + m[10] * z + m[11] * w, cw = m[12] * x + m[13] * y + m[14] * z + m[15] * w;
+        v.EyeZ = cw;   // (clip w = eye distance for a perspective projection: the fog source)
         if (cw == 0) cw = 1e-6f;
         float iw = 1 / cw;
         v.X = cx * iw + F(G(inst, 0x6e8)) + 2048; v.Y = cy * iw + F(G(inst, 0x6ec)) + 2048;
@@ -139,6 +144,10 @@ public sealed partial class NvGeForce
         int n = v.Count;
         switch (prim)
         {
+            case 1: for (int i = 0; i < n; i++) Point(inst, v[i]); break;
+            case 2: for (int i = 0; i + 1 < n; i += 2) Line(inst, v[i], v[i + 1]); break;
+            case 3: for (int i = 0; i + 1 < n; i++) Line(inst, v[i], v[i + 1]); if (n > 2) Line(inst, v[n - 1], v[0]); break;
+            case 4: for (int i = 0; i + 1 < n; i++) Line(inst, v[i], v[i + 1]); break;
             case 5: for (int i = 0; i + 2 < n; i += 3) Tri(inst, v[i], v[i + 1], v[i + 2]); break;
             case 6: for (int i = 0; i + 2 < n; i++) { if ((i & 1) == 0) Tri(inst, v[i], v[i + 1], v[i + 2]); else Tri(inst, v[i + 1], v[i], v[i + 2]); } break;
             case 7: case 10: for (int i = 1; i + 1 < n; i++) Tri(inst, v[0], v[i], v[i + 1]); break;
@@ -147,7 +156,33 @@ public sealed partial class NvGeForce
         }
     }
 
-    private struct Tex { public uint Base; public bool Vram, Ok, Rect, Lin; public int Fmt, W, H, Pitch, WrapS, WrapT; public uint Dma; }
+    private struct Tex { public uint Base; public bool Vram, Ok, Rect, Lin, Mip; public int Fmt, W, H, Pitch, WrapS, WrapT, MinF, MagF, Levels; public float Bias; public uint Dma; }
+
+    /// <summary>A line as a quad of LINE_WIDTH (1/8 pixel units, at least 1 pixel) across its minor axis, half a pixel longer at each end.</summary>
+    private void Line(uint inst, in CVert a, in CVert b)
+    {
+        float wdt = Math.Max(1f, (G(inst, 0x380) & 0x1ff) / 8f) * 0.5f;
+        float dx = b.X - a.X, dy = b.Y - a.Y;
+        float ox = 0, oy = 0;
+        if (MathF.Abs(dx) >= MathF.Abs(dy)) oy = wdt; else ox = wdt;
+        CVert a0 = a, a1 = a, b0 = b, b1 = b;
+        a0.X -= ox; a0.Y -= oy; a1.X += ox; a1.Y += oy; b0.X -= ox; b0.Y -= oy; b1.X += ox; b1.Y += oy;
+        if (oy != 0) { float e = dx >= 0 ? 0.5f : -0.5f; a0.X -= e; a1.X -= e; b0.X += e; b1.X += e; }
+        else { float e = dy >= 0 ? 0.5f : -0.5f; a0.Y -= e; a1.Y -= e; b0.Y += e; b1.Y += e; }
+        TriNoCull(inst, a0, b0, b1); TriNoCull(inst, a0, b1, a1);
+    }
+
+    /// <summary>A point as a square of POINT_SIZE (1/8 pixel units, at least 1 pixel).</summary>
+    private void Point(uint inst, in CVert p)
+    {
+        float h = Math.Max(1f, (G(inst, 0x3ec) & 0x1ff) / 8f) * 0.5f;
+        CVert a = p, b = p, c = p, d = p;
+        a.X -= h; a.Y -= h; b.X += h; b.Y -= h; c.X += h; c.Y += h; d.X -= h; d.Y += h;
+        TriNoCull(inst, a, b, c); TriNoCull(inst, a, c, d);
+    }
+
+    private bool _noCull;
+    private void TriNoCull(uint inst, in CVert a, in CVert b, in CVert c) { _noCull = true; try { Tri(inst, a, b, c); } finally { _noCull = false; } }
 
     private Tex TexUnit(uint inst, int u)
     {
@@ -162,12 +197,73 @@ public sealed partial class NvGeForce
         else { t.W = 1 << (int)((f >> 16) & 15); t.H = 1 << (int)((f >> 20) & 15); }
         t.WrapS = (int)(f >> 24) & 15; t.WrapT = (int)(f >> 28) & 15;
         t.Base = G(inst, 0x218 + u * 4);
-        t.Lin = (G(inst, 0x248 + u * 4) >> 28) == 2;
+        uint flt = G(inst, 0x248 + u * 4);
+        t.MagF = (int)(flt >> 28) & 15; t.MinF = (int)(flt >> 24) & 15;
+        t.Lin = t.MagF == 2;
+        t.Bias = ((int)(flt << 20) >> 28) * 0.5f;          // LOD_BIAS bits 11:8, signed (scale approximate)
+        t.Mip = !t.Rect && (f & 0x8000) != 0 && t.MinF >= 3;
+        t.Levels = 1;
+        if (t.Mip) { int m = Math.Max(t.W, t.H); while (m > 1) { m >>= 1; t.Levels++; } }
         t.Ok = t.W > 0 && t.H > 0 && t.Dma != 0;
         return t;
     }
 
     private static int TexBpp(int fmt) => fmt switch { 0 or 1 or 0xb or 0x13 => 1, 6 or 7 or 0x12 => 4, _ => 2 };
+    private static bool IsDxt(int fmt) => fmt is 0xc or 0xe or 0xf;
+
+    /// <summary>Byte size of one level of a swizzled / compressed texture.</summary>
+    private static uint LevelBytes(int fmt, int w, int h)
+    {
+        if (IsDxt(fmt)) return (uint)(Math.Max(1, (w + 3) / 4) * Math.Max(1, (h + 3) / 4) * (fmt == 0xc ? 8 : 16));
+        return (uint)(w * h * TexBpp(fmt));
+    }
+
+    /// <summary>Level L of a texture: offset from the base, width, height (levels packed one after another).</summary>
+    private static (uint off, int w, int h) Level(in Tex t, int l)
+    {
+        uint off = 0; int w = t.W, h = t.H;
+        for (int i = 0; i < l; i++) { off += LevelBytes(t.Fmt, w, h); w = Math.Max(1, w >> 1); h = Math.Max(1, h >> 1); }
+        return (off, w, h);
+    }
+
+    private uint TexRead(in Tex t, uint off, int n)
+    {
+        var (vr, a) = DmaAddr(t.Dma, t.Base + off);
+        if (vr) { a &= VramBytes - 1; return n == 1 ? _v.Ram[a] : n == 2 ? (uint)(_v.Ram[a] | _v.Ram[(a + 1) & (VramBytes - 1)] << 8) : a <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)a) : 0; }
+        uint wv = SysRead32?.Invoke(a & ~3u) ?? 0;
+        if (n == 4) { if ((a & 3) == 0) return wv; uint hi = SysRead32?.Invoke((a & ~3u) + 4) ?? 0; return (uint)((((ulong)hi << 32) | wv) >> (int)((a & 3) * 8)); }
+        return n == 2 ? (wv >> (int)((a & 2) * 8)) & 0xffff : (wv >> (int)((a & 3) * 8)) & 0xff;
+    }
+
+    private static uint C565(uint c) => 0xff000000 | (uint)Raster3D.Rgb565To888((int)c);
+
+    private static uint MixC(uint a, uint b, int wa, int wb, int d) =>
+        0xff000000 | (uint)((((a >> 16) & 0xff) * wa + ((b >> 16) & 0xff) * wb) / d) << 16 | (uint)((((a >> 8) & 0xff) * wa + ((b >> 8) & 0xff) * wb) / d) << 8 | (uint)(((a & 0xff) * wa + (b & 0xff) * wb) / d);
+
+    /// <summary>One texel of a DXT1/3/5 level (4x4 blocks in row order, not swizzled).</summary>
+    private uint DxtTexel(in Tex t, uint lvOff, int w, int x, int y)
+    {
+        int bw = Math.Max(1, (w + 3) / 4), bs = t.Fmt == 0xc ? 8 : 16;
+        uint bo = lvOff + (uint)(((y >> 2) * bw + (x >> 2)) * bs);
+        uint co = t.Fmt == 0xc ? bo : bo + 8;
+        uint c0 = TexRead(t, co, 2), c1 = TexRead(t, co + 2, 2), bits = TexRead(t, co + 4, 4);
+        int idx = (int)(bits >> (((y & 3) * 4 + (x & 3)) * 2)) & 3;
+        uint p0 = C565(c0), p1 = C565(c1);
+        bool four = c0 > c1 || t.Fmt != 0xc;
+        uint rgb = idx switch { 0 => p0, 1 => p1, 2 => four ? MixC(p0, p1, 2, 1, 3) : MixC(p0, p1, 1, 1, 2), _ => four ? MixC(p0, p1, 1, 2, 3) : 0 };
+        if (t.Fmt == 0xc) return rgb;
+        int pix = (y & 3) * 4 + (x & 3);
+        uint alpha;
+        if (t.Fmt == 0xe) alpha = ((TexRead(t, bo + (uint)(pix >> 1), 1) >> ((pix & 1) * 4)) & 15) * 17;
+        else
+        {
+            uint a0 = TexRead(t, bo, 1), a1 = TexRead(t, bo + 1, 1);
+            ulong ab = TexRead(t, bo + 2, 4) | (ulong)TexRead(t, bo + 6, 2) << 32;
+            int ai = (int)(ab >> (pix * 3)) & 7;
+            alpha = ai == 0 ? a0 : ai == 1 ? a1 : a0 > a1 ? (uint)(((8 - ai) * a0 + (ai - 1) * a1) / 7) : ai == 6 ? 0 : ai == 7 ? 255u : (uint)(((6 - ai) * a0 + (ai - 1) * a1) / 5);
+        }
+        return (rgb & 0xffffff) | alpha << 24;
+    }
 
     private static uint Swz(int x, int y, int w, int h)
     {
@@ -180,15 +276,15 @@ public sealed partial class NvGeForce
         return o;
     }
 
-    private uint Texel(in Tex t, int x, int y)
+    private uint Texel(in Tex t, int x, int y) => Texel(t, 0, t.W, t.H, x, y);
+
+    private uint Texel(in Tex t, uint lvOff, int lw, int lh, int x, int y)
     {
-        x = Wrap(x, t.W, t.WrapS); y = Wrap(y, t.H, t.WrapT);
+        x = Wrap(x, lw, t.WrapS); y = Wrap(y, lh, t.WrapT);
+        if (IsDxt(t.Fmt)) return DxtTexel(t, lvOff, lw, x, y);
         int bpp = TexBpp(t.Fmt);
-        uint off = t.Rect ? (uint)(y * t.Pitch + x * bpp) : Swz(x, y, t.W, t.H) * (uint)bpp;
-        var (vr, a) = DmaAddr(t.Dma, t.Base + off);
-        uint raw;
-        if (vr) { a &= VramBytes - 1; raw = bpp == 1 ? _v.Ram[a] : bpp == 2 ? (uint)(_v.Ram[a] | _v.Ram[(a + 1) & (VramBytes - 1)] << 8) : a <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)a) : 0; }
-        else { uint wv = SysRead32?.Invoke(a & ~3u) ?? 0; raw = bpp == 4 ? wv : bpp == 2 ? (wv >> (int)((a & 2) * 8)) & 0xffff : (wv >> (int)((a & 3) * 8)) & 0xff; }
+        uint off = lvOff + (t.Rect ? (uint)(y * t.Pitch + x * bpp) : Swz(x, y, lw, lh) * (uint)bpp);
+        uint raw = TexRead(t, off, bpp);
         switch (t.Fmt)
         {
             case 0: return 0xff000000 | raw * 0x010101;                                     // L8
@@ -211,23 +307,62 @@ public sealed partial class NvGeForce
         }
     }
 
-    private uint Sample(in Tex t, float u, float v)
+    private uint Sample(in Tex t, float u, float v) => SampleLevel(t, 0, u, v, t.Lin);
+
+    private uint SampleLevel(in Tex t, int l, float u, float v, bool lin)
     {
-        float fu = t.Rect ? u : u * t.W, fv = t.Rect ? v : v * t.H;
-        if (!t.Lin) return Texel(t, (int)MathF.Floor(fu), (int)MathF.Floor(fv));
+        var (off, lw, lh) = l == 0 ? (0u, t.W, t.H) : Level(t, l);
+        float fu = t.Rect ? u : u * lw, fv = t.Rect ? v : v * lh;
+        if (!lin) return Texel(t, off, lw, lh, (int)MathF.Floor(fu), (int)MathF.Floor(fv));
         fu -= 0.5f; fv -= 0.5f;
         int x0 = (int)MathF.Floor(fu), y0 = (int)MathF.Floor(fv);
         int fx = (int)((fu - x0) * 256), fy = (int)((fv - y0) * 256);
-        return Rgba.Bilinear(Texel(t, x0, y0), Texel(t, x0 + 1, y0), Texel(t, x0, y0 + 1), Texel(t, x0 + 1, y0 + 1), fx, fy).ToArgb();
+        return Rgba.Bilinear(Texel(t, off, lw, lh, x0, y0), Texel(t, off, lw, lh, x0 + 1, y0), Texel(t, off, lw, lh, x0, y0 + 1), Texel(t, off, lw, lh, x0 + 1, y0 + 1), fx, fy).ToArgb();
+    }
+
+    /// <summary>Filtered sample with the level of detail from the screen-space derivatives: magnify / minify filters and mipmaps.</summary>
+    private uint SampleLod(in Tex t, float u, float v, float dudx, float dvdx, float dudy, float dvdy)
+    {
+        float sx = MathF.Sqrt(dudx * dudx * t.W * t.W + dvdx * dvdx * t.H * t.H), sy = MathF.Sqrt(dudy * dudy * t.W * t.W + dvdy * dvdy * t.H * t.H);
+        float rho = MathF.Max(sx, sy);
+        float lod = (rho > 0 ? MathF.Log2(rho) : -16) + t.Bias;
+        if (lod <= 0) return SampleLevel(t, 0, u, v, t.MagF == 2);
+        bool lin = t.MinF is 2 or 4 or 6;
+        if (!t.Mip) return SampleLevel(t, 0, u, v, lin);
+        float maxL = t.Levels - 1;
+        if (lod > maxL) lod = maxL;
+        if (t.MinF is 3 or 4) return SampleLevel(t, (int)(lod + 0.5f), u, v, lin);   // *_MIPMAP_NEAREST
+        int l0 = (int)lod, l1 = Math.Min(l0 + 1, t.Levels - 1);
+        uint c0 = SampleLevel(t, l0, u, v, lin);
+        if (l1 == l0) return c0;
+        return Rgba.Bilinear(c0, SampleLevel(t, l1, u, v, lin), 0, 0, (int)((lod - l0) * 256), 0).ToArgb();
     }
 
     // ================= the triangle =================
+
+    private static void Persp(in CVert a, in CVert b, in CVert c, float inv, float px, float py, out float q0, out float q1, out float q2)
+    {
+        float w0 = ((b.X - px) * (c.Y - py) - (c.X - px) * (b.Y - py)) * inv;
+        float w1 = ((c.X - px) * (a.Y - py) - (a.X - px) * (c.Y - py)) * inv;
+        float w2 = 1 - w0 - w1;
+        q0 = w0 * a.W; q1 = w1 * b.W; q2 = w2 * c.W;
+        float qs = q0 + q1 + q2; if (qs == 0) qs = 1e-12f;
+        q0 /= qs; q1 /= qs; q2 /= qs;
+    }
+
+    private static int StencilOp(uint op, int s, int r) => op switch
+    {
+        0 => 0, 0x1e01 => r, 0x1e02 => Math.Min(s + 1, 255), 0x1e03 => Math.Max(s - 1, 0), 0x150a => ~s & 0xff,
+        0x8507 => (s + 1) & 0xff, 0x8508 => (s - 1) & 0xff, _ => s,
+    };
+
+    private bool _fogLogged;
 
     private void Tri(uint inst, in CVert a, in CVert b, in CVert c)
     {
         float area = (b.X - a.X) * (c.Y - a.Y) - (c.X - a.X) * (b.Y - a.Y);
         if (area == 0 || float.IsNaN(area)) return;
-        if (G(inst, 0x308) != 0)   // cull: front face CW (0x900) / CCW (0x901), in screen space with y down
+        if (!_noCull && G(inst, 0x308) != 0)   // cull: front face CW (0x900) / CCW (0x901), in screen space with y down
         {
             bool cw = area > 0;    // (y down: a positive area is clockwise on screen)
             bool front = G(inst, 0x3a0) == 0x900 ? cw : !cw;
@@ -248,6 +383,10 @@ public sealed partial class NvGeForce
         bool z16 = ((rtf >> 4) & 3) == 1 || zpitch < (int)(G(inst, 0x200) >> 16) * 4;
         bool zTest = G(inst, 0x30c) != 0 && zpitch != 0, zWrite = G(inst, 0x35c) != 0 && zpitch != 0;
         int zFunc = (int)G(inst, 0x354) & 7;
+        // stencil (Z24S8 only: the low byte of the zeta word)
+        bool sTest = G(inst, 0x32c) != 0 && zpitch != 0 && !z16;
+        int sRef = (int)G(inst, 0x368) & 0xff, sMask = (int)G(inst, 0x36c) & 0xff, sWMask = (int)G(inst, 0x360) & 0xff, sFunc = (int)G(inst, 0x364) & 7;
+        uint sFail = G(inst, 0x370), sZFail = G(inst, 0x374), sZPass = G(inst, 0x378);
         uint hz = G(inst, 0x200), vt = G(inst, 0x204);
         int cx0 = (int)(hz & 0xffff), cy0 = (int)(vt & 0xffff), cx1 = cx0 + (int)(hz >> 16), cy1 = cy0 + (int)(vt >> 16);
         // the bounding box, pixel centres at +0.5
@@ -260,10 +399,17 @@ public sealed partial class NvGeForce
             string Td(in Tex t) { if (!t.Ok) return "off"; var (vr, ad) = DmaAddr(t.Dma, t.Base); return $"fmt {t.Fmt} {t.W}x{t.H} dma {t.Dma:X} {(vr ? "vram" : "sys")} {ad:X} texel0 {Texel(t, 0, 0):X8} texel(5,5) {Texel(t, 5, 5):X8}"; }
             OpLog($"uv {a.U0:F2},{a.V0:F2} tex0 {Td(t0)} | tex1 {Td(t1)} | col {a.R:F2},{a.G:F2},{a.B:F2},{a.A:F2} comb {G(inst, 0x268):X8} {G(inst, 0x280):X8} {G(inst, 0x288):X8} {G(inst, 0x28c):X8}");
         }
+        bool lod0 = t0.Ok && !t0.Rect && (t0.Mip || t0.MinF != t0.MagF), lod1 = t1.Ok && !t1.Rect && (t1.Mip || t1.MinF != t1.MagF);
         bool flat = G(inst, 0x37c) == 0x1d00;
         bool aTest = G(inst, 0x300) != 0; int aFunc = (int)G(inst, 0x33c) & 7, aRef = (int)G(inst, 0x340) & 0xff;
         bool blend = G(inst, 0x304) != 0;
         uint cmask = G(inst, 0x358);
+        // fog: the final combiner's FOG input (register 3) = fog colour rgb + fog factor alpha
+        bool fog = G(inst, 0x2a4) != 0;
+        uint fogMode = G(inst, 0x29c), fogSrc = G(inst, 0x2a0), fcol = G(inst, 0x2a8);
+        float fk0 = F(G(inst, 0x680)), fk1 = F(G(inst, 0x684)), fk2 = F(G(inst, 0x688));
+        var fogC = new Vec4((fcol & 0xff) / 255f, ((fcol >> 8) & 0xff) / 255f, ((fcol >> 16) & 0xff) / 255f, 1);
+        if (fog && !_fogLogged) { _fogLogged = true; OpLog?.Invoke($"fog mode {fogMode:X} src {fogSrc} k {fk0} {fk1} {fk2} col {fcol:X8} vfog {a.Fog} {b.Fog} eyez {a.EyeZ} specA {a.SA}"); }
         float inv = 1 / area;
         for (int y = minY; y <= maxY; y++)
         {
@@ -274,31 +420,61 @@ public sealed partial class NvGeForce
                 float w0 = ((b.X - px) * (c.Y - py) - (c.X - px) * (b.Y - py)) * inv;
                 float w1 = ((c.X - px) * (a.Y - py) - (a.X - px) * (c.Y - py)) * inv;
                 float w2 = 1 - w0 - w1;
-                if (w0 < 0 || w1 < 0 || w2 < 0)
-                {
-                    // top-left rule light: a pixel exactly on an edge is in when the edge weight is +0 only
-                    if (w0 < -1e-6f || w1 < -1e-6f || w2 < -1e-6f) continue;
-                    if (w0 < 0 || w1 < 0 || w2 < 0) continue;
-                }
+                if (w0 < 0 || w1 < 0 || w2 < 0) continue;
                 float z = w0 * a.Z + w1 * b.Z + w2 * c.Z;
-                // depth
+                // stencil + depth
                 uint za = (uint)(zbase + y * zpitch + x * (z16 ? 2 : 4)) & (VramBytes - 1);
                 uint zv = z16 ? (uint)Math.Clamp(z * 65535f, 0, 65535) : (uint)Math.Clamp(z * 16777215f, 0, 16777215);
-                if (zTest || zWrite)
+                int sOld = 0, sNew = -1;
+                if (zTest || zWrite || sTest)
                 {
-                    uint old = z16 ? (uint)(_v.Ram[za] | _v.Ram[za + 1] << 8) : (BitConverter.ToUInt32(_v.Ram, (int)za) >> 8);
-                    if (zTest && !Raster3D.Compare(zFunc, (int)zv, (int)old)) continue;
+                    uint word = z16 ? (uint)(_v.Ram[za] | _v.Ram[za + 1] << 8) : BitConverter.ToUInt32(_v.Ram, (int)za);
+                    uint old = z16 ? word : word >> 8;
+                    sOld = (int)(word & 0xff);
+                    if (sTest && !Raster3D.Compare(sFunc, sRef & sMask, sOld & sMask))
+                    {
+                        WriteStencil(za, sOld, StencilOp(sFail, sOld, sRef), sWMask);
+                        continue;
+                    }
+                    if (zTest && !Raster3D.Compare(zFunc, (int)zv, (int)old))
+                    {
+                        if (sTest) WriteStencil(za, sOld, StencilOp(sZFail, sOld, sRef), sWMask);
+                        continue;
+                    }
+                    if (sTest) sNew = StencilOp(sZPass, sOld, sRef);
                 }
                 // perspective-correct attributes
                 float q0 = w0 * a.W, q1 = w1 * b.W, q2 = w2 * c.W, qs = q0 + q1 + q2;
                 if (qs == 0) qs = 1e-12f;
                 q0 /= qs; q1 /= qs; q2 /= qs;
                 var col = flat ? new Vec4(c.R, c.G, c.B, c.A) : new Vec4(q0 * a.R + q1 * b.R + q2 * c.R, q0 * a.G + q1 * b.G + q2 * c.G, q0 * a.B + q1 * b.B + q2 * c.B, q0 * a.A + q1 * b.A + q2 * c.A);
-                var spec = new Vec4(q0 * a.SR + q1 * b.SR + q2 * c.SR, q0 * a.SG + q1 * b.SG + q2 * c.SG, q0 * a.SB + q1 * b.SB + q2 * c.SB, 0);
+                var spec = new Vec4(q0 * a.SR + q1 * b.SR + q2 * c.SR, q0 * a.SG + q1 * b.SG + q2 * c.SG, q0 * a.SB + q1 * b.SB + q2 * c.SB, q0 * a.SA + q1 * b.SA + q2 * c.SA);
                 Vec4 tx0 = default, tx1 = default;
-                if (t0.Ok) tx0 = Vec4.FromArgb(Sample(t0, q0 * a.U0 + q1 * b.U0 + q2 * c.U0, q0 * a.V0 + q1 * b.V0 + q2 * c.V0));
-                if (t1.Ok) tx1 = Vec4.FromArgb(Sample(t1, q0 * a.U1 + q1 * b.U1 + q2 * c.U1, q0 * a.V1 + q1 * b.V1 + q2 * c.V1));
-                var o = Combine(inst, col, spec, tx0, tx1);
+                float r0 = 0, r1 = 0, r2 = 0, d0 = 0, d1 = 0, d2 = 0;
+                if (lod0 || lod1) { Persp(a, b, c, inv, px + 1, py, out r0, out r1, out r2); Persp(a, b, c, inv, px, py + 1, out d0, out d1, out d2); }
+                if (t0.Ok)
+                {
+                    float u = q0 * a.U0 + q1 * b.U0 + q2 * c.U0, v = q0 * a.V0 + q1 * b.V0 + q2 * c.V0;
+                    tx0 = Vec4.FromArgb(lod0 ? SampleLod(t0, u, v, r0 * a.U0 + r1 * b.U0 + r2 * c.U0 - u, r0 * a.V0 + r1 * b.V0 + r2 * c.V0 - v, d0 * a.U0 + d1 * b.U0 + d2 * c.U0 - u, d0 * a.V0 + d1 * b.V0 + d2 * c.V0 - v) : Sample(t0, u, v));
+                }
+                if (t1.Ok)
+                {
+                    float u = q0 * a.U1 + q1 * b.U1 + q2 * c.U1, v = q0 * a.V1 + q1 * b.V1 + q2 * c.V1;
+                    tx1 = Vec4.FromArgb(lod1 ? SampleLod(t1, u, v, r0 * a.U1 + r1 * b.U1 + r2 * c.U1 - u, r0 * a.V1 + r1 * b.V1 + r2 * c.V1 - v, d0 * a.U1 + d1 * b.U1 + d2 * c.U1 - u, d0 * a.V1 + d1 * b.V1 + d2 * c.V1 - v) : Sample(t1, u, v));
+                }
+                Vec4 fogV = default;
+                if (fog)
+                {
+                    float fc = fogSrc == 0 ? q0 * a.Fog + q1 * b.Fog + q2 * c.Fog : MathF.Abs(q0 * a.EyeZ + q1 * b.EyeZ + q2 * c.EyeZ);
+                    float ff = fogMode switch
+                    {
+                        0x2601 => fk0 + fk1 * fc + fk2 * fc * fc - 1,           // LINEAR: k0 = 2 + start/(end-start), k1 = -1/(end-start) (nouveau nv10)
+                        0x0803 => MathF.Exp(-MathF.Pow(fk1 / -0.21f * fc, 2)), // EXP2 (coefficient scale approximate)
+                        _ => MathF.Exp(fk1 / 0.09f * MathF.Abs(fc)),           // EXP / EXP_ABS (k1 = -0.09 density, approximate)
+                    };
+                    fogV = new Vec4(fogC.X, fogC.Y, fogC.Z, Math.Clamp(ff, 0, 1));
+                }
+                var o = Combine(inst, col, spec, tx0, tx1, fogV);
                 int oa = (int)(Math.Clamp(o.W, 0, 1) * 255 + 0.5f);
                 if (aTest && !Raster3D.Compare(aFunc, oa, aRef)) continue;
                 uint ca = (uint)(cbase + y * cpitch + x * cbpp) & (VramBytes - 1);
@@ -306,18 +482,23 @@ public sealed partial class NvGeForce
                 if (blend) o = Blend(inst, o, Vec4.FromArgb(dst));
                 uint outc = o.ToArgb();
                 if (cmask != 0x01010101 && cmask != 0) outc = (outc & MaskBits(cmask)) | (dst & ~MaskBits(cmask));
-                if (cbpp == 2) { uint p = ((outc >> 8) & 0xf800) | ((outc >> 5) & 0x07e0) | ((outc >> 3) & 0x1f); _v.Ram[ca] = (byte)p; _v.Ram[ca + 1] = (byte)(p >> 8); }
-                else if (cbpp == 4) BitConverter.TryWriteBytes(_v.Ram.AsSpan((int)ca), cfmt == 5 ? outc | 0xff000000 : outc);
-                else _v.Ram[ca] = (byte)outc;
+                {
+                    if (cbpp == 2) { uint p = ((outc >> 8) & 0xf800) | ((outc >> 5) & 0x07e0) | ((outc >> 3) & 0x1f); _v.Ram[ca] = (byte)p; _v.Ram[ca + 1] = (byte)(p >> 8); }
+                    else if (cbpp == 4) BitConverter.TryWriteBytes(_v.Ram.AsSpan((int)ca), cfmt == 5 ? outc | 0xff000000 : outc);
+                    else _v.Ram[ca] = (byte)outc;
+                }
                 if (zWrite)
                 {
                     if (z16) { _v.Ram[za] = (byte)zv; _v.Ram[za + 1] = (byte)(zv >> 8); }
                     else { uint old = BitConverter.ToUInt32(_v.Ram, (int)za); BitConverter.TryWriteBytes(_v.Ram.AsSpan((int)za), (zv << 8) | (old & 0xff)); }
                 }
+                if (sNew >= 0) WriteStencil(za, sOld, sNew, sWMask);
                 Pixels3D++;
             }
         }
     }
+
+    private void WriteStencil(uint za, int sOld, int sNew, int wmask) => _v.Ram[za] = (byte)((sOld & ~wmask) | (sNew & wmask));
 
     private static uint MaskBits(uint m) => ((m >> 24) & 1) * 0xff000000 | ((m >> 16) & 1) * 0x00ff0000 | ((m >> 8) & 1) * 0x0000ff00 | (m & 1) * 0x000000ff;
 
@@ -335,11 +516,11 @@ public sealed partial class NvGeForce
         }
     }
 
-    private Vec4 Combine(uint inst, Vec4 prim, Vec4 sec, Vec4 t0, Vec4 t1)
+    private Vec4 Combine(uint inst, Vec4 prim, Vec4 sec, Vec4 t0, Vec4 t1, Vec4 fog)
     {
         var reg = new Vec4[16];
         reg[1] = Vec4.FromArgb(G(inst, 0x270)); reg[2] = Vec4.FromArgb(G(inst, 0x274));
-        reg[4] = prim; reg[5] = sec; reg[8] = t0; reg[9] = t1;
+        reg[3] = fog; reg[4] = prim; reg[5] = sec; reg[8] = t0; reg[9] = t1;
         reg[12] = new Vec4(0, 0, 0, t0.W);   // spare0 starts with texture 0's alpha (GL rule)
         for (int s = 0; s < 2; s++)
         {
