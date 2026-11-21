@@ -80,9 +80,18 @@ public sealed class S3Virge
         if (sh + bits >= 32) { _pendAddr = 0xffffffff; WriteReg(a, _pend); }
     }
 
+    private int _lastFrame;
     public uint Read32(uint off)
     {
         off &= 0xfffc;
+        if (_v.FrameCount != _lastFrame) { _lastFrame = _v.FrameCount; _subStat |= 1; }   // vertical sync since the last look: INT_VSY
+        uint r = Read32Core(off);
+        if (Log && !(off is 0x8504)) Console.WriteLine($"virge r {off:X4} = {r:X8}");
+        return r;
+    }
+
+    private uint Read32Core(uint off)
+    {
         if (off is >= 0x83b0 and < 0x83e0) { uint r = 0; for (int i = 0; i < 4; i++) r |= (uint)_v.In((int)(0x3b0 + (off - 0x83b0) + i)) << (8 * i); return r; }
         if (off is >= 0x8180 and < 0x8280) return _misc[((off - 0x8180) / 4) & 0x3f];
         switch (off)
