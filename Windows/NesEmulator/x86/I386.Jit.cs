@@ -364,6 +364,7 @@ public sealed partial class I386
     }
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JGrp3(int bits) => Grp3Body(bits);
     /// <summary>FE / FF: INC / DEC Eb / Ev, CALL / JMP / PUSH Ev (after JPrep; the far forms are never compiled). False = a fault.</summary>
+    private static readonly bool CmOne = Environment.GetEnvironmentVariable("X86_CMONE") != null;
     private static readonly bool NoGrp5Inl = Environment.GetEnvironmentVariable("X86_NOGRP5INL") != null;
     private static bool Grp5Inline(in DEntry e) => !NoGrp5Inl && e.Reg is 2 or 4 or 6 && e.Bits != 8;
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JGrp5(int bits)
@@ -973,8 +974,19 @@ public sealed partial class I386
             Op(bits == 8 ? OpCodes.Stind_I1 : bits == 16 ? OpCodes.Stind_I2 : OpCodes.Stind_I4);
             // a code line (I386.cs CodeWr): the page moves on
             Ld(cmref); Ld(phys); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1);
-            if (bits != 8) { Ld(cmref); Ld(phys); I4(bits / 8 - 1); Op(OpCodes.Add); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1); Op(OpCodes.Or); }
-            il.Emit(OpCodes.Brfalse, done);
+            if (bits != 8 && !CmOne) { Ld(cmref); Ld(phys); I4(bits / 8 - 1); Op(OpCodes.Add); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1); Op(OpCodes.Or); }
+            if (bits != 8 && CmOne)
+            {   // (X86_CMONE: the second line only when the store crosses into it)
+                var code = il.DefineLabel();
+                il.Emit(OpCodes.Brtrue, code);
+                Ld(phys); I4(63); Op(OpCodes.And); I4(64 - bits / 8); il.Emit(OpCodes.Ble_Un, done);
+                Ld(cmref); Ld(phys); I4(bits / 8 - 1); Op(OpCodes.Add); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1);
+                il.Emit(OpCodes.Brfalse, done);
+                il.MarkLabel(code);
+                Ld0(); Ld(phys); I4(bits / 8); Call("CodeWrite");
+                il.Emit(OpCodes.Br, done);
+            }
+            else il.Emit(OpCodes.Brfalse, done);
             Ld0(); Ld(phys); I4(bits / 8); Call("CodeWrite");
             il.Emit(OpCodes.Br, done);
             il.MarkLabel(slow);
