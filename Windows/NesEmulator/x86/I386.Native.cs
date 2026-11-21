@@ -487,30 +487,59 @@ public sealed partial class I386
         if (cp == null) cp = NatCtxInit();
         ref NCtx c = ref *cp;
         c.Op = _ccOp; c.Dst = _ccDst; c.Src1 = _ccSrc1; c.Src2 = _ccSrc2; c.Mask = _ccMask; c.Flags = Flags;
-        c.Cyc = Cycle; c.St = _steps; c.ExitKind = 0; c.Ip0 = Ip - (code.Addrs[0] - code.Start); c.CsLim = SegLimit[SEG_CS];
+        c.Cyc = Cycle; c.St = _steps; c.CsLim = SegLimit[SEG_CS];
         long tag = (long)_nTag + (Cpl == 3 ? 2 * TlbSize * 4 : 0);
         c.TlbR = tag; c.TlbW = tag + TlbSize * 4;
-        int st0 = _steps;
-        uint[] rSave = NativeVerify ? (uint[])R.Clone() : null!;
-        if (NativeStat) { long q0 = System.Diagnostics.Stopwatch.GetTimestamp(); ((delegate* unmanaged[SuppressGCTransition]<NCtx*, int>)ni.Fn)(cp); StatCallTicks += System.Diagnostics.Stopwatch.GetTimestamp() - q0; }
-        else ((delegate* unmanaged[SuppressGCTransition]<NCtx*, int>)ni.Fn)(cp);
-        NatRuns++;
-        if (c.ExitKind == 0 && c.St == st0)
-        {   // left before its first instruction, nothing done: the IL code runs it
-            NatNoProgress++;
-            return code.Fn(this, 0);
+        int loaded = ni.SegMask;   // (the segments JSegLoad has checked: the native code never changes a segment)
+        bool first = true;
+        while (true)
+        {
+            int st0 = c.St;
+            c.ExitKind = 0; c.Ip0 = Ip - (code.Addrs[0] - code.Start);
+            uint[] rSave = NativeVerify ? (uint[])R.Clone() : null!;
+            if (NativeStat) { long q0 = System.Diagnostics.Stopwatch.GetTimestamp(); ((delegate* unmanaged[SuppressGCTransition]<NCtx*, int>)ni.Fn)(cp); StatCallTicks += System.Diagnostics.Stopwatch.GetTimestamp() - q0; }
+            else ((delegate* unmanaged[SuppressGCTransition]<NCtx*, int>)ni.Fn)(cp);
+            NatRuns++;
+            if (c.ExitKind == 0 && c.St == st0)
+            {   // left before its first instruction, nothing done: the IL code runs it (from the state as it is now)
+                NatNoProgress++;
+                _ccOp = c.Op; _ccDst = c.Dst; _ccSrc1 = c.Src1; _ccSrc2 = c.Src2; _ccMask = c.Mask; Flags = c.Flags;
+                Cycle = c.Cyc; _steps = c.St;
+                if (!first) _jitCur = code;
+                return code.Fn(this, 0);
+            }
+            if (NativeVerify) { _ccOp = c.Op; NatVerify(code, ref c, st0, rSave); }
+            NatRetired += st0 - c.St;
+            ni.Retired += st0 - c.St;
+            if (++ni.Runs == 256 && ni.Retired < 256 * NativeMinRun) { code.NI = null; NatDemoted++; }   // (exact either way: the IL code from now on)
+            uint ip0 = c.Ip0;
+            uint nextIp;
+            if (c.ExitKind == 0) { NatBefore++; if (NativeStat) { var xe = code.Ins![c.ExitK]; int key = xe.Kind * 2 + (NatSupported(xe, code.Addrs[c.ExitK]) ? 1 : 0); NatWhy[key]++; } uint ipk = ip0 + (code.Addrs[c.ExitK] - code.Start); Ip = ipk; NextIp = ipk; break; }
+            NatAfter++;
+            Ip = ip0 + (code.Addrs[c.ExitK] - code.Start); nextIp = c.ExitKind == 2 ? c.ExitNext : ip0 + (c.ExitNext - code.Start);
+            NextIp = nextIp;
+            // chaining (X86_NATIVENOCHAIN: off): budget left and the next address starts a block with native code (entry 0) on the cached
+            // fetch page: run it from here, as Exec1 + JitTry would (the same checks), without leaving
+            if (c.St <= 0 || NoNatChain || NativeVerify) break;
+            uint laddr = SegBase[SEG_CS] + nextIp;
+            if (((ulong)laddr ^ _ifLaddr) >= 4096 - 16) break;
+            uint paddr = _ifXaddr ^ laddr;
+            ref var en = ref _je[JitIndex(paddr)];
+            if (!en.Used || en.Start != paddr || en.C16 != Code16 || en.Pg != ((Cr0 & CR0_PG) != 0) || en.K != 0 || en.Code is not JitCode nc || nc.NI is not NativeInfo nn || nc.SpecFail || !JitSame(nc)) break;
+            if ((nn.SegMask & ~loaded) != 0) { JSegLoad(nn.SegMask); loaded |= nn.SegMask; }
+            bool ok = SpMask == nn.Spm;
+            foreach (int s in nn.SpecSegs) if (!JSSame(s, nn.SBase[s], nn.SSpan[s], nn.SLo[s])) { ok = false; break; }
+            if (!ok) break;
+            // Exec1's step: _steps = st + 1, then its loop counts one down: st; Step1: Ip = NextIp
+            Ip = nextIp;
+            code = nc; ni = nn; _jitCur = nc; first = false; NatChained++;
         }
-        if (NativeVerify) { NatVerify(code, ref c, st0, rSave); }
         _ccOp = c.Op; _ccDst = c.Dst; _ccSrc1 = c.Src1; _ccSrc2 = c.Src2; _ccMask = c.Mask; Flags = c.Flags;
-        NatRetired += st0 - c.St;
-        ni.Retired += st0 - c.St;
-        if (++ni.Runs == 256 && ni.Retired < 256 * NativeMinRun) { code.NI = null; NatDemoted++; }   // (exact either way: the IL code from now on)
-        uint ip0 = Ip - (code.Addrs[0] - code.Start);   // (the Ip of the region's start address: entry 0 is its lowest address, not always Start)
         Cycle = c.Cyc; _steps = c.St + 1;
-        if (c.ExitKind == 0) { NatBefore++; if (NativeStat) { var xe = code.Ins![c.ExitK]; int key = xe.Kind * 2 + (NatSupported(xe, code.Addrs[c.ExitK]) ? 1 : 0); NatWhy[key]++; } uint ipk = ip0 + (code.Addrs[c.ExitK] - code.Start); Ip = ipk; NextIp = ipk; }
-        else { NatAfter++; Ip = ip0 + (code.Addrs[c.ExitK] - code.Start); NextIp = c.ExitKind == 2 ? c.ExitNext : ip0 + (c.ExitNext - code.Start); }
         return OK;
     }
+    private static readonly bool NoNatChain = Environment.GetEnvironmentVariable("X86_NATIVENOCHAIN") != null;
+    public static long NatChained;
 
     /// <summary>X86_NATIVESTAT: time one entry-0 run of a block that has native code (native with X86_NATIVE, else its IL code).</summary>
     private int NativeStatRun(JitCode code)
@@ -560,7 +589,7 @@ public sealed partial class I386
     }
 
     public static string NativeReport() =>
-        $"native: compiled {NatCompiled} (covered instrs {NatInstrs}), runs {NatRuns} retired {NatRetired}, exits before {NatBefore} after {NatAfter}, no-progress {NatNoProgress}, skipped {NatSkipped}, demoted {NatDemoted}, code {NExecMem.BytesUsed / 1024} KB" +
+        $"native: compiled {NatCompiled} (covered instrs {NatInstrs}), runs {NatRuns} retired {NatRetired}, exits before {NatBefore} after {NatAfter}, no-progress {NatNoProgress}, skipped {NatSkipped}, demoted {NatDemoted}, chained {NatChained}, code {NExecMem.BytesUsed / 1024} KB" +
         (NativeStat ? $" | stat ({(NativeOn ? "native" : "IL")}): runs {StatRuns} retired {StatRetired} ticks {StatTicks} = {(StatRetired == 0 ? 0 : StatTicks * 1e9 / System.Diagnostics.Stopwatch.Frequency / StatRetired):F2} ns/retired, {(StatRuns == 0 ? 0 : StatTicks * 1e9 / System.Diagnostics.Stopwatch.Frequency / StatRuns):F1} ns/run, inside the native call {StatCallTicks * 1e9 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, StatRuns):F1} ns/run" : "") +
         (NativeStat ? "\nnative exits before, by kind (k=kind, s=supported: a runtime leave): " + string.Join(" ", Enumerable.Range(0, 128).Where(i => NatWhy[i] > 0).OrderByDescending(i => NatWhy[i]).Take(16).Select(i => $"k{i / 2}{(i % 2 == 1 ? "s" : "")}={NatWhy[i]}")) : "");
 }
