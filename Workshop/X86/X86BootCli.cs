@@ -513,6 +513,12 @@ internal static class X86BootCli
             _capKeep[keep] = w.Array; return w.Array!;
         });
         double t = sw.Elapsed.TotalMilliseconds; _capCopyMs += t; if (t > _capCopyMax) _capCopyMax = t; _capCount++;
+        if (_capCount % 60 == 0 && Environment.GetEnvironmentVariable("X86_MEMLOG") == "1")
+        {   // the soak's memory, managed vs the rest (diagnostics)
+            var gi = GC.GetGCMemoryInfo(); var pr = Process.GetCurrentProcess();
+            long kept = 0; foreach (var b in _capKeep) kept += b?.Length ?? 0;
+            Console.WriteLine($"memlog: states {_capCount} ws {pr.WorkingSet64 >> 20} MB private {pr.PrivateMemorySize64 >> 20} MB managed heap {gi.HeapSizeBytes >> 20} MB committed {gi.TotalCommittedBytes >> 20} MB fragmented {gi.FragmentedBytes >> 20} MB loh {gi.GenerationInfo[3].SizeAfterBytes >> 20} MB kept buffers {kept >> 20} MB payload bufs {(_capBuf[0]?.Capacity ?? 0) / 1048576}+{(_capBuf[1]?.Capacity ?? 0) / 1048576} MB gc2 {GC.CollectionCount(2)}");
+        }
     }
     private static void CaptureReport()
     {

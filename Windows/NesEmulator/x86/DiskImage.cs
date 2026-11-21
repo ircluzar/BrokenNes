@@ -205,18 +205,24 @@ public sealed class DiskImage
     // ================= the diff in a savestate =================
 
     /// <summary>Writes floppy flag, base length + hash, then the overlay as runs of consecutive sectors in LBA order (canonical: the same disk writes the same bytes).</summary>
+    private long[] _keys = Array.Empty<long>();
     public void SaveDiff(BinaryWriter w, bool byObject = false)
     {
         w.Write(IsFloppy); w.Write(Base.LongLength); w.Write(byObject ? ObjectKey(Base) : BaseHash);
-        var keys = new List<long>(_overlay.Keys);
+        // the sorted sector list in a buffer kept with the disk (a Win98 disk has ~80k changed sectors: a new 640 KB list per state was
+        // large-object garbage a second under the bug capture, never collected between rare gen-2 GCs: the soak's creep)
+        int count = _overlay.Count;
+        if (_keys.Length < count) _keys = new long[count + count / 4 + 1024];
+        _overlay.Keys.CopyTo(_keys, 0);
+        var keys = _keys.AsSpan(0, count);
         keys.Sort();
         int runs = 0;
-        for (int i = 0; i < keys.Count; i++) if (i == 0 || keys[i] != keys[i - 1] + 1) runs++;
+        for (int i = 0; i < count; i++) if (i == 0 || keys[i] != keys[i - 1] + 1) runs++;
         w.Write(runs);
-        for (int i = 0; i < keys.Count;)
+        for (int i = 0; i < count;)
         {
             int j = i + 1;
-            while (j < keys.Count && keys[j] == keys[j - 1] + 1) j++;
+            while (j < count && keys[j] == keys[j - 1] + 1) j++;
             w.Write(keys[i]); w.Write(j - i);
             for (int k = i; k < j; k++) w.Write(_overlay[keys[k]]);
             i = j;
