@@ -21,6 +21,8 @@ public sealed class N98Seat
     public string Id = "", Title = "", Machine = "win98-p166-nano", CacheDir = "", ImagePath = "";
     public byte[] Image = Array.Empty<byte>(), Command = Array.Empty<byte>();
     public string? CdPath;
+    /// <summary>The seat's second disk (primary slave) when the package writes D: (StarCraft's install does not fit on the seat C:).</summary>
+    public byte[]? Image2; public string? Image2Path;
 
     public static bool IsPackage(string fileName) => fileName.EndsWith(".n98", StringComparison.OrdinalIgnoreCase);
 
@@ -33,6 +35,7 @@ public sealed class N98Seat
         string root = Environment.GetEnvironmentVariable("BROKENNES_N98_CACHE") is { Length: > 0 } c ? c
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BrokenNes", "nano98");
         var s = new N98Seat { Id = id, CacheDir = Path.Combine(root, id) };
+        string? dName = null;
         Directory.CreateDirectory(s.CacheDir);
         string pkgPath = Path.Combine(s.CacheDir, "package.n98");
         if (!File.Exists(pkgPath)) File.WriteAllBytes(pkgPath, pkg);
@@ -53,17 +56,30 @@ public sealed class N98Seat
                     if (cd.TryGetProperty("ref", out var rf) && rf.GetString() is { Length: > 0 } name)
                         foreach (var dir in new[] { Environment.GetEnvironmentVariable("BROKENNES_N98_CDS"), s.CacheDir })
                             if (!string.IsNullOrEmpty(dir) && File.Exists(Path.Combine(dir, name))) { s.CdPath ??= Path.Combine(dir, name); break; }
+            if (r.TryGetProperty("base", out var bs) && bs.TryGetProperty("drives", out var dv) && dv.TryGetProperty("D", out var dd))
+                dName = dd.TryGetProperty("image", out var di) ? di.GetString() : null;
         }
 
         string baseImg = Environment.GetEnvironmentVariable("BROKENNES_N98_BASE") is { Length: > 0 } b ? b : Path.Combine(AppContext.BaseDirectory, "x86", "nano98", "seat_base.img");
         if (!File.Exists(baseImg)) throw new FileNotFoundException($"the nano98 seat base image is missing ({baseImg}); set BROKENNES_N98_BASE");
         s.ImagePath = Path.Combine(s.CacheDir, "C.img");
+        // D: base (BROKENNES_N98_BASE_D, else the manifest's D image beside the seat base / in BROKENNES_N98_CDS)
+        string? baseD = null;
+        if (dName != null)
+        {
+            baseD = Environment.GetEnvironmentVariable("BROKENNES_N98_BASE_D") is { Length: > 0 } bd ? bd
+                : new[] { Path.GetDirectoryName(baseImg), Environment.GetEnvironmentVariable("BROKENNES_N98_CDS") }.Where(x => !string.IsNullOrEmpty(x))
+                    .Select(x => Path.Combine(x!, dName)).FirstOrDefault(File.Exists);
+            if (baseD == null || !File.Exists(baseD)) throw new FileNotFoundException($"{fileName} writes drive D: and its D base image ({dName}) was not found; set BROKENNES_N98_BASE_D");
+            s.Image2Path = Path.Combine(s.CacheDir, "D.img");
+        }
         string cmdPath = Path.Combine(s.CacheDir, "command.txt");
-        if (!File.Exists(s.ImagePath) || File.GetLastWriteTimeUtc(s.ImagePath) < File.GetLastWriteTimeUtc(baseImg))
+        if (!File.Exists(s.ImagePath) || (s.Image2Path != null && !File.Exists(s.Image2Path)) || File.GetLastWriteTimeUtc(s.ImagePath) < File.GetLastWriteTimeUtc(baseImg))
         {
             string outDir = Path.Combine(s.CacheDir, "apply.tmp");
             if (Directory.Exists(outDir)) Directory.Delete(outDir, true);
-            RunTool("apply", $"\"{pkgPath}\" --base C=\"{baseImg}\" --out \"{outDir}\" --full");
+            RunTool("apply", $"\"{pkgPath}\" --base C=\"{baseImg}\"" + (baseD != null ? $" D=\"{baseD}\"" : "") + $" --out \"{outDir}\" --full");
+            if (s.Image2Path != null) File.Move(Path.Combine(outDir, "D.img"), s.Image2Path, true);
             if (File.Exists(Path.Combine(outDir, "C.img"))) File.Move(Path.Combine(outDir, "C.img"), s.ImagePath, true);
             else File.Copy(baseImg, s.ImagePath, true);   // a package that changes nothing on C: (a program already on the base)
             Directory.Delete(outDir, true);
@@ -73,6 +89,7 @@ public sealed class N98Seat
         if (!File.Exists(cmdPath)) RunTool("cmd", $"\"{pkgPath}\" \"{cmdPath}\" --exit poweroff");
         s.Command = File.ReadAllBytes(cmdPath);
         s.Image = DiskImage.ReadImageFile(s.ImagePath);   // (+ its cached base hash: the resume snapshot's disk diff is against it)
+        if (s.Image2Path != null) s.Image2 = DiskImage.ReadImageFile(s.Image2Path);
         return s;
     }
 
