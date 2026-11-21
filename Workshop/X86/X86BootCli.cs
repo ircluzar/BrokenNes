@@ -493,19 +493,25 @@ internal static class X86BootCli
     private static int _capEvery, _capFrame, _capFlip, _capCount;
     private static readonly MemoryStream?[] _capBuf = new MemoryStream?[2];
     private static System.Threading.Tasks.Task<byte[]>? _capPack;
+    private static readonly byte[]?[] _capKeep = new byte[]?[32];
     private static double _capCopyMs, _capCopyMax, _capWaitMs; private static long _capBytes;
     private static void CaptureTick(PcMachine m)
     {
         var sw = Stopwatch.StartNew();
-        if (_capPack != null) { _capBytes = _capPack.Result.Length; }
+        if (_capPack != null) { _capBytes = _capPack.Result.Length; }   // (the buffer's length: WrapInto may leave spare room)
         _capWaitMs += sw.Elapsed.TotalMilliseconds;
         _capFlip ^= 1;
         var ms = _capBuf[_capFlip] ??= new MemoryStream();
         ms.SetLength(0);
         m.SaveState(ms);
         var seg = new ArraySegment<byte>(ms.GetBuffer(), 0, (int)ms.Length);
-        _capPack = System.Threading.Tasks.Task.Run(() => NesEmulator.Systems.ConsoleStateFile.Wrap(NesEmulator.Systems.ConsoleKind.Pc, "soak", "soak",
-            new Dictionary<string, string> { ["format"] = "x86-1" }, seg));
+        // packed into the evicted one of 32 kept buffers (as BugCaptureRing's slots reuse theirs since 8d4e62fb): memory flat, like the desktop
+        int keep = _capCount % _capKeep.Length; var reuse = _capKeep[keep];
+        _capPack = System.Threading.Tasks.Task.Run(() =>
+        {
+            var w = NesEmulator.Systems.ConsoleStateFile.WrapInto(NesEmulator.Systems.ConsoleKind.Pc, "soak", "soak", new Dictionary<string, string> { ["format"] = "x86-1" }, seg, reuse);
+            _capKeep[keep] = w.Array; return w.Array!;
+        });
         double t = sw.Elapsed.TotalMilliseconds; _capCopyMs += t; if (t > _capCopyMax) _capCopyMax = t; _capCount++;
     }
     private static void CaptureReport()
