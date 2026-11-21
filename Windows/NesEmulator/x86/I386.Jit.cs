@@ -164,7 +164,7 @@ public sealed partial class I386
             }
             if (en.Pending && JitHotQ) en.Visits++;   // (X86_JITHOTQ: the queue compiles the most-run waiting region first)
             if (en.Failed || en.Pending) { if (PcMachine.TimeProbe) _jtWhy = en.Failed ? 2 : 3; return JIT_DECLINE; }
-            if (++en.Visits >= _jitHotNow) { if (PcMachine.TimeProbe) _jtWhy = 4; JitCompile(ref en); }
+            if (++en.Visits >= (JitHotPg > 0 && _jitPgCode != null && (paddr >> 12) < (uint)_jitPgCode.Length && _jitPgCode[paddr >> 12] ? Math.Min(JitHotPg, _jitHotNow) : _jitHotNow)) { if (PcMachine.TimeProbe) _jtWhy = 4; JitCompile(ref en); }
             else if (PcMachine.TimeProbe) _jtWhy = 5;
             return JIT_DECLINE;
         }
@@ -862,8 +862,13 @@ public sealed partial class I386
     }
 
     /// <summary>Every instruction of a region is an entry point (a batch may end anywhere in it).</summary>
+    /// <summary>X86_JITHOTPG=N (warm-up, opt-in): addresses on a physical page that already holds installed compiled code get hot after N visits
+    /// instead of JitHot (code next to hot code is likely hot too). Only changes when a region is asked for, never what it does.</summary>
+    private static readonly int JitHotPg = int.TryParse(Environment.GetEnvironmentVariable("X86_JITHOTPG"), out int jhp) ? jhp : 0;
+    private bool[]? _jitPgCode;
     private void JitRegister(JitCode code)
     {
+        if (JitHotPg > 0) { _jitPgCode ??= new bool[(MemSize >> 12) + 1]; if ((code.Start >> 12) < (uint)_jitPgCode.Length) _jitPgCode[code.Start >> 12] = true; }
         for (int k = 0; k < code.Addrs.Length; k++)
         {
             uint pa = code.Addrs[k];
