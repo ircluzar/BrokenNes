@@ -41,7 +41,8 @@ public sealed partial class I386
         public long NXlat, NSlow, NOol, NCond;   // JITSTAT: TLB misses (JXlat), non-RAM / split accesses, out-of-line instructions, Cond calls
         public uint[] Pages = Array.Empty<uint>(), Gens = Array.Empty<uint>();   // the 4 KB pages Bytes come from, and their code write generations when last checked
         public uint Epoch = 0xffffffff;   // _memEpoch when last checked (FFFFFFFF: never: compare the bytes)
-        public bool SpecFail;   // its segment specialization no longer held at a run: compiled again without it
+        public bool SpecFail;
+        public uint SegKey = 0xffffffff;   // the JSegKey its last full segment check passed with (segment generation)   // its segment specialization no longer held at a run: compiled again without it
     }
 
     /// <summary>One instruction address: how often it was reached, and the compiled block (and instruction in it) that starts there.</summary>
@@ -305,6 +306,9 @@ public sealed partial class I386
     private static readonly bool NoRamRange = Environment.GetEnvironmentVariable("X86_NORAMRANGE") != null;
     /// <summary>X86_SHAREDEXIT: one shared budget-out exit per block (opt-in: A/B 2026-11-20 +5.9% ns/retired, no gain).</summary>
     private static readonly bool NoSharedExit = Environment.GetEnvironmentVariable("X86_SHAREDEXIT") == null;
+    /// <summary>X86_SEGGEN: the segment-generation prologue fast path (opt-in: Garage2 6 rounds AoE +2.7%, StarCraft +0.9%, no gain).</summary>
+    private static readonly bool NoSegGen = Environment.GetEnvironmentVariable("X86_SEGGEN") == null;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegKey() => SegGen << 2 | ((Flags >> 16) & 2) | (Cr0 & 1);
     private static readonly bool NoSegSpec = Environment.GetEnvironmentVariable("X86_NOSEGSPEC") != null;
     private readonly HashSet<ulong> _segSpecOff = new();   // blocks whose specialization failed once: compiled without it from then on
     public long JitSpecFails;
@@ -558,14 +562,15 @@ public sealed partial class I386
         ?? throw new MissingFieldException(nameof(I386), name);
     private static readonly FieldInfo FSrc1 = Fld("_ccSrc1"), FSrc2 = Fld("_ccSrc2"), FDst = Fld("_ccDst"), FDst2 = Fld("_ccDst2"), FOp = Fld("_ccOp"),
         FMask = Fld("_ccMask"), FFlags = Fld("Flags"), FR = Fld("R"), FMem = Fld("Mem"), FSpm = Fld("_spm"),
-        FTlbL = Fld("_tlbLpgno"), FTlbX = Fld("_tlbXaddr"), FTlbT = Fld("_tlbTag"), FCpl = Fld("Cpl"), FCodeMark = Fld("_codeMark"), FDeclWhy = Fld("_declWhy");
+        FTlbL = Fld("_tlbLpgno"), FTlbX = Fld("_tlbXaddr"), FTlbT = Fld("_tlbTag"), FCpl = Fld("Cpl"), FCodeMark = Fld("_codeMark"), FDeclWhy = Fld("_declWhy"), FJitCur = Fld("_jitCur"),
+        FSegKey = typeof(JitCode).GetField("SegKey")!;
 
     private static MethodInfo M(string name) => typeof(I386).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
         ?? throw new MissingMethodException(nameof(I386), name);
     private static readonly Lazy<Dictionary<string, MethodInfo>> JitMethods = new(() =>
     {
         var d = new Dictionary<string, MethodInfo>();
-        foreach (var n in new[] { "JRam", "JGetCF", "JSegLoad", "JSSame", "JSSameLive", "JSpecFail", "JSOk", "JSRd", "JSBase", "JSSpan", "JSLo", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JFpuNmRefund", "JMmxNmRefund", "JMmx", "JCodeSame", "JCall", "JRet",
+        foreach (var n in new[] { "JRam", "JSegKey", "JGetCF", "JSegLoad", "JSSame", "JSSameLive", "JSpecFail", "JSOk", "JSRd", "JSBase", "JSSpan", "JSLo", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JFpuNmRefund", "JMmxNmRefund", "JMmx", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
                      "JXlat", "JFlagOp", "JStk", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
             d[n] = M(n);
@@ -1018,6 +1023,15 @@ public sealed partial class I386
         int segMask = 0;
         foreach (int s in usedSegs) segMask |= 1 << s;
         bool segLoad = !NoSegLoad && segMask != 0;
+        // segment generation (X86_SEGGEN: on; off by default): when every segment the block uses is specialized, the block remembers the SegGen / VM / PE
+        // key its last full check passed with; the same key again = nothing segment-related changed: no JSegLoad, no per-segment checks
+        bool segGenFast = !NoSegGen && segLoad && spec != null && spec.Mask != 0 && (segMask & ~spec.Mask) == 0;
+        var segKeyL = segGenFast ? il.DeclareLocal(typeof(uint)) : null; var segFastOk = il.DefineLabel(); var segAfter = il.DefineLabel();
+        if (segGenFast)
+        {
+            Ld0(); Call("JSegKey"); Stl(segKeyL!);
+            Ld0(); il.Emit(OpCodes.Ldfld, FJitCur); il.Emit(OpCodes.Ldfld, FSegKey); Ld(segKeyL!); il.Emit(OpCodes.Beq, segFastOk);
+        }
         if (segLoad) { Ld0(); I4(segMask); Call("JSegLoad"); }
         // segment specialization (X86_NOSEGSPEC: off): a segment usable when the block was compiled has its base / span / lo as constants and
         // no per-instruction usability test; the prologue checks it still holds those values (else: decline, and the block is compiled again
@@ -1039,7 +1053,17 @@ public sealed partial class I386
             Ld0(); il.Emit(OpCodes.Ldarg_1); Call("JSpecFail");
             Ld0(); I4(40); il.Emit(OpCodes.Stfld, FDeclWhy); I4(JIT_DECLINE); il.Emit(OpCodes.Ret);
             il.MarkLabel(good);
+            if (segGenFast)
+            {   // (a real run only: entry -1 is the compile's trial call, _jitCur is some other block then)
+                il.Emit(OpCodes.Ldarg_1); Op(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Blt, segAfter);
+                Ld0(); il.Emit(OpCodes.Ldfld, FJitCur); Ld(segKeyL!); il.Emit(OpCodes.Stfld, FSegKey);
+                il.Emit(OpCodes.Br, segAfter);
+                il.MarkLabel(segFastOk);
+                LdF(FSpm); U4(spec!.Spm); il.Emit(OpCodes.Bne_Un, bad);
+            }
         }
+        il.MarkLabel(segAfter);
+        if (!segGenFast) il.MarkLabel(segFastOk);
         foreach (int s in usedSegs)
         {
             if (IsSpec(s)) continue;

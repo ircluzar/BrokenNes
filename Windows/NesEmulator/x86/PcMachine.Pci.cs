@@ -406,7 +406,7 @@ public sealed partial class PcMachine
         uint oldEs = C.SegSel[I386.SEG_ES], oldBase = C.SegBase[I386.SEG_ES], oldLim = C.SegLimit[I386.SEG_ES], oldFl = C.SegFlags[I386.SEG_ES];
         bool ok = C.LoadSeg(I386.SEG_ES, sel);
         for (int i = 0; ok && i < data.Length; i++) ok = C.CpuStore(8, I386.SEG_ES, off + (uint)i, data[i]);
-        C.SegSel[I386.SEG_ES] = oldEs; C.SegBase[I386.SEG_ES] = oldBase; C.SegLimit[I386.SEG_ES] = oldLim; C.SegFlags[I386.SEG_ES] = oldFl;
+        C.SegGen++; C.SegSel[I386.SEG_ES] = oldEs; C.SegBase[I386.SEG_ES] = oldBase; C.SegLimit[I386.SEG_ES] = oldLim; C.SegFlags[I386.SEG_ES] = oldFl;
         return ok;
     }
 
@@ -506,7 +506,7 @@ public sealed partial class PcMachine
         bool ok = C.LoadSeg(I386.SEG_ES, sel);
         uint v = 0;
         if (ok) ok = C.CpuLoad(8, I386.SEG_ES, off, out v);
-        C.SegSel[I386.SEG_ES] = oldEs; C.SegBase[I386.SEG_ES] = oldBase; C.SegLimit[I386.SEG_ES] = oldLim; C.SegFlags[I386.SEG_ES] = oldFl;
+        C.SegGen++; C.SegSel[I386.SEG_ES] = oldEs; C.SegBase[I386.SEG_ES] = oldBase; C.SegLimit[I386.SEG_ES] = oldLim; C.SegFlags[I386.SEG_ES] = oldFl;
         b = (byte)v;
         return ok;
     }
