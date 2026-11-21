@@ -392,8 +392,15 @@ namespace BrokenNes.Windows
                 {   // the stretch follows the queue (an integrator: a steady shortfall of production settles at the factor that covers it)
                     stretchF = Math.Clamp(stretchF + 0.03 * (TargetQueueMs - queueMs) / TargetQueueMs, 1.0, 3.0);
                     if (!stretching && stretchF > 1.05) { stretching = true; stretch.Reset(); stretchOn++; }
-                    else if (stretching && stretchF <= 1.0) stretching = false;
-                    if (stretching)
+                    else if (stretching && stretchF <= 1.0)
+                    {   // back to the plain path: what the stretcher holds first, crossfaded, then this frame's samples as they are
+                        stretching = false;
+                        int k = stretch.Flush(ref stretchBuf);
+                        if (stretchBuf.Length < k + o) Array.Resize(ref stretchBuf, k + o + 16);
+                        Array.Copy(outBuf, 0, stretchBuf, k, o);
+                        o += k; outBuf = stretchBuf;
+                    }
+                    else if (stretching)
                     {
                         o = stretch.Process(outBuf, o, stretchF, ref stretchBuf);
                         outBuf = stretchBuf;
