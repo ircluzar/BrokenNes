@@ -47,7 +47,7 @@ public struct Rgba
     }
 }
 
-public static class Raster3D
+public static partial class Raster3D
 {
     // ---------------- colour expansion (bit replication) ----------------
     public static int Pal1(int x) => (x & 1) != 0 ? 0xff : 0;
