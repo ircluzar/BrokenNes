@@ -98,6 +98,8 @@ public static class BugBundle
     public static SortedDictionary<string, byte[]> Files(BugCaptureData d, BugMeta meta)
     {
         var files = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
+        var tsw = System.Diagnostics.Stopwatch.StartNew(); var tlog = new StringBuilder();
+        void T(string what) { tlog.AppendLine($"{what} {tsw.Elapsed.TotalMilliseconds:F0} ms"); tsw.Restart(); }
         bool byRef = meta.DiskRefs.Count > 0;
         string romSha = byRef ? Fingerprint(meta.Rom) : Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(meta.Rom)).ToLowerInvariant();
         string romFile = "rom/" + SafeName(meta.RomName.Length > 0 ? meta.RomName : "game.bin");
@@ -118,6 +120,7 @@ public static class BugBundle
             foreach (var nt in d.Notes) if (nt.Kind == "marker") mv.Marks.Add(new MovieMark(nt.Frame, nt.Text));
             files[MovieFile] = new UTF8Encoding(false).GetBytes(mv.ToText());
         }
+        T("movie");
 
         var pics = new List<(string File, long Frame)>();
         foreach (var p in d.Pictures)
@@ -126,10 +129,14 @@ public static class BugBundle
             files[f] = BugMedia.Png(p.Pixels, p.Width, p.Height);
             pics.Add((f, p.Frame));
         }
+        T("pictures");
         if (d.Pictures.Count > 0) { var (s, w, h) = BugMedia.Strip(d.Pictures); files["strip.png"] = BugMedia.Png(s, w, h); }
+        T("strip");
         if (d.Last is { Width: > 0 } last) files["last.png"] = BugMedia.Png(last.Pixels, last.Width, last.Height);
         bool sound = d.Audio.Length > 0;
         if (sound) files["audio.wav"] = BugMedia.Wav(d.Audio, d.SampleRate);
+        T("last+audio");
+        if (Environment.GetEnvironmentVariable("BROKENNES_BUGTIMING") == "1") files["timing.txt"] = Encoding.UTF8.GetBytes(tlog.ToString());
         var symFiles = new List<string>();
         foreach (var (n, data) in meta.Symbols) { string f = "symbols/" + SafeName(n); files[f] = data; symFiles.Add(f); }
 
