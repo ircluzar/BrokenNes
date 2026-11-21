@@ -7,6 +7,8 @@ namespace BrokenNes.Windows.WebApi
 {
     public sealed class BugCaptureRequest { public string? Note { get; set; } }
     public sealed class BugEnableRequest { public bool Enabled { get; set; } }
+    public sealed class PcKeyRequest { public int Scan { get; set; } public bool Extended { get; set; } public bool Down { get; set; } }
+    public sealed class PcMouseRequest { public int Dx { get; set; } public int Dy { get; set; } public int Buttons { get; set; } }
 
     public partial class WebApiServer
     {
@@ -17,6 +19,9 @@ namespace BrokenNes.Windows.WebApi
         /// <summary>Saves a capture of the last 30 s with this note, no dialog: (bundle folder or null, message, seconds, frames, start, no-movie reason).</summary>
         public Func<string, Task<(string? path, string message, double seconds, long frames, string start, string? noMovie)>>? CaptureBug { get; set; }
         public Action<bool>? SetBugCaptureEnabled { get; set; }
+        /// <summary>The x86 PC's keyboard and mouse from a script, the same way as the real ones (queued, given before the next frame): set by the main form.</summary>
+        public Action<int, bool, bool>? PcKey { get; set; }
+        public Action<int, int, int>? PcMouse { get; set; }
 
         /// <summary>
         /// The bug capture (BrokenDev D6): GET /api/bugs/status, POST /api/bugs/capture {note} (what F9 does, the note given instead of asked; the
@@ -26,6 +31,22 @@ namespace BrokenNes.Windows.WebApi
         private void RegisterBugEndpoints(WebApplication app)
         {
             app.MapGet("/api/bugs/status", () => GetBugStatus != null ? Results.Ok(GetBugStatus()) : Results.BadRequest(new { success = false, error = "the bug capture is not wired" }));
+
+            // automation for the x86 PC's keyboard and mouse (tests of the bug capture's input recording, scripted play): scan code set 1, mouse relative + buttons
+            app.MapPost("/api/input/pc-key", async (HttpContext ctx) =>
+            {
+                if (PcKey == null) return Results.BadRequest(new { success = false, error = "not wired" });
+                var r = await ctx.Request.ReadFromJsonAsync<PcKeyRequest>();
+                if (r == null || r.Scan <= 0 || r.Scan > 0x7f) return Results.BadRequest(new { success = false, error = "scan 1-127" });
+                PcKey(r.Scan, r.Extended, r.Down); return Results.Ok(new { success = true });
+            });
+            app.MapPost("/api/input/pc-mouse", async (HttpContext ctx) =>
+            {
+                if (PcMouse == null) return Results.BadRequest(new { success = false, error = "not wired" });
+                var r = await ctx.Request.ReadFromJsonAsync<PcMouseRequest>();
+                if (r == null) return Results.BadRequest(new { success = false, error = "dx, dy, buttons" });
+                PcMouse(r.Dx, r.Dy, r.Buttons); return Results.Ok(new { success = true });
+            });
 
             app.MapPost("/api/bugs/capture", async (HttpContext ctx) =>
             {

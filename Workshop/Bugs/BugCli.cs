@@ -183,11 +183,69 @@ internal static class BugCli
     /// Replays a bundle's movie: the keyframes (one a second and the moment of the capture) checked, the last picture written to
     /// <paramref name="outDir"/>, the hardware checks when asked. Exit code: 0 in sync, 1 off course or crashed, 3 no movie.
     /// </summary>
+    /// <summary>
+    /// An x86 PC bundle: its disks by reference (bug.json "disks": C, D, CD, each checked by its fingerprint; <paramref name="rom"/> overrides C:),
+    /// the PC preset (settings "machine"), the start state, then every frame its host inputs ('x' lines: keys, mouse) and the keyframes
+    /// (picture + RAM hash). 0 in sync, 1 off course, 2 a disk is missing or differs.
+    /// </summary>
+    private static (int code, JsonObject report) PlayPc(BugBundleReader b, Movie mv, JsonObject j, string? rom, string? outDir)
+    {
+        string Disk(string slot) { foreach (var d in b.Info["disks"] as JsonArray ?? new JsonArray()) if ((string?)d?["slot"] == slot) return (string?)d?["path"] ?? ""; return ""; }
+        string Fp(string slot) { foreach (var d in b.Info["disks"] as JsonArray ?? new JsonArray()) if ((string?)d?["slot"] == slot) return (string?)d?["fingerprint"] ?? ""; return ""; }
+        string c = rom ?? Disk("C"), d2 = Disk("D"), cd = Disk("CD");
+        foreach (var (slot, path) in new[] { ("C", c), ("D", d2), ("CD", cd) })
+        {
+            if (path.Length == 0) continue;
+            if (!File.Exists(path)) { j["verdict"] = "no-disk"; j["summary"] = $"{b.Id}: the {slot} image {path} is not here"; return (2, j); }
+            if (Fp(slot) is { Length: > 0 } want && BugBundle.FingerprintFile(path) != want) { j["verdict"] = "disk-differs"; j["summary"] = $"{b.Id}: the {slot} image {path} is not the one captured (fingerprint differs)"; return (2, j); }
+        }
+        Environment.SetEnvironmentVariable("BROKENNES_X86_HDD2", d2.Length > 0 ? d2 : null);
+        Environment.SetEnvironmentVariable("BROKENNES_X86_CD", cd.Length > 0 ? cd : null);
+        string machine = b.S("settings", "machine") is { Length: > 0 } mk ? mk : "WIN98-P166";
+        var cores = (mv.Cores ?? "").Split('/');
+        string apu = cores.Length == 3 ? cores[2] : "SB16_D072";
+        using var s = new NesEmulator.X86.PcSession(File.ReadAllBytes(c), System.IO.Path.GetFileName(c), apu, cores.Length == 3 ? cores[0] : "I386", cores.Length == 3 ? cores[1] : "VGA", machine: machine);
+        if (mv.Start == MovieStart.State) s.LoadState(mv.StartState!);
+        int xi = 0, ki = 0; long firstOff = -1; int keysOk = 0;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        for (long f = 0; f < mv.Frames; f++)
+        {
+            while (xi < mv.HostInputs.Count && mv.HostInputs[xi].Frame == f)
+            {
+                var e = mv.HostInputs[xi++];
+                if (e.Kind == 'K') s.HostKey(e.A, e.B != 0, e.C != 0); else s.HostMouse(e.A, e.B, e.C);
+            }
+            s.RunFrame();
+            while (ki < mv.Keys.Count && mv.Keys[ki].Frame == f + 1)
+            {
+                var k = mv.Keys[ki++];
+                bool same = MovieHash.Picture(s.Frame, s.FrameWidth * s.FrameHeight) == k.Picture && BugCaptureSource.PcRamHash(s.Machine.Cpu.Mem) == k.Ram;
+                if (same) keysOk++; else if (firstOff < 0) firstOff = k.Frame;
+            }
+            if (firstOff >= 0) break;
+        }
+        bool inSync = firstOff < 0;
+        j["inSync"] = inSync; j["keyframesMatched"] = keysOk; j["keyframes"] = mv.Keys.Count; j["hostInputs"] = mv.HostInputs.Count;
+        j["fps"] = Math.Round(mv.Frames / Math.Max(1e-9, sw.Elapsed.TotalSeconds));
+        if (outDir != null)
+        {
+            Directory.CreateDirectory(outDir);
+            string png = System.IO.Path.Combine(outDir, b.Id + "_replay_last.png");
+            var pic = new BugPicture(); pic.FromArgb(s.Frame, s.FrameWidth, s.FrameHeight);
+            File.WriteAllBytes(png, BugMedia.Png(pic.Pixels, pic.Width, pic.Height)); j["replayLast"] = png;
+        }
+        j["verdict"] = inSync ? "in-sync" : "off-course";
+        j["summary"] = inSync ? $"{b.Id}: in sync: {keysOk} of {mv.Keys.Count} keyframes matched over {mv.Frames} frames ({mv.HostInputs.Count} host inputs replayed)"
+                              : $"{b.Id}: OFF COURSE at frame {firstOff} ({keysOk} keyframes matched before it; {xi} of {mv.HostInputs.Count} host inputs replayed)";
+        return (inSync ? 0 : 1, j);
+    }
+
     public static (int code, JsonObject report) Play(BugBundleReader b, string? rom, List<string> sym, bool checks, string? outDir)
     {
         var j = Summary(b);
         if (!b.HasMovie) { j["verdict"] = "no-movie"; j["summary"] = $"{b.Id}: nothing to replay: {b.S("noMovie")}"; return (3, j); }
         var mv = b.LoadMovie();
+        if (mv.Console == "x86") return PlayPc(b, mv, j, rom, outDir);
         string romPath = b.Rom(rom, out string romNote);
         var symbols = sym.Count > 0 ? sym : b.Symbols();
         using var m = MovieMachine.OpenFor(mv, romPath, true, symbols);

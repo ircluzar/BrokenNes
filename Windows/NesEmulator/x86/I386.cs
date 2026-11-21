@@ -124,6 +124,14 @@ public sealed partial class I386
         _repCost16 = RepCosts(model);
         _memCost = MemCost(model);
         BuildOpCosts(model, out _opCost, out _opCost0F, out _mulCost, out _divCost);
+        // X86_P5COST (measurement only, not a default): "nomem" = memory operands cost nothing extra, "nofpu" = x87 opcodes nothing extra,
+        // "flat" = every instruction one clock unit (no class extras, no memory, no REP iterations): the timing-model sensitivity for the bench ladder
+        if (Environment.GetEnvironmentVariable("X86_P5COST") is string pc && !model.Legacy)
+        {
+            if (pc.Contains("nomem") || pc.Contains("flat")) _memCost = 0;
+            if ((pc.Contains("nofpu") || pc.Contains("flat")) && _opCost != null) for (int i = 0xd8; i <= 0xdf; i++) _opCost[i] = 0;
+            if (pc.Contains("flat")) { if (_opCost != null) Array.Clear(_opCost); if (_opCost0F != null) Array.Clear(_opCost0F); if (_mulCost != null) Array.Clear(_mulCost); if (_divCost != null) Array.Clear(_divCost); _repCost16 = null; }
+        }
         Mem = new byte[memSize + 16];
         MemSize = (uint)memSize;
         _codeMark = new byte[(memSize >> 6) + 2];
