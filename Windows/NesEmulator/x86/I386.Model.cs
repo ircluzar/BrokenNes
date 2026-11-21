@@ -73,11 +73,21 @@ public sealed record CpuModel
     /// out of order, loads hidden behind the window), so the average instruction is one clock and a memory operand one extra; the P6
     /// costs more than the P5 for segment loads, far transfers and INT / IRET (microcoded, serialising). Calibrated to SPECint95-class
     /// ratios (PII 400 ~ 2.7x a P166 MMX), not per opcode.</summary>
-    public static CpuModel PentiumII => new()
+    public static CpuModel PentiumII => new CpuModel()
     {
         Id = "P2", Name = "Intel Pentium II 400 MHz", Gen = 6, Fpu = true, Ops486 = true, Cpuid = true, Ops586 = true, Mmx = true, Ops686 = true,
         Signature = 0x0652, FeatureEdx = 0x1 | 0x4 | 0x10 | 0x20 | 0x80 | 0x100 | 0x800 | 0x1000 | 0x8000 | 0x800000, ClockHz = 400_000_000, Cpi = 1.0,
-    };
+    }.EnvOverride();
+
+    /// <summary>Bisect switches (measurement only): X86_CPUID_SIG / X86_CPUID_EDX (hex) replace CPUID 1 EAX / EDX.</summary>
+    private CpuModel EnvOverride()
+    {
+        var m = this;
+        string? s = Environment.GetEnvironmentVariable("X86_CPUID_SIG"), e = Environment.GetEnvironmentVariable("X86_CPUID_EDX");
+        if (!string.IsNullOrEmpty(s)) m = m with { Signature = Convert.ToUInt32(s, 16) };
+        if (!string.IsNullOrEmpty(e)) m = m with { FeatureEdx = Convert.ToUInt32(e, 16) };
+        return m;
+    }
 
     public static readonly string[] Ids = { "LEGACY", "386DX", "386DX+387", "486DX", "486DX2", "486DX4", "P55C", "P2" };
 
@@ -255,8 +265,13 @@ public sealed partial class I386
         >= 0x200 and <= 0x20f => (int)(idx - 0x200), 0x250 => 16, 0x258 => 17, 0x259 => 18, >= 0x268 and <= 0x26f => 19 + (int)(idx - 0x268), 0x2ff => 27, _ => -1,
     };
 
+    private static readonly bool _msrLog = Environment.GetEnvironmentVariable("X86_MSRLOG") == "1";
+    private static int _msrLogN;
+    private void MsrLog(string what) { if (_msrLog && _msrLogN++ < 200) Console.WriteLine($"msrlog: {what} at {SegSel[1]:X4}:{Ip:X8} cpl {Cpl}"); }
+
     private int MsrP6(bool write, uint idx, ulong v)
     {
+        if (_msrLog) MsrLog($"{(write ? "WRMSR" : "RDMSR")} {idx:X} v {v:X}");
         int ms = MtrrSlot(idx);
         if (ms >= 0)
         {   // variable MTRR masks / bases above 36 bits and the reserved defType bits are #GP on a real chip
@@ -272,7 +287,8 @@ public sealed partial class I386
                 if (write) { _tscOffset += (long)(v - ReadTsc()); return OK; }
                 r = ReadTsc(); break;
             case 0x17: r = 1UL << 50; break;                          // IA32_PLATFORM_ID: platform 1 (Slot 1)
-            case 0x1b: return K(Throw(EX_GP, 0));                     // APIC_BASE: no local APIC reported
+            case 0x1b: if (write) return OK; r = 0xFEE0_0100; break;  // APIC_BASE: every P6 has this MSR (Win98's VMM reads it on family 6
+                                                                      // and shuts down on a #GP); BSP, base FEE00000, global enable OFF
             case 0x2a: r = 0x0C40_0000; break;                        // EBL_CR_POWERON: 4x bus ratio (100 MHz FSB -> 400), in-order queue 8
             case 0x79: return OK;                                     // BIOS_UPDT_TRIG: microcode loads are accepted and ignored
             case 0x8b: if (write) { _biosSign = v; return OK; } r = _biosSign; break;   // BIOS_SIGN_ID
@@ -350,7 +366,8 @@ public sealed partial class I386
     /// CPUID does not report them).</summary>
     private bool WriteCr4(uint v)
     {
-        if ((v & ~(CR4_TSD | CR4_DE | CR4_MCE | (_has686 ? CR4_PCE : 0))) != 0) return Throw(EX_GP, 0);
+        if ((v & ~(CR4_TSD | CR4_DE | CR4_MCE | (_has686 ? CR4_PCE : 0))) != 0) { MsrLog($"CR4 write {v:X} #GP"); return Throw(EX_GP, 0); }
+        if (_msrLog) MsrLog($"CR4 write {v:X}");
         Cr4 = v;
         return true;
     }
