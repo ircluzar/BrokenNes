@@ -213,13 +213,14 @@ internal static class X86BootCli
         int n = 0;
         foreach (var (sf, sp) in shotAt) { n += RunUntil(m, null, sf - n); X86Shots.SavePng(m.Vga, sp); Console.WriteLine($"x86boot: frame {n} at {sw.Elapsed.TotalSeconds:F1} s, cycle {m.Cpu.Cycle}"); }
         var hot = new Dictionary<string, int>();
-        bool sampling = args.Contains("--hot");
+        bool hotVm = args.Contains("--hotvm"), sampling = args.Contains("--hot") || hotVm;
         var sampler = sampling ? new System.Threading.Thread(() =>
         {
             while (sampling)
             {
                 System.Threading.Thread.Sleep(1);
-                string k = $"{m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip & ~0x3fu:X8} vm{(m.Cpu.Flags >> 17) & 1} pe{m.Cpu.Cr0 & 1}";
+                if (hotVm && (m.Cpu.Flags & 0x20000) == 0) continue;   // --hotvm: V86 samples only (what a DOS box is doing)
+                string k = $"{m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip & (hotVm ? ~0u : ~0x3fu):X8} vm{(m.Cpu.Flags >> 17) & 1} pe{m.Cpu.Cr0 & 1}";
                 lock (hot) hot[k] = hot.GetValueOrDefault(k) + 1;
             }
         }) { IsBackground = true } : null;
