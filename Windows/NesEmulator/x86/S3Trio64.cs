@@ -189,7 +189,7 @@ public sealed class S3Trio64
     public byte LfbRead8(uint a) => InMmio(a) ? (byte)(Virge!.Read32((a - MmioBase) & ~3u) >> (int)(8 * (a & 3))) : _v.Ram[a - LfbBase];
     public void LfbWrite8(uint a, byte v) { if (InMmio(a)) Virge!.Write(a - MmioBase, v, 8); else _v.Ram[a - LfbBase] = v; }
     public void LfbWrite16(uint a, ushort v) { if (InMmio(a)) Virge!.Write(a - MmioBase, v, 16); else { LfbWrite8(a, (byte)v); LfbWrite8(a + 1, (byte)(v >> 8)); } }
-    public uint LfbRead32(uint a) { if (InMmio(a)) return Virge!.Read32(a - MmioBase); uint o = a - LfbBase; return o <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)o) : LfbRead8(a); }
+    public uint LfbRead32(uint a) { if (InMmio(a)) return (a & 3) == 0 ? Virge!.Read32(a - MmioBase) : (uint)(LfbRead8(a) | LfbRead8(a + 1) << 8 | LfbRead8(a + 2) << 16 | LfbRead8(a + 3) << 24); uint o = a - LfbBase; return o <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)o) : LfbRead8(a); }
     public void LfbWrite32(uint a, uint v)
     {
         if (InMmio(a)) { Virge!.Write(a - MmioBase, v, 32); return; }
