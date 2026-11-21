@@ -20,3 +20,7 @@ Decided with the user 2026-11-21 (interview). Main goal: script TASes very quick
 
 ## Existing pieces to reuse
 NES: .fm2 replay, AutoTAS + Enhanced AutoTAS toolkit (grid/peek/explore/nodes/goal/roam), SMB1/SMB3 World 1 chapters. N64: UAT/n64/compat scripts + SessionProbe, COMPAT_TWICE. BrokenDev debugger + Timeflow. Fleet (fleetq/keeper, agent tier). Win98 steps files.
+
+## Added 2026-11-21: TAS to MP4 rendering
+User: "the ability to export a TAS to mp4 ... if i rewatch the starcraft tas, i would like to rewatch it as a lag-free video ... a simple tas to mp4 rendering pipeline that we could trigger on demand."
+Offline deterministic replay (any host speed) -> every frame + emulated audio -> MP4 (H.264/AAC) at the console's true rate (NES/N64 60 Hz, Win98 70 Hz). Encoder: Windows Media Foundation (built in, no download); ffmpeg only if the user approves the download. Triggers: Workshop `--tas render`, MCP, fleet job, later BrokenNes2 "Save as video". First target: the StarCraft 1v1 bot match.
