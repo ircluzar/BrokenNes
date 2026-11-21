@@ -77,6 +77,54 @@ Running the untouched branch reproduces the original's end picture and RAM.
 `ITasFrameSink` (Begin/Frame/Audio/End) gets every frame's picture and the core's audio during pass 1. `--frames-dir D` dumps PNGs + WAV;
 `--tas render ... --mp4 OUT` plugs the Media Foundation writer (branch tas-mp4) in here.
 
+## Goals (T2)
+
+Chapter `goal` lines (all must hold; the report lists each with `met`, `firstFrame`, `detail`):
+
+| line | meaning |
+|---|---|
+| `EXPR` or `end: EXPR` | true at the chapter end |
+| `within N: EXPR` | true on some frame <= N (frames since the chapter start) |
+| `reach: EXPR` | true on some frame; `firstFrame` = the first (the score for comparing branches) |
+| `always: EXPR` | true after every frame (e.g. `always: lives == 2`) |
+| `peek ADDR[:N] OP HEX` | T1's form, still accepted |
+
+EXPR: `or and not` (`|| && !`), `== != < <= > >=`, `+ - * / % &`, numbers (`$hex`, `0xhex`, decimal), variable names from the game's RAM map,
+`peek(ADDR[,N])` (big-endian; `peekle` little-endian), `picture("ref.png"[, x, y, w, h[, tol]])`, `frame`, `lag`, `abs min max`.
+
+**RAM maps** (`UAT/tas/ramdb/<console>/<game>.json`, found from the run's `game`, or the run's `ramdb`, or `BROKENNES_TAS_RAMDB`):
+`{"vars": {"x_page": {"addr": "006D"}, "x": {"expr": "x_page*256+x_screen"}, "speed": {"addr": "0057", "type": "s8"}, "score": {"addr": "07DD", "size": 6, "type": "digits"}}}`.
+Types: `u8 s8 u16 s16 u32 s32` (little-endian; `...be` big-endian), `bcd`, `digits` (one decimal digit per byte). The report's chapter `vars` = every
+variable at the chapter end. First map: `nes/smb1.json`.
+
+**Picture goals** (games without a RAM map): `picture(ref, x, y, w, h, tol)` compares that region of the frame with the same region of a reference PNG;
+true when at most tol per mille of the compared pixels differ by more than 24 on a channel (default tol 20). Transparent reference pixels are skipped:
+cut the reference down to the HUD glyph you care about (alpha 0 elsewhere) and it matches over any 3D background. Example: SM64's star counter
+`UAT/tas/n64/sm64/star1_hud.png` (the "1" of "x1": 82/103 pixels differ while it shows 0, 0 once it shows 1).
+
+## Precision (T2)
+
+- **Lag frames:** a frame where the game polled no controller (NES $4016/$4017 reads; N64 joybus "read buttons" commands). Each chapter in the report has
+  `lag` and `lagFrames`; the log gets a `LAG` line. Input on a lag frame is never read: edits there change nothing.
+- **Edit session** (`TasSession`; MCP `tas_session`): open a chapter (earlier chapters are played), `step` N frames (optionally with input, past the end
+  appends), `seek` to any frame (in-memory savestate ring: every 10 frames NES, 120 N64, then replay), `set` / `insert` / `delete` input at any frame,
+  `status` (cursor, next inputs, RAM-map vars, lag seen, picture), `goals` (plays the chapter with its goals, resuming from the last frame before the
+  earliest edit), `save` (DIR/<id>.tlog + DIR/edited.tasrun.json = the run with that chapter replaced, `trim` cuts it).
+- **`--tas edit RUN --chapter ID --set F:BTNS[:N] --insert F:BTNS:N --delete F:N [--trim-goal G] --out DIR`**: the same from the command line.
+  `--variants FILE` (one edit set per line, `;`-separated) tries each from the base and keeps the best (all goals met, lowest `firstFrame` of goal
+  `--score N`): a hand-written local search; the fleet search is T3.
+- **`--tas diff A B [--ram-every N] --out DIR`** (MCP `tas_diff`): plays both runs in lockstep and reports the first frame whose picture differs and the first
+  whose RAM differs, the differing bytes (NES 2 KB, N64 RDRAM) and RAM-map variables, the picture's differing box (a.png, b.png, diff.png), the first input
+  difference and the 12 inputs before it, and a one-line `why` (input change N frames earlier / no input change = start state, ROM, cores, nondeterminism).
+- **`--tas vars RUN --chapter ID --frame F`**: the RAM-map variables at a frame.
+
+## Render
+
+`--tas render RUN|SCRIPT --mp4 OUT.mp4 [--mp4size WxH] [--mp4kbps N]`: one pass (no twice check), every frame + the core's sound through Workshop/Movies/Mp4Writer
+(Media Foundation H.264/AAC) at the console's rate; timestamps from frame and sample counts, so the video is lag-free at any host speed. The picture is
+upscaled by an integer to fit 1280x720 (NES x3 = 768x720); sound at other rates than 44100/48000 is resampled to 48000. `--mp4check OUT.mp4 --grab S,..`
+reads it back.
+
 ## Adding a console (T7)
 
 1. A button map in `TasButtonMap.For` (names in bit order, stick, pads).

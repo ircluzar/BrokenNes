@@ -312,7 +312,8 @@ public sealed class TasGoal
     public JsonObject ToJson() => new() { ["goal"] = Text, ["kind"] = Kind, ["met"] = Met, ["firstFrame"] = FirstFrame >= 0 ? FirstFrame : null, ["detail"] = Detail };
 }
 
-/// <summary>Picture goals: compare a region of the current frame with the same region of a reference PNG.</summary>
+/// <summary>Picture goals: compare a region of the current frame with the same region of a reference PNG. Transparent reference pixels are
+/// skipped, so a reference cut down to a HUD glyph (the rest alpha 0) matches over any background.</summary>
 public static class TasPicture
 {
     static readonly Dictionary<string, (uint[] px, int w, int h)> cache = new();
@@ -324,14 +325,16 @@ public static class TasPicture
         var px = t.Argb; int fw = t.Width, fh = t.Height;
         if (w <= 0) w = Math.Min(fw, r.w) - x; if (h <= 0) h = Math.Min(fh, r.h) - y;
         if (x < 0 || y < 0 || x + w > fw || y + h > fh || x + w > r.w || y + h > r.h) return (int.MaxValue, 0);
-        int diff = 0;
+        int diff = 0, n = 0;
         for (int j = y; j < y + h; j++)
             for (int i = x; i < x + w; i++)
             {
                 uint a = px[j * fw + i], b = r.px[j * r.w + i];
+                if (b >> 24 < 128) continue;   // transparent reference pixels are not compared (a HUD glyph over a moving background)
+                n++;
                 if (Math.Abs((int)(a >> 16 & 255) - (int)(b >> 16 & 255)) > 24 || Math.Abs((int)(a >> 8 & 255) - (int)(b >> 8 & 255)) > 24 || Math.Abs((int)(a & 255) - (int)(b & 255)) > 24) diff++;
             }
-        return (diff, w * h);
+        return (diff, n);
     }
 }
 
@@ -372,7 +375,9 @@ public static class Png
                 int k = x * bpp;
                 px[y * w + x] = ct switch
                 {
-                    0 or 4 => 0xFF000000u | (uint)cur[k] * 0x010101u,
+                    0 => 0xFF000000u | (uint)cur[k] * 0x010101u,
+                    4 => (uint)cur[k + 1] << 24 | (uint)cur[k] * 0x010101u,
+                    6 => (uint)cur[k + 3] << 24 | (uint)cur[k] << 16 | (uint)cur[k + 1] << 8 | cur[k + 2],
                     3 => 0xFF000000u | (uint)plte![cur[k] * 3] << 16 | (uint)plte[cur[k] * 3 + 1] << 8 | plte[cur[k] * 3 + 2],
                     _ => 0xFF000000u | (uint)cur[k] << 16 | (uint)cur[k + 1] << 8 | cur[k + 2],
                 };

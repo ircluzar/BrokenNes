@@ -120,6 +120,7 @@ public sealed class TasSession : IDisposable
     readonly SortedDictionary<int, byte[]> ring = new();   // frame -> state before the ops + frame at that position
     public int Cursor;                        // frames run since the chapter start
     readonly Dictionary<int, bool> lagAt = new();
+    readonly Dictionary<int, (int lag, int[] lags, int[] first, int[] failed)> goalRing = new();   // goal state before frame k (Evaluate)
     public int Frames => frameAt.Count;
     public string Id { get; } = Guid.NewGuid().ToString("N")[..8];
 
@@ -176,6 +177,7 @@ public sealed class TasSession : IDisposable
     {
         foreach (var k in ring.Keys.Where(x => x > fromFrame).ToList()) ring.Remove(k);
         foreach (var k in lagAt.Keys.Where(x => x >= fromFrame).ToList()) lagAt.Remove(k);
+        foreach (var k in goalRing.Keys.Where(x => x > fromFrame).ToList()) goalRing.Remove(k);
     }
 
     /// <summary>Sets the input of frames [f, f+n). append: frames past the end are added.</summary>
@@ -208,14 +210,20 @@ public sealed class TasSession : IDisposable
 
     /// <summary>A copy of the program (to try variants and come back).</summary>
     public List<TasStep> Snapshot() => new(Steps);
-    public void Restore(List<TasStep> steps) { Steps.Clear(); Steps.AddRange(steps); Index(); Changed(0); }
+    public void Restore(List<TasStep> steps)
+    {
+        // only the frames from the first changed step on are invalid
+        int i = 0; while (i < Steps.Count && i < steps.Count && ReferenceEquals(Steps[i], steps[i])) i++;
+        int f = 0; for (int k = 0; k < i; k++) if (Steps[k].IsFrame) f++;
+        Steps.Clear(); Steps.AddRange(steps); Index(); Changed(f, replay: false);
+    }
 
     TasPad[] Fit(TasPad[] p) { var r = new TasPad[Math.Max(T.Map.Pads, p.Length)]; Array.Copy(p, r, p.Length); return r; }
 
-    void Changed(int f)
+    void Changed(int f, bool replay = true)
     {
         Invalidate(f);
-        if (Cursor > f) { int c = Cursor; var k = ring.Keys.Where(x => x <= f).Max(); T.LoadState(ring[k]); P.Drain(); Cursor = k; Step(c - k); }
+        if (Cursor > f) { int c = Cursor; var k = ring.Keys.Where(x => x <= f).Max(); T.LoadState(ring[k]); P.Drain(); Cursor = k; if (replay) Step(c - k); }
     }
 
     public string PadText(TasPad[] p) => string.Join(" ", p.Take(Math.Max(1, PadsUsed)).Select(x => TasScript.PadText(T.Map, x)));
@@ -252,9 +260,19 @@ public sealed class TasSession : IDisposable
     public JsonObject Evaluate()
     {
         var goals = Chapter.Goal.Select(TasGoal.Parse).ToList(); var per = goals.Where(g => g.PerFrame).ToList();
-        Seek(0); int lag = 0; var lags = new List<int>();
+        // resume from the latest frame whose machine state and goal state are both still valid (the frames before the earliest edit)
+        int from = goalRing.Keys.Where(k => ring.ContainsKey(k)).DefaultIfEmpty(0).Max();
+        int lag = 0; var lags = new List<int>();
+        if (from > 0 && goalRing.TryGetValue(from, out var gr) && gr.first.Length == goals.Count)
+        {
+            lag = gr.lag; lags = new List<int>(gr.lags);
+            for (int i = 0; i < goals.Count; i++) { goals[i].FirstFrame = gr.first[i]; goals[i].FailedFrame = gr.failed[i]; }
+        }
+        else from = 0;
+        Seek(from);
         while (Cursor < Frames)
         {
+            if (Cursor % Every == 0 && !goalRing.ContainsKey(Cursor)) goalRing[Cursor] = (lag, lags.ToArray(), goals.Select(g => g.FirstFrame).ToArray(), goals.Select(g => g.FailedFrame).ToArray());
             Step(1);
             if (P.LastPolls == 0) { lag++; lags.Add(Cursor - 1); }
             if (per.Count > 0) { var c = new TasEvalContext(T, Map, Run.Dir, Cursor, lag); foreach (var g in per) g.OnFrame(c); }

@@ -153,7 +153,10 @@
           }
         }
       },
-      "notes": "expect blessed from Garage2 run tast1sm64b (PRDP renderer); equals SessionProbe compat sm64 video/audio/frameHash at all 23 checkpoints"
+      "notes": "expect blessed from Garage2 run tast1sm64b (PRDP renderer); equals SessionProbe compat sm64 video/audio/frameHash at all 23 checkpoints",
+      "goal": [
+        "reach: picture(\"star1_hud.png\", 272, 10, 20, 21, 100)"
+      ]
     }
   ]
 }
