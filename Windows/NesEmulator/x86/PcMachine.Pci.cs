@@ -370,12 +370,14 @@ public sealed partial class PcMachine
 
     // ================= PCI BIOS (INT 1Ah B1xxh and the 32-bit interface) =================
 
+    private static readonly bool PciLog = Environment.GetEnvironmentVariable("X86_PCILOG") == "1";
     private void PciBiosCall(bool frame)
     {
         var pci = Pci!;
         void Done(uint ah) { AH = ah; Carry(frame, ah != 0); }
         if (AH != 0xb1) { Done(0x81); return; }
         int bus = (int)BH; byte devFn = (byte)BL; int reg = (int)DI & 0xff;
+        if (PciLog) Console.WriteLine($"pcibios: AL {AL:X2} bus {bus} devfn {devFn:X2} reg {reg:X2} CX {CX:X4} DX {DX:X4} ECX {C.R[1]:X8} SI {SI:X4} frame {frame}");
         switch (AL)
         {
             case 0x01:
