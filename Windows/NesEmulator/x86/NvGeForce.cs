@@ -24,6 +24,9 @@ public sealed partial class NvGeForce : IPciMmio
     public const uint Bar0Size = 16 * 1024 * 1024, Bar1Size = 128 * 1024 * 1024;
     public const uint Boot0 = 0x010000a5;
     public const int RaminBase = VramBytes - 0x100000;
+    /// <summary>A PRAMIN byte's place in VRAM: instance memory grows down from the end of VRAM in 32-bit words (all address bits flipped
+    /// but the low 2; envytools memory/nv1-vram.rst, the same on NV4-NV40). Resman puts buffers right below it (a Z buffer at 31 MB).</summary>
+    public static int RaminVram(uint x) => (int)(((x & 0xfffff) ^ ~3u) & (VramBytes - 1));
 
     private readonly Vga _v;
     /// <summary>The PCI function (set by the bus): the PBUS config mirror reads it.</summary>
@@ -222,7 +225,7 @@ public sealed partial class NvGeForce : IPciMmio
 
     private byte Read8(uint off)
     {
-        if (off >= 0x700000 && off < 0x800000) return _v.Ram[RaminBase + (int)(off - 0x700000)];
+        if (off >= 0x700000 && off < 0x800000) return _v.Ram[RaminVram(off - 0x700000)];
         if (off >= 0x300000 && off < 0x310000) return RomByte?.Invoke((int)(off - 0x300000)) ?? 0xff;
         int p;
         if (off is >= 0x0c0000 and < 0x0c0400 && (p = MirrorPort(off, 0x0c0000)) >= 0) return _v.In(p);
@@ -234,7 +237,7 @@ public sealed partial class NvGeForce : IPciMmio
 
     private void Write8(uint off, byte v)
     {
-        if (off >= 0x700000 && off < 0x800000) { _v.Ram[RaminBase + (int)(off - 0x700000)] = v; return; }
+        if (off >= 0x700000 && off < 0x800000) { _v.Ram[RaminVram(off - 0x700000)] = v; return; }
         if (off >= 0x300000 && off < 0x310000) return;
         int p;
         if (off is >= 0x0c0000 and < 0x0c0400 && (p = MirrorPort(off, 0x0c0000)) >= 0) { _v.Out(p, v); return; }
@@ -253,7 +256,7 @@ public sealed partial class NvGeForce : IPciMmio
         MmioReads++;
         uint v;
         if (size == 4 && (off & 3) == 0 && !ByteBlock(off)) v = Read32(off);
-        else if (size == 4 && (off & 3) == 0 && off is >= 0x700000 and < 0x800000) v = BitConverter.ToUInt32(_v.Ram, RaminBase + (int)(off - 0x700000));
+        else if (size == 4 && (off & 3) == 0 && off is >= 0x700000 and < 0x800000) v = Ramin32(off - 0x700000);
         else { v = 0; for (int i = 0; i < size; i++) v |= (uint)Read8(off + (uint)i) << (8 * i); }   // the bytes AT the address
         Log?.Invoke(off, v, size, false);
         return v;
@@ -264,7 +267,7 @@ public sealed partial class NvGeForce : IPciMmio
         MmioWrites++;
         Log?.Invoke(off, v, size, true);
         if (size == 4 && (off & 3) == 0 && !ByteBlock(off)) { Write32(off, v); return; }
-        if (size == 4 && (off & 3) == 0 && off is >= 0x700000 and < 0x800000) { BitConverter.TryWriteBytes(_v.Ram.AsSpan(RaminBase + (int)(off - 0x700000)), v); return; }
+        if (size == 4 && (off & 3) == 0 && off is >= 0x700000 and < 0x800000) { RaminW32(off - 0x700000, v); return; }
         for (int i = 0; i < size; i++) Write8(off + (uint)i, (byte)(v >> (8 * i)));
     }
 
@@ -368,7 +371,7 @@ public sealed partial class NvGeForce : IPciMmio
 
     public void Save(BinaryWriter w)
     {
-        w.Write(6);   // version (6: the Celsius primitive in flight)
+        w.Write(7);   // version (7: PRAMIN in reverse at the end of VRAM)
         w.Write(Unlocked); w.Write(Frame); w.Write(_timerReads);
         w.Write(PcrtcIntr); w.Write(PcrtcIntrEn); w.Write(PcrtcStart); w.Write(PmcIntrEn); w.Write(PmcEnable);
         w.Write(Bank); w.Write(VbeMode);
@@ -380,7 +383,7 @@ public sealed partial class NvGeForce : IPciMmio
     public void Load(BinaryReader r)
     {
         int ver = r.ReadInt32();
-        if (ver is not (1 or 2 or 3 or 4 or 5 or 6)) throw new InvalidDataException("unknown GeForce state version");
+        if (ver is not (1 or 2 or 3 or 4 or 5 or 6 or 7)) throw new InvalidDataException("unknown GeForce state version");
         Unlocked = r.ReadBoolean(); Frame = r.ReadInt64(); _timerReads = r.ReadInt64();
         PcrtcIntr = r.ReadUInt32(); PcrtcIntrEn = r.ReadUInt32(); PcrtcStart = r.ReadUInt32(); PmcIntrEn = r.ReadUInt32(); PmcEnable = r.ReadUInt32();
         Bank = r.ReadInt32(); VbeMode = r.ReadInt32();
@@ -388,5 +391,10 @@ public sealed partial class NvGeForce : IPciMmio
         int n = r.ReadInt32();
         for (int i = 0; i < n; i++) { uint k = r.ReadUInt32(); _reg[k] = r.ReadUInt32(); }
         if (ver >= 4) LoadFifo(r, ver); else ResetFifo();
+        if (ver < 7)   // a state from before the reversed PRAMIN: move instance memory from the old straight layout (top 1 MB) to the real one
+        {
+            var old = _v.Ram.AsSpan(RaminBase, 0x100000).ToArray();
+            for (uint x = 0; x < 0x100000; x += 4) BitConverter.TryWriteBytes(_v.Ram.AsSpan(RaminVram(x)), BitConverter.ToUInt32(old, (int)x));
+        }
     }
 }

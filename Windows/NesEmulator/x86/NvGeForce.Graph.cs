@@ -62,6 +62,7 @@ public sealed partial class NvGeForce
             case 0x61 or 0x65 or 0x21: Ifc(inst, mthd, data); break;
             case 0x60 or 0x64: Index(inst, mthd, data); break;
             case 0x56 or 0x96 or 0x98 or 0x99: Celsius(inst, mthd, data); break;
+            case 0x7b: SwzUpload(inst, mthd, data); break;
             case 0x5e or 0x1e: if (mthd is >= 0x400 and < 0x480 && (mthd & 4) != 0) SolidRect(inst, mthd, data); break;
         }
     }
@@ -259,6 +260,33 @@ public sealed partial class NvGeForce
         int rop = Rop(inst); var clip = ClipOf(inst);
         OpLog?.Invoke($"solid {x},{y} {w}x{h} col {col:X} surf {d.Base:X}/{d.Pitch}/{d.Bpp}");
         for (int yy = y; yy < y + h; yy++) for (int xx = x; xx < x + w; xx++) Draw(inst, d, xx, yy, col, rop, clip);
+    }
+
+    // 0x7B texture upload from CPU into a swizzled surface (0x52: 0x300 = format | log2 w << 16 | log2 h << 24, 0x304 offset, DMA 0x184):
+    // 0x304 point (y << 16 | x), 0x308 size (h << 16 | w), 0x400+ pixels (2 per word at 16 bpp); 0x30C / 0x310 (clip) not used
+    private void SwzUpload(uint inst, int mthd, uint data)
+    {
+        if (mthd is 0x304 or 0x308) _ifcPix = 0;
+        if (mthd < 0x400 || mthd >= 0x2000) return;
+        uint sf = Ctx(inst, 0x52);
+        if (sf == 0) return;
+        uint fmt = G(sf, 0x300); int lw = (int)(fmt >> 16) & 15, lh = (int)(fmt >> 24) & 15, W = 1 << lw, H = 1 << lh;
+        int bpp = (fmt & 0xff) is 0xa or 0xb or 6 or 7 or 8 or 9 ? 4 : (fmt & 0xff) == 1 ? 1 : 2;
+        uint dma = G(sf, 0x184 | 0x8000), off = G(sf, 0x304);
+        uint pt = G(inst, 0x304), sz = G(inst, 0x308);
+        int px = (int)(pt & 0xffff), py = (int)(pt >> 16), w = (int)(sz & 0xffff), h = (int)(sz >> 16);
+        if (w <= 0) return;
+        int per = 4 / bpp;
+        for (int k = 0; k < per; k++, _ifcPix++)
+        {
+            int x = _ifcPix % w, y = _ifcPix / w;
+            if (y >= h) return;
+            int dx = px + x, dy = py + y;
+            if (dx >= W || dy >= H) continue;
+            uint a = off + Swz(dx, dy, W, H) * (uint)bpp;
+            uint v = per == 1 ? data : per == 2 ? (data >> (16 * k)) & 0xffff : (data >> (8 * k)) & 0xff;
+            for (int b = 0; b < bpp; b++) DmaWrite8(dma, a + (uint)b, (byte)(v >> (8 * b)));
+        }
     }
 
     // ================= 0x5F blit =================

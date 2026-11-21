@@ -37,8 +37,9 @@ public sealed partial class NvGeForce
     private uint SwPending { get => Reg(0x003ff0); set => _reg[0x003ff0] = value; }
     private bool Stalled => (Reg(0x002100) & 1) != 0 || SwPending != 0;   // (CACHE1 GET/PUT are the driver's to move while it holds the channel)
 
-    public uint Ramin32(uint off) => off < 0x100000 - 3 ? BitConverter.ToUInt32(_v.Ram, RaminBase + (int)off) : 0;
-    public void RaminW32(uint off, uint v) { if (off < 0x100000 - 3) BitConverter.TryWriteBytes(_v.Ram.AsSpan(RaminBase + (int)off), v); }
+    // a 32-bit word: the 4 bytes stay in order (only the word index is reversed)
+    public uint Ramin32(uint off) { int a = RaminVram(off & ~3u); return BitConverter.ToUInt32(_v.Ram, a); }
+    public void RaminW32(uint off, uint v) => BitConverter.TryWriteBytes(_v.Ram.AsSpan(RaminVram(off & ~3u)), v);
     private uint Vram32(uint a) { a &= VramBytes - 1; return a <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)a) : 0; }
     private void VramW32(uint a, uint v) { a &= VramBytes - 1; if (a <= VramBytes - 4) BitConverter.TryWriteBytes(_v.Ram.AsSpan((int)a), v); }
 
@@ -132,8 +133,8 @@ public sealed partial class NvGeForce
                     _dmaCount--;
                     continue;
                 }
-                if ((w & 0xe0000003) == 0x20000000) { get = w & 0x1ffffffc; continue; }   // jump
-                if ((w & 0xa0030003) != 0) { _reg[0x003228] = w; continue; }              // not a header we know: skip it (logged in DMA_STATE)
+                if ((w & 0xe0000003) == 0x20000000) { OpLog?.Invoke($"push jump {get - 4:X} -> {w & 0x1ffffffc:X} (put {put:X}, inst {inst:X}, limit {Ramin32(inst + 4):X})"); get = w & 0x1ffffffc; continue; }   // jump
+                if ((w & 0xa0030003) != 0) { _reg[0x003228] = w; OpLog?.Invoke($"push unknown word {w:X8} at {get - 4:X}"); continue; }              // not a header we know: skip it (logged in DMA_STATE)
                 _dmaCount = (int)(w >> 18) & 0x7ff; _dmaSubc = (int)(w >> 13) & 7; _dmaMethod = (int)(w & 0x1ffc); _dmaNonInc = (w & 0x40000000) != 0;
             }
             _reg[0x003244] = get;

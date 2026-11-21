@@ -109,16 +109,17 @@ public sealed partial class NvGeForce
     private void Transform(uint inst, ref CVert v, float x, float y, float z, float w, bool pre)
     {
         if (pre) { v.X = x; v.Y = y; v.Z = z; v.W = w; return; }
-        float[] mv = Mat(inst, 0x400), pj = Mat(inst, 0x500);
-        float ex = mv[0] * x + mv[4] * y + mv[8] * z + mv[12] * w, ey = mv[1] * x + mv[5] * y + mv[9] * z + mv[13] * w,
-              ez = mv[2] * x + mv[6] * y + mv[10] * z + mv[14] * w, ew = mv[3] * x + mv[7] * y + mv[11] * z + mv[15] * w;
-        float cx = pj[0] * ex + pj[4] * ey + pj[8] * ez + pj[12] * ew, cy = pj[1] * ex + pj[5] * ey + pj[9] * ez + pj[13] * ew,
-              cz = pj[2] * ex + pj[6] * ey + pj[10] * ez + pj[14] * ew, cw = pj[3] * ex + pj[7] * ey + pj[11] * ez + pj[15] * ew;
+        // the ICD loads the composite (projection x modelview x viewport scale) at 0x500, ROW-major (translation in 0x50C / 0x51C / 0x52C);
+        // VIEWPORT_TRANSLATE (0x6E8) is in the chip's window space, biased by -2048 (the clip rectangles carry the +0x800); Z comes out in
+        // depth-buffer units (0x6F0 = half the range)
+        float[] m = Mat(inst, 0x500);
+        float cx = m[0] * x + m[1] * y + m[2] * z + m[3] * w, cy = m[4] * x + m[5] * y + m[6] * z + m[7] * w,
+              cz = m[8] * x + m[9] * y + m[10] * z + m[11] * w, cw = m[12] * x + m[13] * y + m[14] * z + m[15] * w;
         if (cw == 0) cw = 1e-6f;
         float iw = 1 / cw;
-        // the driver folds the viewport scale into the projection; VIEWPORT_TRANSLATE (0x6E8) adds the offset
-        v.X = cx * iw + F(G(inst, 0x6e8)); v.Y = cy * iw + F(G(inst, 0x6ec)); v.Z = cz * iw + F(G(inst, 0x6f0)); v.W = iw;
-        float zr = F(G(inst, 0x398)); if (zr > 1.5f) v.Z /= zr;   // (depth range far = the Z buffer's maximum: back to 0..1)
+        v.X = cx * iw + F(G(inst, 0x6e8)) + 2048; v.Y = cy * iw + F(G(inst, 0x6ec)) + 2048;
+        float zmax = ((G(inst, 0x208) >> 4) & 3) == 1 ? 65535f : 16777215f;
+        v.Z = (cz * iw + F(G(inst, 0x6f0))) / zmax; v.W = iw;
     }
 
     private float[] Mat(uint inst, int b)
@@ -154,6 +155,7 @@ public sealed partial class NvGeForce
         uint f = G(inst, 0x220 + u * 4);
         t.Dma = G(inst, ((f & 2) != 0 ? 0x188 : 0x184) | 0x8000);
         t.Fmt = (int)(f >> 7) & 0x1f;
+        if (t.Fmt == 0xb) t.Fmt = 3;   // (the 5.32 ICD's 16-bit textures read as 0x0B: bits 9-7 = 3, X1R5G5B5, the same as the D3D test's 0x03)
         t.Rect = t.Fmt is >= 0x10 and <= 0x13;
         if (t.Rect) { uint sz = G(inst, 0x240 + u * 4); t.W = (int)(sz >> 16); t.H = (int)(sz & 0xffff); t.Pitch = (int)(G(inst, 0x230 + u * 4) >> 16); }
         else { t.W = 1 << (int)((f >> 16) & 15); t.H = 1 << (int)((f >> 20) & 15); }
@@ -250,6 +252,11 @@ public sealed partial class NvGeForce
         int minY = Math.Max(cy0, (int)MathF.Floor(MathF.Min(a.Y, MathF.Min(b.Y, c.Y)))), maxY = Math.Min(cy1 - 1, (int)MathF.Ceiling(MathF.Max(a.Y, MathF.Max(b.Y, c.Y))));
         if (minX > maxX || minY > maxY) return;
         var t0 = TexUnit(inst, 0); var t1 = TexUnit(inst, 1);
+        if (Triangles3D < 60 && OpLog != null)
+        {
+            string Td(in Tex t) { if (!t.Ok) return "off"; var (vr, ad) = DmaAddr(t.Dma, t.Base); return $"fmt {t.Fmt} {t.W}x{t.H} dma {t.Dma:X} {(vr ? "vram" : "sys")} {ad:X} texel0 {Texel(t, 0, 0):X8} texel(5,5) {Texel(t, 5, 5):X8}"; }
+            OpLog($"uv {a.U0:F2},{a.V0:F2} tex0 {Td(t0)} | tex1 {Td(t1)} | col {a.R:F2},{a.G:F2},{a.B:F2},{a.A:F2} comb {G(inst, 0x268):X8} {G(inst, 0x280):X8} {G(inst, 0x288):X8} {G(inst, 0x28c):X8}");
+        }
         bool flat = G(inst, 0x37c) == 0x1d00;
         bool aTest = G(inst, 0x300) != 0; int aFunc = (int)G(inst, 0x33c) & 7, aRef = (int)G(inst, 0x340) & 0xff;
         bool blend = G(inst, 0x304) != 0;
