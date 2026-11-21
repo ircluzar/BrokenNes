@@ -248,11 +248,15 @@ namespace cor64.RCP
             return b;
         }
 
+        // [n64-revive] COR64_REVIVE1_VIMOD=1 (default off, experiment): with slices of n >= the line wrap (1024-step slices,
+        // V_INTR+100 < 1024) the old wrap set VI_CURRENT to 0 on EVERY batch, so a game polling VI_CURRENT != 0 spins forever
+        // (Pokemon Puzzle League 8003F8DC, likely Roadsters' title_fix3 too). =1: the line wraps modulo instead.
+        private static readonly bool s_ViMod = Environment.GetEnvironmentVariable("COR64_REVIVE1_VIMOD") == "1";
         public void Tick(int n) {
             m_Interface.TickDma(n); // [timing] PI/SI DMA completions (COR64_TIMING_DMADUR)
             if (IsVideoActive) {
                 uint line = m_CurrentLine.RegisterValue + (uint)n;
-                if (line >= LineWrap) line = 0;
+                if (line >= LineWrap) line = s_ViMod && (uint)n >= LineWrap ? line % LineWrap : 0;
                 if (m_Field != 0 || (s_FieldOn && (m_ControlReg.RegisterValue & 0x40) != 0)) line = FieldLine(line);
                 m_CurrentLine.RegisterValue = line;
             }
