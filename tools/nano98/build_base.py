@@ -113,7 +113,10 @@ steps = ['Enter your choice=>2' + NL,                    # CD menu: boot from CD
 if a.accept_eula:
     steps += ['@800=>{alt+a}', '@60=>' + NL,           # Licence Agreement: "I accept" (user approved the Win98 SE licence 2026-11-21)
               '@600=>' + NL,                             # Product Key (filled from MSBATCH.INF) -> Next
-              '@800=>' + NL]                             # Start Wizard -> Finish: hardware setup + restarts follow
+              '@800=>' + NL,                             # Start Wizard -> Finish: hardware setup + restarts follow
+              '@36000=>' + NL,                           # Enter Windows Password: user nano98, blank password -> OK
+              '@3000=>{alt+f4}',                         # close the Welcome window
+              '@300=>']                                  # the desktop (save the state here)
 else:
     steps += ['@800=>']                                  # stop on the licence page
 open(os.path.join(a.work, 'stage2.steps'), 'w').write('\n'.join(steps) + '\n')

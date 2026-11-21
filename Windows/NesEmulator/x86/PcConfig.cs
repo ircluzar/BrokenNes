@@ -34,13 +34,13 @@ public sealed record PcConfig
     public static readonly PcConfig Dos486 = new() { CpuGen = 4, MemoryMB = 16, Storage = PcStorage.Ide };
     public static readonly PcConfig Win98 = new() { CpuGen = 5, MemoryMB = 64, Storage = PcStorage.Ide, BootOrder = "CHF", Bus = PcBus.Pci430TX };
     public static readonly PcConfig Win98Voodoo = Win98 with { Voodoo = true };
-    public static readonly PcConfig Win98Nano = Win98 with { NoFloppy = true };
+    public static readonly PcConfig Win98Nano = Win98 with { NoFloppy = true, BootOrder = "CH" };
 
     public bool IsDefault => this == Default;
 
     public static PcConfig Preset(string name) => name.ToUpperInvariant() switch
     {
-        "DEFAULT" => Default, "DOS-386" => Dos386, "DOS-486" => Dos486, "WIN98-P166" or "WIN98" => Win98, "WIN98-P166-VOODOO" => Win98Voodoo, "WIN98-P166-NANO" => Win98Nano, "WIN98-P166-VOODOO-NANO" => Win98Voodoo with { NoFloppy = true },
+        "DEFAULT" => Default, "DOS-386" => Dos386, "DOS-486" => Dos486, "WIN98-P166" or "WIN98" => Win98, "WIN98-P166-VOODOO" => Win98Voodoo, "WIN98-P166-NANO" => Win98Nano, "WIN98-P166-VOODOO-NANO" => Win98Voodoo with { NoFloppy = true, BootOrder = "CH" },
         _ => throw new ArgumentException($"no x86 machine preset '{name}' (DEFAULT, DOS-386, DOS-486, WIN98-P166)"),
     };
 
@@ -89,7 +89,7 @@ public sealed record PcMachinePreset(string Key, string Label, PcConfig Config, 
         new("win98-p166", "Win98 Pentium MMX 166, S3 Trio64, PCI", PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.S3Trio64),
         new("win98-p166-voodoo", "Win98 Pentium MMX 166, S3 Trio64 + 3dfx Voodoo, PCI", PcConfig.Win98Voodoo, CpuModel.PentiumMmx, PcVideo.S3Trio64),
         new("win98-p166-nano", "nano98 seat: Win98 Pentium MMX 166, S3 Trio64, PCI, no floppy", PcConfig.Win98Nano, CpuModel.PentiumMmx, PcVideo.S3Trio64),
-        new("win98-p166-voodoo-nano", "nano98 seat: Win98 Pentium MMX 166, S3 Trio64 + 3dfx Voodoo, PCI, no floppy", PcConfig.Win98Voodoo with { NoFloppy = true }, CpuModel.PentiumMmx, PcVideo.S3Trio64),
+        new("win98-p166-voodoo-nano", "nano98 seat: Win98 Pentium MMX 166, S3 Trio64 + 3dfx Voodoo, PCI, no floppy", PcConfig.Win98Voodoo with { NoFloppy = true, BootOrder = "CH" }, CpuModel.PentiumMmx, PcVideo.S3Trio64),
     };
 
     /// <summary>The preset for a key (case-insensitive); an unknown or empty key is the classic machine.</summary>
