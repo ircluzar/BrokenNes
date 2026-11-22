@@ -322,6 +322,9 @@ public sealed partial class NvGeForce
         {
             var v0 = vs[0];
             var i0 = vin[0];
+            var sb2 = new System.Text.StringBuilder();
+            for (int ai = 0; ai < 16; ai++) { uint vf = G(inst, 0x1740 + ai * 4); if ((vf & 0xf0) != 0) sb2.Append($" a{ai}[{vf:X} @{G(inst, 0x1680 + ai * 4):X}]=({i0[ai * 4]:G4},{i0[ai * 4 + 1]:G4},{i0[ai * 4 + 2]:G4},{i0[ai * 4 + 3]:G4})"); }
+            OpLog($"rankine attrs{sb2} vpstart {G(inst, 0x1ea0)} vpinst@start {_vpInst[G(inst, 0x1ea0) * 4]:X8} {_vpInst[G(inst, 0x1ea0) * 4 + 1]:X8} {_vpInst[G(inst, 0x1ea0) * 4 + 2]:X8} {_vpInst[G(inst, 0x1ea0) * 4 + 3]:X8}");
             OpLog($"rankine in v0 ({i0[0]},{i0[1]},{i0[2]},{i0[3]}) v3 ({i0[12]:F2},{i0[13]:F2},{i0[14]:F2},{i0[15]:F2}) inline {_inline.Count} elems {_elems.Count} fmt0 {G(inst, 0x1740):X} c118 ({F32(_vpConst[472])},{F32(_vpConst[473])},{F32(_vpConst[474])},{F32(_vpConst[475])}) c119 ({F32(_vpConst[476])},{F32(_vpConst[477])},{F32(_vpConst[478])},{F32(_vpConst[479])})");
             OpLog($"rankine prim {_rPrim} verts {vs.Length} v0 scr ({v0.X:F1},{v0.Y:F1},{v0.Z:F1}) iw {v0.Iw:G3} col0 ({v0.Var[12]:F2},{v0.Var[13]:F2},{v0.Var[14]:F2},{v0.Var[15]:F2}) tc0 ({v0.Var[32]:F2},{v0.Var[33]:F2}) vp {G(inst, 0x1ea0)} vt {tx},{ty},{tz} vsc {sx},{sy},{sz}");
         }
