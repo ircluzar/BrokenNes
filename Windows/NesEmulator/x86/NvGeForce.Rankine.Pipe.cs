@@ -29,6 +29,15 @@ public sealed partial class NvGeForce
                 else { RankineFlush(inst); _rPrim = 0; }
                 return true;
             case 0x1818: _inline.Add(data); return true;
+            case 0x39c:                                                     // (undocumented, seen in the 45.23 D3D path between inline vertices:
+                if (_rPrim != 0)                                            //  repeat the vertex n back from the last one; 0 = the last)
+                {
+                    int per = 0;
+                    for (int i = 0; i < 16; i++) { uint f = G(inst, 0x1740 + i * 4); per += AttrWords((int)(f & 15), (int)(f >> 4) & 15); }
+                    int src = _inline.Count - per * ((int)data + 1);
+                    if (per > 0 && src >= 0 && _inline.Count % per == 0) for (int k = 0; k < per; k++) _inline.Add(_inline[src + k]);
+                }
+                return true;
             case 0x1814:                                                    // VB_VERTEX_BATCH: start + (count - 1) << 24
             { int s = (int)(data & 0xffffff), n = (int)(data >> 24) + 1; for (int i = 0; i < n; i++) _elems.Add(s + i); return true; }
             case 0x180c: _elems.Add((int)(data & 0xffff)); _elems.Add((int)(data >> 16)); return true;

@@ -112,7 +112,7 @@ public sealed partial class NvGeForce
     // ================= the DMA pusher =================
 
     private bool _inPusher;
-    private int _pushDiag;   // diagnostics: push reads that land in low system memory (logged, first 20)
+    private int _pushDiag, _hdrDiag;   // diagnostics: push reads that land in low system memory (logged, first 20)
 
     private void RunPusher()
     {
@@ -140,6 +140,7 @@ public sealed partial class NvGeForce
                 if ((w & 0xe0000003) == 0x20000000) { OpLog?.Invoke($"push jump {get - 4:X} -> {w & 0x1ffffffc:X} (put {put:X}, inst {inst:X}, limit {Ramin32(inst + 4):X})"); get = w & 0x1ffffffc; continue; }   // jump
                 if ((w & 0xa0030003) != 0) { _reg[0x003228] = w; OpLog?.Invoke($"push unknown word {w:X8} at {get - 4:X}"); continue; }              // not a header we know: skip it (logged in DMA_STATE)
                 _dmaCount = (int)(w >> 18) & 0x7ff; _dmaSubc = (int)(w >> 13) & 7; _dmaMethod = (int)(w & 0x1ffc); _dmaNonInc = (w & 0x40000000) != 0;
+                if (_dmaMethod == 0x39c && OpLog != null && _hdrDiag++ < 8) OpLog($"push header {w:X8} at {get - 4:X} prev {DmaRead32(inst, get - 8):X8} next {DmaRead32(inst, get):X8} {DmaRead32(inst, get + 4):X8}");
             }
             _reg[0x003244] = get;
         }
