@@ -367,7 +367,7 @@ public sealed partial class NvGeForce
     private uint PalRead(in Tex t, uint i)
     {
         var (vr, a) = DmaAddr(t.PalDma, t.Pal + i * 4);
-        if (vr) { a &= VramBytes - 1; return a <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)a) : 0; }
+        if (vr) { a &= VramMask; return a <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)a) : 0; }
         return SysRead32?.Invoke(a & ~3u) ?? 0;
     }
 

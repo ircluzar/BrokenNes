@@ -413,6 +413,7 @@ public sealed partial class NvGeForce : IPciMmio
         foreach (var (k, v) in _reg) { w.Write(k); w.Write(v); }
         SaveFifo(w);
         if (TwoHeads) { w.Write(_cr2Idx); w.Write(_cr2); }   // (NV17/NV34 states only: the NV10 format is unchanged)
+        if (Nv34) { w.Write(0x4e563334); SaveRankine(w); }   // "NV34": the Rankine VP memory
     }
 
     public void Load(BinaryReader r)
@@ -427,6 +428,7 @@ public sealed partial class NvGeForce : IPciMmio
         for (int i = 0; i < n; i++) { uint k = r.ReadUInt32(); _reg[k] = r.ReadUInt32(); }
         if (ver >= 4) LoadFifo(r, ver); else ResetFifo();
         if (TwoHeads && r.BaseStream.Position < r.BaseStream.Length) { _cr2Idx = r.ReadByte(); r.Read(_cr2, 0, 256); }
+        if (Nv34 && r.BaseStream.Position + 4 <= r.BaseStream.Length && r.ReadInt32() == 0x4e563334) LoadRankine(r);
         if (ver < 7)   // a state from before the reversed PRAMIN: move instance memory from the old straight layout (top 1 MB) to the real one
         {
             var old = _v.Ram.AsSpan(RaminBase, 0x100000).ToArray();

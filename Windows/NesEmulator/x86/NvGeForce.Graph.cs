@@ -65,6 +65,7 @@ public sealed partial class NvGeForce
             case 0x60 or 0x64: Index(inst, mthd, data); break;
             case 0x56 or 0x96 or 0x98 or 0x99: Celsius(inst, mthd, data); break;
             case 0x7b: SwzUpload(inst, mthd, data); break;
+            case 0x397 or 0x497 or 0x697: Rankine(inst, mthd, data); break;
             case 0x77 or 0x89 or 0x63: if (mthd == 0x40c) Sifm(inst); break;
             case 0x5e or 0x1e: if (mthd is >= 0x400 and < 0x480 && (mthd & 4) != 0) SolidRect(inst, mthd, data); break;
         }
