@@ -38,8 +38,10 @@ public sealed partial class I386
         Cycle = r.ReadInt64(); Excno = r.ReadInt32(); Excerr = r.ReadUInt32(); Intr = r.ReadBoolean();
         _ccOp = r.ReadInt32(); _ccDst = r.ReadUInt32(); _ccDst2 = r.ReadUInt32(); _ccSrc1 = r.ReadUInt32(); _ccSrc2 = r.ReadUInt32(); _ccMask = r.ReadUInt32();
         uint size = r.ReadUInt32();
-        if (size != MemSize) throw new InvalidDataException($"state has {size} bytes of memory, this machine {MemSize}");
+        // a state from a smaller machine loads into more memory (the rest zeroed; the guest sees it after its next reboot)
+        if (size > MemSize) throw new InvalidDataException($"state has {size} bytes of memory, this machine {MemSize}");
         if (r.Read(Mem, 0, (int)size) != size) throw new EndOfStreamException();
+        if (size < MemSize) Array.Clear(Mem, (int)size, (int)(MemSize - size));
         if (!_legacy) LoadModelState(r);
         _memEpoch++;
         TlbClear();
