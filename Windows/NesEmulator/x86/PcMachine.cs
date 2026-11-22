@@ -135,8 +135,25 @@ public sealed partial class PcMachine : IX86Bus
                     Nv.MethodLog = (ch, sc, cl, mt, d) => { if (nlog++ < nmax) lw.WriteLine($"{Vga.FrameCount} M ch{ch} s{sc} c{cl:X3} {mt:X4} {d:X8}"); };
                     Nv.Log = (o, v, sz, wr) => { if (noRegs) return; if (noRamin && o is >= 0x700000 and < 0x800000) return; if (noReads && !wr) return; if (nlog++ < nmax) lw.WriteLine($"{Vga.FrameCount} {(wr ? 'W' : 'R')}{sz} {o:X6} {v:X8} {Cpu.SegSel[1]:X4}:{Cpu.Ip:X8}"); };
                 }
-                Nv.SysRead32 = a => a <= Cpu.MemSize - 4 ? BitConverter.ToUInt32(Cpu.Mem, (int)a) : 0xffffffff;
-                Nv.SysWrite32 = (a, v) => { if (a <= Cpu.MemSize - 4) { BitConverter.TryWriteBytes(Cpu.Mem.AsSpan((int)a), v); Cpu.MemTouched(); } };
+                // a DMA object can point at the card's own BARs (the 45.23 FX driver flips by an M2MF copy into PCRTC_START at BAR0 + 0x600800)
+                Nv.SysRead32 = a =>
+                {
+                    if (Nv.Pci is { } pf)
+                    {
+                        if (pf.MemBase != 0 && a - pf.MemBase < NvGeForce.Bar0Size) return Nv.MmioRead(a - pf.MemBase, 4);
+                        if (pf.MemBase1 != 0 && a - pf.MemBase1 < NvGeForce.Bar1Size) return Nv.Aperture.MmioRead(a - pf.MemBase1, 4);
+                    }
+                    return a <= Cpu.MemSize - 4 ? BitConverter.ToUInt32(Cpu.Mem, (int)a) : 0xffffffff;
+                };
+                Nv.SysWrite32 = (a, v) =>
+                {
+                    if (Nv.Pci is { } pf)
+                    {
+                        if (pf.MemBase != 0 && a - pf.MemBase < NvGeForce.Bar0Size) { Nv.MmioWrite(a - pf.MemBase, v, 4); return; }
+                        if (pf.MemBase1 != 0 && a - pf.MemBase1 < NvGeForce.Bar1Size) { Nv.Aperture.MmioWrite(a - pf.MemBase1, v, 4); return; }
+                    }
+                    if (a <= Cpu.MemSize - 4) { BitConverter.TryWriteBytes(Cpu.Mem.AsSpan((int)a), v); Cpu.MemTouched(); }
+                };
                 Nv.RomByte = i => i < 0x8000 && VRom + i < Cpu.MemSize ? Cpu.Mem[VRom + i] : (byte)0xff;
             }
         }
