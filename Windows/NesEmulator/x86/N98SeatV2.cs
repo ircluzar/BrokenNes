@@ -175,6 +175,7 @@ public sealed partial class N98Seat
     /// gives it its own warm-boot state.</summary>
     private static string Variant(string baseImg, string[] ids, string fileName, string cacheRoot)
     {
+        ids = ids.Select(N98Drivers.MapLayer).ToArray();   // (the user's driver override, else the package's pinned layers)
         foreach (var id in ids) if (id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || id.Contains("..")) throw new InvalidDataException($"{fileName}: bad layer id '{id}'");
         string name = Path.GetFileNameWithoutExtension(baseImg) + "+" + string.Join("+", ids) + ".n98d";
         string beside = Path.Combine(Path.GetDirectoryName(baseImg) ?? ".", name), cached = Path.Combine(cacheRoot, "variants", name);

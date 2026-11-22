@@ -45,6 +45,9 @@ public sealed partial class N98Seat
         return s;
     }
 
+    /// <summary>The nano98 tools folder (tools, nano98).</summary>
+    public static string ToolsDir() => Tools();
+
     /// <summary>N98INST.EXE: the app's x86\nano98 folder, else the tools' launcher folder.</summary>
     private static string InstallShell()
     {

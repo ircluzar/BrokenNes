@@ -352,7 +352,7 @@ public sealed class N98Install : IDisposable
         // the discs the package names: kept where the app looks for them (the user's own copies, local only)
         foreach (var disc in Discs.Where(x => !IsWindowsFilesDisc(x))) N98Seat.RememberDisc(disc);
         if (res["layer"]?.GetValue<string>() is { Length: > 0 } lp) N98Seat.RememberLayer(lp);
-        try { File.Delete(c); File.Delete(d); } catch (IOException) { }
+        if (Environment.GetEnvironmentVariable("BROKENNES_N98_KEEPDRIVES") != "1") try { File.Delete(c); File.Delete(d); } catch (IOException) { }   // (KEEPDRIVES: keep them to re-run n98.py install by hand)
         return res;
     }
 

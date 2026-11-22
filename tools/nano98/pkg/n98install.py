@@ -34,7 +34,7 @@ def install(a, n98):
     pid = a.id or a.title.lower().replace(' ', '-')
     s1 = os.path.join(work, pid + '.s1.n98')
     n98.capture(types.SimpleNamespace(out=s1, title=a.title, id=pid, before=['C=' + a.base], after=['C=' + a.c], profile=None,
-                                      exclude=['N98/*'] + (a.exclude or []), keep_reg_noise=True, deep=False, whole_ini=False, snapshot=None))
+                                      exclude=['N98/*', 'WINDOWS/SYSTEM/CATROOT/*'] + (a.exclude or []), keep_reg_noise=True, deep=False, whole_ini=False, snapshot=None))
     z, man = n98.load(s1)
     # D: the game drive
     src = fat32.Fat32(fat32.open_ro(a.d))
@@ -78,12 +78,22 @@ def install(a, n98):
         (drv_files if is_drv else c_files).append(f)
     reg, hw = {}, {}
     for name, r in man['registry'].items():
+        # the install seat's own setting (Setup SourcePath = E:\WIN98, N98SeatInstall.cs) is not the game's
+        ops = [o for o in r['ops'] if not (o['key'].upper().endswith(BS + 'CURRENTVERSION' + BS + 'SETUP') and o.get('name', '').upper() in ('SOURCEPATH', 'SERVICEPACKSOURCEPATH'))]
+        r = dict(r, ops=ops)
         sw = n98.reg_filtered([o for o in r['ops'] if _software(o['key'])], False)[0]
         hw[name] = [o for o in r['ops'] if not _software(o['key'])]
         reg[name] = {'drive': 'C', 'root': r['root'], 'ops': sw}
     hw_count = sum(len(v) for v in hw.values())
     layers = list(a.layers or [])
     layer_path = None
+    # Windows parts the setup installed (codecs: SYSTEM.INI [drivers32] names their DLLs) go with the hardware/system changes into the layer
+    sys_ini = [i for i in man.get('ini', []) if i['path'].upper() == 'C:/WINDOWS/SYSTEM.INI']
+    named = {str(op.get('value') or '').upper() for i in sys_ini for op in i['ops']}
+    if a.layer_id:
+        for f in list(c_files):
+            if f['path'].upper().startswith('C:/WINDOWS/SYSTEM/') and f['path'].rsplit('/', 1)[-1].upper() in named:
+                c_files.remove(f); drv_files.append(f)
     if a.layer_id and (drv_files or hw_count):
         layer_path = a.layer_out or os.path.join(os.path.dirname(os.path.abspath(a.out)), a.layer_id + '.n98')
         lz = zipfile.ZipFile(layer_path + '.tmp', 'w', zipfile.ZIP_DEFLATED, compresslevel=6)
