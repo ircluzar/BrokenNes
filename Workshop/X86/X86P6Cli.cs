@@ -140,7 +140,7 @@ public static class X86P6Cli
             Check(refused, "a P2 state is refused by a P55C machine");
             var (c4, b4) = Make(p2);
             RunReal(c4, Cat(MovR32(1, 0x1b), new byte[] { 0x0f, 0x32 }));
-            Check(b4.LastVec == 13, $"RDMSR APIC_BASE: #GP (no APIC reported) (vector {b4.LastVec})");
+            Check(b4.LastVec == -1 && c4.R[0] == 0xFEE00100u, $"RDMSR APIC_BASE: FEE00100 (BSP, APIC off; Win98 VMM reads it on family 6) (vector {b4.LastVec}, eax {c4.R[0]:X8})");
         }
         // ---- P6 forms on the P55C: #UD ----
         foreach (var (name, code) in new (string, byte[])[] { ("CMOVZ", new byte[] { 0x0f, 0x44, 0xc1 }), ("RDPMC", new byte[] { 0x0f, 0x33 }), ("NOP 0F1F", new byte[] { 0x0f, 0x1f, 0xc0 }),
