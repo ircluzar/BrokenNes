@@ -64,9 +64,13 @@ public sealed class DiskImage
         return d;
     }
 
+    /// <summary>Called on every read (nano98's warm-boot check: which D: sectors Windows read before the game drive went in).</summary>
+    public Action<long, int>? ReadHook;
+
     public bool Read(long lba, int count, Span<byte> dst)
     {
         if (lba < 0 || count < 0 || lba + count > TotalSectors) return false;
+        ReadHook?.Invoke(lba, count);
         if (_overlay.Count == 0) { Base.AsSpan(checked((int)(lba * SectorSize)), count * SectorSize).CopyTo(dst); return true; }
         for (int i = 0; i < count; i++)
         {
@@ -177,6 +181,7 @@ public sealed class DiskImage
     /// <summary>Reads a disk image file; a valid IMAGE.p256 sidecar seeds its base hash (no hashing at state load), else the sidecar is written once the hash is made.</summary>
     public static byte[] ReadImageFile(string path)
     {
+        if (IsSparse(path)) return ReadSparse(path);
         var fi = new FileInfo(path);
         long size = fi.Length, ticks = fi.LastWriteTimeUtc.Ticks;
         byte[] image = File.ReadAllBytes(path);
@@ -199,6 +204,39 @@ public sealed class DiskImage
         }
         catch (IOException) { } catch (UnauthorizedAccessException) { }
         return image;
+    }
+
+    // ---- N98D sparse container (tools/nano98/pkg/sparse.py): only the non-zero sectors, deflated; the guest sees the whole disk ----
+    /// <summary>True when the file is an N98D container (magic "N98D").</summary>
+    public static bool IsSparse(string path)
+    {
+        try { using var f = File.OpenRead(path); Span<byte> m = stackalloc byte[4]; return f.Read(m) == 4 && m.SequenceEqual("N98D"u8); }
+        catch (IOException) { return false; } catch (UnauthorizedAccessException) { return false; }
+    }
+
+    /// <summary>The disk an N98D holds, expanded (zero-filled between its chunks). Its identity hash comes from the header (written by sparse.py
+    /// from the raw image) unless X86_N98D_VERIFY=1, which re-hashes and refuses a mismatch.</summary>
+    public static byte[] ReadSparse(string path) { using var f = File.OpenRead(path); return ReadSparse(f, path); }
+    public static byte[] ReadSparse(Stream s, string name)
+    {
+        using var r = new BinaryReader(s, System.Text.Encoding.ASCII, true);
+        if (r.ReadUInt32() != 0x4438394E) throw new InvalidDataException($"{name}: not an N98D disk");
+        if (r.ReadInt32() != 1) throw new InvalidDataException($"{name}: N98D version this build does not know");
+        long len = r.ReadInt64();
+        if (len <= 0 || len % SectorSize != 0 || len > int.MaxValue) throw new InvalidDataException($"{name}: bad N98D length {len}");
+        string hash = System.Text.Encoding.ASCII.GetString(r.ReadBytes(r.ReadByte()));
+        var img = new byte[len];
+        for (int n = r.ReadInt32(); n > 0; n--)
+        {
+            long first = r.ReadInt64(); int count = r.ReadInt32(), clen = r.ReadInt32();
+            if (first < 0 || count <= 0 || (first + count) * SectorSize > len || clen < 0) throw new InvalidDataException($"{name}: N98D chunk outside its disk");
+            using var z = new System.IO.Compression.ZLibStream(new MemoryStream(r.ReadBytes(clen)), System.IO.Compression.CompressionMode.Decompress);
+            var dst = img.AsSpan(checked((int)(first * SectorSize)), count * SectorSize);
+            while (dst.Length > 0) { int got = z.Read(dst); if (got <= 0) throw new InvalidDataException($"{name}: N98D chunk truncated"); dst = dst[got..]; }
+        }
+        if (Environment.GetEnvironmentVariable("X86_N98D_VERIFY") == "1" && PieceHash(img) != hash) throw new InvalidDataException($"{name}: N98D content does not match its hash {hash}");
+        if (hash.StartsWith("p256:", StringComparison.Ordinal)) lock (_lock) _hashes.AddOrUpdate(img, Task.FromResult(hash));
+        return img;
     }
 
     private static string SampleHash(byte[] a)
@@ -260,7 +298,8 @@ public sealed class DiskImage
         }
         // the whole-image sha256 starts now, one thread per image, as it always did (a state saved before p256 names the disk by it, and
         // its load must be no slower than before); the parallel p256 is made when a state first needs it (~1 s)
-        if (image.Length >= 4 << 20) LegacyTask(image);
+        bool seeded; lock (_lock) seeded = _hashes.TryGetValue(image, out _);
+        if (image.Length >= 4 << 20 && !seeded) LegacyTask(image);   // (an image whose p256 came from a trusted header / cache is never named by the old hash)
     }
 
     /// <summary>A base with this hash and length: the candidates first (the disks in the machine now), then every base still alive, then <see cref="BaseResolver"/>.</summary>

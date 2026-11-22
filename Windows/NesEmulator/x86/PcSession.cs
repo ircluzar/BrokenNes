@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using NesEmulator.Systems;
 
 namespace NesEmulator.X86;
@@ -78,7 +79,7 @@ public sealed class PcSession : IConsoleSession
             Seat = seat;
             _m.Command = seat.Command;
             if (seat.Image2 != null && _m.Ata != null) _m.Hdd[1] = new DiskImage(seat.Image2, false);   // the package's D: (primary slave)
-            if (seat.CdPath != null && _m.Cd == null) InsertCd(CdImage.Open(seat.CdPath));
+            if (seat.CdPath != null && _m.Cd == null && !seat.V2) InsertCd(CdImage.Open(seat.CdPath));   // (schema 2: the disc goes in at the warm point)
             _m.StatusLine += OnSeatStatus;
             _m.UploadByte = OnSeatUpload;
         }
@@ -196,15 +197,81 @@ public sealed class PcSession : IConsoleSession
             return;
         }
         if (line == "N98 FILES END") { SeatFilesEnd(); return; }
+        if (line == "N98 BOOT" && Seat?.V2 == true && !_gameDriveIn) _swapPending = true;   // schema 2: the game drive goes in at the warm point
         if (line == "N98 BOOT" && _resumeKey != null) _snapPending = true;   // the machine is up, the launcher waits 1 s before reading its command: the resume point
         else if (line.StartsWith("N98 EXIT ", StringComparison.Ordinal)) { string code = line[9..]; if (code != "0") SeatEnded?.Invoke("exit", code); }
         else if (line.StartsWith("N98 FAIL", StringComparison.Ordinal)) SeatEnded?.Invoke("fail", line.Length > 9 ? line[9..] : "");
+    }
+
+    // ---- schema 2: the shared warm-boot state (one per seat base + emulator build) and the game drive swap ----
+    private bool _swapPending, _gameDriveIn;
+    /// <summary>The state identity used while the shared warm-boot state is saved / loaded (it belongs to the base, not to one game).</summary>
+    private string? _stateId;
+    private const string WarmStateId = "n98warm";
+    private HashSet<long>? _dReads;
+    private void SwapGameDrive()
+    {
+        _swapPending = false;
+        var blank = _m.Hdd[1];
+        if (blank != null) blank.ReadHook = null;
+        if (_dReads != null && blank != null)
+        {
+            // Windows mounted D: from the blank drive before N98 BOOT: it is only safe to swap when every sector it read (and may cache) is the same on the game drive
+            int diff = 0; var g = Seat!.GameDrive!; var b = blank.Base; var dl = new List<long>();
+            foreach (long sct in _dReads) if (!g.AsSpan((int)(sct * 512), 512).SequenceEqual(b.AsSpan((int)(sct * 512), 512))) { diff++; dl.Add(sct); }
+            System.Console.WriteLine($"[nano98] warm point: Windows read {_dReads.Count} D: sectors ({string.Join(",", _dReads.OrderBy(x => x).Take(24))}{(_dReads.Count > 24 ? ",..." : "")}), {diff} differ on this game drive{(diff > 0 ? " (" + string.Join(",", dl.OrderBy(x => x)) + ")" : "")}; D: writes {blank.OverlaySectors}");
+            _dReads = null;
+        }
+        var d = new DiskImage(Seat!.GameDrive!, false);
+        if (blank != null && blank.OverlaySectors > 0)
+        {
+            // what Windows wrote on the blank drive before the warm point (the FAT's "in use" flag in FAT sector 0 of both copies): the same sectors
+            // of the game drive are the same bytes but for that flag, so they carry over as written
+            var ms = new MemoryStream(); var bw = new BinaryWriter(ms); blank.WriteOverlay(bw); bw.Flush();
+            var keys = new List<string>(); ms.Position = 0; var br0 = new BinaryReader(ms);
+            for (int n = br0.ReadInt32(); n > 0; n--)
+            {
+                long k = br0.ReadInt64(); var sec = br0.ReadBytes(512); var bb = blank.Base.AsSpan((int)(k * 512), 512).ToArray();
+                keys.Add(k + "[" + string.Join(" ", Enumerable.Range(0, 512).Where(i => sec[i] != bb[i]).Take(8).Select(i => $"{i:x}:{bb[i]:x2}>{sec[i]:x2}")) + "]");
+            }
+            System.Console.WriteLine($"[nano98] warm point: D: sectors written before the swap: {string.Join(", ", keys)}");
+            ms.Position = 0; d.ReadOverlay(new BinaryReader(ms));
+        }
+        _m.Hdd[1] = d;
+        if (_m.Ata != null) _m.Ata.Primary.Disk[1] = d;
+        _gameDriveIn = true;
+        if (Seat.CdPath != null) InsertCd(CdImage.Open(Seat.CdPath));   // (the warm point has no disc: it is new to Windows, like a disc put in)
+    }
+
+    private bool SeatWarm()
+    {
+        _gameDriveIn = false;
+        _m.Hdd[1]!.ReadHook = (l, n) => { _dReads ??= new(); for (int i = 0; i < n; i++) _dReads.Add(l + i); };
+        string key = Disk.ContentKey() + "+" + _m.Hdd[1]!.ContentKey(), dir = Seat!.WarmDir, st = Path.Combine(dir, "warm.bin"), meta = Path.Combine(dir, "warm.key");
+        try
+        {
+            if (File.Exists(st) && File.Exists(meta) && File.ReadAllText(meta) == key && Environment.GetEnvironmentVariable("BROKENNES_N98_NORESUME") != "1")
+            {
+                _stateId = WarmStateId;
+                try { LoadState(File.ReadAllBytes(st)); } finally { _stateId = null; }
+                _m.Command = Seat.CommandWith(withFiles: true);
+                _m.Ata?.Secondary.ClearMediaChanged(0);
+                _dReads = null;
+                SwapGameDrive();
+                System.Console.WriteLine($"[nano98] warm-boot state {dir}");
+                return true;
+            }
+        }
+        catch (Exception e) { System.Console.WriteLine($"[nano98] warm-boot state not used: {e.Message}"); }
+        _resumeKey = key;
+        return false;
     }
 
     /// <summary>Power-on of a seat: the cached resume snapshot when it was made by this emulator build from this same disk, else a cold boot that makes one.</summary>
     private bool SeatResume()
     {
         if (Seat == null) return false;
+        if (Seat.V2) return SeatWarm();
         if (Disk.OverlaySectors != 0 || (_m.Hdd[1]?.OverlaySectors ?? 0) != 0) return false;   // resume snapshots are only made and used on the drives as the package left them
         string key = Disk.ContentKey() + (_m.Hdd[1] != null ? "+" + _m.Hdd[1]!.ContentKey() : ""), dir = Seat.ResumeDir, st = Path.Combine(dir, "resume.bin"), meta = Path.Combine(dir, "resume.key");
         try
@@ -227,10 +294,12 @@ public sealed class PcSession : IConsoleSession
         _snapPending = false;
         try
         {
-            string dir = Seat!.ResumeDir; Directory.CreateDirectory(dir);
-            File.WriteAllBytes(Path.Combine(dir, "resume.bin.tmp"), SaveState());
-            File.Move(Path.Combine(dir, "resume.bin.tmp"), Path.Combine(dir, "resume.bin"), true);
-            File.WriteAllText(Path.Combine(dir, "resume.key"), _resumeKey!);
+            string dir = Seat!.V2 ? Seat.WarmDir : Seat.ResumeDir, n = Seat.V2 ? "warm" : "resume"; Directory.CreateDirectory(dir);
+            string tmp = Path.Combine(dir, n + ".bin.tmp" + Environment.ProcessId);
+            if (Seat.V2) _stateId = WarmStateId;
+            try { File.WriteAllBytes(tmp, SaveState()); } finally { _stateId = null; }
+            File.Move(tmp, Path.Combine(dir, n + ".bin"), true);
+            File.WriteAllText(Path.Combine(dir, n + ".key"), _resumeKey!);
             System.Console.WriteLine($"[nano98] resume snapshot saved ({dir})");
         }
         catch (Exception e) { System.Console.WriteLine($"[nano98] resume snapshot not saved: {e.Message}"); }
@@ -262,6 +331,7 @@ public sealed class PcSession : IConsoleSession
         _m.Card?.Advance();
         CopyFrame();
         if (_snapPending) SeatSnapshot();
+        if (_swapPending) SwapGameDrive();
         if (Seat != null) SeatWatch();
         if (Seat != null && SeatPoweredOff && !_seatOffSent) { _seatOffSent = true; SeatEnded?.Invoke("poweroff", ""); }
     }
@@ -491,7 +561,7 @@ public sealed class PcSession : IConsoleSession
         ms.SetLength(0);
         _m.SaveState(ms);
         WriteSoundOutput(ms);
-        var file = ConsoleStateFile.Wrap(Console, GameId, Title, StateUnits(), new ArraySegment<byte>(ms.GetBuffer(), 0, (int)ms.Length));
+        var file = ConsoleStateFile.Wrap(Console, _stateId ?? GameId, _stateId != null ? "nano98 warm boot" : Title, StateUnits(), new ArraySegment<byte>(ms.GetBuffer(), 0, (int)ms.Length));
         if (ms.Capacity > 512 << 20) _stateBuf = null;   // (never keep a freak-sized buffer)
         return file;
     }
@@ -581,7 +651,7 @@ public sealed class PcSession : IConsoleSession
 
     public void LoadState(byte[] state)
     {
-        byte[] payload = ConsoleStateFile.Unwrap(state, Console, GameId, Title, StateUnits());
+        byte[] payload = ConsoleStateFile.Unwrap(state, Console, _stateId ?? GameId, Title, StateUnits());
         var before = _m.SaveState();
         var (machine, sound) = SplitSoundOutput(payload);
         try { _m.LoadState(machine); RestoreSoundOutput(sound); _m.InstructionsPerSecond = _model?.Ips ?? IpsOf(_cpuId); _powered = true; _exported = null; _pad = PadButtons.None; }

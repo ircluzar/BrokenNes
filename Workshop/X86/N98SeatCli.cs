@@ -25,8 +25,12 @@ internal static class N98SeatCli
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var s = new PcSession(File.ReadAllBytes(pkg), Path.GetFileName(pkg), apu, "I386", "VGA");
         Console.WriteLine($"n98seat: {s.Title} on {s.MachineKey}, prepared in {sw.Elapsed.TotalSeconds:F1} s, cache {s.Seat!.CacheDir}");
+        if (s.Seat.V2) Console.WriteLine($"n98seat: schema 2, base {DiskImage.HashOf(s.Seat.Image)}, blank D {(Environment.GetEnvironmentVariable("N98SEAT_BLANKHASH") == "1" ? DiskImage.HashOf(s.Seat.BlankDrive!) : "-")}, game D {DiskImage.HashOf(s.Seat.GameDrive!)}, warm {s.Seat.WarmDir}");
         if (saveIn != null) { s.ImportSave(File.ReadAllBytes(saveIn)); Console.WriteLine($"n98seat: saves layer {saveIn} {(s.SavesMismatch ? "NOT applied (other composition)" : "applied")}"); }
         string? ended = null;
+        // --until-warm: stop once the shared warm-boot state exists (build_seat.py makes the base's warm state with an empty package)
+        bool untilWarm = args.Contains("--until-warm"); string warmFile = Path.Combine(s.Seat.WarmDir, "warm.bin");
+        if (untilWarm && File.Exists(warmFile)) { Console.WriteLine($"n98seat: warm state already there: {warmFile}"); return 0; }
         s.Machine.StatusLine += l => Console.WriteLine($"n98seat: status \"{l}\" at {sw.Elapsed.TotalSeconds:F1} s");
         s.SeatEnded += (k, d) => ended = $"{k} {d}";
         int f = 0;
@@ -34,6 +38,7 @@ internal static class N98SeatCli
         if (shotDir != null) Directory.CreateDirectory(shotDir);
         for (; f < frames && ended == null; f++)
         {
+            if (untilWarm && f % 50 == 0 && File.Exists(warmFile)) { ended = "warm state saved: " + warmFile; break; }
             s.RunFrame();
             if (mp4 != null)
             {

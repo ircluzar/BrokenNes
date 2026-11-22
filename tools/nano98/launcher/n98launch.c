@@ -12,6 +12,13 @@
  *     records of [u32 path length][path][u32 size][bytes], ended by a path length of 0.
  * When the game ends, every file matching a save= pattern goes back to the host: status line "N98 FILE <size> <path>", then its bytes
  * on port EBh; "N98 FILES END" closes the set (the host then keeps C: as it was at boot: the saves live in the host's saves folder).
+ * After the saved files (v2 packages, 2026-11-21): "N98R" then the package's SYSTEM changes applied at run time, so one shared warm-boot
+ * state of the base fits every package (Windows has booted without them): records [u8 op] ..., strings = [u32 length][bytes]:
+ *     1 root key            create a key (root 1 = HKEY_LOCAL_MACHINE, 2 = HKEY_USERS)
+ *     2 root key name type data   set a value (type = REG_*; data = [u32 length][bytes])
+ *     3 root key name       delete a value          4 root key   delete a key (its subtree)
+ *     5 file section key value   INI edit (WritePrivateProfileString; value length 0xFFFFFFFF = delete the key)
+ *     0                     end;  status "N98 SYSTEM <count>"
  * Guest -> host: status lines on port E9h ("N98 ..."), written only by this program (deterministic):
  *     N98 BOOT (resume point) | N98 READY | N98 NOCMD | N98 RUN <path> | N98 FAIL <error> | N98 EXIT <code> | N98 POWEROFF
  * No command disk: Explorer starts as the normal shell.
@@ -75,6 +82,46 @@ static void restore_files(void)
         count++;
     }
     sprintf(line, "N98 RESTORED %d", count); status(line);
+}
+
+static int in_str(char *out, int n)
+{
+    unsigned long len = in32(), i;
+    if (len == 0xffffffffUL) { out[0] = 0; return -1; }
+    for (i = 0; i < len; i++) { int c = inp(0xea); if ((long)i < n - 1) out[i] = (char)c; }
+    out[len < (unsigned long)n ? len : (unsigned long)n - 1] = 0;
+    return (int)len;
+}
+
+/* the package's registry + INI changes (after "N98R"; a v1 command has none: the port then reads 0) */
+static void apply_system(void)
+{
+    static char key[520], name[260], file[260], sec[260];
+    static unsigned char data[65536];
+    char line[64]; int op, count = 0;
+    unsigned long magic = in32();
+    if (magic != 0x5238394EUL) return;   /* 'N98R' */
+    while ((op = inp(0xea)) != 0 && op != 0xff) {
+        HKEY root = HKEY_LOCAL_MACHINE, k;
+        if (op >= 1 && op <= 4) { root = inp(0xea) == 2 ? HKEY_USERS : HKEY_LOCAL_MACHINE; in_str(key, sizeof key); }
+        if (op == 1) { if (RegCreateKeyA(root, key, &k) == ERROR_SUCCESS) RegCloseKey(k); }
+        else if (op == 2) {
+            unsigned long type, len, i;
+            in_str(name, sizeof name); type = in32(); len = in32();
+            for (i = 0; i < len; i++) { int c = inp(0xea); if (i < sizeof data) data[i] = (unsigned char)c; }
+            if (len > sizeof data) len = sizeof data;
+            if (RegCreateKeyA(root, key, &k) == ERROR_SUCCESS) { RegSetValueExA(k, name[0] ? name : NULL, 0, type, data, len); RegCloseKey(k); }
+        }
+        else if (op == 3) { in_str(name, sizeof name); if (RegOpenKeyA(root, key, &k) == ERROR_SUCCESS) { RegDeleteValueA(k, name); RegCloseKey(k); } }
+        else if (op == 4) { RegDeleteKeyA(root, key); }
+        else if (op == 5) {
+            int vl; in_str(file, sizeof file); in_str(sec, sizeof sec); in_str(name, sizeof name); vl = in_str((char *)data, sizeof data);
+            WritePrivateProfileStringA(sec, name, vl < 0 ? NULL : (char *)data, file);
+        }
+        else break;
+        count++;
+    }
+    sprintf(line, "N98 SYSTEM %d", count); status(line);
 }
 
 /* sends one file to the host: "N98 FILE <size> <path>" then the bytes on port EBh */
@@ -174,6 +221,7 @@ int PASCAL WinMain(HINSTANCE hi, HINSTANCE hp, LPSTR cl, int show)
     Sleep(1000);
     if (!read_cmd(g_buf, sizeof g_buf) || strncmp(g_buf, "N98CMD1", 7) != 0) { status("N98 NOCMD"); cursors_on(); run_explorer(); return 0; }
     restore_files();
+    apply_system();
     status("N98 READY");
     field("run", run, sizeof run); field("args", args, sizeof args); field("dir", dir, sizeof dir); field("exit", ex, sizeof ex);
     sprintf(line, "\"%s\" %s", run, args);

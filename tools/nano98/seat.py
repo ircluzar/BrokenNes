@@ -1,4 +1,4 @@
-# seat.py: nano98 seat tools (run with the pyfatfs venv: C:/BrokenNes-work/tools/pyfat_venv/Scripts/python.exe -I seat.py ...)
+# seat.py: nano98 seat tools (pure Python 3: python -I seat.py ...)
 #   seat.py install DISK.img          put C:\N98\N98LAUNCH.EXE on an installed Win98 disk and make it the shell (SYSTEM.INI shell=)
 #                                     (+ seat_look.py: the nano98 boot screen, black desktop)
 #   seat.py cmd OUT.txt run=PATH [args=...] [dir=...] [exit=poweroff|shell|restart]
@@ -13,22 +13,25 @@ def fsinfo_unknown(img):
         for bs in (0, 6): d.seek(PART + (bs + 1) * 512 + 488); d.write(struct.pack('<II', 0xffffffff, 0xffffffff))
 
 def install(img):
-    from pyfatfs.PyFatFS import PyFatFS
-    f = PyFatFS(img, offset=PART)
-    f.makedir('/N98', recreate=True)
-    if f.exists('/N98/N98LAUNCH.EXE'): f.remove('/N98/N98LAUNCH.EXE')   # (pyfatfs cannot overwrite in place)
-    with f.openbin('/N98/N98LAUNCH.EXE', 'w') as o: o.write(open(os.path.join(HERE, 'launcher', 'N98LAUNCH.EXE'), 'rb').read())
-    ini = f.openbin('/WINDOWS/SYSTEM.INI').read().decode('latin1')
+    sys.path.insert(0, os.path.join(HERE, 'pkg')); sys.path.insert(0, HERE)
+    import fat32   # (pure Python: no pyfatfs needed, runs on every fleet PC)
+    f = fat32.Fat32(img, write=True)
+    f.mkdir('N98')
+    f.write_file('N98/N98LAUNCH.EXE', open(os.path.join(HERE, 'launcher', 'N98LAUNCH.EXE'), 'rb').read(), 0x20)
+    e, _ = f.lookup('WINDOWS/SYSTEM.INI')
+    ini = f.read_file('WINDOWS/SYSTEM.INI').decode('latin1')
     lines = ini.split('\r\n'); out = []; done = False
     for l in lines:
         if l.lower().startswith('shell='): l = 'shell=C:\\N98\\N98LAUNCH.EXE'; done = True
         out.append(l)
     if not done:
         i = next(k for k, l in enumerate(out) if l.strip().lower() == '[boot]'); out.insert(i + 1, 'shell=C:\\N98\\N98LAUNCH.EXE')
-    with f.openbin('/WINDOWS/SYSTEM.INI', 'w') as o: o.write('\r\n'.join(out).encode('latin1'))
+    f.write_file('WINDOWS/SYSTEM.INI', '\r\n'.join(out).encode('latin1'), e.attr, (e.ctime, e.cdate, e.adate, e.wtime, e.wdate))
+    f.fat_dirty = True
     f.close(); fsinfo_unknown(img)
     import seat_look; seat_look.apply(img)
     print(f'{img}: shell = C:\\N98\\N98LAUNCH.EXE')
+
 
 def cmd(out, kv):
     text = 'N98CMD1\r\n' + ''.join(k + '\r\n' for k in kv)

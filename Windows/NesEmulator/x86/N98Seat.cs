@@ -17,7 +17,7 @@ namespace NesEmulator.X86;
 /// pkg\n98.py; default: found above the app folder, i.e. the repo's tools\nano98), BROKENNES_PYTHON (default python),
 /// BROKENNES_N98_CDS (folder with the user's disc images the packages name), BROKENNES_N98_CACHE (default %LOCALAPPDATA%\BrokenNes\nano98).
 /// </summary>
-public sealed class N98Seat
+public sealed partial class N98Seat
 {
     public string Id = "", Title = "", Machine = "win98-p166-nano", CacheDir = "", ImagePath = "";
     public byte[] Image = Array.Empty<byte>(), Command = Array.Empty<byte>();
@@ -39,9 +39,10 @@ public sealed class N98Seat
         string id = Convert.ToHexString(SHA1.HashData(pkg))[..16].ToLowerInvariant();
         string root = Environment.GetEnvironmentVariable("BROKENNES_N98_CACHE") is { Length: > 0 } c ? c
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BrokenNes", "nano98");
-        var s = new N98Seat { Id = id, CacheDir = Path.Combine(root, id) };
+        var s = new N98Seat { Id = id, CacheDir = Environment.GetEnvironmentVariable("BROKENNES_N98_CACHEDIR") is { Length: > 0 } cd0 ? cd0 : Path.Combine(root, id) };   // (CACHEDIR: this one package's folder, for tests)
         string? dName = null;
         Directory.CreateDirectory(s.CacheDir);
+        if (SchemaOf(pkg) >= 2) return PrepareV2(pkg, fileName, s);
         string pkgPath = Path.Combine(s.CacheDir, "package.n98");
         if (!File.Exists(pkgPath)) File.WriteAllBytes(pkgPath, pkg);
 
@@ -84,7 +85,8 @@ public sealed class N98Seat
         // the applied game is kept as copy-on-write LAYERS over the seat base (C.n98l / D.n98l, only the sectors the package changes),
         // not as whole disks: the drive is composed in memory at start (base + layer), its identity hash cached beside the layer
         DateTime newest = new[] { File.GetLastWriteTimeUtc(baseImg), baseD != null ? File.GetLastWriteTimeUtc(baseD) : DateTime.MinValue, File.GetLastWriteTimeUtc(pkgPath) }.Max();
-        if (!File.Exists(stamp) || File.GetLastWriteTimeUtc(stamp) < newest)
+        bool prebuilt = File.Exists(stamp) && Environment.GetEnvironmentVariable("BROKENNES_N98_PREBUILT") == "1";   // (a cache built elsewhere and copied: file times are not kept)
+        if (!prebuilt && (!File.Exists(stamp) || File.GetLastWriteTimeUtc(stamp) < newest))
         {
             string outDir = Path.Combine(s.CacheDir, "apply.tmp");
             if (Directory.Exists(outDir)) Directory.Delete(outDir, true);
@@ -120,8 +122,13 @@ public sealed class N98Seat
         if (!File.Exists(layerPath)) return DiskImage.ReadImageFile(basePath);
         var bi = new FileInfo(basePath); var li = new FileInfo(layerPath);
         string key = $"{bi.Length}|{bi.LastWriteTimeUtc.Ticks}|{li.Length}|{li.LastWriteTimeUtc.Ticks}";
-        var img = new byte[bi.Length];
-        using (var f = File.OpenRead(basePath)) { int at = 0; while (at < img.Length) { int n = f.Read(img, at, Math.Min(1 << 24, img.Length - at)); if (n <= 0) break; at += n; } }
+        byte[] img;
+        if (DiskImage.IsSparse(basePath)) { img = DiskImage.ReadSparse(basePath); }
+        else
+        {
+            img = new byte[bi.Length];
+            using var f = File.OpenRead(basePath); int at = 0; while (at < img.Length) { int n = f.Read(img, at, Math.Min(1 << 24, img.Length - at)); if (n <= 0) break; at += n; }
+        }
         using (var r = new BinaryReader(File.OpenRead(layerPath)))
         {
             if (new string(r.ReadChars(4)) != "N98L" || r.ReadInt32() != 1) throw new InvalidDataException($"{layerPath}: not a version 1 N98L layer");
@@ -154,6 +161,11 @@ public sealed class N98Seat
         foreach (var pat in SavePatterns) text += "save=" + pat.Replace('/', '\\') + "\r\n";
         ms.Write(System.Text.Encoding.Latin1.GetBytes(text)); ms.WriteByte(0);
         var w = new BinaryWriter(ms);
+        foreach (var (guest, data) in SystemFiles)   // (schema 2: the package's files on C:, every start)
+        {
+            var pb = System.Text.Encoding.Latin1.GetBytes(guest);
+            w.Write((uint)pb.Length); w.Write(pb); w.Write((uint)data.Length); w.Write(data);
+        }
         if (withFiles && Directory.Exists(SavesDir))
             foreach (var f in Directory.GetFiles(SavesDir, "*", SearchOption.AllDirectories))
             {
@@ -163,7 +175,9 @@ public sealed class N98Seat
                 var pb = System.Text.Encoding.Latin1.GetBytes(guest); var data = File.ReadAllBytes(f);
                 w.Write((uint)pb.Length); w.Write(pb); w.Write((uint)data.Length); w.Write(data);
             }
-        w.Write(0u); w.Flush();
+        w.Write(0u);
+        if (V2) w.Write(SystemOps);   // "N98R": the package's registry + INI changes (the launcher applies them before the game)
+        w.Flush();
         return ms.ToArray();
     }
 
@@ -180,7 +194,7 @@ public sealed class N98Seat
         tried.Add(Path.Combine(AppContext.BaseDirectory, "x86", "nano98", "seat_base.img"));
         tried.Add(Path.Combine(LocalRoot, "seat_base.img"));
         tried.Add(@"C:\BrokenNes-work\nano98_work\seat_base.img");
-        foreach (var c in tried) if (File.Exists(c)) return c;
+        foreach (var c in tried) { if (File.Exists(c)) return c; if (File.Exists(Path.ChangeExtension(c, ".n98d"))) return Path.ChangeExtension(c, ".n98d"); }
         throw new FileNotFoundException("The Windows 98 seat (the base disk every .n98 game runs on) was not found. It is made once from your own Windows 98 SE disc "
             + @"(tools\nano98\build_base.py, then seat.py install). Put seat_base.img in one of:" + Environment.NewLine + string.Join(Environment.NewLine, tried)
             + Environment.NewLine + "(or set BROKENNES_N98_BASE to its path).");

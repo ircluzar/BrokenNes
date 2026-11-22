@@ -52,6 +52,9 @@ def drives(specs):
 
 
 def sha256_file(path):
+    import sparse
+    if sparse.is_n98d(path):
+        return sparse.header(path)[1]   # an N98D names its disk by the p256 in its header
     h = hashlib.sha256()
     with open(path, 'rb') as f:
         for b in iter(lambda: f.read(1 << 22), b''):
@@ -146,8 +149,8 @@ def capture(a):
     z = zipfile.ZipFile(a.out, 'w', zipfile.ZIP_DEFLATED, compresslevel=6)
     nbytes = 0
     for drv in sorted(aft):
-        A = fat32.Fat32(bef[drv]) if drv in bef else None
-        B = fat32.Fat32(aft[drv])
+        A = fat32.Fat32(fat32.open_ro(bef[drv])) if drv in bef else None
+        B = fat32.Fat32(fat32.open_ro(aft[drv]))
         if drv in bef:
             man['base']['drives'][drv] = {'image': os.path.basename(bef[drv]), 'sha256': sha256_file(bef[drv]),
                                           'length': os.path.getsize(bef[drv])}
@@ -232,7 +235,7 @@ def capture(a):
 def load(pkg):
     z = zipfile.ZipFile(pkg)
     man = json.loads(z.read('manifest.json'))
-    if man.get('format') != 'n98' or man.get('schema', 0) > SCHEMA:
+    if man.get('format') != 'n98' or man.get('schema', 0) > 2:
         raise SystemExit(f'{pkg}: not an n98 package this tool knows (schema {man.get("schema")})')
     return z, man
 
@@ -334,6 +337,117 @@ def launch_cmd(a):
     seat.cmd(a.out, kv)
 
 
+STD_DRIVE_MB = 2000   # the standard game drive (N98Seat.StandardDriveMb)
+
+
+def to_v2(a):
+    """A schema-1 package -> schema 2 (the standard layout): the game's files go into D:\GAME on its own D: (2000 MB, sparse; fat32.mkfs layout), files it
+    had installed on C: outside WINDOWS or on D: are relocated to the same path under D:\GAME and every registry / INI / launch path naming them is rewritten;
+    its files under C:/WINDOWS become c_files (put back by the launcher), registry + INI ops are applied by the launcher at run time."""
+    import re, sparse
+    z, man = load(a.pkg)
+    drop = [g.upper() for g in (a.drop or [])]
+    dropped = lambda p: any(fnmatch.fnmatchcase(p.upper(), g) for g in drop)
+    disk = fat32.MemDisk(STD_DRIVE_MB << 20)
+    fat32.mkfs(disk, STD_DRIVE_MB)
+    D = fat32.Fat32(disk, write=True)
+    out = zipfile.ZipFile(a.out + '.tmp', 'w', zipfile.ZIP_DEFLATED, compresslevel=6)
+    moved_dirs, c_files, nfiles, nbytes, skipped = [], [], 0, 0, []
+    for f in man['files']:
+        drv, _, rel = f['path'].partition(':/')
+        if dropped(f['path']):
+            skipped.append(f['path']); continue
+        sys_file = drv == 'C' and (rel.upper().startswith('WINDOWS/') or ('/' not in rel and not f.get('dir')))
+        if sys_file:
+            if f.get('dir'):
+                continue
+            c_files.append({'path': f['path'], 'zip': f['zip'], 'size': f['size'], 'sha256': f['sha256']})
+            out.writestr(f['zip'], z.read(f['zip'])); continue
+        t = tuple(f.get('time', (0, 0, 0, 0, 0)))
+        if f.get('dir'):
+            D.mkdir('GAME/' + rel, t)
+            moved_dirs.append((drv, rel))
+            continue
+        data = z.read(f['zip'])
+        if hashlib.sha256(data).hexdigest() != f['sha256']:
+            raise SystemExit(f'{f["path"]}: package content hash mismatch')
+        D.write_file('GAME/' + rel, data, f.get('attr', 0x20) & 0x27, t)
+        nfiles += 1; nbytes += len(data)
+
+    def short_of(rel):
+        cl, outp = D.lookup('GAME')[1], []
+        for part in rel.split('/'):
+            e = next((x for x in D.list_dir(cl) if x.name.upper() == part.upper()), None)
+            if e is None: return None
+            outp.append(D._sn(e)); cl = e.cluster
+        return '/'.join(outp)
+    BS = chr(92)
+    forms = {'C': set(), 'D': set()}   # every folder the game added, long and 8.3 forms, per old drive
+    for drv, rel in moved_dirs:
+        forms[drv].add(rel.upper().replace('/', BS))
+        sh = short_of(rel)
+        if sh: forms[drv].add(sh.upper().replace('/', BS))
+    rxs = [re.compile(d + ':' + re.escape(BS) + '(' + '|'.join(re.escape(x) for x in sorted(fs, key=len, reverse=True)) + ')(?![A-Za-z0-9_~ ])', re.I)
+           for d, fs in forms.items() if fs]
+    nrew = [0]
+
+    def rew(t):
+        if t is None: return t
+        n2 = t
+        for rx in rxs:
+            n2 = rx.sub(lambda m: 'D:' + BS + 'GAME' + BS + m.group(1), n2)
+        if n2 != t: nrew[0] += 1
+        return n2
+    for p_, e in list(D.walk()):   # text configs inside the relocated folders
+        if not e.is_dir and p_.upper().endswith(('.INI', '.CFG')) and e.size < 65536:
+            old = D.read_file(p_); new = rew(old.decode('latin1')).encode('latin1')
+            if new != old: D.write_file(p_, new, e.attr, (e.ctime, e.cdate, e.adate, e.wtime, e.wdate))
+    D.fat_dirty = True; D.close()
+    reg, reg_dropped = {}, 0   # run-time registry ops: Software keys only (Enum/Config/hardware belong in a system layer)
+    for name, r in man['registry'].items():
+        ops = []
+        for o in r['ops']:
+            ku = o['key'].upper()
+            if not (ku.startswith('SOFTWARE') or ku.startswith('.DEFAULT' + BS + 'SOFTWARE')):
+                reg_dropped += 1; continue
+            o = dict(o)
+            if o['op'] == 'set' and o['type'] in (1, 2):
+                raw = bytes.fromhex(o['data']); body = raw.rstrip(bytes(1)); txt = body.decode('latin1')
+                nt = rew(txt)
+                if nt != txt: o['data'] = (nt.encode('latin1') + raw[len(body):]).hex()
+            ops.append(o)
+        reg[name] = {'drive': 'C', 'root': r['root'], 'ops': ops}
+    ini = [{'path': i['path'], 'ops': [dict(op, value=rew(op['value'])) for op in i['ops']]} for i in man.get('ini', []) if not dropped(i['path'])]
+
+    def mv(p):
+        if not p: return p
+        w = p.replace('/', BS); w2 = rew(w)
+        return w2.replace(BS, '/') if w2 != w else p
+    L = dict(man['launch']); L['exe'] = mv(L.get('exe')); L['cwd'] = mv(L.get('cwd'))
+    if a.args is not None: L['args'] = a.args
+    dn = os.path.join(a.work, man['id'] + '.D.n98d')
+    dh = sparse.write_mem(disk, dn)
+    out.write(dn, 'drives/D.n98d', compress_type=zipfile.ZIP_STORED)
+    v2 = {k: man[k] for k in ('format', 'id', 'title', 'hardware', 'cd') if k in man}
+    v2.update({'schema': 2, 'created': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
+               'tool': 'tools/nano98/pkg/n98.py v2', 'from_schema1': os.path.basename(a.pkg),
+               'system': {'base': 'nano98-se', 'layers': a.layers or []},
+               'drives': {'D': {'zip': 'drives/D.n98d', 'p256': dh, 'length': STD_DRIVE_MB << 20}},
+               'launch': L, 'saves': [mv(x) for x in man.get('saves', [])], 'c_files': c_files, 'ini': ini, 'registry': reg,
+               'presets': man.get('presets', {}),
+               'stats': {'d_files': nfiles, 'd_bytes': nbytes, 'c_files': len(c_files), 'rewritten_paths': nrew[0],
+                         'registry_ops_dropped': reg_dropped, 'files_dropped': len(skipped), 'deleted_ignored': len(man.get('deleted', []))}})
+    if a.embed_base:
+        if not sparse.is_n98d(a.embed_base): raise SystemExit('--embed-base takes an N98D base (slim.py --n98d)')
+        out.write(a.embed_base, 'base/C.n98d', compress_type=zipfile.ZIP_STORED)
+        v2['system']['embedded_base'] = sparse.header(a.embed_base)[1]
+    out.writestr('manifest.json', json.dumps(v2, indent=1))
+    out.close(); os.replace(a.out + '.tmp', a.out); os.remove(dn)
+    print(f'{a.out}: schema 2, D: {nfiles} files {nbytes / 1e6:.1f} MB, {len(c_files)} C: files, {nrew[0]} paths C:->D:, '
+          f'registry {sum(len(r["ops"]) for r in reg.values())} ops (-{reg_dropped} non-Software), {len(skipped)} files dropped; '
+          f'launch {L.get("exe")}; {os.path.getsize(a.out) / 1e6:.1f} MB')
+
+
 def main():
     ap = argparse.ArgumentParser()
     sp = ap.add_subparsers(dest='cmd', required=True)
@@ -345,8 +459,10 @@ def main():
     p = sp.add_parser('apply'); p.add_argument('pkg'); p.add_argument('--base', nargs='+', required=True)
     p.add_argument('--out', required=True); p.add_argument('--full', action='store_true'); p.add_argument('--saves')
     k = sp.add_parser('cmd'); k.add_argument('pkg'); k.add_argument('out'); k.add_argument('--exit', default='poweroff'); k.add_argument('--preset')
+    v = sp.add_parser('v2'); v.add_argument('pkg'); v.add_argument('out'); v.add_argument('--work', default='.')
+    v.add_argument('--drop', nargs='*'); v.add_argument('--layers', nargs='*'); v.add_argument('--embed-base'); v.add_argument('--args', help='replace the launch arguments')
     a = ap.parse_args()
-    {'capture': capture, 'info': info, 'apply': apply, 'cmd': launch_cmd}[a.cmd](a)
+    {'capture': capture, 'info': info, 'apply': apply, 'cmd': launch_cmd, 'v2': to_v2}[a.cmd](a)
 
 
 if __name__ == '__main__':

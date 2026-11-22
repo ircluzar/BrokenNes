@@ -317,14 +317,15 @@ class Fat32:
                 if fi[0:4] == b'RRaA':
                     struct.pack_into('<II', fi, 488, 0xFFFFFFFF, 0xFFFFFFFF)
                     self._wraw(self.part_lba + self.fsinfo, bytes(fi))
-        if not hasattr(self.f, 'overlay'):
+        if not hasattr(self.f, 'overlay') and not hasattr(self.f, 'secs'):
             self.f.close()
 
 
 class CowFile:
     """A disk image opened copy-on-write: reads fall through to the base file, writes land in a sector overlay."""
     def __init__(self, base_path):
-        self.base = open(base_path, 'rb')
+        import sparse
+        self.base = sparse.open_image(base_path)
         self.base.seek(0, 2); self.length = self.base.tell()
         self.overlay = {}
         self.pos = 0
@@ -406,3 +407,119 @@ class CowFile:
             shutil.copyfileobj(self.base, f, 1 << 22)
             for s, v in self.overlay.items():
                 f.seek(s * SECTOR); f.write(v)
+
+
+def open_ro(path):
+    """A raw image or an N98D sparse container, read-only (for Fat32(...))."""
+    import sparse
+    return sparse.open_image(path)
+
+
+class MemDisk:
+    """A sparse in-memory disk (only written sectors are kept; the rest reads as zero): build a drive without a 2 GB file."""
+    def __init__(self, length):
+        self.length, self.secs, self.pos = length, {}, 0
+
+    def seek(self, p, whence=0):
+        self.pos = p if whence == 0 else (self.length + p if whence == 2 else self.pos + p)
+        return self.pos
+
+    def tell(self):
+        return self.pos
+
+    def truncate(self, n=None):
+        pass
+
+    def read(self, n):
+        out = bytearray(); p, end = self.pos, min(self.pos + n, self.length)
+        while p < end:
+            s, o = divmod(p, SECTOR); take = min(SECTOR - o, end - p)
+            out += self.secs.get(s, bytes(SECTOR))[o:o + take]; p += take
+        self.pos = p
+        return bytes(out)
+
+    def write(self, data):
+        p, i = self.pos, 0
+        while i < len(data):
+            s, o = divmod(p, SECTOR); take = min(SECTOR - o, len(data) - i)
+            if o == 0 and take == SECTOR:
+                sec = bytes(data[i:i + SECTOR])
+            else:
+                sec = bytearray(self.secs.get(s, bytes(SECTOR))); sec[o:o + take] = data[i:i + take]; sec = bytes(sec)
+            if sec.count(0) == SECTOR: self.secs.pop(s, None)
+            else: self.secs[s] = sec
+            p += take; i += take
+        self.pos = p
+        return len(data)
+
+    def close(self):
+        pass
+
+
+def mkfs(path, size_mb, label=b'NANO98GAME ', serial=0x4E393844, spc=8):
+    """A new MBR disk image with one FAT32 LBA partition at sector 63 (the nano98 drive standard: same size -> byte-identical
+    empty disk, fixed volume serial, FSInfo free count / next-free "unknown", so a warm-boot state taken on one game drive
+    reads the same boot sector + FSInfo on every other one). No boot code (game drives are never booted)."""
+    total = size_mb * 1024 * 1024 // SECTOR
+    part, rsvd, nfats = 63, 32, 2
+    psec = total - part
+    fatsz = 1
+    while True:
+        nclus = (psec - rsvd - nfats * fatsz) // spc
+        need = ((nclus + 2) * 4 + SECTOR - 1) // SECTOR
+        if need <= fatsz:
+            break
+        fatsz = need
+    import contextlib
+    with (contextlib.nullcontext(path) if hasattr(path, 'write') else open(path, 'wb')) as f:
+        f.truncate(total * SECTOR)
+        mbr = bytearray(SECTOR)
+
+        def chs(lba):
+            c, r = divmod(lba, 255 * 63); h, s = divmod(r, 63); c = min(c, 1023)
+            return bytes([h, ((c >> 2) & 0xc0) | (s + 1), c & 0xff])
+        mbr[446:462] = bytes([0x00]) + chs(part) + bytes([0x0c]) + chs(total - 1) + struct.pack('<II', part, psec)
+        mbr[440:444] = struct.pack('<I', serial)
+        mbr[510:512] = b'\x55\xaa'
+        f.seek(0); f.write(mbr)
+        bs = bytearray(SECTOR)
+        bs[0:3] = b'\xeb\x58\x90'; bs[3:11] = b'MSWIN4.1'
+        struct.pack_into('<HBHBHHBHHHII', bs, 11, SECTOR, spc, rsvd, nfats, 0, 0, 0xF8, 0, 63, 255, part, psec)
+        struct.pack_into('<IHHIHH', bs, 36, fatsz, 0, 0, 2, 1, 6)
+        struct.pack_into('<BBBI', bs, 64, 0x80, 0, 0x29, serial)
+        bs[71:82] = label[:11].ljust(11); bs[82:90] = b'FAT32   '
+        bs[510:512] = b'\x55\xaa'
+        fi = bytearray(SECTOR)
+        fi[0:4] = b'RRaA'; fi[484:488] = b'rrAa'
+        struct.pack_into('<II', fi, 488, 0xFFFFFFFF, 0xFFFFFFFF); fi[510:512] = b'\x55\xaa'
+        for b0 in (0, 6):
+            f.seek((part + b0) * SECTOR); f.write(bs); f.write(fi)
+            f.seek((part + b0 + 2) * SECTOR); f.write(b'\0' * 510 + b'\x55\xaa')
+        # The standard layout (2026-11-21, nano98 warm boot): what Windows reads when it mounts the drive must be the same on every game
+        # drive: FAT sector 0 = clusters 0..127 (root = 2, the reserved file N98RSVD.SYS = 3..127, GAME = 128), and the root directory
+        # (label, N98RSVD.SYS, GAME). Games live in D:\GAME; the rest of the FAT and GAME's own cluster are free to differ.
+        fat = bytearray(SECTOR)
+        struct.pack_into('<III', fat, 0, 0x0FFFFFF8, 0x0FFFFFFF, 0x0FFFFFFF)
+        for c in range(3, 127):
+            struct.pack_into('<I', fat, c * 4, c + 1)
+        struct.pack_into('<I', fat, 127 * 4, 0x0FFFFFFF)
+        fat1 = bytearray(SECTOR); struct.pack_into('<I', fat1, 0, 0x0FFFFFFF)   # cluster 128 (GAME): one cluster when empty
+        data = part + rsvd + nfats * fatsz
+        # two more places Windows reads at mount (measured): FAT sector 408 and one data sector; their clusters are marked bad on every
+        # standard drive, so both read the same everywhere (nothing is ever allocated there)
+        bad = bytearray(SECTOR)
+        for i in range(0, SECTOR, 4): struct.pack_into('<I', bad, i, 0x0FFFFFF7)
+        probe = (3598978 - data) // spc + 2
+        for k in range(nfats):
+            f.seek((part + rsvd + k * fatsz) * SECTOR); f.write(bytes(fat)); f.write(bytes(fat1))
+            f.seek((part + rsvd + k * fatsz + 408) * SECTOR); f.write(bytes(bad))
+            f.seek((part + rsvd + k * fatsz) * SECTOR + probe * 4); f.write(struct.pack('<I', 0x0FFFFFF7))
+        def ent(name, attr, cl, size):
+            e = bytearray(32); e[0:11] = name; e[11] = attr
+            struct.pack_into('<HHHHHHHI', e, 14, 0, 0x21, 0x21, cl >> 16, 0, 0x21, cl & 0xFFFF, size)   # 1980-01-01, fixed
+            return bytes(e)
+        root = bytearray(32); root[0:11] = label[:11].ljust(11); root[11] = 0x08
+        root += ent(b'N98RSVD SYS', 0x07, 3, 125 * spc * SECTOR) + ent(b'GAME       ', 0x10, 128, 0)
+        f.seek(data * SECTOR); f.write(bytes(root))
+        f.seek((data + (128 - 2) * spc) * SECTOR); f.write(ent(b'.          ', 0x10, 128, 0) + ent(b'..         ', 0x10, 0, 0))
+    return path

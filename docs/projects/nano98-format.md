@@ -140,3 +140,62 @@ ano98_seat_quake2_package_software.png); geforce (`+set vid_ref gl`) reaches N98
 - Pointer: the seat base's cursor scheme (Arrow / Wait / AppStarting) is C:\N98\BLANK.CUR, so no pointer shows during boot. After
   CreateProcess, N98LAUNCH.EXE waits for WaitForInputIdle (the game's window is up), then cursors_on() brings back the standard cursors
   in memory with SPI_SETCURSORS. The registry keeps the blank scheme for the next boot.
+
+## Schema 2: the standard drive layout (2026-11-21)
+
+nano98 is a standard minimalist Win98 platform: every game boots on the same machine, and Windows boots the same way for all of them.
+
+| drive | what | where it comes from |
+|---|---|---|
+| C: | the seat base: Windows 98 SE culled (`slim.py`), the launcher as the shell | shared `seat_base.n98d` (or `base/C.n98d` inside the package), read-only; Windows' own writes land in the run's overlay |
+| D: | the game drive: the game installed in `D:\GAME` | the package's `drives/D.n98d`, always the standard 2000 MB size |
+| E: | the CD drive, only when the game needs a disc | the user's own disc image, by reference (`cd`) |
+
+Schema-2 manifest fields (the rest as in schema 1):
+- `schema: 2`. Readers that know only 1 refuse it; the app reads both (schema 1 still goes through `n98.py apply`).
+- `drives.D = {zip: "drives/D.n98d", p256, length}`: the game drive, an N98D container (below), stored uncompressed in the zip.
+- `system = {base: "nano98-se", layers: [...], embedded_base?}`: the system variant the game needs (base + dependency layers; layers are
+  not built yet: a package naming one is refused until they are). `base/C.n98d` (optional member) makes the package self-contained.
+- `registry`, `ini`: applied AT RUN TIME by the launcher (command port, after the saved files: `N98R` records, see n98launch.c),
+  so Windows boots on the plain base and one warm-boot state fits every package. Only `Software\` keys: Enum/Config/hardware changes
+  (drivers) belong in a system layer, not in a game.
+- `c_files`: the game's few files under C:\WINDOWS (fonts, codecs), put back by the launcher before the game starts, like saves.
+- `launch`, `saves`: paths on D:\GAME.
+
+### The standard game drive (`fat32.mkfs`, `N98Seat.MakeBlankDrive`: byte-identical)
+2000 MB, MBR + one FAT32 LBA partition at sector 63, 4 KB clusters, fixed volume serial 4E393844, label NANO98GAME, FSInfo free count and
+next-free "unknown", no boot code. Fixed content: FAT sector 0 = root (cluster 2), the hidden reserved file `N98RSVD.SYS` (clusters 3-127),
+`GAME` (cluster 128); root directory = label, N98RSVD.SYS, GAME, all dated 1980-01-01. The game lives under `D:\GAME`.
+Why: Windows mounts D: at boot, before the warm point. It reads the MBR, the boot sector + FSInfo, FAT sector 0 and the root directory
+(measured: sectors 0, 63-70, 95, 503, 8095-8102 and one data probe; `[nano98] warm point:` log line). Those sectors are the same on every
+game drive, so the drive can be swapped under a running Windows without stale caches. The two sectors Windows writes there (FAT "in use"
+flag, both FAT copies) carry over onto the game drive at the swap.
+
+### Warm boot (shared resume state)
+One savestate per seat base + emulator build, taken at the launcher's `N98 BOOT` (before it reads the command) with D: = the blank
+standard drive and no disc: `<cache>\warm\<base hash 16>-<emulator build>\warm.bin` (+ `warm.key` = the drives' content key). Any schema-2
+package then: load the warm state, put its game drive in the D: slot, its disc in the CD drive (a new medium for Windows), send the
+command (saved files, C: files, N98R ops). No warm state yet (first package on a new base or a new emulator build): cold boot, the state is
+taken at N98 BOOT and the swap happens in the same run, so cold and warm runs go through the same point. `BROKENNES_N98_WARMDIR` overrides
+the folder (a warm state shipped with the base).
+
+### Conversion: `n98.py v2 OLD.n98 NEW.n98 [--drop GLOB...] [--embed-base BASE.n98d]`
+Files the schema-1 package put on C: outside WINDOWS, and on D:, move to the same path under `D:\GAME`; every registry string, INI value,
+.INI/.CFG text inside the game folders, launch path and save pattern naming those folders (long or 8.3 form) is rewritten to
+`D:\GAME\...` (a mechanical relocation of the captured install, not a reinstall: a game that keeps absolute paths in binary files would
+need a real reinstall to D:\GAME). Files under C:\WINDOWS become `c_files`; non-Software registry ops are dropped (count reported).
+Packages holding the user's games or the base built from the user's own Win98 disc are personal copies: never published or pushed.
+
+## N98D: sparse disk container (`pkg/sparse.py`, `DiskImage.ReadSparse`)
+`'N98D'`, int32 version 1, int64 disk length, byte n + the disk's identity hash (`p256:HEX`, the same hash `DiskImage.BaseHash` gives the raw
+image), int32 chunk count, then per chunk: int64 first sector, int32 sector count, int32 compressed length, zlib (level 9) of the sectors.
+Chunks are runs of non-zero sectors (at most 1 MB) in LBA order; everything else reads as zero, so the guest sees the full disk with its free
+space. Deterministic: the same image gives the same bytes. `sparse.py pack|unpack|info`. The app opens `.n98d` anywhere it opens a disk
+image (seat base, packages, x86 sessions); the python tools read it read-only (`fat32.open_ro`, `CowFile`).
+
+## Slimming (`slim.py IN.img OUT.img --n98d OUT.n98d`)
+Reproducible step after `seat.py install`: deletes what the seat does not need (the `CULL` list: setup CABs, swap file, help, Java, IE/OE/
+Media Player, Jet/ODBC/ADO, scripting, DHTML, VB5 runtime, task scheduler, wallpapers, readmes, extra fonts...), drops the Run/RunServices
+start-up values and the VxD keys of removed files (JAVASUP: "cannot find a device file"), installs the current launcher, zero-fills free
+clusters (so the container stores only used data) and writes the N98D. 2026-11-21 on seat_base_v3: used 333 MB -> 88 MB, N98D 33 MB;
+AoE, HL Uplink, Quake II (software) and StarCraft boot to their menus / in game.
