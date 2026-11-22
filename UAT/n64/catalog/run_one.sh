@@ -25,6 +25,10 @@ basename "$SRC" > "$OUT/dump.txt"
 python -I "$CAT/conv.py" "$(cygpath -m "$SRC")" "$(cygpath -m "$TMP/rom.z64")" > "$OUT/header.txt" 2>&1
 rm -rf "$TMP/x"
 SCR="$CAT/${SCRIPT:-nav/$ID.txt}"; [ -f "$SCR" ] || SCR="$CAT/smoke2.txt"; echo "${SCR#$CAT/}" > "$OUT/script.txt"
+# [n64-revive] per-game harness defaults: nav scripts run long (Zool's first screenshot is ~37k frames in), so they get a
+# 600 s deadline; Chameleon Twist stays silent with a Controller Pak in port 1 (its catalog_fix6 pak exception), so no pak.
+case "${SCR#$CAT/}" in nav/*) DL=${DL:-600} ;; esac
+case "$ID" in Chameleon_Twist) PAK=${PAK:-none} ;; esac
 cd "$OUT"
 COR64_PIF_PAK=${PAK:-controller} COR64_VI_SPEEDUP=${VISP:-1} COMPAT_DEADLINE_SECONDS=${DL:-225} COR64_COMPAT_LOG=1 timeout $((${DL:-225}+15)) "$N64_BIN/SessionProbe.exe" "$(cygpath -m "$TMP/rom.z64")" compat "$(cygpath -m "$SCR")" "$(cygpath -m "$OUT")" > probe.log 2>&1; echo "rc=$?" >> probe.log
 rm -rf "$TMP" "$OUT"/*.state "$OUT"/DmaDumps

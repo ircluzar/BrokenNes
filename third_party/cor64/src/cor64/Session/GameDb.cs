@@ -90,7 +90,7 @@ namespace cor64.Session
             R(SliceCert, "BC", 0, null, ""), R(SliceCert, "PW", 0, null, ""), R(SliceCert, "MX", 0, null, ""),
             R(SliceExcl, "AI", 0, null, "Midway's Greatest Arcade Hits 1: unimplemented op with 1024"),
             R(SliceExcl, "SY", 0, null, "Scooby-Doo: slower with 1024"),
-            R(SliceExcl, "RR", 0, "COR64_TITLE3_SLICE", "Roadsters Trophy: no RSP task ever with the 1024 default slice (black boot since speed_cat3 f0a02f5) [title_fix3]"),
+            // [n64-revive] Roadsters Trophy (RR) row removed: its title_fix3 black boot was the VI_CURRENT wrap at 1024 slices (Video.ViMod).
             // ---- Count scale [catalog_fix2/5, ingame_fix1/3] (all gated by COR64_CATFIX2_COUNTX) ----
             R(CountFixed, "HC", 6, "COR64_VISPFIX2_COUNT", "Hercules at VI cap 6: the Titus licence needs Count >= 5 [visp_fix2]"),
             R(CountFixed, "GX", 2, "COR64_CATFIX5_COUNT", "Gauntlet Legends [catalog_fix5]"),

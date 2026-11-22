@@ -146,6 +146,42 @@ internal static class ClientTest
         string md = DebugTestRoms.Write(dir, "debugtest.md", mdr), mdSym = DebugTestRoms.Write(dir, "debugtest_md_symbols.txt", mdn);
         string H(Asm a, string l) => "$" + a[l].ToString("X4");
 
+        // ---------------------------------------------------------------- TAS (T1): run a script twice, branch from a frame, run the branch
+        {
+            string scr = Path.Combine(dir, "tas1.tas");
+            File.WriteAllLines(scr, new[] { "run 20", "press Start 2 10", "hold Right", "run 30", "screenshot mid", "input A+Right 12", "checkpoint done" });
+            var tasR = await Call("tas_run", new { path = scr, rom = nes, @out = Path.Combine(dir, "tas1_out") });
+            Check("tas_run", !tasR.IsError && tasR["error"] == null && tasR["determinism"]?["identical"]?.GetValue<bool>() == true && L(tasR["frames"]) == 74 && tasR.Images.Count == 1, tasR.ToString());
+            var tasB = await Call("tas_branch", new { path = scr, rom = nes, chapter = "tas1", frame = 40, @out = Path.Combine(dir, "tas1_branch") });
+            Check("tas_branch", !tasB.IsError && File.Exists(S(tasB["branch"])), tasB.ToString());
+            if (!tasB.IsError)
+            {
+                var tasR2 = await Call("tas_run", new { path = S(tasB["branch"]), rom = nes, @out = Path.Combine(dir, "tas1_branch_out") });
+                string e1 = S(tasR["checkpoints"]?.AsArray().Last()?["picture"]), e2 = S(tasR2["checkpoints"]?.AsArray().Last()?["picture"]);
+                Check("tas_branch_replays", !tasR2.IsError && L(tasR2["frames"]) == 34 && e1 == e2 && e1.Length > 0, $"branch end picture {e2} vs straight {e1}");
+            }
+            // T2: an edit session (step, rewind, goals = the straight run's end), an edit saved as a run, and a diff of the two
+            // (debugtest.nes never reads the pad: the diff must name the edited frames as lag frames)
+            var ts = await Call("tas_session", new { action = "open", path = scr, rom = nes });
+            string sid = S(ts["session"]);
+            Check("tas_session_open", !ts.IsError && L(ts["frames"]) == 74, ts.ToString());
+            if (!ts.IsError)
+            {
+                var st1 = await Call("tas_session", new { action = "step", session = sid, frames = 50 });
+                await Call("tas_session", new { action = "seek", session = sid, frame = 3 });
+                var sk2 = await Call("tas_session", new { action = "seek", session = sid, frame = 50 });
+                Check("tas_session_rewind", !st1.IsError && !sk2.IsError && S(sk2["picture"]) == S(st1["picture"]) && L(sk2["frame"]) == 50, $"{S(st1["picture"])} {S(sk2["picture"])}");
+                var g0 = await Call("tas_session", new { action = "goals", session = sid });
+                string pe = S(tasR["checkpoints"]?.AsArray().Last()?["picture"]);
+                Check("tas_session_goals_end", !g0.IsError && S(g0["end"]?["picture"]) == pe, $"{S(g0["end"]?["picture"])} vs {pe}");
+                await Call("tas_session", new { action = "set", session = sid, frame = 60, frames = 5, input = "Left" });
+                var tsv = await Call("tas_session", new { action = "save", session = sid, @out = Path.Combine(dir, "tas1_edit") });
+                await Call("tas_session", new { action = "close", session = sid });
+                var tdf = await Call("tas_diff", new { a = scr, b = S(tsv["run"]), rom = nes, @out = Path.Combine(dir, "tas1_diff") });
+                Check("tas_diff", !tdf.IsError && L(tdf["firstInputDiff"]?["frame"]) == 60 && (tdf["firstRamDiff"] != null ? L(tdf["firstRamDiff"]) >= 60 : S(tdf["firstInputDiff"]?["note"]).Contains("lag")), tdf.ToString());
+            }
+        }
+
         // ---------------------------------------------------------------- NES: a session, a breakpoint on a symbol, the stack, the trace, stepping
         var o = await Call("open_rom", new { path = nes, symbols = new[] { nesSym } });
         string h1 = S(o["session"]);

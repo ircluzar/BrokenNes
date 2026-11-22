@@ -62,6 +62,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--z80test", StringComparison.OrdinalIgnoreCase)) return Sega.Z80TestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86test", StringComparison.OrdinalIgnoreCase)) return X86.X86TestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86cpu", StringComparison.OrdinalIgnoreCase)) return X86.X86CpuCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--x86p6", StringComparison.OrdinalIgnoreCase)) return X86.X86P6Cli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86dev", StringComparison.OrdinalIgnoreCase)) return X86.X86DevCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86bench", StringComparison.OrdinalIgnoreCase)) return X86.X86BenchCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86speed", StringComparison.OrdinalIgnoreCase)) return X86.X86SpeedCli.Run(args);
@@ -75,11 +76,18 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--x86video", StringComparison.OrdinalIgnoreCase)) return X86.X86VideoCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86disk", StringComparison.OrdinalIgnoreCase)) return X86.X86BootCli.Disk(args);
         if (args.Length > 0 && args[0].Equals("--x86boot", StringComparison.OrdinalIgnoreCase)) return X86.X86BootCli.Boot(args);
+        if (args.Length > 1 && args[0].Equals("--mp4check", StringComparison.OrdinalIgnoreCase))   // --mp4check FILE [--grab S,S,..] [--grabprefix P] [--wavout W]: read an MP4 back (frames, timing, audio, PNG grabs)
+        {
+            string? A(string n) { int i = Array.IndexOf(args, n); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
+            var g = (A("--grab") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => double.Parse(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+            Console.WriteLine(Movies.Mp4Writer.Check(args[1], g, A("--grabprefix") ?? System.IO.Path.ChangeExtension(args[1], null), A("--wavout"))); return 0;
+        }
         if (args.Length > 0 && args[0].Equals("--x86nettest", StringComparison.OrdinalIgnoreCase)) return X86.X86NetTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86sst", StringComparison.OrdinalIgnoreCase)) return X86.X86SstCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86t386", StringComparison.OrdinalIgnoreCase)) return X86.X86T386Cli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86ide", StringComparison.OrdinalIgnoreCase)) return X86.X86IdeCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86voodoo", StringComparison.OrdinalIgnoreCase)) return X86.X86VoodooCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--n98seat", StringComparison.OrdinalIgnoreCase)) return X86.N98SeatCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86lan", StringComparison.OrdinalIgnoreCase)) return X86.X86LanCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86pci", StringComparison.OrdinalIgnoreCase)) return X86.X86PciCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--m68ktest", StringComparison.OrdinalIgnoreCase)) return Sega.M68kTestCli.Run(args);
@@ -114,6 +122,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--debug-test", StringComparison.OrdinalIgnoreCase)) return Debug.DebugTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--debug", StringComparison.OrdinalIgnoreCase)) return Debug.DebugRunCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--movie", StringComparison.OrdinalIgnoreCase)) return Movies.MovieCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--tas", StringComparison.OrdinalIgnoreCase)) return Tas.TasCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--movie-test", StringComparison.OrdinalIgnoreCase)) return Movies.MovieTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--determinism-test", StringComparison.OrdinalIgnoreCase)) return Movies.DeterminismTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--bug", StringComparison.OrdinalIgnoreCase)) return Bugs.BugCli.Run(args);

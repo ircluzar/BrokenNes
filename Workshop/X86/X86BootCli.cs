@@ -80,10 +80,11 @@ internal static class X86BootCli
         var m = cfg == PcConfig.Default ? new PcMachine(PcMachine.DefaultMemory, model, video) : new PcMachine(cfg, model, video);
         if (Arg(args, "--ips") is string ips) m.InstructionsPerSecond = long.Parse(ips);
         if (Arg(args, "--wav") != null) _wav = new System.IO.MemoryStream();
+        if (Arg(args, "--mp4") is string mp4p) { var sz = (Arg(args, "--mp4size") ?? "640x480").Split('x'); _mp4 = new BrokenNes.Workshop.Movies.Mp4Writer(mp4p, int.Parse(sz[0]), int.Parse(sz[1]), 25175000, 449 * 800, videoKbps: int.Parse(Arg(args, "--mp4kbps") ?? "4000")); }
         if (Arg(args, "--cdwav") != null) _cdWav = new System.IO.MemoryStream();
         if (Arg(args, "--apu") is string apu && !PcSound.Apply(m, apu)) { Console.WriteLine($"x86boot: no sound card {apu}"); return 1; }
-        if (Arg(args, "--hdd") is string h) m.Hdd[0] = new DiskImage(File.ReadAllBytes(h), false);
-        if (Arg(args, "--hdd2") is string h2) m.Hdd[1] = new DiskImage(File.ReadAllBytes(h2), false);
+        if (Arg(args, "--hdd") is string h) m.Hdd[0] = new DiskImage(DiskImage.ReadImageFile(h), false);
+        if (Arg(args, "--hdd2") is string h2) m.Hdd[1] = new DiskImage(DiskImage.ReadImageFile(h2), false);
         if (Arg(args, "--cd") is string cdp) { m.Cd = CdImage.Open(cdp); Console.WriteLine(m.Cd); }
         if (Arg(args, "--floppy") is string f) m.Floppy[0] = new DiskImage(File.ReadAllBytes(f), true);
         int frames = int.Parse(Arg(args, "--frames") ?? "3000");
@@ -94,7 +95,7 @@ internal static class X86BootCli
         var sw = Stopwatch.StartNew();
         m.PowerOn();
         // --loadstate: carry on from a --savestate of the same machine (its disks come from the state; the CD stays the one given)
-        if (Arg(args, "--loadstate") is string ls) { m.LoadState(File.ReadAllBytes(ls)); if (_allocs != null) lock (_allocs.ByType) _allocs.ByType.Clear();   /* (count the run, not the load) */ if (args.Contains("--cdchanged")) m.Ata?.Secondary.MediaChanged(0); if (Arg(args, "--floppy") is string lf) m.Floppy[0] = new DiskImage(File.ReadAllBytes(lf), true); }   // (a floppy inserted into a loaded state)   // --cdchanged: the disc was swapped since the state was saved (UNIT ATTENTION)
+        if (Arg(args, "--loadstate") is string ls) { var lsw = System.Diagnostics.Stopwatch.StartNew(); var lsb = File.ReadAllBytes(ls); double lsr = lsw.Elapsed.TotalMilliseconds; m.LoadState(lsb); Console.WriteLine($"x86boot: loadstate {lsb.Length / 1024 / 1024} MB: read {lsr:F0} ms + load {lsw.Elapsed.TotalMilliseconds - lsr:F0} ms"); if (_allocs != null) lock (_allocs.ByType) _allocs.ByType.Clear();   /* (count the run, not the load) */ if (args.Contains("--cdchanged")) m.Ata?.Secondary.MediaChanged(0); if (Arg(args, "--floppy") is string lf) m.Floppy[0] = new DiskImage(File.ReadAllBytes(lf), true); }   // (a floppy inserted into a loaded state)   // --cdchanged: the disc was swapped since the state was saved (UNIT ATTENTION)
         // --net: plug the network card into the built-in NAT (DHCP, DNS, the HTTPS bridge); off by default
         PcNat? nat = null;
         if (Arg(args, "--niclog") is string nl && m.Nic != null)
@@ -209,16 +210,27 @@ internal static class X86BootCli
             int i = pk.IndexOf('='); uint a = Convert.ToUInt32(pk[..i], 16);
             foreach (var b in pk[(i + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries)) m.PhysW8(a++, Convert.ToByte(b, 16));
         }
+        // guest status lines (port E9h, the nano98 launcher): printed as they come; --until-status TEXT stops the run at the first line containing TEXT
+        string? untilStatus = Arg(args, "--until-status");
+        if (Arg(args, "--n98cmd") is string ncf && m.Command == null) m.Command = File.ReadAllBytes(ncf);   // the nano98 command port's text (a loaded state keeps its own)
+        m.StatusLine += l => { Console.WriteLine($"x86boot: status \"{l}\" at cycle {m.Cpu.Cycle}"); if (untilStatus != null && l.Contains(untilStatus)) m.Stopped ??= "status: " + l; };
         var shotAt = Args(args, "--shotat").Select(x => { int i = x.IndexOf('='); return (f: int.Parse(x[..i]), p: x[(i + 1)..]); }).OrderBy(x => x.f).ToList();
         int n = 0;
         foreach (var (sf, sp) in shotAt) { n += RunUntil(m, null, sf - n); X86Shots.SavePng(m.Vga, sp); Console.WriteLine($"x86boot: frame {n} at {sw.Elapsed.TotalSeconds:F1} s, cycle {m.Cpu.Cycle}"); }
         var hot = new Dictionary<string, int>();
-        bool hotVm = args.Contains("--hotvm"), sampling = args.Contains("--hot") || hotVm;
+        bool hotVm = args.Contains("--hotvm"), hotMod = args.Contains("--hotmod"), sampling = args.Contains("--hot") || hotVm || hotMod;
+        var hotLin = new Dictionary<uint, int>();   // --hotmod: flat 32-bit samples by 64 KB page of the linear address (named by the PE image holding it at the end)
         var sampler = sampling ? new System.Threading.Thread(() =>
         {
             while (sampling)
             {
                 System.Threading.Thread.Sleep(1);
+                if (hotMod)
+                {
+                    string mk = m.Cpu.Halt ? "idle (HLT)" : (m.Cpu.Flags & 0x20000) != 0 ? "V86" : (m.Cpu.Cr0 & 1) == 0 ? "real mode" : m.Cpu.Code16 ? $"pm16 CS={m.Cpu.SegSel[1]:X4}" : "";
+                    lock (hot) { if (mk != "") hot[mk] = hot.GetValueOrDefault(mk) + 1; else { uint pg = (m.Cpu.SegBase[1] + m.Cpu.Ip) & 0xffff0000; hotLin[pg] = hotLin.GetValueOrDefault(pg) + 1; } }
+                    continue;
+                }
                 if (hotVm && (m.Cpu.Flags & 0x20000) == 0) continue;   // --hotvm: V86 samples only (what a DOS box is doing)
                 string k = $"{m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip & (hotVm ? ~0u : ~0x3fu):X8} vm{(m.Cpu.Flags >> 17) & 1} pe{m.Cpu.Cr0 & 1}";
                 lock (hot) hot[k] = hot.GetValueOrDefault(k) + 1;
@@ -245,9 +257,11 @@ internal static class X86BootCli
                 }
             }
         }
+        long v86a = m.Cpu.V86Enters; int n0 = n; var irqa = (long[])m.IrqCount.Clone(); var swa = sw.Elapsed;
         n += RunUntil(m, until, frames - n);
         sampling = false;
-        if (sampler != null) foreach (var kv in hot.OrderByDescending(x => x.Value).Take(30)) Console.WriteLine($"  hot {kv.Key} {kv.Value}");
+        if (hotMod) HotModReport(m, hot, hotLin, n - n0, m.Cpu.V86Enters - v86a, irqa, sw.Elapsed - swa);
+        else if (sampler != null) foreach (var kv in hot.OrderByDescending(x => x.Value).Take(30)) Console.WriteLine($"  hot {kv.Key} {kv.Value}");
         bool found = until == null || Screen(m).Contains(until) || m.Teletype.ToString().Contains(until);
         Console.WriteLine($"x86boot: {n} frames ({n / 70.0:F1} s machine time) in {sw.Elapsed.TotalSeconds:F1} s, {(m.Cpu.Cycle / Math.Max(0.001, sw.Elapsed.TotalSeconds)) / 1e6:F1} M instr/s{(m.Stopped != null ? ", STOPPED: " + m.Stopped : "")}");
         if (until != null) Console.WriteLine(found ? $"x86boot: found \"{until}\"" : $"x86boot: \"{until}\" NOT found");
@@ -462,6 +476,7 @@ internal static class X86BootCli
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.InterpAt.OrderByDescending(x => x.Value).Take(30)) Console.WriteLine($"  interpat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))} [{m.Cpu.JitWhy(kv.Key)}]");
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.OolTicksAt.OrderByDescending(x => x.Value).Take(25)) Console.WriteLine($"  oolms {kv.Key:X8} {kv.Value * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms / {m.Cpu.OolAt.GetValueOrDefault(kv.Key)} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))}");
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.OolAt.OrderByDescending(x => x.Value).Take(40)) Console.WriteLine($"  oolat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))}");
+        if (m.Voodoo != null && NesEmulator.X86.Voodoo1.Log) foreach (var kv in m.Voodoo.LogCounts.OrderByDescending(x => x.Value).Take(20)) Console.WriteLine($"  vdo {kv.Key} {kv.Value}");
         if (args.Contains("--irqstat")) Console.WriteLine($"batches {m.Batches} halted {m.HaltBatches} cycle {m.Cpu.Cycle} idle-clock {m.Clock - m.Cpu.Cycle}");
         if (args.Contains("--irqstat")) Console.WriteLine("irqs: " + string.Join(" ", Enumerable.Range(0, 256).Where(i => m.IrqCount[i] > 0).Select(i => $"{i:X2}h={m.IrqCount[i]}")) + $"; PIC imr {m.Pic.MasterImr:X2}/{m.Pic.SlaveImr:X2}; CR0 {m.Cpu.Cr0:X}; CS:EIP {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8}; IF {(m.Cpu.Flags >> 9) & 1}; halt {m.Cpu.Halt}");
         Console.WriteLine("---- screen ----");
@@ -474,6 +489,7 @@ internal static class X86BootCli
             Console.WriteLine($"pair: hub frames {_pairHub!.Frames} (IPX {_pairHub.IpxFrames}, IP {_pairHub.IpFrames}); PC 1 nic sent {m.Nic!.FramesSent} received {m.Nic.FramesReceived}; PC 2 nic sent {_partner.Nic!.FramesSent} received {_partner.Nic.FramesReceived}");
             if (Arg(args, "--pair-save") is string pss) File.WriteAllBytes(pss, _partner.SaveState());
         }
+        if (_mp4 != null) { _mp4.Finish(); Console.WriteLine($"x86boot: mp4 {Arg(args, "--mp4")}: {_mp4.Frames} frames, {_mp4.Seconds:F1} s, {new FileInfo(Arg(args, "--mp4")!).Length >> 20} MB"); _mp4 = null; }
         if (Arg(args, "--wav") is string wavp) WriteWav(wavp);
         if (Arg(args, "--cdwav") is string cdwp) WriteWav(cdwp, _cdWav!.ToArray());
         if (Arg(args, "--savestate") is string ss) File.WriteAllBytes(ss, m.SaveState());
@@ -558,6 +574,18 @@ internal static class X86BootCli
         Console.WriteLine($"bugcapture: {_capCount} states every {_capEvery} frames, between-frames mean {(_capCount > 0 ? _capCopyMs / _capCount : 0):F1} ms max {_capCopyMax:F1} ms (of it waiting on the last pack {_capWaitMs:F0} ms total), last packed {_capBytes >> 20} MB");
     }
 
+    /// <summary>X86_SLOWFRAMES=ms (diagnostic): one line per frame slower than that: GC collections / pause and JIT pipeline moves since the last frame.</summary>
+    private static readonly int SlowMs = int.TryParse(Environment.GetEnvironmentVariable("X86_SLOWFRAMES"), out int sm) ? sm : 0;
+    private static (int g0, int g1, int g2, double pause, long posted, int done, long clears, long alloc) _sfPrev;
+    private static void SlowFrame(PcMachine m, double ms)
+    {
+        var c = m.Cpu;
+        var now = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2), GC.GetTotalPauseDuration().TotalMilliseconds, c.JitPosted, c.JitCompiled, c.JitKeepClears, GC.GetTotalAllocatedBytes());
+        var p = _sfPrev; _sfPrev = now;
+        if (ms < SlowMs || p.alloc == 0) return;
+        Console.WriteLine($"slowframe {_frameMs.Count - 1}: {ms:F0} ms | gc {now.Item1 - p.g0}/{now.Item2 - p.g1}/{now.Item3 - p.g2} pause {now.Item4 - p.pause:F0} ms alloc {(now.Item8 - p.alloc) >> 20} MB | jit posted {now.Item5 - p.posted} installed {now.Item6 - p.done} keep-clears {now.Item7 - p.clears} | ws {Environment.WorkingSet >> 20} MB, host memory load {GC.GetGCMemoryInfo().MemoryLoadBytes >> 20} of {GC.GetGCMemoryInfo().TotalAvailableMemoryBytes >> 20} MB");
+    }
+
     private static bool Frame(PcMachine m)
     {
         _frameSw.Restart();
@@ -565,6 +593,7 @@ internal static class X86BootCli
         if (_partner != null && m != _partner) _partner.RunFrame();
         if (_capEvery > 0 && ++_capFrame % _capEvery == 0) CaptureTick(m);
         _frameMs.Add(_frameSw.Elapsed.TotalMilliseconds);
+        if (SlowMs > 0) SlowFrame(m, _frameMs[^1]);
         if (_cdWav != null && m.Ata != null)
         {
             long now = (long)((Int128)m.PitNow * 44100 / Pit8254.Freq);
@@ -572,14 +601,27 @@ internal static class X86BootCli
             int n = (int)Math.Min(now - _cdLast, _wavBuf.Length / 2) * 2; _cdLast += n / 2;
             if (n > 0) { Array.Clear(_wavBuf, 0, n); m.Ata.Secondary.MixCdAudio(_wavBuf, n); for (int i = 0; i < n; i++) { _cdWav.WriteByte((byte)_wavBuf[i]); _cdWav.WriteByte((byte)(_wavBuf[i] >> 8)); } }
         }
-        if (_wav != null && m.Card is { } c)
+        if ((_wav != null || _mp4 != null) && m.Card is { } c)
         {
             c.Advance();
             int n = Math.Min(c.Pending, _wavBuf.Length) & ~1;
-            if (n > 0) { Array.Clear(_wavBuf, 0, n); int got = c.MixInto(_wavBuf, n); for (int i = 0; i < got; i++) { _wav.WriteByte((byte)_wavBuf[i]); _wav.WriteByte((byte)(_wavBuf[i] >> 8)); } }
+            if (n > 0)
+            {
+                Array.Clear(_wavBuf, 0, n); int got = c.MixInto(_wavBuf, n);
+                if (_wav != null) for (int i = 0; i < got; i++) { _wav.WriteByte((byte)_wavBuf[i]); _wav.WriteByte((byte)(_wavBuf[i] >> 8)); }
+                _mp4?.AddAudio(System.Runtime.InteropServices.MemoryMarshal.AsBytes(_wavBuf.AsSpan(0, got & ~1)));
+            }
+        }
+        if (_mp4 != null)
+        {
+            if (m.Card == null) { long want = (long)Math.Round((_mp4.Frames + 1) * 44100 * Vga.FrameTicks / Pit8254.Freq); _mp4.AddAudio(new byte[(int)(want - _mp4Silence) * 4]); _mp4Silence = want; }   // (no sound card: a silent track)
+            _mp4.AddFrame(m.Vga.Frame, m.Vga.Width, m.Vga.Height);
+            if (_mp4.Frames % 4200 == 0) Console.WriteLine($"x86boot: mp4 {_mp4.Frames} frames ({_mp4.Seconds:F0} s of video)");
         }
         return r;
     }
+    /// <summary>--mp4 OUT.mp4 [--mp4size WxH]: every emulated frame + the sound card's output as H.264/AAC at the VGA's true ~70.09 Hz (Media Foundation; timestamps from the machine clock, so any host speed gives a lag-free video).</summary>
+    private static BrokenNes.Workshop.Movies.Mp4Writer? _mp4; private static long _mp4Silence;
     private static long _wavMark = -1;
     private static void WriteWav(string path)
     {
@@ -648,7 +690,7 @@ internal static class X86BootCli
                 if (tok.StartsWith("click:")) { var mv = tok[6..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), 0); Frame(m); Frame(m); m.Kbc.MouseInput(0, 0, 1); Frame(m); Frame(m); m.Kbc.MouseInput(0, 0, 0); Frame(m); Frame(m); continue; }   // {click:dx,dy}: move then left click
                 if (tok.StartsWith("save:")) { File.WriteAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5), m.SaveState()); _wavMark = _wav?.Length ?? 0; continue; }   // {save:PATH}: a savestate right here (the run goes on; --wav also writes the sound from here on as FILE.after.wav)
                 if (tok.StartsWith("cd:")) { var cd = CdImage.Open(text.Substring(ci - tok.Length + 3, tok.Length - 3)); m.Cd = cd; if (m.Ata != null) { m.Ata.Secondary.Cd[0] = cd; m.Ata.Secondary.MediaChanged(0); } continue; }   // {cd:PATH}: change the disc (the drive reports the media change)
-                if (tok.StartsWith("load:")) { m.LoadState(File.ReadAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5))); continue; }   // {load:PATH}: load a savestate right here, in this process (the run goes on from it)
+                if (tok.StartsWith("load:")) { var lw = System.Diagnostics.Stopwatch.StartNew(); m.LoadState(File.ReadAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5))); Console.WriteLine($"x86boot: {{load}} (warm, same process) {lw.Elapsed.TotalMilliseconds:F0} ms"); continue; }   // {load:PATH}: load a savestate right here, in this process (the run goes on from it)
                 if (tok.StartsWith("wait:")) { int wn = int.Parse(tok[5..]); for (int q = 0; q < wn; q++) Frame(m); continue; }
                 if (tok.StartsWith("typefile:")) { TypeText(m, File.ReadAllText(tok[9..]).Trim()); continue; }   // {typefile:PATH}: type a file's text (a key kept out of command lines and logs)
                 var parts = tok.Split('+'); var mods = new List<byte[]>();
@@ -692,6 +734,34 @@ internal static class X86BootCli
             _ when k.Length == 1 && Keys.TryGetValue(k[0], out var kk) => new[] { kk.code },
             _ => throw new ArgumentException("key token " + k),
         };
+    }
+
+    /// <summary>--hotmod report: samples by guest module (PE image name found by walking down from the 64 KB page to an MZ/PE header), plus V86 entries and IRQ vectors per frame.</summary>
+    static void HotModReport(PcMachine m, Dictionary<string, int> hot, Dictionary<uint, int> hotLin, int frames, long v86, long[] irqa, TimeSpan el)
+    {
+        uint R32(uint la) { uint p = LinPhys(m, la); return p == 0xffffffff ? 0xffffffff : m.Phys32(p); }
+        string ModName(uint pg)
+        {
+            for (uint b = pg, k = 0; k < 256 && b >= 0x10000; k++, b -= 0x10000)
+            {
+                uint mz = R32(b); if (mz == 0xffffffff || (mz & 0xffff) != 0x5a4d) continue;
+                uint pe = R32(b + 0x3c); if (pe > 0x1000 || R32(b + pe) != 0x4550) continue;
+                uint size = R32(b + pe + 0x50); if (pg >= b + size) return "?";
+                uint exp = R32(b + pe + 0x78); string nm = "";
+                if (exp != 0 && exp != 0xffffffff) { uint na = R32(b + exp + 12); if (na != 0xffffffff) for (int i = 0; i < 32; i++) { uint p = LinPhys(m, b + na + (uint)i); if (p == 0xffffffff) break; byte c = m.Phys8(p); if (c == 0) break; nm += (char)c; } }
+                return (nm == "" ? "PE" : nm) + $"@{b:X8}";
+            }
+            return pg >= 0xc0000000 ? "ring0 (VMM/VxDs)" : "?";
+        }
+        var all = new Dictionary<string, int>(hot);
+        foreach (var kv in hotLin) { string k = kv.Key >= 0xc0000000 ? "ring0 (VMM/VxDs)" : ModName(kv.Key); if (k == "?") k = $"unknown {kv.Key:X8}"; all[k] = all.GetValueOrDefault(k) + kv.Value; }
+        int tot = Math.Max(1, all.Values.Sum());
+        Console.WriteLine($"hotmod: {frames} frames, {el.TotalSeconds:F1} s host, {tot} samples");
+        foreach (var kv in all.OrderByDescending(x => x.Value).Take(40)) Console.WriteLine($"  mod {kv.Value * 100.0 / tot,5:F1}%  {kv.Key}");
+        foreach (var kv in hotLin.Where(x => x.Key >= 0xc0000000).OrderByDescending(x => x.Value).Take(12)) Console.WriteLine($"  ring0 page {kv.Key:X8} {kv.Value * 100.0 / tot:F1}%");
+        double f = Math.Max(1, frames);
+        Console.WriteLine($"  V86 entries {v86} = {v86 / f:F1}/frame");
+        Console.WriteLine("  irq vectors/frame: " + string.Join(" ", Enumerable.Range(0, 256).Where(i => m.IrqCount[i] - irqa[i] > 0).Select(i => $"{i:X2}h={(m.IrqCount[i] - irqa[i]) / f:F2}")));
     }
 
     /// <summary>A linear address through the page tables (when paging is on), for the tools: 0xffffffff when not present.</summary>

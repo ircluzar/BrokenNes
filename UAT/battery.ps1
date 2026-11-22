@@ -29,6 +29,25 @@ param(
     [int]      $Seed = 0,
     [string]   $Out
 )
+# the battery is HEAVY (fuzz runners, parallel suite): it holds one C:\BrokenNes-work\heavylock.sh slot for its whole run and waits while
+# none is free (the dev PC rebooted from overload twice). BROKENNES_HEAVYSLOT set = the caller already holds one: no second claim.
+$heavySlot = $null; $heavyTok = $null
+if (-not $env:BROKENNES_HEAVYSLOT) {
+    $lockSh = 'C:/BrokenNes-work/heavylock.sh'
+    if (Test-Path $lockSh) {
+        while ($true) {
+            $c = & sh $lockSh claim "battery.ps1 pid $PID" 2>$null
+            if ($LASTEXITCODE -eq 0 -and "$c" -match '^(slot\d+) (\S+)') { $heavySlot = $Matches[1]; $heavyTok = $Matches[2]; break }
+            Write-Host "battery: all heavy slots taken, waiting..." -ForegroundColor Yellow; Start-Sleep 30
+        }
+        Write-Host "battery: holding heavy $heavySlot" -ForegroundColor DarkGray
+        $env:BROKENNES_HEAVYSLOT = $heavySlot
+    }
+}
+# one battery at a time on this PC: a battery runs ~6-8 emulators in parallel, so two batteries in two heavy slots still hit 100% CPU (2026-11-21)
+$batteryMutex = New-Object System.Threading.Mutex($false, 'Global\brokennes_battery')
+try { while (-not $batteryMutex.WaitOne(30000)) { Write-Host "battery: another battery is running, waiting..." -ForegroundColor Yellow } } catch [System.Threading.AbandonedMutexException] { }
+try {
 $ErrorActionPreference = 'Stop'
 $Repo = Split-Path -Parent $PSScriptRoot
 $env:BN_REPO = $Repo   # bscen runs from the scratch build folder: tell it where the repo (and the NES ROM corpus) is
@@ -48,7 +67,14 @@ function Note($m, $c = 'Gray') { Write-Host ("[{0:HH:mm:ss}] {1}" -f (Get-Date),
 Note "building into $Build" White
 $exe = Join-Path $Build 'bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe'
 & dotnet build (Join-Path $Repo 'Workshop') -c Release --artifacts-path $Build 2>&1 | Select-String -Pattern ' error ' | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+$buildRc = $LASTEXITCODE
 if (-not (Test-Path $exe)) { throw "Workshop build failed (no $exe)" }
+# a failed build leaves the OLD exe in place (a locked exe, a compile error): never test that and report green
+if ($buildRc -ne 0) { throw "Workshop build failed (dotnet exit $buildRc): the battery would test a stale $exe" }
+$dll = Join-Path (Split-Path $exe) 'BrokenNes.Workshop.dll'
+$newest = Get-ChildItem -Recurse -File -Include *.cs, *.csproj -Path (Join-Path $Repo 'Workshop'), (Join-Path $Repo 'Core'), (Join-Path $Repo 'Windows') -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+if ($newest -and (Test-Path $dll) -and (Get-Item $dll).LastWriteTimeUtc -lt $newest.LastWriteTimeUtc) { throw "Workshop build is stale: $dll is older than $($newest.FullName)" }
 $fuzz = Join-Path $Build 'bfuzz\bfuzz.exe'; $scen = Join-Path $Build 'bscen\bscen.exe'
 & dotnet build (Join-Path $Repo 'tools\butcher-fuzz') -c Release -o (Join-Path $Build 'bfuzz') 2>&1 | Select-String ' error ' | ForEach-Object { Write-Host $_ -ForegroundColor Red }
 & dotnet build (Join-Path $Repo 'tools\butcher-scenarios') -c Release -o (Join-Path $Build 'bscen') 2>&1 | Select-String ' error ' | ForEach-Object { Write-Host $_ -ForegroundColor Red }
@@ -63,8 +89,14 @@ if ($Skip -notcontains 'suite') {
 }
 
 function RunPerConsole($tool, $argsFor, $label) {
-    $procs = foreach ($c in $Consoles) { Start-Process -FilePath $tool -ArgumentList (& $argsFor $c) -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $Out "$label-$c.out.txt") -RedirectStandardError (Join-Path $Out "$label-$c.err.txt") }
-    $procs | Wait-Process
+    # at most BROKENNES_BATTERY_PAR (default 4) at once: 8 fuzzers in parallel pushed the dev PC to 90%+ (2026-11-21)
+    $par = 4; if ($env:BROKENNES_BATTERY_PAR -match '^\d+$' -and [int]$env:BROKENNES_BATTERY_PAR -gt 0) { $par = [int]$env:BROKENNES_BATTERY_PAR }
+    $running = @()
+    foreach ($c in $Consoles) {
+        while (@($running | Where-Object { -not $_.HasExited }).Count -ge $par) { Start-Sleep -Milliseconds 500 }
+        $running += Start-Process -FilePath $tool -ArgumentList (& $argsFor $c) -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $Out "$label-$c.out.txt") -RedirectStandardError (Join-Path $Out "$label-$c.err.txt")
+    }
+    $running | Wait-Process
 }
 
 # ---- 3. scenarios
@@ -192,3 +224,7 @@ $md.ToString() | Set-Content -LiteralPath (Join-Path $Out 'report.md') -Encoding
 ([ordered]@{ ok = $allOk; minutes = [Math]::Round($mins, 1); seed = $Seed; groups = $groups } | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath (Join-Path $Out 'report.json') -Encoding UTF8
 Write-Host ''; Write-Host $md.ToString()
 if ($allOk) { exit 0 } else { exit 1 }
+} finally {
+    try { $batteryMutex.ReleaseMutex() } catch { }
+    if ($heavySlot) { & sh C:/BrokenNes-work/heavylock.sh release $heavySlot $heavyTok | Out-Null; Remove-Item Env:BROKENNES_HEAVYSLOT -ErrorAction SilentlyContinue }
+}

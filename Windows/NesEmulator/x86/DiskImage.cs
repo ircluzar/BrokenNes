@@ -1,3 +1,4 @@
+using System.Linq;
 // A raw disk image (floppy or hard disk) for the x86 console's BIOS (INT 13h), IDE and floppy controller. Written for BrokenNes.
 
 using System;
@@ -63,9 +64,13 @@ public sealed class DiskImage
         return d;
     }
 
+    /// <summary>Called on every read (nano98's warm-boot check: which D: sectors Windows read before the game drive went in).</summary>
+    public Action<long, int>? ReadHook;
+
     public bool Read(long lba, int count, Span<byte> dst)
     {
         if (lba < 0 || count < 0 || lba + count > TotalSectors) return false;
+        ReadHook?.Invoke(lba, count);
         if (_overlay.Count == 0) { Base.AsSpan(checked((int)(lba * SectorSize)), count * SectorSize).CopyTo(dst); return true; }
         for (int i = 0; i < count; i++)
         {
@@ -93,6 +98,29 @@ public sealed class DiskImage
     }
 
     /// <summary>The whole disk as the machine sees it (a new array).</summary>
+    /// <summary>A key for the disk's content relative to its base: the base length + a hash of the changed sectors (nano98 resume snapshots).</summary>
+    public string ContentKey()
+    {
+        using var h = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        h.AppendData(BitConverter.GetBytes(Base.LongLength));
+        foreach (var s in _overlay.Keys.OrderBy(k => k)) { h.AppendData(BitConverter.GetBytes(s)); h.AppendData(_overlay[s]); }
+        return Convert.ToHexString(h.GetHashAndReset());
+    }
+
+    /// <summary>The changed sectors as (sector, 512 bytes) records, sorted (nano98's saves layer).</summary>
+    public void WriteOverlay(BinaryWriter w)
+    {
+        w.Write(_overlay.Count);
+        foreach (var s in _overlay.Keys.OrderBy(k => k)) { w.Write(s); w.Write(_overlay[s]); }
+    }
+    /// <summary>Replaces the changed sectors with the ones <see cref="WriteOverlay"/> wrote.</summary>
+    public void ReadOverlay(BinaryReader r)
+    {
+        _overlay.Clear();
+        for (int n = r.ReadInt32(); n > 0; n--) { long s = r.ReadInt64(); var d = r.ReadBytes(SectorSize); if (s >= 0 && s < TotalSectors) _overlay[s] = d; }
+        Dirty = false;
+    }
+
     public byte[] ToArray()
     {
         var a = (byte[])Base.Clone();
@@ -140,7 +168,98 @@ public sealed class DiskImage
     private const int HashPiece = 16 << 20;
     private static Task<string> HashTask(byte[] image)
     {
-        lock (_lock) return _hashes.GetValue(image, a => Task.Run(() => PieceHash(a)));
+        lock (_lock) return _hashes.GetValue(image, a => Task.Run(() => { string h = PieceHash(a); WriteSidecar(a, h); return h; }));
+    }
+
+    // ---- cached base identity (nano98, 2026-11-21): IMAGE.p256 next to a disk file, so a cold state load skips hashing GBs ----
+    // The sidecar holds the file's size, last-write time (UTC ticks), a sampled check (SHA-256 over 64 spread 4 KB pieces + the first and last
+    // 64 KB of the bytes actually read) and the p256. It is trusted only when all three match the image just read; any mismatch -> the normal
+    // full p256 (when a state first needs it), which then rewrites the sidecar. Unwritable folders just mean no cache.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<byte[], string> _sidecarPath = new();
+    private const string SidecarMagic = "brokennes-p256-cache v1";
+
+    /// <summary>Reads a disk image file; a valid IMAGE.p256 sidecar seeds its base hash (no hashing at state load), else the sidecar is written once the hash is made.</summary>
+    public static byte[] ReadImageFile(string path)
+    {
+        if (IsSparse(path)) return ReadSparse(path);
+        var fi = new FileInfo(path);
+        long size = fi.Length, ticks = fi.LastWriteTimeUtc.Ticks;
+        byte[] image = File.ReadAllBytes(path);
+        if (image.Length < 4 << 20 || Environment.GetEnvironmentVariable("X86_NOHASHCACHE") == "1") return image;
+        string side = path + ".p256";
+        lock (_lock) _sidecarPath.AddOrUpdate(image, side);
+        try
+        {
+            if (File.Exists(side))
+            {
+                var l = File.ReadAllLines(side);
+                if (l.Length >= 5 && l[0] == SidecarMagic && l[1] == size.ToString() && l[2] == ticks.ToString() && image.LongLength == size
+                    && l[3] == SampleHash(image) && l[4].StartsWith("p256:", StringComparison.Ordinal)
+                    && new FileInfo(path) is var fi2 && fi2.Length == size && fi2.LastWriteTimeUtc.Ticks == ticks)
+                {
+                    lock (_lock) { _hashes.AddOrUpdate(image, Task.FromResult(l[4])); _sidecarPath.Remove(image); }
+                    if (Environment.GetEnvironmentVariable("X86_HASHCACHE_LOG") == "1") Console.WriteLine($"diskimage: base hash from {side}");
+                }
+            }
+        }
+        catch (IOException) { } catch (UnauthorizedAccessException) { }
+        return image;
+    }
+
+    // ---- N98D sparse container (tools/nano98/pkg/sparse.py): only the non-zero sectors, deflated; the guest sees the whole disk ----
+    /// <summary>True when the file is an N98D container (magic "N98D").</summary>
+    public static bool IsSparse(string path)
+    {
+        try { using var f = File.OpenRead(path); Span<byte> m = stackalloc byte[4]; return f.Read(m) == 4 && m.SequenceEqual("N98D"u8); }
+        catch (IOException) { return false; } catch (UnauthorizedAccessException) { return false; }
+    }
+
+    /// <summary>The disk an N98D holds, expanded (zero-filled between its chunks). Its identity hash comes from the header (written by sparse.py
+    /// from the raw image) unless X86_N98D_VERIFY=1, which re-hashes and refuses a mismatch.</summary>
+    public static byte[] ReadSparse(string path) { using var f = File.OpenRead(path); return ReadSparse(f, path); }
+    public static byte[] ReadSparse(Stream s, string name)
+    {
+        using var r = new BinaryReader(s, System.Text.Encoding.ASCII, true);
+        if (r.ReadUInt32() != 0x4438394E) throw new InvalidDataException($"{name}: not an N98D disk");
+        if (r.ReadInt32() != 1) throw new InvalidDataException($"{name}: N98D version this build does not know");
+        long len = r.ReadInt64();
+        if (len <= 0 || len % SectorSize != 0 || len > int.MaxValue) throw new InvalidDataException($"{name}: bad N98D length {len}");
+        string hash = System.Text.Encoding.ASCII.GetString(r.ReadBytes(r.ReadByte()));
+        var img = new byte[len];
+        for (int n = r.ReadInt32(); n > 0; n--)
+        {
+            long first = r.ReadInt64(); int count = r.ReadInt32(), clen = r.ReadInt32();
+            if (first < 0 || count <= 0 || (first + count) * SectorSize > len || clen < 0) throw new InvalidDataException($"{name}: N98D chunk outside its disk");
+            using var z = new System.IO.Compression.ZLibStream(new MemoryStream(r.ReadBytes(clen)), System.IO.Compression.CompressionMode.Decompress);
+            var dst = img.AsSpan(checked((int)(first * SectorSize)), count * SectorSize);
+            while (dst.Length > 0) { int got = z.Read(dst); if (got <= 0) throw new InvalidDataException($"{name}: N98D chunk truncated"); dst = dst[got..]; }
+        }
+        if (Environment.GetEnvironmentVariable("X86_N98D_VERIFY") == "1" && PieceHash(img) != hash) throw new InvalidDataException($"{name}: N98D content does not match its hash {hash}");
+        if (hash.StartsWith("p256:", StringComparison.Ordinal)) lock (_lock) _hashes.AddOrUpdate(img, Task.FromResult(hash));
+        return img;
+    }
+
+    private static string SampleHash(byte[] a)
+    {
+        using var h = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        int edge = (int)Math.Min(65536, a.LongLength);
+        h.AppendData(a, 0, edge); h.AppendData(a, a.Length - edge, edge);
+        for (int i = 0; i < 64; i++) { long off = (a.LongLength - 4096) * i / 63; h.AppendData(a, (int)off, 4096); }
+        return Convert.ToHexString(h.GetHashAndReset());
+    }
+
+    private static void WriteSidecar(byte[] image, string hash)
+    {
+        string? side; lock (_lock) if (!_sidecarPath.TryGetValue(image, out side)) return;
+        try
+        {
+            string path = side[..^5]; var fi = new FileInfo(path);
+            if (!fi.Exists || fi.Length != image.LongLength) return;
+            string tmp = side + ".tmp" + Environment.ProcessId;
+            File.WriteAllLines(tmp, new[] { SidecarMagic, fi.Length.ToString(), fi.LastWriteTimeUtc.Ticks.ToString(), SampleHash(image), hash });
+            File.Move(tmp, side, true);
+        }
+        catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 
     private static string PieceHash(byte[] a)
@@ -163,6 +282,8 @@ public sealed class DiskImage
     private static string LegacyHashOf(byte[] image) => LegacyTask(image).GetAwaiter().GetResult();
 
     public static string HashOf(byte[] image) => HashTask(image).GetAwaiter().GetResult();
+    /// <summary>Gives an array its identity hash from a trusted cache (nano98's composed seat drives: base + package layer, hash cached beside the layer).</summary>
+    public static void SeedHash(byte[] image, string hash) { lock (_lock) _hashes.AddOrUpdate(image, Task.FromResult(hash)); }
 
     /// <summary>The image's hash in the form <paramref name="like"/> is written in ("p256:" now, "sha256:" in older states).</summary>
     private static string HashLike(byte[] image, string like) => like.StartsWith("sha256:", StringComparison.Ordinal) ? LegacyHashOf(image) : HashOf(image);
@@ -177,7 +298,8 @@ public sealed class DiskImage
         }
         // the whole-image sha256 starts now, one thread per image, as it always did (a state saved before p256 names the disk by it, and
         // its load must be no slower than before); the parallel p256 is made when a state first needs it (~1 s)
-        if (image.Length >= 4 << 20) LegacyTask(image);
+        bool seeded; lock (_lock) seeded = _hashes.TryGetValue(image, out _);
+        if (image.Length >= 4 << 20 && !seeded) LegacyTask(image);   // (an image whose p256 came from a trusted header / cache is never named by the old hash)
     }
 
     /// <summary>A base with this hash and length: the candidates first (the disks in the machine now), then every base still alive, then <see cref="BaseResolver"/>.</summary>

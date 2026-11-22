@@ -24,6 +24,8 @@ namespace cor64.PIF
         private readonly string[] m_PakPath = new string[4];
         public string PakDir;
         public string GameKey = "game";
+        /// <summary>Controller-state reads (joybus command 01) since power-on: the TAS runner's lag-frame detection. Not in save states.</summary>
+        public long PadReads;
         private readonly TransferPak[] m_Tpak = new TransferPak[4];
         private TransferPak Tpak(int port) => m_Tpak[port] ??= new TransferPak();
         private readonly bool m_PakFromEnv = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("COR64_PIF_PAK"));
@@ -212,6 +214,7 @@ namespace cor64.PIF
                     output[0] = 0x05; output[1] = 0x00; output[2] = pak != PakKind.None ? (byte)0x01 : (byte)0x02;
                     return true;
                 case 0x01: {
+                    PadReads++;
                     var p = pad(port);
                     output[0] = (byte)(p.buttons >> 8); output[1] = (byte)p.buttons; output[2] = p.x; output[3] = p.y;
                     return true;

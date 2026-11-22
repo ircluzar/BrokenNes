@@ -92,7 +92,11 @@ namespace BrokenNes.Windows
                 };
                 
                 Console.WriteLine("Creating MainForm...");
-                Application.Run(new MainForm());
+                var mainForm = new MainForm();
+                // `--n98pack`: open Tools & Activities > nano98 Packaging (dev) as soon as the window is up
+                if (args.Any(a => a.Equals("--n98pack", StringComparison.OrdinalIgnoreCase)))
+                    mainForm.Shown += (_, _) => mainForm.OpenN98Packaging();
+                Application.Run(mainForm);
                 BrokenNes.Windows.Diagnostics.ShutdownDiagnostics.Log("Application.Run returned - message loop ended, Main is about to exit normally.");
             }
             catch (Exception ex)

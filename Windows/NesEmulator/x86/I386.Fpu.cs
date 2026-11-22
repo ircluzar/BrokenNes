@@ -272,6 +272,41 @@ public sealed partial class I386
         else if (a == b) _fsw |= FSW_C3;
     }
 
+    /// <summary>FCMOVcc ST(0), ST(i) (P6): CF / ZF / CF|ZF / PF, negated for the DB forms. An empty ST(i) or ST(0) is a stack fault.</summary>
+    private int FCmov(int cc, bool negate, int i)
+    {
+        _fsw &= ~FSW_C1;
+        if (FUnder2(0, i)) { if (IeMasked) SetIndef(0); return OK; }
+        bool c = Cond(cc switch { 0 => 0x2u, 1 => 0x4u, 2 => 0x6u, _ => 0xau } | (negate ? 1u : 0u));
+        if (c) { int p = Phys(i); SetStRaw(0, _fm[p], _fe[p]); }
+        return OK;
+    }
+
+    /// <summary>FCOMI / FUCOMI ST(0), ST(i) (P6): ZF PF CF from the compare (unordered: all three), OF SF AF cleared; C1 cleared. False: an unmasked invalid operation, the instruction does not complete (EFLAGS and the stack untouched).</summary>
+    private bool FComi(int i, bool unordered)
+    {
+        _fsw &= ~FSW_C1;
+        uint f;
+        if (FUnder2(0, i)) { if (!IeMasked) return false; f = ZF | PF | CF; }
+        else
+        {
+            double a = St(0), b = St(i);
+            if (double.IsNaN(a) || double.IsNaN(b))
+            {
+                // FUCOMI raises IE on a signalling NaN only (FCOMI on any NaN); a masked IE (or none) leaves "unordered"
+                bool snan = IsSnan(a) || IsSnan(b);
+                bool raised = !unordered || snan;
+                if (raised) { FRaise(FSW_IE); if (!IeMasked) return false; }
+                f = ZF | PF | CF;
+            }
+            else f = a < b ? CF : a == b ? ZF : 0;
+        }
+        Flags = (Flags & ~(CF | PF | AF | ZF | SF | OF)) | f;
+        _ccMask = 0;
+        return true;
+    }
+    private static bool IsSnan(double d) => double.IsNaN(d) && (BitConverter.DoubleToInt64Bits(d) & 0x0008000000000000L) == 0;
+
     private void FCompareEmpty() { _fsw |= FSW_C0 | FSW_C2 | FSW_C3; }
 
     private int FWaitCheck()
@@ -620,6 +655,7 @@ public sealed partial class I386
                 }
                 break;
             case 2:
+                if (_has686 && reg < 4) return FCmov(reg, false, i);   // FCMOVB / FCMOVE / FCMOVBE / FCMOVU (P6)
                 if (reg == 5 && i == 1)
                 {   // FUCOMPP
                     if (FUnder2(0, 1)) FCompareEmpty(); else FCompare(St(0), St(1), true);
@@ -628,6 +664,8 @@ public sealed partial class I386
                 }
                 break;
             case 3:
+                if (_has686 && reg < 4) return FCmov(reg, true, i);    // FCMOVNB / NE / NBE / NU (P6)
+                if (_has686 && reg is 5 or 6) { FComi(i, reg == 5); return OK; }   // FUCOMI / FCOMI (P6)
                 if (reg == 4)
                 {
                     switch (i)
@@ -658,6 +696,7 @@ public sealed partial class I386
                     case 1: return FpuReg(1, 1, i);
                     case 2: case 3: return FStoreSt(i, true);
                     case 4: if (i == 0) { S16(0, FpuStatus); return OK; } break;   // FNSTSW AX
+                    case 5: case 6: if (!_has686) break; if (FComi(i, reg == 5)) FPop(); return OK;   // FUCOMIP / FCOMIP (P6)
                 }
                 break;
         }

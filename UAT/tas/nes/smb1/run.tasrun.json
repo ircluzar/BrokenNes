@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "console": "nes",
+  "game": "smb1",
+  "title": "Super Mario Bros.",
+  "rom_sha1": "ea343f4e445a9050d4b4fbac2c77d0693b1d0922",
+  "cores": "FIX/FIX/FIX",
+  "power_on": "fceux",
+  "ntsc": false,
+  "source": "T:\\BrokenDev\\Catalog\\tas\\nes\\smb1\\v1",
+  "chapters": [
+    {
+      "id": "boot",
+      "title": "Boot to World 1-1",
+      "start": "power-on",
+      "script": "boot.tas",
+      "expect": {
+        "frames": 194,
+        "checkpoints": {
+          "end": {
+            "picture": "A8F7EF6D3389E485",
+            "ram": "22A7F614404378C3"
+          }
+        }
+      },
+      "goal": [
+        "oper_mode == 1"
+      ]
+    },
+    {
+      "id": "1-1",
+      "title": "World 1-1",
+      "start": "previous",
+      "script": "1-1.tas",
+      "expect": {
+        "frames": 2284,
+        "checkpoints": {
+          "end": {
+            "picture": "71DBA9BF16ADA325",
+            "ram": "0289D3A9CB3105C3"
+          }
+        }
+      },
+      "goal": [
+        "world == 0 && level == 1",
+        "always: lives == 2",
+        "reach: x >= 3000",
+        "reach: level == 1",
+        "reach: engine == 4"
+      ]
+    },
+    {
+      "id": "1-2",
+      "title": "World 1-2",
+      "start": "previous",
+      "script": "1-2.tas",
+      "expect": {
+        "frames": 3064,
+        "checkpoints": {
+          "end": {
+            "picture": "71DBA9BF16ADA325",
+            "ram": "2CCAD2049EA70212"
+          }
+        }
+      }
+    },
+    {
+      "id": "1-3",
+      "title": "World 1-3",
+      "start": "previous",
+      "script": "1-3.tas",
+      "expect": {
+        "frames": 1951,
+        "checkpoints": {
+          "end": {
+            "picture": "1719DCA5CEF7A325",
+            "ram": "B3F393D5B8C997C2"
+          }
+        }
+      }
+    },
+    {
+      "id": "1-4",
+      "title": "World 1-4",
+      "start": "previous",
+      "script": "1-4.tas",
+      "expect": {
+        "frames": 1888,
+        "checkpoints": {
+          "end": {
+            "picture": "71DBA9BF16ADA325",
+            "ram": "DC2FBD0555B7CF9C"
+          }
+        }
+      }
+    }
+  ]
+}
