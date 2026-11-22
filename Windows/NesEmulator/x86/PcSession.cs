@@ -252,6 +252,7 @@ public sealed class PcSession : IConsoleSession
         {
             if (File.Exists(st) && File.Exists(meta) && File.ReadAllText(meta) == key && Environment.GetEnvironmentVariable("BROKENNES_N98_NORESUME") != "1")
             {
+                N98Seat.Report("resuming Windows");
                 _stateId = WarmStateId;
                 try { LoadState(File.ReadAllBytes(st)); } finally { _stateId = null; }
                 _m.Command = Seat.CommandWith(withFiles: true);
@@ -320,6 +321,13 @@ public sealed class PcSession : IConsoleSession
             // disc's autorun window over the running game and a 256-colour game (Age of Empires) lost its palette to the desktop's (the scrambled-colours bug)
             _m.Ata?.Secondary.ClearMediaChanged(0);
         }
+    }
+
+    /// <summary>nano98: power on now (the warm-boot state load + game drive swap), so the desktop can do it off the UI thread before the first frame.</summary>
+    public void Prestart()
+    {
+        if (_powered) return;
+        FirstPowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart();
     }
 
     public void RunFrame()

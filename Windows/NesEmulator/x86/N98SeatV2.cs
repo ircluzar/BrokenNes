@@ -31,6 +31,28 @@ public sealed partial class N98Seat
     /// <summary>Schema 2: where the warm-boot state of this base lives (one per base + emulator build, shared by every package).</summary>
     public string WarmDir = "";
 
+    // ---- loading progress (the desktop's loading screen polls it while a package is prepared + its warm state loaded off the UI thread) ----
+    private static volatile string _stage = "";
+    private static double _fraction = -1;
+    /// <summary>What the seat is doing now ("unpacking the game drive", ...) and how far (0..1; below 0: unknown, show a spinner).</summary>
+    public static (string stage, double fraction) Progress => (_stage, System.Threading.Volatile.Read(ref _fraction));
+    public static void Report(string stage, double fraction = -1) { _stage = stage; System.Threading.Volatile.Write(ref _fraction, fraction); }
+
+    /// <summary>A read-only stream that reports how much of it has been read (the game drive's unpack progress).</summary>
+    private sealed class CountingStream : Stream
+    {
+        private readonly Stream _s; private readonly long _total; private long _read; private readonly string _stage;
+        public CountingStream(Stream s, long total, string stage) { _s = s; _total = Math.Max(1, total); _stage = stage; }
+        public override int Read(byte[] buffer, int offset, int count) { int n = _s.Read(buffer, offset, count); _read += n; Report(_stage, Math.Min(1.0, (double)_read / _total)); return n; }
+        public override bool CanRead => true; public override bool CanSeek => false; public override bool CanWrite => false;
+        public override long Length => _total; public override long Position { get => _read; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long o, SeekOrigin so) => throw new NotSupportedException();
+        public override void SetLength(long v) => throw new NotSupportedException();
+        public override void Write(byte[] b, int o, int c) => throw new NotSupportedException();
+        protected override void Dispose(bool d) { if (d) _s.Dispose(); base.Dispose(d); }
+    }
+
     private static int SchemaOf(byte[] pkg)
     {
         try
@@ -77,6 +99,7 @@ public sealed partial class N98Seat
         }
         else baseImg = FindBase();
         s.ImagePath = baseImg;
+        Report("reading Windows 98", 0);
         s.Image = DiskImage.ReadImageFile(baseImg);
         string baseHash = DiskImage.HashOf(s.Image);
         s.WarmDir = Path.Combine(Path.GetDirectoryName(s.CacheDir) is { Length: > 0 } pd ? pd : s.CacheDir, "warm", baseHash.Replace("p256:", "")[..16] + "-" + EmulatorVersion);
@@ -87,7 +110,8 @@ public sealed partial class N98Seat
 
         // D: the package's game drive, and the blank standard drive the machine boots with
         var dEntry = z.GetEntry("drives/D.n98d") ?? throw new InvalidDataException($"{fileName}: a schema-2 package without its game drive (drives/D.n98d)");
-        using (var ds = dEntry.Open()) s.GameDrive = DiskImage.ReadSparse(ds, fileName + ":D");
+        using (var ds = new CountingStream(dEntry.Open(), dEntry.Length, "unpacking the game")) s.GameDrive = DiskImage.ReadSparse(ds, fileName + ":D");
+        Report("starting Windows");
         if (s.GameDrive.LongLength != (long)StandardDriveMb << 20) throw new InvalidDataException($"{fileName}: the game drive is {s.GameDrive.LongLength} bytes, not the standard {StandardDriveMb} MB");
         s.BlankDrive = MakeBlankDrive(StandardDriveMb);
         // the blank drive's identity hash (what the warm state names it by): cached beside the warm state, made once in the background

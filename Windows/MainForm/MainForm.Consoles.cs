@@ -537,6 +537,7 @@ namespace BrokenNes.Windows
                 SaveBatteryRamForNes(nes);
                 nes = null;   // the NES idle screen / game stops; NES-only tools see "no NES" while another console runs
             }
+            if (console == ConsoleKind.Pc && NesEmulator.X86.N98Seat.IsPackage(romName)) { StartN98Session(rom, romName, romPath); return; }   // (off the UI thread, with a loading screen: MainForm.N98Loading.cs)
             IConsoleSession s;
             try
             {
@@ -549,6 +550,12 @@ namespace BrokenNes.Windows
                 LoadEmbeddedRom(allowHomeWebModule: false);
                 return;
             }
+            FinishStartSession(console, s, rom, romName, romPath);
+        }
+
+        /// <summary>The part of starting a console session after the session exists (shared by the nano98 loading path).</summary>
+        private void FinishStartSession(ConsoleKind console, IConsoleSession s, byte[] rom, string romName, string? romPath, bool start = true)
+        {
             session = s; sessionRom = rom; sessionRomName = romName; sessionFrames = 0; consoleNote = "";
             BugGameLoaded(rom, romName);   // the bug capture records the new game from its power-on
             currentRomPath = romPath ?? romName;
@@ -568,7 +575,7 @@ namespace BrokenNes.Windows
             Console.WriteLine($"[Console] {s.Description}");
             RefreshRecentRomsMenu();
             if (s is NesEmulator.X86.PcSession { Seat: not null } seat) seat.SeatEnded += (kind, detail) => BeginInvoke(() => OnSeatEnded(seat, kind, detail));
-            StartEmulation();
+            if (start) StartEmulation();
         }
 
         /// <summary>nano98: the seat's game ended. Power-off (the launcher's normal exit) goes back to the menu; a failed start or a non-zero exit
