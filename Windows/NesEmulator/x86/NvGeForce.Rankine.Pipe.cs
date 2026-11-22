@@ -340,7 +340,7 @@ public sealed partial class NvGeForce
         uint dma = G(inst, ((p & 2) != 0 ? 0x188 : 0x184) | 0x8000);
         uint off = p & ~3u;
         var list = new List<FpInsn>();
-        static uint Sw(uint w) => w >> 16 | w << 16;
+        static uint Sw(uint w) => w;   // (the NVIDIA driver uploads native-order words; Mesa halfword-swaps its own uploads)
         for (int i = 0; i < 512; i++)
         {
             var f = new FpInsn { W0 = Sw(DmaRead32Any(dma, off)), W1 = Sw(DmaRead32Any(dma, off + 4)), W2 = Sw(DmaRead32Any(dma, off + 8)), W3 = Sw(DmaRead32Any(dma, off + 12)) };
@@ -356,6 +356,13 @@ public sealed partial class NvGeForce
             if ((f.W0 & 1) != 0) break;
         }
         _fp = list.ToArray();
+        if (RankinePrims < 3 && OpLog != null)
+        {
+            uint o2 = p & ~3u; var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < 16; i++) sb.Append(DmaRead32Any(dma, o2 + (uint)i * 4).ToString("X8")).Append(' ');
+            var (fv, fa) = DmaAddr(dma, o2);
+            OpLog($"rankine fp at {p:X} dma {dma:X} -> {(fv ? "vram" : "sys")} {fa:X}: {sb}");
+        }
     }
 
     private readonly float[] _fr = new float[64 * 4];     // R0-R63 (FP32) - the half registers H0-H127 share them (H2n, H2n+1 = R n's lower / upper half: approximated as R)
