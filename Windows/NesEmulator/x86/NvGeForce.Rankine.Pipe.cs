@@ -520,8 +520,6 @@ public sealed partial class NvGeForce
 
     private readonly bool[] _rcube = new bool[16];
 
-    private readonly bool[] _rcube = new bool[16];
-
     private uint RTex(uint inst, int unit, float u, float v, float r, float bias)
     {
         ref var t = ref _rtex[unit & 15];
@@ -542,6 +540,49 @@ public sealed partial class NvGeForce
         return SampleLevel(tf, 0, fu, fv, tf.Lin);
     }
 
+    private static RVert Moved(RVert v, float dx, float dy)
+    {
+        var r = new RVert { X = v.X + dx, Y = v.Y + dy, Z = v.Z, Iw = v.Iw };
+        Array.Copy(v.Var, r.Var, 64);
+        return r;
+    }
+
+    /// <summary>A point: a screen-aligned square of the point size (output 6 .x, or POINT_SIZE), texcoords 0..1 across it when point
+    /// sprites are on (0x1EE8 POINT_SPRITE).</summary>
+    private void RPoint(uint inst, RVert v)
+    {
+        float size = v.Var[6 * 4] > 0 ? v.Var[6 * 4] : F32(G(inst, 0x1ee0));
+        if (!(size > 0)) size = 1;
+        float h = Math.Clamp(size, 1, 256) * 0.5f;
+        bool sprite = (G(inst, 0x1ee8) & 1) != 0;
+        var q = new[] { Moved(v, -h, -h), Moved(v, h, -h), Moved(v, h, h), Moved(v, -h, h) };
+        if (sprite)
+        {
+            float[] su = { 0, 1, 1, 0 }, sv = { 0, 0, 1, 1 };
+            for (int k = 0; k < 4; k++) for (int t = 0; t < 8; t++) { q[k].Var[(8 + t) * 4] = su[k]; q[k].Var[(8 + t) * 4 + 1] = sv[k]; }
+        }
+        _noCullR = true;
+        try { RTri(inst, q[0], q[1], q[2]); RTri(inst, q[0], q[2], q[3]); } finally { _noCullR = false; }
+    }
+
+    /// <summary>A line: a one-pixel-wide quad along it.</summary>
+    private void RLine(uint inst, RVert a, RVert b)
+    {
+        float dx = b.X - a.X, dy = b.Y - a.Y;
+        float len = MathF.Sqrt(dx * dx + dy * dy); if (len == 0) return;
+        float nx = -dy / len * 0.5f, ny = dx / len * 0.5f;
+        _noCullR = true;
+        try
+        {
+            var a0 = Moved(a, nx, ny); var a1 = Moved(a, -nx, -ny); var b0 = Moved(b, nx, ny); var b1 = Moved(b, -nx, -ny);
+            RTri(inst, a0, b0, b1); RTri(inst, a0, b1, a1);
+        }
+        finally { _noCullR = false; }
+    }
+    private bool _noCullR;
+
+    /// <summary>Near-plane clipping: a triangle with a vertex at w <= 0 is clipped against w >= eps in clip space (x*w, y*w, z*w, w; the
+    /// screen positions are the projected ones), varyings linear in clip space, and the pieces drawn.</summary>
     private void RTri(uint inst, RVert a, RVert b, RVert c)
     {
         if (a.Iw > 0 && b.Iw > 0 && c.Iw > 0) { RTriIn(inst, a, b, c); return; }
