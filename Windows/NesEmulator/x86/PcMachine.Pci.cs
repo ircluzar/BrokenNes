@@ -128,10 +128,12 @@ public sealed class PciBus
 
     private bool Has(byte devFn) => Functions.ContainsKey(devFn) || devFn == VgaDevFn && _m.S3 != null;
 
+    private static readonly bool PciLog = Environment.GetEnvironmentVariable("X86_PCILOG") == "1";   // diagnosis: the VGA function's config accesses
+    private int _pciLogN;
     public uint ConfigRead(int bus, byte devFn, int reg)
     {
         if (bus != 0 || !Has(devFn)) return 0xffffffff;
-        if (devFn == VgaDevFn && !Functions.ContainsKey(devFn)) return _m.S3!.PciRead(reg);
+        if (devFn == VgaDevFn && !Functions.ContainsKey(devFn)) { uint r = _m.S3!.PciRead(reg); if (PciLog && _pciLogN++ < 600) Console.WriteLine($"pcilog rd {reg:X2} = {r:X8}"); return r; }
         return Functions[devFn].Read32(reg);
     }
 
@@ -144,6 +146,7 @@ public sealed class PciBus
             int sh = (reg & 3) * 8;
             uint mask = size == 4 ? 0xffffffff : (uint)((1L << (size * 8)) - 1) << sh;
             uint old = _m.S3!.PciRead(reg);
+            if (PciLog && _pciLogN++ < 600) Console.WriteLine($"pcilog wr {reg:X2} size {size} = {v:X8}");
             _m.S3.PciWrite(reg, (old & ~mask) | ((v << sh) & mask));
             return;
         }

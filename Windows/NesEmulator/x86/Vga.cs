@@ -134,7 +134,7 @@ public sealed class Vga
             case 0x3c8: DacWriteIndex = (byte)val; DacSub = 0; DacState = 0; break;
             case 0x3c9:
                 DacWrites++; if (val > 0x3f) DacWritesOver63++;
-                _dacCache[DacSub] = (byte)(val & 0x3f);
+                _dacCache[DacSub] = (byte)(Dac8 ? val : val & 0x3f);
                 if (++DacSub == 3)
                 {
                     Buffer.BlockCopy(_dacCache, 0, Palette, DacWriteIndex * 3, 3);
@@ -364,7 +364,10 @@ public sealed class Vga
 
     public long DacWrites, DacWritesOver63;   // diagnostics (not saved): an 8-bit DAC driver writes values above 3Fh
     private static int C6(int v) => (v << 2) | (v >> 4);
-    public int Dac(int i) => unchecked((int)0xff000000) | (C6(Palette[i * 3] & 63) << 16) | (C6(Palette[i * 3 + 1] & 63) << 8) | C6(Palette[i * 3 + 2] & 63);
+    /// <summary>8-bit DAC (the VBOXVGA's DISPI 8BIT_DAC enable bit): palette entries are 0-255, not 0-63. Not saved: the card sets it from its DISPI registers.</summary>
+    public bool Dac8;
+    public int Dac(int i) => Dac8 ? unchecked((int)0xff000000) | (Palette[i * 3] << 16) | (Palette[i * 3 + 1] << 8) | Palette[i * 3 + 2]
+        : unchecked((int)0xff000000) | (C6(Palette[i * 3] & 63) << 16) | (C6(Palette[i * 3 + 1] & 63) << 8) | C6(Palette[i * 3 + 2] & 63);
 
     private void Palette16(int[] pal)
     {

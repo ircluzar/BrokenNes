@@ -47,13 +47,14 @@ public sealed class S3Trio64
     {
         0 => 0xb0c4,                                                    // VBE_DISPI_ID4
         0x0a => (ushort)(VramBytes / 65536),                             // video memory in 64 KB units (VirtualBox)
+        0x0b => (ushort)(LfbBase >> 16),                                 // VBE_DISPI_INDEX_FB_BASE_HI (VirtualBox): the LFB's address (boxv9x reads it; 0 = its E000 default)
         4 => (ushort)(Dispi[4] & 0xc3),
         _ => DispiIndex < 16 ? Dispi[DispiIndex] : (ushort)0,
     };
     public void DispiWrite(ushort v)
     {
         int i = DispiIndex;
-        if (i >= 16 || i == 0 || i == 0x0a) return;
+        if (i >= 16 || i == 0 || i == 0x0a || i == 0x0b) return;
         if (i == 3 && v is not (4 or 8 or 15 or 16 or 24 or 32)) return;
         Dispi[i] = v;
         if (i == 1 || i == 3) Dispi[6] = Dispi[1];                       // a new width resets the virtual width
@@ -65,7 +66,10 @@ public sealed class S3Trio64
             _shadowFrame = null;
         }
         if (i == 5) Bank = v;
+        SyncDac8();
     }
+    /// <summary>The 8BIT_DAC enable bit switches the VGA DAC to 8-bit entries while DISPI is on.</summary>
+    public void SyncDac8() => _v.Dac8 = DispiOn && (Dispi[4] & 0x20) != 0;
     private int DispiBpp => Dispi[3] switch { 15 or 16 => 2, 24 => 3, 32 => 4, _ => 1 };
 
     public void Reset()
@@ -73,12 +77,12 @@ public sealed class S3Trio64
         Array.Clear(SrExt);
         Array.Clear(PciConfig);
         if (VBox) { W16(0x00, 0x80ee); W16(0x02, 0xbeef); } else { W16(0x00, 0x5333); W16(0x02, 0x8811); }   // vendor S3, device Trio32/64 (or VirtualBox VGA)
-        Array.Clear(Dispi); DispiIndex = 0; Dispi[3] = 8;
+        Array.Clear(Dispi); DispiIndex = 0; Dispi[3] = 8; _v.Dac8 = false;
         W16(0x04, 0x0003);                                // I/O + memory decode on
         PciConfig[0x08] = 0x00; PciConfig[0x0b] = 0x03;  // class 030000: VGA-compatible display
         PciConfig[0x0e] = 0x00;
         LfbBase = 0xE0000000;
-        W32(0x10, LfbBase);
+        W32(0x10, LfbBase | (VBox ? 8u : 0u));            // (VBOXVGA: prefetchable, as VirtualBox reports it)
         PciConfig[0x3d] = 1;                              // INTA#
         Bank = 0; VbeMode = 0;
         var cr = _v.Cr;
@@ -103,7 +107,7 @@ public sealed class S3Trio64
         {
             case 0x04: W16(0x04, (int)(v & 0x0023)); break;
             case 0x10: LfbBase = v & (VBox ? ~(uint)(VramBytes - 1) : 0xFC000000u);   // (VBOXVGA: BAR 0 = the 4 MB video memory, like VirtualBox; boxv9x takes the devnode's largest memory range)
-                 W32(0x10, LfbBase); _v.Cr[0x59] = (byte)(LfbBase >> 24); _v.Cr[0x5a] = (byte)(LfbBase >> 16); break;
+                 W32(0x10, LfbBase | (VBox ? 8u : 0u)); _v.Cr[0x59] = (byte)(LfbBase >> 24); _v.Cr[0x5a] = (byte)(LfbBase >> 16); break;
             case 0x30: W32(0x30, 0); break;               // no ROM BAR: the video BIOS is the board's own
             case 0x3c: PciConfig[0x3c] = (byte)v; break;
         }
@@ -225,7 +229,7 @@ public sealed class S3Trio64
     /// <summary>Back to plain VGA (a standard BIOS mode set).</summary>
     public void LeaveEnhanced()
     {
-        Dispi[4] = 0;                                     // a BIOS mode set also turns the DISPI mode off (as the Bochs VGA BIOS does)
+        Dispi[4] = 0; SyncDac8();                         // a BIOS mode set also turns the DISPI mode off (as the Bochs VGA BIOS does)
         var cr = _v.Cr;
         cr[0x31] = 0; cr[0x35] = 0; cr[0x51] = 0; cr[0x53] = 0; cr[0x58] = 0; cr[0x5d] = 0; cr[0x5e] = 0; cr[0x67] = 0; cr[0x69] = 0; cr[0x6a] = 0;
         cr[0x45] = 0;
@@ -655,6 +659,6 @@ public sealed class S3Trio64
         (_px, _py, _pw, _ph, _cntX, _cntY) = (a[16], a[17], a[18], a[19], a[20], a[21]);
         _bkColor = r.ReadUInt32(); _fgColor = r.ReadUInt32(); _wrtMask = r.ReadUInt32(); _rdMask = r.ReadUInt32(); _colorCmp = r.ReadUInt32();
         _subsysCtl = r.ReadUInt16(); _advCtl = r.ReadUInt16(); _waitCpu = r.ReadBoolean(); _hiWordNext = r.ReadBoolean();
-        if (VBox) { DispiIndex = r.ReadInt32(); for (int i = 0; i < Dispi.Length; i++) Dispi[i] = r.ReadUInt16(); }
+        if (VBox) { DispiIndex = r.ReadInt32(); for (int i = 0; i < Dispi.Length; i++) Dispi[i] = r.ReadUInt16(); } SyncDac8();
     }
 }

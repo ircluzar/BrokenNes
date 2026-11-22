@@ -122,6 +122,8 @@ public sealed partial class PcMachine : IX86Bus
     private void IsaWait() { if (Pci != null) _idle += Math.Max(1, InstructionsPerSecond / 1_000_000); }
     private void VramWait() { if (_vramNs != 0) _idle += Math.Max(1, _vramNs * InstructionsPerSecond / 1_000_000_000); }
     private PciFunction? Mmio(uint a) => a >= 0xe0000000 && Pci != null && Pci.MmioFns.Length != 0 ? Pci.MmioAt(a) : null;
+    private static readonly bool DispiLog = Environment.GetEnvironmentVariable("X86_DISPILOG") == "1";   // diagnosis: DISPI port writes
+    private int _dispiLogN;
     private byte RawRead8(uint a) => Mmio(a) is { } mf ? (byte)mf.Mmio!.MmioRead(a - mf.MemBase, 1) : a < 0xc0000 ? Vga.MemRead(a) : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
     private void RawWrite8(uint a, byte v) { if (Mmio(a) is { } mf) mf.Mmio!.MmioWrite(a - mf.MemBase, v, 1); else if (a < 0xc0000) Vga.MemWrite(a, v); else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
     private ushort RawRead16(uint a) => Mmio(a) is { } mf && Mmio(a + 1) == mf ? (ushort)mf.Mmio!.MmioRead(a - mf.MemBase, 2) : (ushort)(RawRead8(a) | (RawRead8(a + 1) << 8));
@@ -204,7 +206,7 @@ public sealed partial class PcMachine : IX86Bus
         if (Fdc != null && Fdc82077.IsPort(port)) { Fdc.Out(port, v); return; }
         if (Card != null && Card.Out(port, false, v)) return;
         if (S3 != null && S3Trio64.IsEnginePort(port)) { S3.EngineOut8(port, v); return; }
-        if (S3 is { VBox: true } && S3Trio64.IsDispiPort(port)) { if (port == 0x1ce) S3.DispiIndex = v; else S3.DispiWrite(v); return; }
+        if (S3 is { VBox: true } && S3Trio64.IsDispiPort(port)) { if (DispiLog && _dispiLogN++ < 400) Console.WriteLine($"dispilog out {port:X3} {v:X4} idx {S3.DispiIndex:X} @{Cpu.SegSel[1]:X4}:{Cpu.Ip:X8}"); if (port == 0x1ce) S3.DispiIndex = v; else S3.DispiWrite(v); return; }
         switch (port)
         {
             case 0x20: case 0x21: case 0xa0: case 0xa1: Pic.Out(port, v); return;
@@ -245,13 +247,13 @@ public sealed partial class PcMachine : IX86Bus
         if (Ata != null && Ata.Out(port, true, v)) return;
         if (Card != null && Card.Out(port, true, v)) return;
         if (S3 != null && S3Trio64.IsEnginePort(port)) { S3.EngineOut16(port, v); return; }
-        if (S3 is { VBox: true } && S3Trio64.IsDispiPort(port)) { if (port == 0x1ce) S3.DispiIndex = v; else S3.DispiWrite(v); return; }
+        if (S3 is { VBox: true } && S3Trio64.IsDispiPort(port)) { if (DispiLog && _dispiLogN++ < 400) Console.WriteLine($"dispilog out {port:X3} {v:X4} idx {S3.DispiIndex:X} @{Cpu.SegSel[1]:X4}:{Cpu.Ip:X8}"); if (port == 0x1ce) S3.DispiIndex = v; else S3.DispiWrite(v); return; }
         if (ExtraOut != null && ExtraOut(port, 16, v)) return;
         Out8(port, (byte)v); Out8(port + 1, (byte)(v >> 8));
     }
     // a 32-bit access to an IDE data port is two 16-bit cycles on that same port
     private bool IsAtaData(int port) => Ata != null && (port == 0x1f0 || port == 0x170);
-    public uint In32(int port) => Pci != null && Pci.In(port, 4, out uint pv) ? pv : IsAtaData(port) ? (uint)(In16(port) | (In16(port) << 16)) : (uint)(In16(port) | (In16(port + 2) << 16));
+    public uint In32(int port) => Pci != null && Pci.In(port, 4, out uint pv) ? pv : S3 is { VBox: true } && port == 0x1cf ? (uint)S3Trio64.VramBytes : IsAtaData(port) ? (uint)(In16(port) | (In16(port) << 16)) : (uint)(In16(port) | (In16(port + 2) << 16));
     public void Out32(int port, uint v)
     {
         if (Pci != null && Pci.Out(port, 4, v)) return;

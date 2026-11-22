@@ -376,6 +376,12 @@ internal static class X86BootCli
             var parts = da.Split(':'); uint a0 = Convert.ToUInt32(parts[0], 16); int len = parts.Length > 1 ? int.Parse(parts[1]) : 64;
             for (int k = 0; k < len; k += 16) Console.WriteLine($"dump {a0 + (uint)k:X8}: {LinBytes(m, a0 + (uint)k, Math.Min(16, len - k))}");
         }
+        foreach (var fp in Args(args, "--findphys"))   // --findphys HEXPHYS[:BYTES]: which linear pages map onto a physical range (paging on)
+        {
+            var parts = fp.Split(':'); uint p0 = Convert.ToUInt32(parts[0], 16), plen = parts.Length > 1 ? Convert.ToUInt32(parts[1], 16) : 0x1000; int hits = 0;
+            for (ulong la = 0; la < 0x100000000UL && hits < 64; la += 4096) { uint p = LinPhys(m, (uint)la); if (p != 0xffffffff && p - p0 < plen) { Console.WriteLine($"findphys lin {la:X8} -> phys {p:X8}"); hits++; } }
+            Console.WriteLine($"findphys {p0:X8}+{plen:X}: {hits} page(s)");
+        }
         foreach (var la in Args(args, "--linmap"))   // --linmap HEXLIN[:COUNTPAGES]: where linear pages land (paging on)
         {
             var parts = la.Split(':'); uint a0 = Convert.ToUInt32(parts[0], 16); int np = parts.Length > 1 ? int.Parse(parts[1]) : 1;
