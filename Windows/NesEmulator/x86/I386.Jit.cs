@@ -781,7 +781,7 @@ public sealed partial class I386
             if (JitDelay > 0) { int ms; lock (_jitDelayRng) ms = _jitDelayRng.Next(4); if (ms > 0) System.Threading.Thread.Sleep(ms); }
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             try { code.Fn = jc?.Hit ?? Emit(start, pas, ins, lo, hi, c16, memSize, ioMem, pg, spec, xc); System.Threading.Interlocked.Add(ref JitBuildTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0); code.Fn(this, -1); if (JitDelay > 0) for (int r = 0; r < 2000; r++) code.Fn(this, -1); if (jc != null) JcCompiled(jc, code.Fn); }
-            catch (Exception ex) { code.Fn = null!; if (JitStats) Console.Error.WriteLine($"jit: {start:X8} failed: {ex.GetType().Name} {ex.Message}"); }
+            catch (Exception ex) { code.Fn = null!; if (JitStats) Console.Error.WriteLine($"jit: {start:X8} failed: {ex.GetType().Name} {ex.Message} at {ex.StackTrace?.Replace(Environment.NewLine, " | ")}"); }
             System.Threading.Interlocked.Add(ref JitEmitTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0);
             _jitDone.Enqueue((code, key));
         });
@@ -2011,6 +2011,7 @@ public sealed partial class I386
     {
         int m = 0;
         if (e.Kind is DK_PUSH or DK_POP or DK_CALL or DK_RET or DK_LEAVE) m |= 1 << SEG_SS;
+        if (e.Kind == DK_GRP5 && e.Reg is 2 or 6) m |= 1 << SEG_SS;   // (CALL / PUSH [mem] push onto SS: a region with no other stack use had no SS locals - Emit threw, AoE 02EE8DCD, 2026-11-22)
         if (e.Kind == DK_STOS || (e.Kind == DK_STR && e.Op != 2)) m |= 1 << SEG_ES;
         if (e.Kind == DK_STR && e.Op != 3) m |= 1 << e.Seg;
         if (DcHasModrm(e.Kind) && e.Mod != 3 && e.Kind != DK_LEA) m |= 1 << e.Seg;
