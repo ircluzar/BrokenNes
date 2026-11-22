@@ -124,7 +124,7 @@ if a.accept_eula:
               '@800=>' + NL,                             # Start Wizard -> Finish: hardware setup + restarts follow
               # non-PnP hardware detection hangs at 19% (a probe at port 380h spins on 381h bit 4; 2026-11-22: on every machine preset):
               # power cycle in the hang, Setup's safe recovery skips that probe on the next boot
-              '@30000=>{powercycle}',
+              DESKTOP + '/45000!=>{powercycle}',         # (only when the desktop did not come: with the SB16 present it sometimes does)
               DESKTOP + '/80000=>' + NL,                 # the teal desktop behind Enter Windows Password (user nano98, blank) -> OK
               '@3000=>{alt+f4}',                         # close the Welcome window
               DESKTOP + '/20000=>']                      # the desktop (build_seat checks the last screen is the desktop)
