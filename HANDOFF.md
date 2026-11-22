@@ -62,3 +62,18 @@ Rules: builds on this PC only under heavylock.sh; timed runs only on Garage2; pa
 - REAL finding: --jitstat says compiled 401, runs 0, compiled-instrs 0 (0.0%), invalid 976, recompiles 49: the busy P2 code runs 100% in the
   interpreter (371 M instr/s host, 20% real time). The JIT compiles the regions but never runs them, and keeps invalidating them. Next: find out why
   (16-bit code / self-modifying writes near the loop at 17D7:0C4F / a P6-only check in block entry). Compare with the same loop on the P166.
+
+## 2026-11-21 night: JIT "never runs" DISPROVEN; menu states; timed P2 vs P166
+- The stall_P2 "runs 0 / 0.0% compiled" was a reporting artifact: --jitstat's run/instr/exec1 counters only count with X86_JITSTAT=1.
+  Rerun with it (g2 results/js_P2, same st_menu 300 fr): 57 M block runs, ~88% of retired steps compiled; interpreted rest mostly
+  "pending" (compile queued). No JIT bug; nothing to fix. The P2 is slow on busy (non-HLT) code because it needs 400 M clocks/s vs 151 M.
+- States (also T:\BrokenDev\scratch\p2, g2 data): sc98\st_p2scmenu.bin = P2 StarCraft MAIN MENU (proof p2_sc_menu.png);
+  aoe\st_p2aoemenu.bin = P2 AoE MAIN MENU on aoe\hd_aoeinstC.img (= hd_aoeC + AoE install flattened from st_a20 via --save; proof p2_aoe_menu.png).
+  P166 references: sc98\st_sbmenu.bin, aoe\st_a20.bin (on hd_aoeC.img). Recipe traps: Esc at the SC main menu = Exit; the Registration
+  "cancel?" confirm needs `y`; the base hd_aoeC has NO AoE (it lives in state diffs) -> use hd_aoeinstC.
+- g2 ab.ps1/g2run.sh: new options macha= machb= stateb= hdda= hddb= (per-side machine/state/C: image; defaults unchanged).
+- Timed (Garage2 ab, bin p2c, 3 rounds, % real time): SC menu 300 fr P166 83% / P2 37%; 1200 fr 159% / 46%. AoE menu 300 fr 373% / 270%;
+  1200 fr 562% / 459%. Halted batches: SC menu 0 on BOTH (StarCraft's menu busy-polls, never HLTs -> P2 pays the 2.65x clock); AoE menu
+  P166 74% / P2 88% halted. Results g2 results/t_{sc,aoe}_{300,1200}.
+- Sandra/WinBench on the P2 NOT done: their installs live only in P166 bench state diffs (C:\BrokenNes-work\bench\st); route = flatten
+  bench C: with --save from the latest wb state, cold boot WIN98-P2, dismiss dialogs, rerun sa9/wb21-style steps.
