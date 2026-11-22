@@ -43,7 +43,10 @@ public sealed class PcSession : IConsoleSession
         MachineKey = preset.Key;
         if (!preset.IsClassic) model = preset.Cpu;
         _model = model != null && !model.Legacy ? model : null;
-        _m = preset.IsClassic ? new PcMachine(PcMachine.DefaultMemory, _model) : new PcMachine(preset.Config, _model, preset.Video);
+        // BROKENNES_X86_MEMMB: the guest memory in MB (1..128) instead of the preset's (a state saved by the Workshop with --mem must match)
+        var pcfg = preset.Config;
+        if (Environment.GetEnvironmentVariable("BROKENNES_X86_MEMMB") is { Length: > 0 } mm && int.TryParse(mm, out int mmb) && mmb is >= 1 and <= 128) pcfg = pcfg with { MemoryMB = mmb };
+        _m = preset.IsClassic ? new PcMachine(PcMachine.DefaultMemory, _model) : new PcMachine(pcfg, _model, preset.Video);
         // the network card's cable: the built-in NAT (DHCP, DNS, the HTTPS bridge) only when asked for (BROKENNES_X86_NET=1); unplugged by default
         if (_m.Nic != null && Environment.GetEnvironmentVariable("BROKENNES_X86_NET") == "1") _m.Nic.Link = _nat = new PcNat();
         // the LAN (X86-02): BROKENNES_X86_LAN=host:PORT / join:HOST:PORT puts the card on a hub shared with other BrokenNes PCs (IPX games); with the NAT too, the cable goes to both
