@@ -58,7 +58,14 @@ public sealed partial class Voodoo1 : IPciMmio
     private const int VBlankReads = 2;
     private int _rgbOffs0, _rgbOffs1, _rgbOffs2 = -1, _auxOffs = -1, _rowPixels = 64;
 
-    public Voodoo1() { Reset(); }
+    public Voodoo1() : this(1) { }
+    /// <summary><paramref name="scale"/> 2..4: the Enhanced card (Voodoo1.Enhanced.cs) also draws every triangle into a presentation-only N x shadow.</summary>
+    public Voodoo1(int scale)
+    {
+        _tgt = Fb;
+        if (scale > 1) InitShadow(scale);
+        Reset();
+    }
 
     public void Reset()
     {
@@ -77,6 +84,7 @@ public sealed partial class Voodoo1 : IPciMmio
         RecomputeVideoMemory();
         _texDirty = true;
         _paletteDirty = 0xf;
+        if (_sfb != null) Array.Clear(_sfb);
     }
 
     // ================= display =================
@@ -92,6 +100,7 @@ public sealed partial class Voodoo1 : IPciMmio
     /// <summary>Draws the front buffer through the CLUT into <paramref name="vga"/>'s picture (when <see cref="Active"/>).</summary>
     public void RenderInto(Vga vga)
     {
+        if (_sfb != null) { RenderShadowInto(vga); return; }
         int w = Math.Max(8, Width), h = Math.Max(8, Height);
         vga.Ensure(w, h);
         w = vga.Width; h = vga.Height;
@@ -174,13 +183,17 @@ public sealed partial class Voodoo1 : IPciMmio
         if (_rgbOffs2 > FbMask) _rgbOffs2 = FbMask;
         if (_auxOffs > FbMask) _auxOffs = FbMask;
         if (_rgbOffs2 < 0) { if (_front == 2) _front = 0; if (_back == 2) _back = 0; }
+        if (_sfb != null) ShadowFromNative();
     }
     private int BufferOffset(int n) => n switch { 0 => _rgbOffs0, 1 => _rgbOffs1, _ => _rgbOffs2 };
     /// <summary>The draw buffer for fbzMode/lfbMode's 2-bit select (0 front, 1 back), or -1.</summary>
     private int DrawBuffer(int sel) => sel switch { 0 => BufferOffset(_front), 1 => BufferOffset(_back), _ => -1 };
     private int LfbBuffer(int sel) => sel switch { 0 => BufferOffset(_front), 1 => BufferOffset(_back), 2 => _auxOffs, _ => -1 };
-    private ushort Fb16(int byteOff) { byteOff &= FbMask & ~1; return (ushort)(Fb[byteOff] | Fb[byteOff + 1] << 8); }
-    private void Fb16(int byteOff, int v) { byteOff &= FbMask & ~1; Fb[byteOff] = (byte)v; Fb[byteOff + 1] = (byte)(v >> 8); }
+    // _tgt is the guest framebuffer except while the Enhanced card's shadow pass draws (then the shadow, with its own mask)
+    private byte[] _tgt;
+    private int _tgtMask = FbMask;
+    private ushort Fb16(int byteOff) { byteOff &= _tgtMask & ~1; return (ushort)(_tgt[byteOff] | _tgt[byteOff + 1] << 8); }
+    private void Fb16(int byteOff, int v) { byteOff &= _tgtMask & ~1; _tgt[byteOff] = (byte)v; _tgt[byteOff + 1] = (byte)(v >> 8); }
 
     // ================= PCI memory window =================
 
@@ -462,11 +475,12 @@ public sealed partial class Voodoo1 : IPciMmio
                 {
                     int o = (scry * _rowPixels + x) * 2;
                     uint c = col[pix];
-                    if ((mask & RgbP0) != 0 && dest + o < FbBytes && dest + o >= 0) Fb16(dest + o, dither.Pixel(x, (int)(c >> 16) & 0xff, (int)(c >> 8) & 0xff, (int)c & 0xff));
+                    if ((mask & RgbP0) != 0 && dest + o < FbBytes && dest + o >= 0) { Fb16(dest + o, dither.Pixel(x, (int)(c >> 16) & 0xff, (int)(c >> 8) & 0xff, (int)c & 0xff)); MirrorPixel(dest, o); }
                     if (depth >= 0 && depth + o < FbBytes && depth + o >= 0)
                     {
                         if ((fbz & (1 << 18)) != 0) { if ((mask & AlphaP0) != 0) Fb16(depth + o, (int)(c >> 24)); }
                         else if ((mask & (DepthP0 | DepthMsw0)) != 0) Fb16(depth + o, dep[pix]);
+                        MirrorPixel(depth, o);
                     }
                     Reg[RFbiPixelsOut]++;
                 }
@@ -479,7 +493,11 @@ public sealed partial class Voodoo1 : IPciMmio
             int scry = (fbz & (1 << 17)) != 0 ? YOrigin - y : y;
             for (int pix = 0; mask != 0; pix++)
             {
-                if ((mask & Pixel0Mask) != 0) PixelPipeline(dest, depth, x, scry, col[pix], dep[pix]);
+                if ((mask & Pixel0Mask) != 0)
+                {
+                    PixelPipeline(dest, depth, x, scry, col[pix], dep[pix]);
+                    if (_sfb != null && scry >= 0 && x >= 0) { int o = (scry * _rowPixels + x) * 2; MirrorPixel(dest, o); MirrorPixel(depth, o); }
+                }
                 x++;
                 mask >>= 4;
             }
@@ -583,7 +601,7 @@ public sealed partial class Voodoo1 : IPciMmio
         for (int i = 0; i < 256; i++) _paletteA[i] = r.ReadUInt32();
         _front = r.ReadInt32(); _back = r.ReadInt32(); _swapsPending = r.ReadInt32(); _vblankCount = r.ReadInt32(); _vblankSwap = r.ReadInt32(); _vblankSwapPending = r.ReadBoolean(); _lastFrame = r.ReadInt64(); _readsSinceRetrace = ver >= 3 ? r.ReadInt32() : 0;
         Triangles = r.ReadInt64(); Pixels = r.ReadInt64();
-        RecomputeVideoMemory();
+        RecomputeVideoMemory();   // (rebuilds the Enhanced shadow from the loaded framebuffer: the shadow is never saved)
         _clutDirty = true; _texDirty = true; _paletteDirty = 0xf;
     }
 }

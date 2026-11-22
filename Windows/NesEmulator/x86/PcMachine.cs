@@ -74,6 +74,7 @@ public sealed partial class PcMachine : IX86Bus
     public readonly Rtl8029? Nic;
     /// <summary>The 3dfx Voodoo Graphics add-in card (PCI board with PcConfig.Voodoo only; off by default).</summary>
     public readonly Voodoo1? Voodoo;
+    private static readonly bool AcceptOtherVoodooScale = Environment.GetEnvironmentVariable("X86_VOODOO_ACCEPT_STOCK") == "1";
     /// <summary>The 82077AA floppy controller (the PCI 430TX board only; the other boards serve floppies through the BIOS alone).</summary>
     public readonly Fdc82077? Fdc;
     private bool BmPort(int port, out int off) { off = 0; if (Ata == null || Pci == null || !Pci.Functions.TryGetValue(PciBus.IdeDevFn, out var f)) return false; int b = f.Bar4Base; if (b < 0 || port < b || port >= b + 16) return false; off = port - b; return true; }
@@ -118,7 +119,7 @@ public sealed partial class PcMachine : IX86Bus
         {
             if (!config.NoNic) Nic = new Rtl8029();
             if (Nic != null) Nic.SetIrq = on => { int irq = Pci!.Isa.Cfg[0x61]; if (irq < 16) Pic.SetIrq(irq, on ? 1 : 0); };
-            if (config.Voodoo) Voodoo = new Voodoo1();
+            if (config.Voodoo) Voodoo = new Voodoo1(Math.Max(1, config.VoodooScale));
             Pci = new PciBus(this);
             if (Nv != null)
             {
@@ -667,6 +668,9 @@ public sealed partial class PcMachine : IX86Bus
             {
                 saved = PcConfig.Read(r);
                 // (VramMB is not in the config block: the SVGA card id, VBOXVGA-16MB, carries the video memory size and is checked below)
+                // X86_VOODOO_ACCEPT_STOCK=1 (explicit, test tools only): a Stock Voodoo state loads into an Enhanced Voodoo machine and back (the render
+                // scale is presentation only; the guest state is the same); without it the scale is part of the machine and a mismatch is refused
+                if (AcceptOtherVoodooScale && saved.Voodoo && Config.Voodoo) saved = saved with { VoodooScale = Config.VoodooScale };
                 if (saved with { MemoryMB = Config.MemoryMB, VramMB = Config.VramMB } != Config) throw new InvalidDataException($"this x86 state is for a {saved} machine, this machine is {Config}");
                 WireAta();
                 if (r.ReadBoolean()) Ata!.Load(r);
