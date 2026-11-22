@@ -267,6 +267,8 @@ Agents drive the flow the way a user does, step by step, looking at the screen a
 - **Desktop HTTP API** (the user's running app; port from `%LOCALAPPDATA%\BrokenNes\instances\PID.json`): `POST /api/n98/install/ACTION`
   with the args as the JSON body; `GET /api/n98/install` = status; the screen: `GET /api/console/framebuffer`. `start` runs the seat in the
   app's window; `capture` opens the package when done (`open: false` to skip); `open {path}`, `close`.
+  Base build: `build-base {iso, key, out?}` returns at once (`{ok, started}`); poll `base-build-status` (`running, seconds, progress, log,
+  result` when done; the key is masked in every line). One build at a time; `base-status` = whether a base exists. Same in MCP.
 - **CLI** (Workshop): `--n98install --disc ISO [--machine M] [--sound S] [--script FILE | --do "step; step"] [--out PKG --title T --exe auto
   [--layer-id ID]] [--settle-layer ID OUT] [--make-winfiles WIN98SE.ISO] [--shotdir DIR]`. Steps: `wait ready|off|exit|frames N|status TEXT`,
   `setups`, `runsetup`, `run PATH [ARGS]`, `keys TEXT`, `shot NAME.png`, `text`, `disc PATH|none`, `winfiles`, `poweroff`, `restart`,

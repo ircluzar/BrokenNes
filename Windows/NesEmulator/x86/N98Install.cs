@@ -404,7 +404,8 @@ public sealed class N98Install : IDisposable
                 }
             case "make-winfiles": return MakeWindowsFilesDisc(S("iso") ?? throw new ArgumentException("iso"));
             case "base-status": return new JsonObject { ["ok"] = true, ["ready"] = N98Seat.HasBase() };
-            case "build-base": return N98BaseBuild.Run(S("iso") ?? throw new ArgumentException("iso"), S("key") ?? throw new ArgumentException("key"), S("out"));
+            case "build-base": return N98BaseBuild.Start(S("iso") ?? throw new ArgumentException("iso"), S("key") ?? throw new ArgumentException("key"), S("out"));   // returns at once
+            case "base-build-status": return N98BaseBuild.JobStatus();
             case "winfiles-status": return new JsonObject { ["ok"] = true, ["ready"] = HasWindowsFilesDisc, ["path"] = Path.GetFullPath(WindowsFilesDiscPath) };
             default: return null;
         }

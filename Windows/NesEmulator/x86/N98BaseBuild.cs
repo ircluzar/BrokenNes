@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -41,6 +42,47 @@ public static class N98BaseBuild
         if (Environment.GetEnvironmentVariable("BROKENNES_N98_PYFAT") is { Length: > 0 } p) return p;
         const string dev = @"C:\BrokenNes-work\tools\pyfat_venv\Scripts\python.exe";
         return File.Exists(dev) ? dev : null;
+    }
+
+    // ---- background job for the HTTP / MCP drivers: build-base returns at once, base-build-status polls ----
+    static readonly object _jobLock = new();
+    static System.Threading.Tasks.Task<JsonObject>? _job;
+    static readonly List<string> _jobLog = new();
+    static DateTime _jobStart;
+
+    /// <summary>Starts the build in the background (one at a time). Returns {ok, started} at once, or {ok:false, error} when one is running
+    /// or the inputs are wrong. The key goes only into the child's environment, as in Run.</summary>
+    public static JsonObject Start(string iso, string key, string? outPath = null)
+    {
+        if (!KeyLooksRight(key)) return new JsonObject { ["ok"] = false, ["error"] = "the product key is 5 groups of 5 letters/digits: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" };
+        if (!File.Exists(iso)) return new JsonObject { ["ok"] = false, ["error"] = "the Windows 98 SE disc image was not found" };
+        lock (_jobLock)
+        {
+            if (_job is { IsCompleted: false }) return new JsonObject { ["ok"] = false, ["error"] = "a base build is already running", ["running"] = true };
+            lock (_jobLog) _jobLog.Clear();
+            _jobStart = DateTime.UtcNow;
+            _job = System.Threading.Tasks.Task.Run(() =>
+            {
+                try { return Run(iso, key, outPath, null, l => { lock (_jobLog) { _jobLog.Add(l); if (_jobLog.Count > 400) _jobLog.RemoveAt(0); } }); }
+                catch (Exception e) { return new JsonObject { ["ok"] = false, ["error"] = e.Message }; }
+            });
+        }
+        return new JsonObject { ["ok"] = true, ["started"] = true, ["poll"] = "base-build-status" };
+    }
+
+    /// <summary>{ok, running, started, seconds, progress (last line), log (last 12 lines, key masked), result (when done)}.</summary>
+    public static JsonObject JobStatus()
+    {
+        var j = _job;
+        string[] tail; lock (_jobLog) tail = _jobLog.Skip(Math.Max(0, _jobLog.Count - 12)).ToArray();
+        var r = new JsonObject
+        {
+            ["ok"] = true, ["running"] = j is { IsCompleted: false }, ["started"] = j != null,
+            ["seconds"] = j == null ? 0 : (int)(DateTime.UtcNow - _jobStart).TotalSeconds,
+            ["progress"] = tail.LastOrDefault(), ["log"] = new JsonArray(tail.Select(t => (JsonNode)t).ToArray()),
+        };
+        if (j is { IsCompleted: true }) r["result"] = j.Result.DeepClone();
+        return r;
     }
 
     /// <summary>Runs the whole build. log gets the build's own lines (never the key). Returns {ok, base, warm} or {ok:false, error}.</summary>
