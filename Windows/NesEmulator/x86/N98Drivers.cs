@@ -53,10 +53,16 @@ public static class N98Drivers
         throw new NotSupportedException($"driver '{id}': downloading from {baseUrl} is not built yet (no public hosting decided)");
     }
 
-    /// <summary>A pinned layer id after the user's override map (BROKENNES_N98_LAYER_MAP "old=new;...").</summary>
+    /// <summary>The user's saved override map (the packaging window's "Driver overrides" setting): LOCALAPPDATA/BrokenNes/nano98/layer_map.txt.</summary>
+    public static string MapFile => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BrokenNes", "nano98", "layer_map.txt");
+    public static string SavedMap() { try { return File.Exists(MapFile) ? File.ReadAllText(MapFile).Trim() : ""; } catch (IOException) { return ""; } }
+    public static void SaveMap(string map) { Directory.CreateDirectory(Path.GetDirectoryName(MapFile)!); if (map.Trim().Length == 0) File.Delete(MapFile); else File.WriteAllText(MapFile, map.Trim()); }
+
+    /// <summary>A pinned layer id after the user's override map (BROKENNES_N98_LAYER_MAP "old=new;...", else the saved setting).</summary>
     public static string MapLayer(string id)
     {
-        foreach (var kv in (Environment.GetEnvironmentVariable("BROKENNES_N98_LAYER_MAP") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries))
+        string map = Environment.GetEnvironmentVariable("BROKENNES_N98_LAYER_MAP") is { Length: > 0 } e ? e : SavedMap();
+        foreach (var kv in map.Split(';', StringSplitOptions.RemoveEmptyEntries))
             if (kv.Split('=', 2) is { Length: 2 } p && p[0].Trim() == id) return p[1].Trim();
         return id;
     }

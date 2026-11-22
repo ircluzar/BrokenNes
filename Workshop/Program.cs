@@ -88,6 +88,8 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--x86ide", StringComparison.OrdinalIgnoreCase)) return X86.X86IdeCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86voodoo", StringComparison.OrdinalIgnoreCase)) return X86.X86VoodooCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--n98seat", StringComparison.OrdinalIgnoreCase)) return X86.N98SeatCli.Run(args);
+        if (args.Length > 1 && args[0].Equals("--n98prebuild", StringComparison.OrdinalIgnoreCase))   // --n98prebuild PKG...: the app's background warm-state build, headless
+        { foreach (var p in args[1..]) Console.WriteLine($"n98prebuild: {p}: {(NesEmulator.X86.N98WarmPrebuild.BuildOne(p) ? "warm state made" : "nothing to do")}"); return 0; }
         if (args.Length > 0 && args[0].Equals("--n98install", StringComparison.OrdinalIgnoreCase)) return X86.N98InstallCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86lan", StringComparison.OrdinalIgnoreCase)) return X86.X86LanCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86pci", StringComparison.OrdinalIgnoreCase)) return X86.X86PciCli.Run(args);

@@ -79,6 +79,10 @@ namespace BrokenNes.Windows.DebugWindows
                 Btn("Remove", () => { if (list.SelectedIndex >= 0) list.Items.RemoveAt(list.SelectedIndex); }),
                 Btn("Up", () => MoveItem(list, -1)), Btn("Down", () => MoveItem(list, 1)),
                 Btn("Info", () => { if (list.SelectedItem is string p) Run(Py(), Script("pkg/n98.py"), new[] { "info", p }); }));
+            Heading(t, "Driver overrides (all packages on this PC): a package pins its layer ids; old=new;old2=new2 runs another layer instead (e.g. nv532=nv4523). Empty = pinning. BROKENNES_N98_LAYER_MAP wins when set.");
+            TextRow(t, "layer_map", "Override map", NesEmulator.X86.N98Drivers.SavedMap());
+            Row(t, "", Btn("Save overrides", () => { try { NesEmulator.X86.N98Drivers.SaveMap(V("layer_map")); Log("driver overrides: " + (V("layer_map").Length > 0 ? V("layer_map") : "none (pinned layers)")); NesEmulator.X86.N98WarmPrebuild.Kick(); } catch (Exception ex) { Log("could not save: " + ex.Message); } }),
+                Btn("Show driver catalog", () => { try { foreach (var d in NesEmulator.X86.N98Drivers.Catalog()) Log(d!.ToJsonString()); } catch (Exception ex) { Log(ex.Message); } }));
             PathRow(t, "layers_out", "Compose into folder", PathKind.Folder);
             Row(t, "", Btn("Compose layers onto the base", ComposeLayers));
             Heading(t, "Schema-2 system layers: n98.py layer cuts one from a captured install; n98.py variant = base .n98d + the listed layers -> a variant base with its own warm state");
