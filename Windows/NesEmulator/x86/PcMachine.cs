@@ -439,7 +439,7 @@ public sealed partial class PcMachine : IX86Bus
             {
                 // X86_WAITSKIP: the CPU sits at a proven no-change point of a polling loop (I386.WaitSkip.cs): idle like HLT until an interrupt
                 if (Cpu.Intr && (Cpu.Flags & I386.IF) != 0) { Cpu.WsUnpark(); Cpu.Step(Batch); return true; }
-                long s = SleepInstr(); _idle += s; Cpu.WsParkedBatch(s);
+                long s = Math.Min(SleepInstr(), Cpu.WsParkLeft); _idle += s; Cpu.WsParkedBatch(s);
                 return true;
             }
             if (Cpu.Halt)

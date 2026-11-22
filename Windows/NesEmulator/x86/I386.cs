@@ -168,9 +168,9 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private byte P8(uint a) => Mem[a];
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint P16(uint a) => Unsafe.ReadUnaligned<ushort>(ref Mem[a]);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint P32(uint a) => Unsafe.ReadUnaligned<uint>(ref Mem[a]);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS8(uint a, uint v) { Mem[a] = (byte)v; CodeWr1(a); }
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS16(uint a, uint v) { Unsafe.WriteUnaligned(ref Mem[a], (ushort)v); CodeWr(a, 2); }
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS32(uint a, uint v) { Unsafe.WriteUnaligned(ref Mem[a], v); CodeWr(a, 4); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS8(uint a, uint v) { if (_wsUndoOn) WsPre(a, 1); Mem[a] = (byte)v; CodeWr1(a); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS16(uint a, uint v) { if (_wsUndoOn) WsPre(a, 2); Unsafe.WriteUnaligned(ref Mem[a], (ushort)v); CodeWr(a, 2); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void PS32(uint a, uint v) { if (_wsUndoOn) WsPre(a, 4); Unsafe.WriteUnaligned(ref Mem[a], v); CodeWr(a, 4); }
 
     // ---- the compiled blocks' code-change test (I386.Jit.cs JitSame): a store to a 64-byte line some compiled block was made from bumps the
     // generation of its 4 KB page; a block runs without comparing its bytes while its pages' generations (and _memEpoch) are the ones it saw.
@@ -179,12 +179,13 @@ public sealed partial class I386
     private readonly uint[] _pgGen;      // per 4 KB page: the code write generation
     private uint _memEpoch;
     /// <summary>Memory was written by something other than the CPU's own stores (the BIOS, DMA, a disk load, a tool): compiled blocks check their bytes.</summary>
-    public void MemTouched() => _memEpoch++;
+    public void MemTouched() { _memEpoch++; if (_wsPhase is 1 or 2 or 4 or 5) WsExternal(0, 0); }
     /// <summary>RAM [a, a+n) was written from outside the CPU (bus-master DMA): only the pages holding compiled code lines in that range move to a new generation
     /// (cheaper than <see cref="MemTouched"/>, which makes every compiled block compare its bytes once).</summary>
     public void RamWritten(uint a, int n)
     {
         if (n <= 0) return;
+        if (_wsPhase is 1 or 2 or 4 or 5) WsExternal(a, n);
         for (uint l = a >> 6, e = (uint)((a + n - 1) >> 6); l <= e; l++) if (_codeMark[l] != 0) { CodeWrite(l << 6, 64); }
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -332,7 +333,7 @@ public sealed partial class I386
     private void RefillDone(bool ok)
     {
         if (_refillPde == 0xffffffff) return;
-        if (ok) { Mem[_refillPde] |= 1 << 5; Mem[_refillPte] |= 1 << 5; CodeWr1(_refillPde); CodeWr1(_refillPte); }
+        if (ok) { if (_wsUndoOn) { WsPre(_refillPde, 1); WsPre(_refillPte, 1); } Mem[_refillPde] |= 1 << 5; Mem[_refillPte] |= 1 << 5; CodeWr1(_refillPde); CodeWr1(_refillPte); }
         _refillPde = 0xffffffff;
     }
 
@@ -383,7 +384,7 @@ public sealed partial class I386
         paddr = _tlbXaddr[e] ^ laddr;
         int tg = (cpl == 3 ? 2 * TlbSize : 0) + e;
         _tlbTag[tg] = lpgno;
-        if ((rwm & 2) != 0) { Mem[_tlbPpte[e]] |= 1 << 6; CodeWr1((uint)_tlbPpte[e]); _tlbTag[tg + TlbSize] = lpgno; } // dirty
+        if ((rwm & 2) != 0) { if (_wsUndoOn) WsPre((uint)_tlbPpte[e], 1); Mem[_tlbPpte[e]] |= 1 << 6; CodeWr1((uint)_tlbPpte[e]); _tlbTag[tg + TlbSize] = lpgno; } // dirty
         return true;
     }
 
@@ -492,9 +493,9 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint U8(uint a) => Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint U16(uint a) => Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a));
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint U32(uint a) => Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a));
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US8(uint a, uint v) { Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a) = (byte)v; CodeWr1(a); }
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US16(uint a, uint v) { Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a), (ushort)v); CodeWr(a, 2); }
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US32(uint a, uint v) { Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a), v); CodeWr(a, 4); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US8(uint a, uint v) { if (_wsUndoOn) WsPre(a, 1); Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a) = (byte)v; CodeWr1(a); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US16(uint a, uint v) { if (_wsUndoOn) WsPre(a, 2); Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a), (ushort)v); CodeWr(a, 2); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US32(uint a, uint v) { if (_wsUndoOn) WsPre(a, 4); Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a), v); CodeWr(a, 4); }
 
     /// <summary>Plain RAM (below MemSize and, with memory-mapped I/O on, outside A0000-BFFFF; the E0000000+ window is above MemSize).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -946,7 +947,7 @@ public sealed partial class I386
     {
         if ((Flags & IF) != 0 && Intr)
         {
-            if (WaitSkipOn) WsOnIrq();
+            if (_wsMode != 0) WsOnIrq();
             Intr = false; Halt = false;
             int no = _bus.AckIrq();
             Ip = NextIp;
@@ -955,7 +956,7 @@ public sealed partial class I386
         if (Halt) return;
         if (!_jitDone.IsEmpty) JitDrain();
         long tq0 = PcMachine.TimeProbe ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
-        bool ret = WaitSkipOn && WsBegin() ? WsExec(stepcount) : Exec1(stepcount);
+        bool ret = _wsMode != 0 && WsBegin() ? WsExec(stepcount) : Exec1(stepcount);
         if (PcMachine.TimeProbe) TicksExec1 += System.Diagnostics.Stopwatch.GetTimestamp() - tq0;
         _ifPaddr = 0;
         if (!ret)
