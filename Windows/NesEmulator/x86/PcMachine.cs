@@ -126,9 +126,12 @@ public sealed partial class PcMachine : IX86Bus
                 if (Environment.GetEnvironmentVariable("X86_NVLOG") is string nvl and not "")
                 {
                     var lw = new System.IO.StreamWriter(nvl) { AutoFlush = true }; long nlog = 0;
-                    Nv.OpLog = t => { if (nlog++ < 300_000) lw.WriteLine($"{Vga.FrameCount} OP {t}"); };
-                    Nv.MethodLog = (ch, sc, cl, mt, d) => { if (nlog++ < 300_000) lw.WriteLine($"{Vga.FrameCount} M ch{ch} s{sc} c{cl:X3} {mt:X4} {d:X8}"); };
-                    Nv.Log = (o, v, sz, wr) => { if (nlog++ < 300_000) lw.WriteLine($"{Vga.FrameCount} {(wr ? 'W' : 'R')}{sz} {o:X6} {v:X8} {Cpu.SegSel[1]:X4}:{Cpu.Ip:X8}"); };
+                    // X86_NVLOGMAX: line cap (default 300000); X86_NVLOGNORAMIN: leave PRAMIN (700000-7FFFFF) accesses out
+                    long nmax = long.TryParse(Environment.GetEnvironmentVariable("X86_NVLOGMAX"), out var nm) ? nm : 300_000;
+                    bool noRamin = Environment.GetEnvironmentVariable("X86_NVLOGNORAMIN") != null;
+                    Nv.OpLog = t => { if (nlog++ < nmax) lw.WriteLine($"{Vga.FrameCount} OP {t}"); };
+                    Nv.MethodLog = (ch, sc, cl, mt, d) => { if (nlog++ < nmax) lw.WriteLine($"{Vga.FrameCount} M ch{ch} s{sc} c{cl:X3} {mt:X4} {d:X8}"); };
+                    Nv.Log = (o, v, sz, wr) => { if (noRamin && o is >= 0x700000 and < 0x800000) return; if (nlog++ < nmax) lw.WriteLine($"{Vga.FrameCount} {(wr ? 'W' : 'R')}{sz} {o:X6} {v:X8} {Cpu.SegSel[1]:X4}:{Cpu.Ip:X8}"); };
                 }
                 Nv.SysRead32 = a => a <= Cpu.MemSize - 4 ? BitConverter.ToUInt32(Cpu.Mem, (int)a) : 0xffffffff;
                 Nv.SysWrite32 = (a, v) => { if (a <= Cpu.MemSize - 4) { BitConverter.TryWriteBytes(Cpu.Mem.AsSpan((int)a), v); Cpu.MemTouched(); } };
