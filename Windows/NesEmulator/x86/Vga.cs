@@ -404,10 +404,12 @@ public sealed class Vga
     }
 
     /// <summary>Sizes <see cref="Frame"/> (clamped to 8..1920 x 8..1200: 1920x1080 / 1920x1200 wide modes).</summary>
-    public void Ensure(int w, int h)
+    public void Ensure(int w, int h) => Ensure(w, h, 1920, 1200);
+    /// <summary>Sizes <see cref="Frame"/> with a larger limit (the Enhanced Voodoo's N x render-scale picture, up to 3200x2400).</summary>
+    public void Ensure(int w, int h, int maxW, int maxH)
     {
         if (w < 8) w = 8; if (h < 8) h = 8;
-        if (w > 1920) w = 1920; if (h > 1200) h = 1200;
+        if (w > maxW) w = maxW; if (h > maxH) h = maxH;
         Width = w; Height = h;
         if (Frame.Length != w * h) Frame = new int[w * h];
     }
