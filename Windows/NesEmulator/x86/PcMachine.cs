@@ -689,7 +689,8 @@ public sealed partial class PcMachine : IX86Bus
             {
                 var bases = new List<byte[]?>();
                 foreach (var o in old) bases.Add(o?.Base);
-                for (int i = 0; i < 4; i++) disks[i] = r.ReadBoolean() ? DiskImage.LoadDiff(r, bases) : null;
+                var bigs = old.Select(o => o?.Big).ToList();   // (nano98 large game drives)
+                for (int i = 0; i < 4; i++) disks[i] = r.ReadBoolean() ? DiskImage.LoadDiff(r, bases, bigs) : null;
                 Floppy[0] = disks[0]; Floppy[1] = disks[1]; Hdd[0] = disks[2]; Hdd[1] = disks[3];
             }
             else throw new InvalidDataException($"unknown block {magic:X8} in an x86 state");

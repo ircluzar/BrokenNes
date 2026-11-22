@@ -283,4 +283,10 @@ Agents drive the flow the way a user does, step by step, looking at the screen a
   `{at:x,y}` absolute pointer (corner + small steps; 1 mouse count = 2 pixels on the seat), `{m:dx,dy[,buttons]}`, `{click}` (held 10 frames:
   setup buttons miss shorter ones), `{click:dx,dy}`, `{rclick}`.
 - Proof script: tools/nano98/install/aoe.steps (Age of Empires from the user's ISO, end to end).
+- Driver layers (settle on a new machine; GeForce 2026-11-22): `--n98install --machine win98-p166-geforce-nano --disc NVWIN.iso` where NVWIN.iso =
+  the Windows 98 SE files disc + the catalog driver's files in WIN98 (the NVIDIA INF also copies Windows files: without them error code 69).
+  The hardware wizard comes BEFORE the seat's warm point, so the disc is not in yet: step `disc NVWIN.iso` first. Then: Next, "Display a list"
+  ({at:180,143}{click}), Next, Have Disk ({at:400,258}{click}), `E:\WIN98{enter}`, OK, Next, Finish, Yes (restart), wait ready,
+  `--settle-layer geforce-nv532 OUT.n98` (17 files, 214 SYSTEM.DAT ops). A package then names it: `system.layers ["geforce-nv532"]` +
+  `hardware.machine WIN98-P166-GEFORCE-NANO`; Quake II (`+set vid_ref gl`) runs on it in OpenGL (console + connect drawn by the GeForce).
 Licences: a game's EULA screen needs the user's OK per program before an agent clicks I Agree.

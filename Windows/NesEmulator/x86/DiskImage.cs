@@ -20,13 +20,16 @@ public sealed class DiskImage
     public const int SectorSize = 512;
     /// <summary>The read-only base image (never modified by the machine).</summary>
     public readonly byte[] Base;
+    /// <summary>The base of a disk larger than one array (nano98 large game drives); then <see cref="Base"/> is empty.</summary>
+    public readonly DiskBigBase? Big;
     public readonly int Cylinders, Heads, Sectors;
     public readonly bool IsFloppy;
     /// <summary>Set by every write (the desktop's battery export clears it).</summary>
     public bool Dirty;
     private readonly Dictionary<long, byte[]> _overlay = new();
-    public long Length => Base.Length;
-    public long TotalSectors => Base.Length / SectorSize;
+    public long Length => Big?.Length ?? Base.LongLength;
+    public long TotalSectors => Length / SectorSize;
+    private ReadOnlySpan<byte> BaseSector(long s) => Big != null ? Big.Sector(s) : Base.AsSpan((int)(s * SectorSize), SectorSize);
     /// <summary>The number of sectors that differ from the base.</summary>
     public int OverlaySectors => _overlay.Count;
 
@@ -54,6 +57,22 @@ public sealed class DiskImage
         Cylinders = (int)Math.Min(1024, Math.Max(1, data.Length / 512 / (heads * spt)));
     }
 
+    /// <summary>A hard disk on a big (chunked) base: the same copy-on-write disk, for sizes past one array.</summary>
+    public DiskImage(DiskBigBase big)
+    {
+        Base = Array.Empty<byte>(); Big = big; IsFloppy = false;
+        DiskBigBase.Register(big);
+        var mbr = big.Sector(0);
+        int heads = 16, spt = 63;
+        if (mbr[510] == 0x55 && mbr[511] == 0xaa && mbr[0x1c2] != 0)
+        {
+            int eh = mbr[0x1c3], es = mbr[0x1c4] & 0x3f;
+            if (es > 0 && eh > 0) { heads = eh + 1; spt = es; }
+        }
+        Heads = heads; Sectors = spt;
+        Cylinders = (int)Math.Min(1024, Math.Max(1, big.Length / 512 / (heads * spt)));
+    }
+
     /// <summary>A disk on <paramref name="baseImage"/> whose content is <paramref name="full"/> (same length): the overlay is their difference.</summary>
     public static DiskImage FromFull(byte[]? baseImage, byte[] full, bool floppy)
     {
@@ -71,13 +90,13 @@ public sealed class DiskImage
     {
         if (lba < 0 || count < 0 || lba + count > TotalSectors) return false;
         ReadHook?.Invoke(lba, count);
-        if (_overlay.Count == 0) { Base.AsSpan(checked((int)(lba * SectorSize)), count * SectorSize).CopyTo(dst); return true; }
+        if (_overlay.Count == 0 && Big == null) { Base.AsSpan(checked((int)(lba * SectorSize)), count * SectorSize).CopyTo(dst); return true; }
         for (int i = 0; i < count; i++)
         {
             long s = lba + i;
             var to = dst.Slice(i * SectorSize, SectorSize);
             if (_overlay.TryGetValue(s, out var sec)) sec.CopyTo(to);
-            else Base.AsSpan((int)(s * SectorSize), SectorSize).CopyTo(to);
+            else BaseSector(s).CopyTo(to);
         }
         return true;
     }
@@ -92,7 +111,7 @@ public sealed class DiskImage
 
     private void PutSector(long s, ReadOnlySpan<byte> data)
     {
-        if (data.SequenceEqual(Base.AsSpan((int)(s * SectorSize), SectorSize))) { _overlay.Remove(s); return; }
+        if (data.SequenceEqual(BaseSector(s))) { _overlay.Remove(s); return; }
         if (!_overlay.TryGetValue(s, out var sec)) _overlay[s] = sec = new byte[SectorSize];
         data.CopyTo(sec);
     }
@@ -102,7 +121,7 @@ public sealed class DiskImage
     public string ContentKey()
     {
         using var h = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        h.AppendData(BitConverter.GetBytes(Base.LongLength));
+        h.AppendData(BitConverter.GetBytes(Length));
         foreach (var s in _overlay.Keys.OrderBy(k => k)) { h.AppendData(BitConverter.GetBytes(s)); h.AppendData(_overlay[s]); }
         return Convert.ToHexString(h.GetHashAndReset());
     }
@@ -123,6 +142,7 @@ public sealed class DiskImage
 
     public byte[] ToArray()
     {
+        if (Big != null) throw new NotSupportedException("a disk larger than 2 GB has no single-array form: read it by sectors");
         var a = (byte[])Base.Clone();
         foreach (var (s, sec) in _overlay) sec.CopyTo(a, s * SectorSize);
         return a;
@@ -131,6 +151,7 @@ public sealed class DiskImage
     /// <summary>The disk as it is now, built later (on another thread): only the written sectors are copied here (cheap), the whole image is built when the function runs.</summary>
     public Func<byte[]> Snapshot()
     {
+        if (Big != null) throw new NotSupportedException("a disk larger than 2 GB has no single-array form: read it by sectors");
         var secs = new List<(long s, byte[] d)>(_overlay.Count);
         foreach (var (s, sec) in _overlay) secs.Add((s, (byte[])sec.Clone()));
         var b = Base;
@@ -140,6 +161,7 @@ public sealed class DiskImage
     /// <summary>Makes the disk read as <paramref name="full"/> (same length as the base): the overlay becomes their difference.</summary>
     public void SetContent(byte[] full)
     {
+        if (Big != null) throw new NotSupportedException("a disk larger than 2 GB cannot be set from one array");
         if (full.Length != Base.Length) throw new ArgumentException($"a disk content of {full.Length} bytes on a {Base.Length}-byte base");
         _overlay.Clear();
         for (long s = 0; s < TotalSectors; s++)
@@ -163,7 +185,7 @@ public sealed class DiskImage
     /// threads; the plain SHA-256 of it took ~4.5 s on this i7-8700 without SHA instructions, and a state load waited for both disks, ~10 s).
     /// Hashed once per base array, when a state first needs it (the old whole-image hash from the moment the disk is made, as before). States saved before carry "sha256:HEX"
     /// (the whole image): <see cref="FindBase"/> still matches those, computing that hash only when one is asked for.</summary>
-    public string BaseHash => HashOf(Base);
+    public string BaseHash => Big?.Hash ?? HashOf(Base);
 
     private const int HashPiece = 16 << 20;
     private static Task<string> HashTask(byte[] image)
@@ -237,6 +259,40 @@ public sealed class DiskImage
         if (Environment.GetEnvironmentVariable("X86_N98D_VERIFY") == "1" && PieceHash(img) != hash) throw new InvalidDataException($"{name}: N98D content does not match its hash {hash}");
         if (hash.StartsWith("p256:", StringComparison.Ordinal)) lock (_lock) _hashes.AddOrUpdate(img, Task.FromResult(hash));
         return img;
+    }
+
+    /// <summary>An N98D disk of any size into a chunked base (nano98 large game drives); zero runs stay unallocated.</summary>
+    public static DiskBigBase ReadSparseBig(Stream s, string name)
+    {
+        using var r = new BinaryReader(s, System.Text.Encoding.ASCII, true);
+        if (r.ReadUInt32() != 0x4438394E) throw new InvalidDataException($"{name}: not an N98D disk");
+        if (r.ReadInt32() != 1) throw new InvalidDataException($"{name}: N98D version this build does not know");
+        long len = r.ReadInt64();
+        if (len <= 0 || len % SectorSize != 0) throw new InvalidDataException($"{name}: bad N98D length {len}");
+        string hash = System.Text.Encoding.ASCII.GetString(r.ReadBytes(r.ReadByte()));
+        var big = new DiskBigBase(len); var buf = new byte[1 << 20];
+        for (int n = r.ReadInt32(); n > 0; n--)
+        {
+            long first = r.ReadInt64(); int count = r.ReadInt32(), clen = r.ReadInt32();
+            if (first < 0 || count <= 0 || (first + count) * SectorSize > len || clen < 0) throw new InvalidDataException($"{name}: N98D chunk outside its disk");
+            using var z = new System.IO.Compression.ZLibStream(new MemoryStream(r.ReadBytes(clen)), System.IO.Compression.CompressionMode.Decompress);
+            long off = first * SectorSize, left = (long)count * SectorSize;
+            while (left > 0)
+            {
+                int want = (int)Math.Min(buf.Length, left), got = 0;
+                while (got < want) { int g = z.Read(buf, got, want - got); if (g <= 0) throw new InvalidDataException($"{name}: N98D chunk truncated"); got += g; }
+                big.Fill(off, buf.AsSpan(0, want)); off += want; left -= want;
+            }
+        }
+        if (hash.StartsWith("p256:", StringComparison.Ordinal)) big.SeedHash(hash);
+        return big;
+    }
+
+    /// <summary>The disk size an N98D header names (without reading the disk).</summary>
+    public static long SparseLength(Stream s)
+    {
+        var h = new byte[16]; int got = 0; while (got < 16) { int g = s.Read(h, got, 16 - got); if (g <= 0) break; got += g; }
+        return got == 16 && BitConverter.ToUInt32(h, 0) == 0x4438394E ? BitConverter.ToInt64(h, 8) : -1;
     }
 
     private static string SampleHash(byte[] a)
@@ -330,7 +386,7 @@ public sealed class DiskImage
     private long[] _keys = Array.Empty<long>();
     public void SaveDiff(BinaryWriter w, bool byObject = false)
     {
-        w.Write(IsFloppy); w.Write(Base.LongLength); w.Write(byObject ? ObjectKey(Base) : BaseHash);
+        w.Write(IsFloppy); w.Write(Length); w.Write(Big != null ? Big.Hash : byObject ? ObjectKey(Base) : BaseHash);
         // the sorted sector list in a buffer kept with the disk (a Win98 disk has ~80k changed sectors: a new 640 KB list per state was
         // large-object garbage a second under the bug capture, never collected between rare gen-2 GCs: the soak's creep)
         int count = _overlay.Count;
@@ -352,12 +408,22 @@ public sealed class DiskImage
     }
 
     /// <summary>Reads a <see cref="SaveDiff"/>; the base is looked up by hash (<see cref="FindBase"/>). A missing base is an error naming it, never a guess.</summary>
-    public static DiskImage LoadDiff(BinaryReader r, IEnumerable<byte[]?> candidates)
+    public static DiskImage LoadDiff(BinaryReader r, IEnumerable<byte[]?> candidates, IEnumerable<DiskBigBase?>? bigCandidates = null)
     {
         bool floppy = r.ReadBoolean(); long len = r.ReadInt64(); string hash = r.ReadString();
-        var b = FindBase(hash, len, candidates)
-            ?? throw new InvalidDataException($"this x86 state needs the {(floppy ? "floppy" : "hard disk")} image it was saved on ({len:N0} bytes, {hash}); open the machine with that image first");
-        var d = new DiskImage(b, floppy);
+        DiskImage d;
+        if (len > Array.MaxLength || (!floppy && bigCandidates != null && bigCandidates.Any(c => c != null && c.Length == len)))
+        {
+            var bb = DiskBigBase.Find(hash, len, bigCandidates ?? Array.Empty<DiskBigBase?>())
+                ?? throw new InvalidDataException($"this x86 state needs the hard disk image it was saved on ({len:N0} bytes, {hash}); open the machine with that image first");
+            d = new DiskImage(bb);
+        }
+        else
+        {
+            var b = FindBase(hash, len, candidates)
+                ?? throw new InvalidDataException($"this x86 state needs the {(floppy ? "floppy" : "hard disk")} image it was saved on ({len:N0} bytes, {hash}); open the machine with that image first");
+            d = new DiskImage(b, floppy);
+        }
         int runs = r.ReadInt32();
         for (int i = 0; i < runs; i++)
         {
