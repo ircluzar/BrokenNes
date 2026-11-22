@@ -733,6 +733,7 @@ internal static partial class Tools
 
         AgentLoopTools(Add);
         TasTools(Add);
+        N98InstallTools(Add);   // nano98 install flow (Tools.N98Install.cs)
 
         return t;
     }

@@ -226,3 +226,54 @@ existing build_base.py + stage2.steps path, not re-run in this round.
 Opening a .n98 runs the package preparation (and a variant build), the saves layer and the warm-state load off the UI thread; the game area shows
 the nano98 look (black, "nano98 is loading...", the game's title, the stage, a progress bar for the game drive's unpack, a sliding bar for
 stages without a size); the window stays responsive. `N98Seat.Progress` / `PcSession.Prestart`.
+
+## Install flow: the user's own disc -> an instant .n98 (2026-11-21)
+The end-user path (desktop: Emulator > Install a Windows game...): put the game's disc in (or pick its image), follow the wizard, end with a
+schema-2 package that opens from the warm state. One engine, `NesEmulator.X86.N98Install` (Windows/NesEmulator/x86/N98Install.cs), behind
+every driver: the desktop wizard (Windows/DebugWindows/N98InstallWizard.cs), the desktop HTTP API, the MCP server and the Workshop CLI. Same
+actions, same JSON.
+
+1. **Disc**: an image (.iso / .cue / .bin) or the PC's CD/DVD drive (`rip`: the data track read to an ISO in `%LOCALAPPDATA%\BrokenNes\nano98\cds`;
+   the first read error stops it with a message: copy protection is never worked around). Multi-disc games: `disc {path}` any time.
+2. **Machine**: a nano98 seat preset (`machines`: the `*-nano` presets) + sound card (SB16_D072 default). The warm state is per base + build +
+   machine (+ sound when not SB16_D072): `<cache>\warm\<hash16>-<build>[-<machine>][-<sound>]`.
+3. **Install**: `start` boots the seat base (resuming its warm state) with the blank standard D:, the disc in E:, and the launcher command
+   `run=C:\N98\N98INST.EXE`: the INSTALL SHELL (tools/nano98/launcher/n98inst.c), put on C: through the command port's file records. It
+   takes requests from the host the same way (the host rewrites the command text: `iseq=` a new number, `iact=run|poweroff|restart|explorer`,
+   `irun=`, `iargs=`, `idir=`) and reports `N98 I IDLE/RUN/EXIT/FAIL/POWEROFF/RESTART` on port E9h. `setups` lists the disc's setup programs
+   (AUTORUN.INF open=, then SETUP/INSTALL programs). The user installs to **D:\GAME** and clears any Add New Hardware wizard themselves.
+   - Windows asking for **its own CD** (a setup installing a Windows part: Age of Empires' "video support" wants mciavi.drv): the seat base has no
+     setup CABs (slim.py), so `winfiles` puts in the **Windows 98 SE files disc**: an ISO (label WIN98SE, publisher BROKENNES) holding WIN98\*.CAB
+     made once from the user's own Windows 98 SE ISO (`make-winfiles {iso}`, tools/nano98/pkg/winfiles.py: a real SE disc with \WIN98, or a
+     compilation with WIN98SE.ZIP; anything else is refused). The install seat sets Setup `SourcePath` = E:\WIN98 (an N98R op), so Windows finds the
+     files at once; when it then asks for the game's disc back ("Please insert CD-ROM AOE", a blue text prompt) put it back (`disc`) and press Enter.
+     The files disc is never named by a package (it is recognised by its label) and stays local.
+4. **Finish**: `poweroff` (Windows shuts down: its caches reach the drives), `programs` (the .EXEs on D:\GAME, likely game programs first),
+   `capture {title, exe, out, layer_id?}` -> `n98.py install` (tools/nano98/pkg/n98install.py): the game drive's tree is copied onto a fresh
+   standard drive (the root stays standard for the warm swap; anything setup put in D:'s root goes under GAME), C: is diffed against the seat
+   base -> `c_files` + run-time Software registry / INI ops; driver files (WINDOWS/SYSTEM/*.VXD/.SYS/.DRV..., WINDOWS/INF/*.INF) and
+   Enum/Config ops are hardware: with `layer_id` they become a system layer (`<id>.n98` beside the package and in nano98\layers) the package names.
+5. **Open**: the app opens the package (first run: warm state or cold boot; then instant).
+Settle mode (`start {settle: true}`, no disc): the user clears the hardware wizard of a new machine preset once; `capture-layer {id}` keeps the C:
+changes as a system layer.
+
+### Agent recipe
+Agents drive the flow the way a user does, step by step, looking at the screen after each step.
+- **MCP** (BrokenNes server): `n98_install {action, args}` + `n98_install_screenshot`. One headless seat per server. Extra actions there:
+  `frames {count}`, `wait {until: ready|off|exit, frames}`. Example:
+  `n98_install start {disc: "C:/games/aoe.iso"}` -> `runsetup` -> `frames {count: 1200}` -> screenshot -> `keys {text: "{at:214,156}{click}"}`
+  -> ... -> `keys {text: "D:\GAME"}` -> ... -> `winfiles` when Windows asks for its CD -> `disc {path: game iso}` + `keys {text:"{enter}"}` when
+  it asks for the game disc -> `poweroff` -> `programs` -> `capture {title: "Age of Empires", exe: "auto"}`.
+- **Desktop HTTP API** (the user's running app; port from `%LOCALAPPDATA%\BrokenNes\instances\PID.json`): `POST /api/n98/install/ACTION`
+  with the args as the JSON body; `GET /api/n98/install` = status; the screen: `GET /api/console/framebuffer`. `start` runs the seat in the
+  app's window; `capture` opens the package when done (`open: false` to skip); `open {path}`, `close`.
+- **CLI** (Workshop): `--n98install --disc ISO [--machine M] [--sound S] [--script FILE | --do "step; step"] [--out PKG --title T --exe auto
+  [--layer-id ID]] [--settle-layer ID OUT] [--make-winfiles WIN98SE.ISO] [--shotdir DIR]`. Steps: `wait ready|off|exit|frames N|status TEXT`,
+  `setups`, `runsetup`, `run PATH [ARGS]`, `keys TEXT`, `shot NAME.png`, `text`, `disc PATH|none`, `winfiles`, `poweroff`, `restart`,
+  `explorer`, `save/load STATE`. Every result line is `n98install: {json}`. The emulator is deterministic: the same steps give the same frames,
+  so `wait frames N` timings found once replay exactly.
+- Input tokens (all drivers): text is typed; `{enter} {tab} {esc} {space} {bs} {up}... {f1}..{f12}`, combos `{alt+n}`, `{wait:N}`,
+  `{at:x,y}` absolute pointer (corner + small steps; 1 mouse count = 2 pixels on the seat), `{m:dx,dy[,buttons]}`, `{click}` (held 10 frames:
+  setup buttons miss shorter ones), `{click:dx,dy}`, `{rclick}`.
+- Proof script: tools/nano98/install/aoe.steps (Age of Empires from the user's ISO, end to end).
+Licences: a game's EULA screen needs the user's OK per program before an agent clicks I Agree.

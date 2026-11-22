@@ -382,6 +382,73 @@ public sealed class N98Install : IDisposable
     }
 
     public void Dispose() { Session.BeforeFrame = null; Session.Dispose(); }
+
+    // ---- one JSON command surface for every driver (desktop HTTP API /api/n98/install/ACTION, MCP n98_install, scripts) ----
+    /// <summary>The actions that need no install session: machines, drives (the host's CD/DVD drives with a disc), setups {disc}, rip {drive, out},
+    /// make-winfiles {iso}, winfiles-status. Null when the action needs a session.</summary>
+    public static JsonObject? DoStatic(string action, JsonObject a)
+    {
+        string? S(string k) => a[k]?.GetValue<string>();
+        switch (action)
+        {
+            case "machines": return new JsonObject { ["ok"] = true, ["machines"] = new JsonArray(Machines().Select(m => (JsonNode)new JsonObject { ["key"] = m.key, ["label"] = m.label }).ToArray()),
+                                                     ["sounds"] = new JsonArray(PcSound.CardOptions().Select(c => (JsonNode)c.id).ToArray()), ["default"] = "win98-p166-nano" };
+            case "drives": return new JsonObject { ["ok"] = true, ["drives"] = new JsonArray(HostDiscDrives().Select(d => (JsonNode)new JsonObject { ["drive"] = d.drive, ["label"] = d.label }).ToArray()) };
+            case "setups": return new JsonObject { ["ok"] = true, ["setups"] = new JsonArray(SetupCandidates(S("disc") ?? throw new ArgumentException("disc")).Select(x => (JsonNode)x).ToArray()) };
+            case "rip":
+                {
+                    string drive = S("drive") ?? throw new ArgumentException("drive");
+                    string outIso = S("out") ?? Path.Combine(N98Seat.DiscFolder, $"disc_{drive.TrimEnd(':')}_{DateTime.Now:yyyyMMdd_HHmmss}.iso");
+                    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outIso))!);
+                    return new JsonObject { ["ok"] = true, ["iso"] = RipDisc(drive, outIso) };
+                }
+            case "make-winfiles": return MakeWindowsFilesDisc(S("iso") ?? throw new ArgumentException("iso"));
+            case "winfiles-status": return new JsonObject { ["ok"] = true, ["ready"] = HasWindowsFilesDisc, ["path"] = Path.GetFullPath(WindowsFilesDiscPath) };
+            default: return null;
+        }
+    }
+
+    /// <summary>The session actions: status, setups, run {path, args, dir}, runsetup, keys {text}, disc {path|null}, winfiles, explorer, restart, poweroff,
+    /// programs, capture {title, exe, out, args, layer_id, saves[]}, capture-layer {id, out}. Every result is a JSON object with "ok".</summary>
+    public JsonObject Do(string action, JsonObject a)
+    {
+        string? S(string k) => a[k]?.GetValue<string>();
+        JsonObject Ok() { var st = Status(); st["ok"] = true; return st; }
+        switch (action)
+        {
+            case "status": return Ok();
+            case "setups": return new JsonObject { ["ok"] = true, ["setups"] = Disc == null ? new JsonArray() : new JsonArray(SetupCandidates(Disc).Select(x => (JsonNode)x).ToArray()) };
+            case "run": Run(S("path") ?? throw new ArgumentException("path"), S("args") ?? "", S("dir")); return Ok();
+            case "runsetup": { var c = Disc == null ? new List<string>() : SetupCandidates(Disc); if (c.Count == 0) throw new InvalidOperationException("no setup program on the disc"); Run(c[0]); var r = Ok(); r["started"] = c[0]; return r; }
+            case "keys": Input(S("text") ?? ""); return Ok();
+            case "disc": SwapDisc(S("path")); return Ok();
+            case "winfiles": InsertWindowsFilesDisc(); return Ok();
+            case "explorer": Explorer(); return Ok();
+            case "restart": Restart(); return Ok();
+            case "poweroff": PowerOff(); return Ok();
+            case "programs": return new JsonObject { ["ok"] = true, ["programs"] = GamePrograms() };
+            case "capture":
+                {
+                    string title = S("title") ?? throw new ArgumentException("title");
+                    string exe = S("exe") ?? "auto";
+                    if (exe == "auto") exe = GamePrograms().FirstOrDefault()?["path"]?.GetValue<string>() ?? throw new InvalidOperationException("no program on D:\\GAME");
+                    string outPkg = S("out") ?? Path.Combine(DefaultPackageFolder, SafeName(title) + ".n98");
+                    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPkg))!);
+                    var saves = a["saves"] is JsonArray sa ? sa.Select(x => x!.GetValue<string>()).ToArray() : null;
+                    return Capture(title, exe, outPkg, S("args") ?? "", S("layer_id"), saves);
+                }
+            case "capture-layer":
+                {
+                    string id = S("id") ?? throw new ArgumentException("id");
+                    return CaptureLayer(id, S("out") ?? Path.Combine(N98Seat.LayerFolder, id + ".n98"));
+                }
+            default: return DoStatic(action, a) ?? throw new ArgumentException($"unknown action '{action}'");
+        }
+    }
+
+    /// <summary>Where new packages go by default: Documents\BrokenNes\Windows games.</summary>
+    public static string DefaultPackageFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "BrokenNes", "Windows games");
+    public static string SafeName(string t) { var s = new string(t.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch).ToArray()).Trim(); return s.Length > 0 ? s : "game"; }
 }
 
 /// <summary>A minimal ISO 9660 directory reader (the install wizard's setup picker): primary volume descriptor, then the directory tree.</summary>

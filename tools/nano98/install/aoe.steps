@@ -26,11 +26,19 @@ shot 06_wants_windows_cd.png
 winfiles
 wait frames 300
 keys {enter}
-wait frames 9000
+wait frames 900
+shot 06b_video_support.png
+save st_06b.bin
+wait frames 4000
+shot 06c_wants_game_cd.png
+# setup runs from its own disc: Windows now asks for it back ("Please insert CD-ROM AOE"): the game disc in, Enter
+disc C:/BrokenNes-work/x86_cds/age_of_empires.iso
+wait frames 100
+keys {enter}
+wait frames 6000
 shot 07_done.png
 keys {at:117,338}{click}
 wait frames 2000
-disc C:/BrokenNes-work/x86_cds/age_of_empires.iso
 shot 08_menu.png
 keys {at:213,280}{click}
 wait exit 3000
