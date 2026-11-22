@@ -527,6 +527,27 @@ public sealed partial class PcMachine : IX86Bus
     }
 
     /// <summary>The state written to <paramref name="stream"/> (left open): the same bytes as <see cref="SaveState()"/> (the bug capture's state a second reuses one buffer).</summary>
+    /// <summary>Diagnostics (state round-trip checks): the state's parts one by one, to name the one that differs.</summary>
+    public List<(string name, byte[] data)> DebugStateParts()
+    {
+        var parts = new List<(string, byte[])>();
+        void P(string n, Action<BinaryWriter> a) { var ms = new MemoryStream(); using (var w = new BinaryWriter(ms)) a(w); parts.Add((n, ms.ToArray())); }
+        P("cpu", w => Cpu.SaveState(w));
+        P("core", w => { w.Write(_idle); w.Write(_port61); w.Write(_lastFrame); w.Write(InstructionsPerSecond); w.Write(_clkEpoch); w.Write(_pitEpoch); });
+        P("pic", w => Pic.Save(w)); P("pit", w => Pit.Save(w)); P("kbc", w => Kbc.Save(w)); P("cmos", w => Cmos.Save(w)); P("vga", w => Vga.Save(w));
+        P("opl", w => Opl.Save(w)); P("oplengine", w => Opl.SaveEngine(w)); P("dma", w => Dma.Save(w));
+        if (Card != null) P("card", w => Card.Save(w));
+        if (S3 != null) P("s3", w => S3.Save(w));
+        if (Ata != null) P("ata", w => Ata.Save(w));
+        P("bios", w => SaveBiosExtras(w));
+        if (Config.Bus != PcBus.Isa) P("pci", w => SavePci(w));
+        if (Kbc.HasMouse) P("mouse", w => Kbc.SaveMouse(w));
+        if (Command != null) P("n98cmd", w => { w.Write(Command.Length); w.Write(Command); w.Write(_cmdPos); });
+        if (Ata != null) P("ata-bm", w => { Ata.Primary.SaveBm(w); Ata.Secondary.SaveBm(w); });
+        for (int i = 0; i < 4; i++) { var d = i < 2 ? Floppy[i] : Hdd[i - 2]; if (d != null) P("disk" + i, w => w.Write(d.ContentKey())); }
+        return parts;
+    }
+
     public void SaveState(Stream stream) => SaveState(stream, false);
 
     /// <summary><paramref name="undo"/>: a copy only this process loads back (LoadState's undo): the disks named by object, not by hash (no wait for a hash).</summary>

@@ -52,9 +52,24 @@ internal static class N98SeatCli
         if (shot != null) X86Shots.SavePng(Shown(s), s.FrameWidth, s.FrameHeight, shot);
         if (args.Contains("--state-roundtrip"))   // save the machine, run on, load it back, run the same frames again: the pictures and the state bytes must match
         {
-            var st = s.SaveState(); for (int k = 0; k < 300; k++) s.RunFrame(); var p1 = Shown(s); var st1 = s.SaveState();
+            var st = s.SaveState(); for (int k = 0; k < 300; k++) s.RunFrame(); var p1 = Shown(s); var live = s.Machine.DebugStateParts(); var st1 = s.SaveState();
             s.LoadState(st); for (int k = 0; k < 300; k++) s.RunFrame(); var p2 = Shown(s); var st2 = s.SaveState();
             bool same = p1.AsSpan().SequenceEqual(p2) && st1.AsSpan().SequenceEqual(st2);
+            if (!same)
+            {
+                // which part: again, part by part (and the same check with no frames run: is save -> load -> save itself exact?)
+                s.LoadState(st); var a0 = s.Machine.DebugStateParts(); s.LoadState(st); var a1 = s.Machine.DebugStateParts();
+                Console.WriteLine("n98seat: load twice, parts differing: " + string.Join(",", a0.Zip(a1).Where(z => !z.First.data.AsSpan().SequenceEqual(z.Second.data)).Select(z => z.First.name)));
+                s.LoadState(st); for (int k = 0; k < 300; k++) s.RunFrame(); var b1 = s.Machine.DebugStateParts();
+                s.LoadState(st); for (int k = 0; k < 300; k++) s.RunFrame(); var b2 = s.Machine.DebugStateParts();
+                var dp = b1.Zip(b2).Where(z => !z.First.data.AsSpan().SequenceEqual(z.Second.data)).ToList();
+                Console.WriteLine($"n98seat: after 300 frames (both runs from the loaded state), parts differing: {string.Join(",", dp.Select(z => z.First.name))}; picture {(p1.AsSpan().SequenceEqual(p2) ? "same" : "different")}");
+                // and run 1 (from the live machine) vs run 2 (from the state): the part that the load does not restore
+                foreach (var z in dp.Take(3)) { int o = 0; while (o < Math.Min(z.First.data.Length, z.Second.data.Length) && z.First.data[o] == z.Second.data[o]) o++; Console.WriteLine($"n98seat:   {z.First.name}: {z.First.data.Length} / {z.Second.data.Length} bytes, first difference at {o}"); }
+                var lv = live.Zip(b1).Where(z => !z.First.data.AsSpan().SequenceEqual(z.Second.data)).ToList();
+                Console.WriteLine("n98seat: live run vs loaded run, parts differing: " + string.Join(",", lv.Select(z => z.First.name)));
+                foreach (var z in lv.Take(4)) { int o = 0; while (o < Math.Min(z.First.data.Length, z.Second.data.Length) && z.First.data[o] == z.Second.data[o]) o++; Console.WriteLine($"n98seat:   {z.First.name}: {z.First.data.Length} / {z.Second.data.Length} bytes, first difference at {o}"); }
+            }
             Console.WriteLine($"n98seat: state round trip {(same ? "EXACT" : "DIFFERENT")} (state {st.Length >> 10} KB, D: {s.Machine.Hdd[1]?.Length >> 20} MB, D: changed {s.Machine.Hdd[1]?.OverlaySectors} sectors)");
         }
         if (saveOut != null) { var b = s.ExportSave(); File.WriteAllBytes(saveOut, b); Console.WriteLine($"n98seat: saves layer {saveOut}: {b.Length / 1024} KB, C: changed {s.Machine.Hdd[0]!.OverlaySectors} sectors"); }
