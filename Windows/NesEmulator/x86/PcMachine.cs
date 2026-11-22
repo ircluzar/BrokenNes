@@ -160,7 +160,13 @@ public sealed partial class PcMachine : IX86Bus
     // emulated time and the boot ran at a third of real time. Only the PCI board (the other machines keep their timing byte for byte).
     private void IsaWait() { if (Pci != null) _idle += Math.Max(1, InstructionsPerSecond / 1_000_000); }
     private void VramWait() { if (_vramNs != 0) _idle += Math.Max(1, _vramNs * InstructionsPerSecond / 1_000_000_000); }
-        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video == PcVideo.GeForce256, video == PcVideo.VBoxVga);
+    private IPciMmio? Mmio(uint a, out uint off) { if (a >= 0xe0000000 && Pci != null && Pci.MmioFns.Length != 0) return Pci.MmioAt(a, out off); off = 0; return null; }
+    private IPciMmio? Mmio(uint a) => Mmio(a, out _);
+    private byte RawRead8(uint a) => Mmio(a, out uint mo) is { } md ? (byte)md.MmioRead(mo, 1) : a < 0xc0000 ? Vga.MemRead(a) : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
+    private void RawWrite8(uint a, byte v) { if (Mmio(a, out uint mo) is { } md) md.MmioWrite(mo, v, 1); else if (a < 0xc0000) Vga.MemWrite(a, v); else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
+    private ushort RawRead16(uint a) => Mmio(a, out uint mo) is { } md && Mmio(a + 1) == md ? (ushort)md.MmioRead(mo, 2) : (ushort)(RawRead8(a) | (RawRead8(a + 1) << 8));
+    private static readonly bool DispiLog = Environment.GetEnvironmentVariable("X86_DISPILOG") == "1";   // diagnosis: DISPI port writes
+    private int _dispiLogN;
     private void RawWrite16(uint a, ushort v)
     {
         if (Mmio(a, out uint mo) is { } md && Mmio(a + 1) == md) { md.MmioWrite(mo, v, 2); return; }
@@ -696,7 +702,10 @@ public sealed partial class PcMachine : IX86Bus
         if (saved == null && ConfigInState) throw new InvalidDataException($"this x86 state is for the classic machine (486, BIOS disks), this machine is {Config}");
         WireAta();
         // the video card must be the one the state was saved on: a mismatch is an error, never a guess
-        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video == PcVideo.GeForce256, video == PcVideo.VBoxVga);
+        string cardId = S3 != null ? (S3.VBox ? S3Trio64.VBoxId : S3Trio64.Id) : Nv != null ? NvGeForce.Id : "VGA";
+        if ((svgaId ?? "VGA") != cardId)
+            throw new InvalidDataException($"this state was saved with the {svgaId ?? "VGA"} video card, this machine has the {cardId}");
+        if (Nv != null) { using var nr = new BinaryReader(new MemoryStream(svgaBlob!)); Nv.Load(nr); }
         if (S3 != null) { using var sr = new BinaryReader(new MemoryStream(svgaBlob!)); S3.Load(sr); }
         if (Vga.Picture != null)
         {
