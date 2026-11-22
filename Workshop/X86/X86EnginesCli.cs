@@ -100,6 +100,9 @@ internal static class X86EnginesCli
                     int n = Math.Min(a2.Length, b.Length); double d = 0; for (int i = 0; i < n; i++) d += (double)(a2[i] - b[i]) * (a2[i] - b[i]);
                     double err = n == 0 ? 1 : Math.Sqrt(d / n) / Math.Max(1, Rms(a2));
                     string v = Rms(b) < 100 ? "SILENT" : err == 0 && a2.Length == b.Length ? "exact" : $"NOT EXACT (err {err:F3})";
+                    // 2026-11-22: the chip's own state after the same run must match too (a loaded chip used to reset its prepare counter a sample late)
+                    byte[] S(Opl2 c) { var m = new MemoryStream(); var w2 = new BinaryWriter(m); c.Save(w2); w2.Flush(); return m.ToArray(); }
+                    if (v == "exact" && !S(r.Chip).AsSpan().SequenceEqual(S(r2.Chip))) v = "STATE DIFFERS after the run";
                     if (v != "exact") flagged++;
                     Console.WriteLine($"{id,-8} {"state",-11} {Rms(b),7:F0}  {v} (before the save {Rms(a):F0})");
                 }
