@@ -25,3 +25,8 @@ scripts/ftp_credentials.conf
 # bug captures (BrokenDev D6: the desktop app's F9) of the WideMess projects whose game workspace is this repository: game data, never committed
 # (not a bare bugs/: on Windows git matches it without case, and Workshop/Bugs is source)
 /WideMess/*/bugs/
+
+# 65-o-borked training outputs (archived on T:\BrokenDev\Archive5-o-borked_epoch_models; training to be redone)
+SubProjects/65-o-borked/epoch_models/
+SubProjects/65-o-borked/*.pt
+SubProjects/65-o-borked/onnx_export/
