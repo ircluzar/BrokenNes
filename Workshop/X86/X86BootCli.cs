@@ -454,6 +454,15 @@ internal static class X86BootCli
         if (args.Contains("--jitstat")) Console.WriteLine("  jcond op*16+cc: " + string.Join(" ", Enumerable.Range(0, 512).Where(i => m.Cpu.JCondOps[i] > 0).OrderByDescending(i => m.Cpu.JCondOps[i]).Take(12).Select(i => $"{i / 16}/{i % 16:X}={m.Cpu.JCondOps[i]}")));
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.InterpModes()) Console.WriteLine("  interpmode " + l);
         if (args.Contains("--jitstat")) foreach (var l in m.Cpu.InterpTop(40)) Console.WriteLine("  interp " + l);
+        if (args.Contains("--jitstat") && m.Cpu.InterpAt.Count > 0)
+        {   // how the interpreted steps spread over addresses (bucket = steps per address over the run)
+            long[] lim = { 100, 1000, 8192, 65536, long.MaxValue }; var na = new long[5]; var ns = new long[5];
+            foreach (var v in m.Cpu.InterpAt.Values) { int i = 0; while (v >= lim[i]) i++; na[i]++; ns[i] += v; }
+            long wOnce = 0, wReset = 0, oth = 0; int nReset = 0;
+            foreach (var kv in m.Cpu.InterpAt) { int vi = m.Cpu.JitVisitsOf(kv.Key, out bool w); if (!w) oth += kv.Value; else if (kv.Value > 2L * vi + 64) { wReset += kv.Value; nReset++; } else wOnce += kv.Value; }
+            Console.WriteLine($"  interpwarm steps: warming-first-time {wOnce}, warming-again (steps > 2x visits) {wReset} at {nReset} addrs, not warming {oth}");
+            Console.WriteLine("  interphist addrs/steps <100 <1k <8192 <64k more: " + string.Join("  ", Enumerable.Range(0, 5).Select(i => $"{na[i]}/{ns[i]}")) + $"  collisions {m.Cpu.JitCollisions}");
+        }
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.InterpAt.OrderByDescending(x => x.Value).Take(30)) Console.WriteLine($"  interpat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))} [{m.Cpu.JitWhy(kv.Key)}]");
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.OolTicksAt.OrderByDescending(x => x.Value).Take(25)) Console.WriteLine($"  oolms {kv.Key:X8} {kv.Value * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms / {m.Cpu.OolAt.GetValueOrDefault(kv.Key)} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))}");
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.OolAt.OrderByDescending(x => x.Value).Take(40)) Console.WriteLine($"  oolat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))}");
