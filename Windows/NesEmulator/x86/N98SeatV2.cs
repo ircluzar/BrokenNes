@@ -185,9 +185,14 @@ public sealed partial class N98Seat
         ids = ids.Select(N98Drivers.MapLayer).ToArray();   // (the user's driver override, else the package's pinned layers)
         foreach (var id in ids) if (id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || id.Contains("..")) throw new InvalidDataException($"{fileName}: bad layer id '{id}'");
         string name = Path.GetFileNameWithoutExtension(baseImg) + "+" + string.Join("+", ids) + ".n98d";
-        string beside = Path.Combine(Path.GetDirectoryName(baseImg) ?? ".", name), cached = Path.Combine(cacheRoot, "variants", name);
+        string beside = Path.Combine(Path.GetDirectoryName(baseImg) ?? ".", name);
         if (File.Exists(beside)) return beside;
-        if (File.Exists(cached) && File.GetLastWriteTimeUtc(cached) >= File.GetLastWriteTimeUtc(baseImg)) return cached;
+        // the cached variant is named after WHICH base made it (path, size, time): two bases with the same file name never share one (2026-11-22: a test
+        // base's variant was picked up by the user's own base, only the time was compared)
+        var bi = new FileInfo(baseImg);
+        string tag = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes($"{bi.FullName.ToUpperInvariant()}|{bi.Length}|{bi.LastWriteTimeUtc.Ticks}")))[..10];
+        string cached = Path.Combine(cacheRoot, "variants", Path.GetFileNameWithoutExtension(baseImg) + "-" + tag + "+" + string.Join("+", ids) + ".n98d");
+        if (File.Exists(cached)) return cached;
         var dirs = new[] { Environment.GetEnvironmentVariable("BROKENNES_N98_LAYERS"), Path.Combine(Path.GetDirectoryName(baseImg) ?? ".", "layers"), Path.Combine(LocalRoot, "layers"), Path.Combine(cacheRoot, "layers") }
             .Where(d => !string.IsNullOrEmpty(d)).ToArray();
         var layers = ids.Select(id => dirs.Select(d => Path.Combine(d!, id + ".n98")).FirstOrDefault(File.Exists)
