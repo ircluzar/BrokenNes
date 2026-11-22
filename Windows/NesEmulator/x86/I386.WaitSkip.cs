@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace NesEmulator.X86;
 
@@ -180,13 +181,14 @@ public sealed partial class I386
             }
             if (_wsPhase == 2)
             {
+                if (WsDiagOn) WsDiagPass();
                 if (++_wsTries > WsRetries) { WsFailNow(6); return WsRest(r); }
                 _wsLinesA.Clear(); _wsSetA.Clear();
                 foreach (uint l in _wsLinesB) { _wsLinesA.Add(l); _wsSetA.Add(l); }
             }
             WsSnapA();
             _wsLinesB.Clear(); _wsSetB.Clear();
-            _wsPhase = 2;
+            _wsPhase = 2; _wsPassStart = _wsLeft;
         }
         return true;
     }
@@ -234,6 +236,43 @@ public sealed partial class I386
     {
         var sb = new System.Text.StringBuilder($"WAITSKIP proofs {WsProofs} parks {WsParks} parkedBatches {WsParkedBatches} skippedInstr {WsSkippedInstr} fails");
         for (int i = 1; i < WsFails.Length; i++) sb.Append($" {WsFailName[i]}={WsFails[i]}");
-        Console.Error.WriteLine(sb.ToString());
+        Console.Error.WriteLine(sb.ToString()); WsDiagDump();
+    }
+
+    static readonly bool WsDiagOn = Environment.GetEnvironmentVariable("X86_WSDIAG") == "1";
+    sealed class WsD { public long N; public long Delta; public bool Const = true; public uint Ip; public long Same; }
+    static readonly Dictionary<uint, WsD> WsDiag = new();
+    static readonly Dictionary<uint, long> WsDiagLoops = new();
+    static long WsDiagPasses, WsDiagNewLines, WsDiagDiffDw, WsDiagPassLen;
+    int _wsPassStart;
+    void WsDiagPass()
+    {
+        WsDiagPasses++;
+        WsDiagPassLen += _wsPassStart - _wsLeft; _wsPassStart = _wsLeft;
+        WsDiagLoops[_wsIp] = WsDiagLoops.GetValueOrDefault(_wsIp) + 1;
+        foreach (uint l in _wsLinesB) if (!_wsSetA.Contains(l)) WsDiagNewLines++;
+        for (int i = 0; i < _wsLinesA.Count; i++)
+        {
+            int b = (int)(_wsLinesA[i] << 6);
+            for (int o = 0; o < 64; o += 4)
+            {
+                uint now = BitConverter.ToUInt32(Mem, b + o), was = BitConverter.ToUInt32(_wsSnap, i * 64 + o);
+                if (now == was) continue;
+                WsDiagDiffDw++;
+                uint a = (uint)(b + o); long d = (int)(now - was);
+                if (!WsDiag.TryGetValue(a, out var e)) { e = new WsD { Delta = d, Ip = _wsIp }; WsDiag[a] = e; }
+                else if (e.Delta != d) e.Const = false; else e.Same++;
+                e.N++;
+            }
+        }
+    }
+    static void WsDiagDump()
+    {
+        if (!WsDiagOn) return;
+        var o = Console.Error;
+        o.WriteLine($"WSDIAG passes {WsDiagPasses} avgPassInstr {(WsDiagPasses > 0 ? WsDiagPassLen / WsDiagPasses : 0)} newLinesInB {WsDiagNewLines} diffDwords {WsDiagDiffDw} distinctAddr {WsDiag.Count}");
+        foreach (var kv in WsDiagLoops.OrderByDescending(k => k.Value).Take(10)) o.WriteLine($"WSDIAG loop ip {kv.Key:X8} passes {kv.Value}");
+        foreach (var kv in WsDiag.OrderByDescending(k => k.Value.N).Take(40))
+            o.WriteLine($"WSDIAG addr {kv.Key:X8} n {kv.Value.N} firstDelta {kv.Value.Delta} sameDelta {kv.Value.Same} const {kv.Value.Const} loopIp {kv.Value.Ip:X8}");
     }
 }
