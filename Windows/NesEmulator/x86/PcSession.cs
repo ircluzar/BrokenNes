@@ -662,7 +662,7 @@ public sealed class PcSession : IConsoleSession
         byte[] payload = ConsoleStateFile.Unwrap(state, Console, _stateId ?? GameId, Title, StateUnits());
         var before = _m.SaveState();
         var (machine, sound) = SplitSoundOutput(payload);
-        try { _m.LoadState(machine); RestoreSoundOutput(sound); _m.InstructionsPerSecond = _model?.Ips ?? IpsOf(_cpuId); _powered = true; _exported = null; _pad = PadButtons.None; }
+        try { _m.LoadState(machine); RestoreSoundOutput(sound); _m.SetIps(_model?.Ips ?? IpsOf(_cpuId)); _powered = true; _exported = null; _pad = PadButtons.None; }
         catch (Exception e) when (e is not InvalidDataException) { _m.LoadState(before); throw new InvalidDataException("the x86 state is damaged: " + e.Message); }
     }
 
