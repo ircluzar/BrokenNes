@@ -272,10 +272,14 @@ public sealed partial class I386
         return JIT_DECLINE;
     }
 
+    public readonly Dictionary<uint, int> JitNewAt = new();   // JITSTAT: JitVisit (entry (re)created) per address
+    public readonly Dictionary<uint, long> JitEvictAt = new();   // JITSTAT: entries evicted by another address, by the evicted address: visits lost
+    public string JitEntryInfo(uint pa) { ref var e = ref JitSlot(pa); if (!(e.Used && e.Start == pa)) return "no entry"; return $"visits {e.Visits} c16 {e.C16} pg {e.Pg} failed {e.Failed} pending {e.Pending} code {(e.Code == null ? "-" : e.Code.Start.ToString("X8") + " k" + e.K + " n" + e.Code.Count + " same " + JitSame(e.Code) + " spec " + e.Code.SpecFail)}"; }
     [MethodImpl(MethodImplOptions.NoInlining)]
     private int JitVisit(uint paddr)
     {
         ref var en = ref JitAlloc(paddr);
+        if (JitStats) { JitNewAt[paddr] = JitNewAt.GetValueOrDefault(paddr) + 1; if (en.Used && en.Start != paddr) JitEvictAt[en.Start] = JitEvictAt.GetValueOrDefault(en.Start) + en.Visits; }
         if (JitOneWay && JitStats && en.Used) JitCollisions++;
         if (JitWatch != 0 && (paddr == JitWatch || en.Used && en.Start == JitWatch)) Console.Error.WriteLine($"jw: visit-reset new {paddr:X8} old {en.Start:X8} used {en.Used} visits {en.Visits}");
         en.Used = true;
