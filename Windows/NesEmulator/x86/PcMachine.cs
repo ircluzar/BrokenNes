@@ -13,6 +13,9 @@ namespace NesEmulator.X86;
 
 public sealed partial class PcMachine : IX86Bus
 {
+    /// <summary>X86_NVSYSPAGES=1: system-memory pages the NV card's DMA wrote (page -> dword writes), a stray-DMA hunt.</summary>
+    public Dictionary<uint, int>? NvSysPages;
+
     public const int DefaultMemory = 16 * 1024 * 1024;
     public readonly I386 Cpu;
     public readonly Pic8259 Pic = new();
@@ -145,6 +148,7 @@ public sealed partial class PcMachine : IX86Bus
                     }
                     return a <= Cpu.MemSize - 4 ? BitConverter.ToUInt32(Cpu.Mem, (int)a) : 0xffffffff;
                 };
+                if (Environment.GetEnvironmentVariable("X86_NVSYSPAGES") == "1") NvSysPages = new();
                 Nv.SysWrite32 = (a, v) =>
                 {
                     if (Nv.Pci is { } pf)
@@ -152,6 +156,7 @@ public sealed partial class PcMachine : IX86Bus
                         if (pf.MemBase != 0 && a - pf.MemBase < NvGeForce.Bar0Size) { Nv.MmioWrite(a - pf.MemBase, v, 4); return; }
                         if (pf.MemBase1 != 0 && a - pf.MemBase1 < NvGeForce.Bar1Size) { Nv.Aperture.MmioWrite(a - pf.MemBase1, v, 4); return; }
                     }
+                    if (NvSysPages != null) NvSysPages[a >> 12] = NvSysPages.GetValueOrDefault(a >> 12) + 1;
                     if (a <= Cpu.MemSize - 4) { BitConverter.TryWriteBytes(Cpu.Mem.AsSpan((int)a), v); Cpu.MemTouched(); }
                 };
                 Nv.RomByte = i => i < 0x8000 && VRom + i < Cpu.MemSize ? Cpu.Mem[VRom + i] : (byte)0xff;

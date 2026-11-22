@@ -45,6 +45,7 @@ public sealed partial class NvGeForce
             {
                 uint fd = G(inst, 0x1a4 | 0x8000);
                 if (fd != 0) DmaWrite32(fd, G(inst, 0x1d6c), data);
+                if (OpLog != null) { var (fv, fa) = fd != 0 ? DmaAddr(fd, G(inst, 0x1d6c)) : (false, 0u); OpLog($"rankine fence {data:X} obj {fd:X} -> {(fv ? "vram" : "sys")} {fa:X}"); }
                 return;
             }
             case 0x1800:                                                                // QUERY_GET: a 16-byte report at DMA_QUERY + offset

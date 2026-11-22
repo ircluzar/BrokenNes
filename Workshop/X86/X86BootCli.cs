@@ -163,11 +163,16 @@ internal static class X86BootCli
                 excRing.Enqueue($"BIOS {n:X3} in [{biosIn}] out [{regs}] cyc {m.Cpu.Cycle}");
                 if (excRing.Count > excKeep) excRing.Dequeue();
             };
+        if (Environment.GetEnvironmentVariable("X86_DBGRING") == "1") m.Cpu.Debug = new X86Debug();   // instruction ring for the ring-0 #6 dump
         if (excKeep > 0)
             m.Cpu.ExceptionLog = (v, e) =>
             {
                 excCount[v & 31]++;
-                if (v == 14 || (((m.Cpu.Flags >> 17) & 1) != 0 && v is 6 or 13 && !(v == 13 && m.Cpu.SegSel[1] == 0xf000 && m.Cpu.Ip < 0xe800))) return;   // (V86 monitor traps: the usual traffic)
+                bool pf0 = v is 14 or 6 && m.Cpu.SegSel[1] == 0x28 && Environment.GetEnvironmentVariable("X86_PFLOG0") == "1";   // ring-0 page faults too (a fatal 0E hunt)
+                if (pf0) excRing.Enqueue($"#X0 v{v} stackphys {LinPhys(m, m.Cpu.SegBase[2] + m.Cpu.R[4]):X8} CR2 {m.Cpu.Cr2:X8} EBP {m.Cpu.R[5]:X8} ESP {m.Cpu.R[4]:X8} ECX {m.Cpu.R[1]:X8} EDX {m.Cpu.R[2]:X8} stk " + string.Join(" ", Enumerable.Range(0, 40).Select(k => { uint p = LinPhys(m, m.Cpu.SegBase[2] + m.Cpu.R[4] + (uint)k * 4); return p == 0xffffffff ? "?" : m.Phys32(p).ToString("X8"); })));
+                if (pf0 && v == 6 && m.Cpu.Debug is { } dbg) { int L = dbg.TrCs.Length; long q0 = dbg.TrCount - 1; while (q0 > dbg.TrCount - L + 1 && dbg.TrEip[(int)((q0 - 1) % L)] + 16 > dbg.TrEip[(int)(q0 % L)] && dbg.TrEip[(int)((q0 - 1) % L)] < dbg.TrEip[(int)(q0 % L)]) q0--;   // back to the start of the sled
+                    for (long q = Math.Max(0, q0 - int.Parse(Environment.GetEnvironmentVariable("X86_DBGBACK") ?? "120")); q < q0 + 3; q++) { int t = (int)(q % L); excRing.Enqueue($"   tr {dbg.TrCs[t]:X4}:{dbg.TrEip[t]:X8} | {LinBytes(m, dbg.TrLin[t], 8)}"); } }
+                if ((v == 14 && !pf0) || (((m.Cpu.Flags >> 17) & 1) != 0 && v is 6 or 13 && !(v == 13 && m.Cpu.SegSel[1] == 0xf000 && m.Cpu.Ip < 0xe800))) return;   // (V86 monitor traps: the usual traffic)
                 excRing.Enqueue($"#{v} err {e:X} at {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} CR0 {m.Cpu.Cr0:X} VM {(m.Cpu.Flags >> 17) & 1} EAX {m.Cpu.R[0]:X8} ESI {m.Cpu.R[6]:X8} EDI {m.Cpu.R[7]:X8} EBX {m.Cpu.R[3]:X8} DS {m.Cpu.SegSel[3]:X4}/{m.Cpu.SegBase[3]:X}/{m.Cpu.SegLimit[3]:X} ES {m.Cpu.SegSel[0]:X4}/{m.Cpu.SegLimit[0]:X} CSbase {m.Cpu.SegBase[1]:X} cyc {m.Cpu.Cycle} | " + LinBytes(m, m.Cpu.SegBase[1] + m.Cpu.Ip, 10));
                 if (excRing.Count > excKeep) excRing.Dequeue();
             };
@@ -477,6 +482,7 @@ internal static class X86BootCli
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.OolTicksAt.OrderByDescending(x => x.Value).Take(25)) Console.WriteLine($"  oolms {kv.Key:X8} {kv.Value * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms / {m.Cpu.OolAt.GetValueOrDefault(kv.Key)} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))}");
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.OolAt.OrderByDescending(x => x.Value).Take(40)) Console.WriteLine($"  oolat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))}");
         if (m.Voodoo != null && NesEmulator.X86.Voodoo1.Log) foreach (var kv in m.Voodoo.LogCounts.OrderByDescending(x => x.Value).Take(20)) Console.WriteLine($"  vdo {kv.Key} {kv.Value}");
+        if (m.NvSysPages != null) Console.WriteLine("nvsyspages: " + string.Join(" ", m.NvSysPages.OrderBy(x => x.Key).Select(x => $"{x.Key:X5}={x.Value}")));
         if (args.Contains("--nvfifo") && m.Nv != null) Console.WriteLine("nvfifo: " + m.Nv.FifoDump());
         if (args.Contains("--irqstat")) Console.WriteLine($"batches {m.Batches} halted {m.HaltBatches} cycle {m.Cpu.Cycle} idle-clock {m.Clock - m.Cpu.Cycle}");
         if (args.Contains("--irqstat")) Console.WriteLine("irqs: " + string.Join(" ", Enumerable.Range(0, 256).Where(i => m.IrqCount[i] > 0).Select(i => $"{i:X2}h={m.IrqCount[i]}")) + $"; PIC imr {m.Pic.MasterImr:X2}/{m.Pic.SlaveImr:X2}; CR0 {m.Cpu.Cr0:X}; CS:EIP {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8}; IF {(m.Cpu.Flags >> 9) & 1}; halt {m.Cpu.Halt}");
