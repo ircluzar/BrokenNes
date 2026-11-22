@@ -53,7 +53,20 @@ public sealed partial class PcMachine : IX86Bus
     /// <summary>Speed harness only (Workshop --x86speed): time spent drawing the picture, in Stopwatch ticks. Never part of a state.</summary>
     public bool Profiling; public long RenderTicks;
     public long Clock => Cpu.Cycle + _idle;
-    public long PitNow => (long)((Int128)Clock * Pit8254.Freq / InstructionsPerSecond);
+    public long PitNow => _clkEpoch == 0 && _pitEpoch == 0 ? (long)((Int128)Clock * Pit8254.Freq / InstructionsPerSecond)
+        : _pitEpoch + (long)((Int128)(Clock - _clkEpoch) * Pit8254.Freq / InstructionsPerSecond);
+    /// <summary>Where the current instruction rate began (Clock, PIT time): 0/0 = from power-on. Set when the rate changes under a
+    /// running machine (SetIps: a state loaded with another X86_P2CPI), so guest time stays continuous; saved as the "IPSE" block.</summary>
+    private long _clkEpoch, _pitEpoch;
+    /// <summary>Change the instruction rate of a running machine without a jump in guest time (PIT, FDC clock, TSC).</summary>
+    public void SetIps(long ips)
+    {
+        if (ips == InstructionsPerSecond || ips <= 0) return;
+        long clk = Clock, pit = PitNow;
+        Cpu.RebaseTsc(clk, InstructionsPerSecond, ips);
+        _clkEpoch = clk; _pitEpoch = pit; InstructionsPerSecond = ips;
+    }
+    private long MicrosNow => _clkEpoch == 0 && _pitEpoch == 0 ? (long)((Int128)Clock * 1_000_000 / InstructionsPerSecond) : (long)((Int128)PitNow * 1_000_000 / Pit8254.Freq);
 
     /// <summary>What the board is built with (docs/projects/x86-modular-pc.md). Fixed for the machine's life: a change is a new machine.</summary>
     public readonly PcConfig Config;
@@ -123,7 +136,7 @@ public sealed partial class PcMachine : IX86Bus
             }
         }
         if (config.Bus == PcBus.Pci430TX && !config.NoFloppy)
-            Fdc = new Fdc82077(n => Floppy[n], Dma[2], on => Pic.SetIrq(6, on ? 1 : 0), () => (long)((Int128)Clock * 1_000_000 / InstructionsPerSecond));
+            Fdc = new Fdc82077(n => Floppy[n], Dma[2], on => Pic.SetIrq(6, on ? 1 : 0), () => MicrosNow);
         Pic.Raise = () => Cpu.RaiseIrq();
         RegisterTraps();
     }
@@ -381,6 +394,7 @@ public sealed partial class PcMachine : IX86Bus
         while (Vga.FrameIndex(PitNow) < target)
         {
             if (!RunBatch()) return false;
+            if (Cpu.Debug is { Stop: true }) return true;   // the debugger stopped mid-frame (I386.Debug.cs): the frame carries on at the next call
             Vga.Picture?.Poll();
             if (++guard > 100_000_000) { Stopped = "frame never ended"; return false; }
         }
@@ -569,6 +583,7 @@ public sealed partial class PcMachine : IX86Bus
             if (Command != null) { w.Write(0x4338394e); w.Write(Command.Length); w.Write(Command); w.Write(_cmdPos); }   // "N98C": the nano98 command + read position
             if (Ata != null && (Ata.Primary.BmActive || Ata.Secondary.BmActive)) { w.Write(0x4d424449); Ata.Primary.SaveBm(w); Ata.Secondary.SaveBm(w); }   // "IDBM": bus-master DMA
             if (Ata != null && Ata.Secondary.AudioActive) { w.Write(0x41444443); Ata.Secondary.SaveAudio(w); }   // "CDDA": CD audio playing or paused
+            if (_clkEpoch != 0 || _pitEpoch != 0) { w.Write(0x45535049); w.Write(_clkEpoch); w.Write(_pitEpoch); }   // "IPSE": the instruction rate changed under the running machine (SetIps)
             if (Ata != null && (Ata.Primary.AnyMediaChanged || Ata.Secondary.AnyMediaChanged)) { w.Write(0x434d4443); Ata.Primary.SaveMediaChanged(w); Ata.Secondary.SaveMediaChanged(w); }   // "CDMC": a disc change not yet reported (UNIT ATTENTION)
             // "DSKD": the four drives (A:, B:, C:, D:) as base hash + overlay of changed sectors (DiskImage.SaveDiff)
             w.Write(0x444b5344);
@@ -635,7 +650,7 @@ public sealed partial class PcMachine : IX86Bus
         string? picId = null; byte[]? picBlob = null;
         string? svgaId = null; byte[]? svgaBlob = null;
         PcConfig? saved = null; bool mouse = false;
-        bool nicLoaded = false, fdcLoaded = false, vdoLoaded = false, cdda = false, idbm = false, cdmc = false, cmdLoaded = false;
+        bool nicLoaded = false, fdcLoaded = false, vdoLoaded = false, cdda = false, idbm = false, cdmc = false, cmdLoaded = false, ipse = false;
         while (r.BaseStream.Position + 4 <= r.BaseStream.Length)
         {
             int magic = r.ReadInt32();
@@ -657,6 +672,7 @@ public sealed partial class PcMachine : IX86Bus
             else if (magic == 0x4338394e) { Command = r.ReadBytes(r.ReadInt32()); _cmdPos = r.ReadInt32(); cmdLoaded = true; }
             else if (magic == 0x4d424449 && Ata != null) { Ata.Primary.LoadBm(r); Ata.Secondary.LoadBm(r); idbm = true; }
             else if (magic == 0x41444443 && Ata != null) { Ata.Secondary.LoadAudio(r); cdda = true; }
+            else if (magic == 0x45535049) { _clkEpoch = r.ReadInt64(); _pitEpoch = r.ReadInt64(); ipse = true; }
             else if (magic == 0x434d4443 && Ata != null) { Ata.Primary.LoadMediaChanged(r); Ata.Secondary.LoadMediaChanged(r); cdmc = true; }
             else if (magic == 0x444b5344)
             {
@@ -668,6 +684,8 @@ public sealed partial class PcMachine : IX86Bus
             else throw new InvalidDataException($"unknown block {magic:X8} in an x86 state");
         }
         if (!cmdLoaded) _cmdPos = 0;
+        if (!ipse) { _clkEpoch = 0; _pitEpoch = 0; }
+        if (Cpu.Model.Gen == 6 && Cpu.Model.Ips != InstructionsPerSecond) SetIps(Cpu.Model.Ips);   // e.g. a P2 state loaded with another X86_P2CPI: time goes on from where it was
         if (!cdda) Ata?.Secondary.ClearAudio();
         if (!cdmc) { Ata?.Primary.ClearAllMediaChanged(); Ata?.Secondary.ClearAllMediaChanged(); }   // no "CDMC" (and every older state): the disc in the drive is the one the guest already knows
         if (!idbm) { Ata?.Primary.ClearBm(); Ata?.Secondary.ClearBm(); }

@@ -115,6 +115,7 @@ internal static partial class Tools
         Add("open_rom",
             "Opens a ROM in a new HEADLESS session: BrokenNes's own emulator inside this server, invisible, deterministic, as many at once as you like (no Mesen, no lock). " +
             "Any console: NES (default cores CPU/PPU/APU FIX, as the desktop app), SNES, WideMess (.wms), Game Boy / Color, Master System, Game Gear, Genesis. The debugger covers every console: NES, SNES (65816 + SPC700), WideMess, Game Boy, Master System / Game Gear (Z80), Genesis (cpu main the 68000, cpu z80 its sound CPU). Nintendo 64 (.z64 .n64 .v64): cor64, cpu main the VR4300 and cpu rsp; its debugger turns on with a breakpoint, a step or call_stack:true (then the CPU runs interpreted); no checks, layers, tiles or sprites. " +
+            "x86 PC: machine (e.g. WIN98-P166), console win98 or a .n98 package opens the PC with the x86 debugger (exec / port:N / int:N / irq:N / exception:N breakpoints, 16/32-bit disassembly, linear + physical memory, EBP call stack, port and interrupt logs through debug_port); input keys / mouse type and move. " +
             "Symbol files (.mlb NESFab/Mesen, WLA-DX .sym (also wla-z80), GBDK / devkitSMS .sym/.noi, GNU nm output such as SGDK's symbol.txt for the 68000) give names to addresses. checks:true turns the D4 hardware checks and the profiler on from power-on (needed for 'RAM read before written').",
             Schema(("path", P("string", "the ROM file (.nes .sfc .smc .wms .gb .gbc .sms .gg .md .bin, or a .zip)"), true),
                    ("console", P("string", "force a console: nes, snes, wms, gb, gbc, sms, gg, md, n64 (default: detected from the ROM)"), false),
@@ -123,11 +124,22 @@ internal static partial class Tools
                    ("checks", P("boolean", "run the hardware checks and the profiler from power-on (default false)"), false),
                    ("checks_off", P("string[]", "rules to switch off (e.g. nes.lag-frame)"), false),
                    ("frame_wait", P("string[]", "symbols or addresses where the game waits for the next frame (the lag-frame rule)"), false),
-                   ("call_stack", P("boolean", "track the call stack and the trace ring from the first instruction (default true; false runs faster)"), false)),
+                   ("call_stack", P("boolean", "track the call stack and the trace ring from the first instruction (default true; false runs faster)"), false),
+                   ("machine", P("string", "x86 PC: a machine preset (WIN98-P166, WIN98-P166-NANO, WIN98-P2, DOS-486, classic); opens the PC as its own session with the x86 debugger. Also console win98, or any .n98 package"), false),
+                   ("hdd2", P("string", "x86 PC: a second hard disk image (D:, primary slave)"), false), ("cd", P("string", "x86 PC: a CD image (.iso .cue .bin)"), false),
+                   ("state", P("string", "x86 PC: start from this machine state (a save_state path, or an x86boot {save:PATH}) on the same disks"), false)),
             a =>
             {
                 // the Nintendo 64 (cor64): a session of its own over cor64's debugger (HeadlessSession.N64.cs); its call stack is off unless asked
                 // for, since cor64's debugger runs the CPU interpreted while it is on
+                // the x86 PC as a machine of its own (HeadlessSession.X86.cs): Windows 98 presets, .n98 packages, any machine preset, with the x86 debugger
+                if (X86HeadlessSession.Claims(a.Req("path"), a.Str("console"), a.Str("machine")))
+                {
+                    var x = X86HeadlessSession.Open(Sessions.NewId("h"), a.Req("path"), a.Str("machine"), a.Str("hdd2"), a.Str("cd"), a.Str("state"), a.Str("cpu") ?? "", a.Str("ppu") ?? "", a.Str("apu") ?? "",
+                        a.Has("call_stack") && a.Bool("call_stack", false));
+                    Sessions.Add(x);
+                    return x.Describe();
+                }
                 Session s = N64HeadlessSession.Claims(a.Req("path"), a.Str("console"))
                     ? N64HeadlessSession.Open(Sessions.NewId("h"), a.Req("path"), a.Str("cpu") ?? "", a.Str("ppu") ?? "", a.Str("apu") ?? "", a.List("symbols"),
                         a.Has("call_stack") && a.Bool("call_stack", false), a.Bool("checks", false))
@@ -210,12 +222,22 @@ internal static partial class Tools
         Add("input",
             "The pad. mode press: hold buttons for N frames (default 6) and run them, then release; hold: keep them held until changed; release: let go; script: a pad script (\"0:Start,10:,60:Right+A,120:\", frames from now) run to its end (or run_frames). " +
             "Buttons per console: NES/GB A B Start Select; SNES/WideMess also X Y L R (L and R are ALWAYS the shoulders); Master System A(1) B(2) Pause Reset; Game Gear A B Start; Genesis A B C X Y Z Mode Start. Directions: Up Down Left Right (or U D, DLeft DRight). A button the console lacks is refused. Live: control (press / hold / release only).",
-            Schema(S(), ("mode", P("string", "press, hold, release or script", Enum("press", "hold", "release", "script")), true), ("buttons", P("string[]", "the buttons"), false),
+            Schema(S(), ("mode", P("string", "press, hold, release or script (required unless keys / mouse)", Enum("press", "hold", "release", "script")), false), ("buttons", P("string[]", "the buttons"), false),
                    ("frames", P("integer", "press: frames to hold (default 6)"), false), ("player", P("integer", "1 (default) or 2"), false),
                    ("script", P("string", "mode script: frame:Button+Button,..."), false), ("run_frames", P("integer", "mode script: frames to run (default: to the last step)"), false),
+                   ("keys", P("string", "x86 PC: keys to type (x86boot syntax: text, {enter}, {esc}, {alt+f4}, {ctrl+esc}, {f5}, {win}, {up}, {wait:N}); mode is then ignored"), false),
+                   ("mouse", P("string", "x86 PC: the PS/2 mouse, \"dx,dy[,buttons]\" (relative; buttons bit 0 left, 1 right) or \"click:dx,dy\"; mode is then ignored"), false),
                    ("stick", P("string", "N64 only: the analog stick \"x,y\" (-128..127, up and right positive; a real pad reaches about +-80), held until changed, or \"off\" (the directions drive the stick again)"), false)),
             a => On(a, s =>
             {
+                if (s is X86HeadlessSession xs && (a.Str("keys") is { Length: > 0 } || a.Str("mouse") is { Length: > 0 }))
+                {
+                    JsonObject? r = null;
+                    if (a.Str("keys") is { Length: > 0 } ks) r = xs.Keys(ks);
+                    if (a.Str("mouse") is { Length: > 0 } ms) r = xs.Mouse(ms);
+                    return r!;
+                }
+                if (a.Str("keys") is { Length: > 0 } || a.Str("mouse") is { Length: > 0 }) throw new ToolError("keys / mouse are the x86 PC's (open it with machine, console win98 or a .n98)");
                 JsonObject? stick = null;
                 if (a.Str("stick") is { Length: > 0 } st)
                     stick = s is N64HeadlessSession n ? n.SetStick(a.Int("player", 1) - 1, st) : throw new ToolError("stick is the N64's analog stick; this session's pad has none");
@@ -353,7 +375,7 @@ internal static partial class Tools
             "(NES $401C-$401F, SNES / WideMess $4230-$423F, Game Boy the bgb / Emulicious ld d,d messages), and the named timers in the machine's cycles. " +
             "An assert or the game's break command parks the session (run returns outcome break, reason assert / port-break, with the message). " +
             "Every run result also carries the events new since the last result. action: events (since a seq, by kind), timers, status, clear.",
-            Schema(S(), ("action", P("string", "events, timers, status or clear", Enum("events", "timers", "status", "clear")), true),
+            Schema(S(), ("action", P("string", "events, timers, status or clear (x86 PC: also start / stop the port I/O and interrupt logs, kinds ports / interrupts)", Enum("events", "timers", "status", "clear", "start", "stop")), true),
                    ("since", P("integer", "events: after this seq (default 0: all kept)"), false), ("limit", P("integer", "events: at most this many, the newest (default 200)"), false),
                    ("kinds", P("string[]", "events: only these kinds (print, assert, marker, break, error)"), false)),
             a => On(a, s => s.DebugPort(a.Req("action").ToLowerInvariant(), a.LongOr("since", 0), a.Int("limit", 200), a.List("kinds"))), ro: true);
@@ -733,6 +755,7 @@ internal static partial class Tools
 
         AgentLoopTools(Add);
         TasTools(Add);
+        N98InstallTools(Add);   // nano98 install flow (Tools.N98Install.cs)
 
         return t;
     }

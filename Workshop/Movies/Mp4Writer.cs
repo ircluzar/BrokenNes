@@ -146,7 +146,7 @@ public sealed unsafe class Mp4Writer : IDisposable
         IntPtr cur; Check(((delegate* unmanaged[Stdcall]<IntPtr, uint, IntPtr*, int>)Slot(rd, 6))(rd, V, &cur), "GetCurrentMediaType");
         ulong fs; var k = MF_MT_FRAME_SIZE; Check(((delegate* unmanaged[Stdcall]<IntPtr, Guid*, ulong*, int>)Slot(cur, 8))(cur, &k, &fs), "GetUINT64"); Release(cur);
         int w = (int)(fs >> 32), h = (int)(uint)fs;
-        long frames = 0, lastTs = 0, firstTs = -1, maxGap = 0, prevTs = -1; int gi = 0; var pcm = new System.IO.MemoryStream(); long aFirst = -1;
+        long frames = 0, lastTs = 0, firstTs = -1, maxGap = 0, prevTs = -1; int gi = 0; var pcm = new System.IO.MemoryStream(); long aFirst = -1, aLast = -1, aBeforeLast = 0;
         foreach (var (idx, isVideo) in new[] { (V, true), (A, false) })
             while (true)
             {
@@ -167,16 +167,18 @@ public sealed unsafe class Mp4Writer : IDisposable
                         bmp.UnlockBits(r); bmp.Save($"{grabPrefix}_{grabSeconds[gi]:F1}s.png", System.Drawing.Imaging.ImageFormat.Png); gi++;
                     }
                 }
-                else { if (aFirst < 0) aFirst = ts; pcm.Write(new ReadOnlySpan<byte>(bp, (int)len)); }
+                else { if (aFirst < 0) aFirst = ts; aLast = ts; aBeforeLast = pcm.Length; pcm.Write(new ReadOnlySpan<byte>(bp, (int)len)); }
                 VT0(buf, 4); Release(buf); Release(smp);
             }
         Release(rd); MFShutdown();
+        int rate = 44100;   // from the audio timestamps (bytes before the last buffer over its time), snapped to the AAC rates (was a fixed 44100: SM64 is 48000)
+        if (aLast > aFirst && aBeforeLast > 0) { double est = aBeforeLast / 4.0 / ((aLast - aFirst) / 1e7); rate = System.Linq.Enumerable.First(System.Linq.Enumerable.OrderBy(new[] { 8000, 11025, 16000, 22050, 24000, 32000, 44100, 48000 }, x => Math.Abs(x - est))); }
         if (wavOut != null)
         {
             var d = pcm.ToArray(); using var bw = new System.IO.BinaryWriter(System.IO.File.Create(wavOut));
-            bw.Write("RIFF"u8); bw.Write(36 + d.Length); bw.Write("WAVEfmt "u8); bw.Write(16); bw.Write((short)1); bw.Write((short)2); bw.Write(44100); bw.Write(44100 * 4); bw.Write((short)4); bw.Write((short)16); bw.Write("data"u8); bw.Write(d.Length); bw.Write(d);
+            bw.Write("RIFF"u8); bw.Write(36 + d.Length); bw.Write("WAVEfmt "u8); bw.Write(16); bw.Write((short)1); bw.Write((short)2); bw.Write(rate); bw.Write(rate * 4); bw.Write((short)4); bw.Write((short)16); bw.Write("data"u8); bw.Write(d.Length); bw.Write(d);
         }
-        return $"mp4check {path}: {w}x{h}, {frames} video frames, first {firstTs / 1e7:F3} s last {lastTs / 1e7:F3} s, max frame gap {maxGap / 1e4:F1} ms, audio {pcm.Length / 4} samples ({pcm.Length / 4 / 44100.0:F2} s, first ts {aFirst / 1e7:F3} s), {gi} grabs";
+        return $"mp4check {path}: {w}x{h}, {frames} video frames, first {firstTs / 1e7:F3} s last {lastTs / 1e7:F3} s, max frame gap {maxGap / 1e4:F1} ms, audio {pcm.Length / 4} samples at {rate} Hz ({pcm.Length / 4 / (double)rate:F2} s, first ts {aFirst / 1e7:F3} s), {gi} grabs";
     }
     static int VTpp(IntPtr o, int i, IntPtr* a) => ((delegate* unmanaged[Stdcall]<IntPtr, IntPtr*, int>)Slot(o, i))(o, a);
     [DllImport("mfreadwrite.dll", CharSet = CharSet.Unicode)] static extern int MFCreateSourceReaderFromURL(string url, IntPtr attr, out IntPtr reader);

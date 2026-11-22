@@ -257,7 +257,14 @@ public sealed class TasSession : IDisposable
     }
 
     /// <summary>Plays the whole chapter from its start with its goals (the cursor ends at the end). Returns frames, goals, lag.</summary>
-    public JsonObject Evaluate()
+    public JsonObject Evaluate() => Evaluate(-1, 0, int.MaxValue);
+
+    /// <summary>The input of frame f (search generators read the program without running it).</summary>
+    public TasPad[] PadsAt(int f) => Steps[frameAt[f]].Pads;
+
+    /// <summary>Evaluate with an early stop (T3 search): stopGoal &gt;= 0 ends the play tail frames after that goal's first frame (the chapter
+    /// is then trimmed there); cutoff ends it when the goal is still not reached at that frame (cannot beat the best kept so far).</summary>
+    public JsonObject Evaluate(int stopGoal, int tail, int cutoff)
     {
         var goals = Chapter.Goal.Select(TasGoal.Parse).ToList(); var per = goals.Where(g => g.PerFrame).ToList();
         // resume from the latest frame whose machine state and goal state are both still valid (the frames before the earliest edit)
@@ -276,6 +283,14 @@ public sealed class TasSession : IDisposable
             Step(1);
             if (P.LastPolls == 0) { lag++; lags.Add(Cursor - 1); }
             if (per.Count > 0) { var c = new TasEvalContext(T, Map, Run.Dir, Cursor, lag); foreach (var g in per) g.OnFrame(c); }
+            if (stopGoal >= 0 && stopGoal < goals.Count)
+            {
+                var sg = goals[stopGoal];
+                var rg = goals.Where(g => g.Kind is "reach" or "within").ToList();   // stop once every reach/within goal is reached, tail frames after the last
+                if (sg.FirstFrame >= 0 && rg.All(g => g.FirstFrame >= 0) && Cursor >= rg.Max(g => g.FirstFrame) + tail) break;
+                if (sg.FirstFrame < 0 && Cursor > cutoff) break;
+                if (goals.Any(g => g.FailedFrame >= 0 && g.Kind == "always")) break;
+            }
         }
         P.Pos = Steps.Count; // trailing ops are not run here (savefile/screenshot are the runner's)
         foreach (var g in goals) g.Finish(new TasEvalContext(T, Map, Run.Dir, Cursor, lag));

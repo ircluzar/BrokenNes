@@ -942,17 +942,19 @@ public sealed partial class I386
     public long TicksExec1;
     public void Step(int stepcount)
     {
+        if (Debug != null && Debug.Stop) return;
         if ((Flags & IF) != 0 && Intr)
         {
             Intr = false; Halt = false;
             int no = _bus.AckIrq();
             Ip = NextIp;
+            Debug?.Int(this, no, 1, 0);
             if (!CallIsr(no, false, 1)) Abort("interrupt delivery failed");
         }
         if (Halt) return;
         if (!_jitDone.IsEmpty) JitDrain();
         long tq0 = PcMachine.TimeProbe ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
-        bool ret = Exec1(stepcount);
+        bool ret = Debug == null ? Exec1(stepcount) : Exec1Dbg(stepcount);
         if (PcMachine.TimeProbe) TicksExec1 += System.Diagnostics.Stopwatch.GetTimestamp() - tq0;
         _ifPaddr = 0;
         if (!ret)
@@ -960,6 +962,7 @@ public sealed partial class I386
             bool pusherr = Excno is EX_DF or EX_TS or EX_NP or EX_SS or EX_GP or EX_PF;
             NextIp = Ip;
             ExceptionLog?.Invoke(Excno, Excerr);
+            Debug?.Int(this, Excno, 2, Excerr);
             if (!CallIsr(Excno, pusherr, 1)) Abort($"exception {Excno} delivery failed");
         }
     }
