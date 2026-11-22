@@ -47,6 +47,28 @@ def stage(n, name, out):
     return not done
 
 
+def scrub_key(img):
+    r"""Windows keeps the product key in plain text (SYSTEM.DAT ProductKey, C:\WINDOWS\MSBATCH.INF, freed clusters of the setup disk):
+    overwrite every copy on the raw disk with a same-length mask, so the base (which may be embedded in packages) never holds it."""
+    key = os.environ.get(a.key_env, '') if a.key_env else (open(a.keyfile).read() if a.keyfile else '')
+    key = key.strip().upper().encode('latin1')
+    if len(key) < 20: print('scrub: no key given, nothing to scrub', flush=True); return
+    mask = bytes(c if c == 0x2d else 0x58 for c in key)   # XXXXX-XXXXX-...
+    n = 0; CH = 64 << 20
+    with open(img, 'r+b') as fh:
+        pos = 0
+        while True:
+            fh.seek(pos); buf = fh.read(CH + len(key))
+            if not buf: break
+            i = buf.find(key)
+            while i >= 0:
+                fh.seek(pos + i); fh.write(mask); n += 1
+                i = buf.find(key, i + 1)
+            if len(buf) <= CH: break
+            pos += CH
+    print(f'scrub: product key masked in {n} place(s)', flush=True)
+
+
 installed = a.installed or W('installed.img')
 if not a.installed:
     if not os.path.exists(installed) and stage(1, 'setup disk', W('hd_setup.img')):
@@ -63,12 +85,13 @@ if not a.installed:
         try: _f.Fat32(installed + '.tmp').read_file('WINDOWS/SYSTEM.INI'); ok2 = True
         except FileNotFoundError: ok2 = False
         if not ok2:   # Setup did not finish: keep nothing that holds the key, say where the last screen is
-            for f in ('hd_setup.img', 'stage2.steps', installed + '.tmp'):
+            for f in ('hd_setup.img', 'stage2.steps', installed + '.tmp') + tuple(n for n in os.listdir(a.work) if n.startswith('stage2_end_step')):
                 try: os.remove(W(f) if not os.path.isabs(f) else f)
                 except OSError: pass
-            sys.exit('stage 2: Windows Setup did not finish (no C:\WINDOWS\SYSTEM.INI); last screen: ' + W('stage2_end.png'))
+            sys.exit('stage 2: Windows Setup did not finish (no C:/WINDOWS/SYSTEM.INI); last screen: ' + W('stage2_end.png'))
+        scrub_key(installed + '.tmp')
         os.replace(installed + '.tmp', installed)
-        for f in ('hd_setup.img', 'stage2.steps'):   # (the setup disk's answer file holds the product key: gone once Windows is installed)
+        for f in ('hd_setup.img', 'stage2.steps') + tuple(n for n in os.listdir(a.work) if n.startswith('stage2_end')):   # (step shots show the key page)   # (the setup disk's answer file holds the product key: gone once Windows is installed)
             try: os.remove(W(f))
             except OSError: pass
 
