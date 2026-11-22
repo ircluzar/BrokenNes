@@ -14,6 +14,25 @@ namespace BrokenNes.Windows
         private N98LoadingPanel? n98Loading;
         private int n98LoadGeneration;
 
+        /// <summary>A .n98 opened from disk: its bytes are read off the UI thread (a package can be over a GB) behind the loading screen.</summary>
+        private async void LoadN98File(string path)
+        {
+            int gen = ++n98LoadGeneration;
+            ShowN98Loading(System.IO.Path.GetFileNameWithoutExtension(path));
+            NesEmulator.X86.N98Seat.Report("reading the package", -1);
+            byte[] data;
+            try { data = await Task.Run(() => System.IO.File.ReadAllBytes(path)); }
+            catch (Exception ex)
+            {
+                if (gen == n98LoadGeneration) HideN98Loading();
+                MessageBox.Show(this, $"Error loading {path}: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            if (gen != n98LoadGeneration || IsDisposed) return;
+            try { LoadRomBytes(System.IO.Path.GetFileName(path), data, path, addToRecentRoms: true); }
+            catch (Exception ex) { HideN98Loading(); MessageBox.Show(this, $"Error loading ROM: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        }
+
         private async void StartN98Session(byte[] rom, string romName, string? romPath)
         {
             int gen = ++n98LoadGeneration;

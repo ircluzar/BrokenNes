@@ -118,6 +118,7 @@ namespace BrokenNes.Windows
                     return;
                 }
                 
+                if (NesEmulator.X86.N98Seat.IsPackage(path)) { LoadN98File(path); return; }   // (read off the UI thread, loading screen: MainForm.N98Loading.cs)
                 byte[] romData = NesEmulator.X86.DiskImage.ReadImageFile(path);   // (= File.ReadAllBytes; an x86 disk image also gets its cached base hash, IMAGE.p256)
 
                 LoadRomBytes(Path.GetFileName(path), romData, path, addToRecentRoms: true);
