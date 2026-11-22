@@ -280,7 +280,7 @@ public sealed partial class NvGeForce
         }
     }
 
-    private struct Tex { public uint Base; public bool Vram, Ok, Rect, Lin, Mip; public int Fmt, W, H, Pitch, WrapS, WrapT, MinF, MagF, Levels; public float Bias; public uint Dma; }
+    private struct Tex { public uint Base; public bool Vram, Ok, Rect, Lin, Mip; public int Fmt, W, H, Pitch, WrapS, WrapT, MinF, MagF, Levels; public float Bias; public uint Dma, Pal, PalDma; }
 
     /// <summary>A line as a quad of LINE_WIDTH (1/8 pixel units, at least 1 pixel) across its minor axis, half a pixel longer at each end.</summary>
     private void Line(uint inst, in CVert a, in CVert b)
@@ -315,7 +315,9 @@ public sealed partial class NvGeForce
         uint f = G(inst, 0x220 + u * 4);
         t.Dma = G(inst, ((f & 2) != 0 ? 0x188 : 0x184) | 0x8000);
         t.Fmt = (int)(f >> 7) & 0x1f;
-        if (t.Fmt == 0xb) t.Fmt = 3;   // (the 5.32 ICD's 16-bit textures read as 0x0B: bits 9-7 = 3, X1R5G5B5, the same as the D3D test's 0x03)
+        // 0x0B = INDEX8 (envytools nv10_tex_format): 8-bit indices into a 256-entry A8R8G8B8 palette at PALETTE_OFFSET (0x250);
+        // its low bits pick the DMA object like the texture's own offset (bit 1 = B). Quake II GL uses it (GL_EXT_shared_texture_palette).
+        if (t.Fmt == 0xb) { uint p = G(inst, 0x250 + u * 4); t.Pal = p & ~0x3fu; t.PalDma = G(inst, ((p & 2) != 0 ? 0x188 : 0x184) | 0x8000); }
         t.Rect = t.Fmt is >= 0x10 and <= 0x13;
         if (t.Rect) { uint sz = G(inst, 0x240 + u * 4); t.W = (int)(sz >> 16); t.H = (int)(sz & 0xffff); t.Pitch = (int)(G(inst, 0x230 + u * 4) >> 16); }
         else { t.W = 1 << (int)((f >> 16) & 15); t.H = 1 << (int)((f >> 20) & 15); }
@@ -357,6 +359,13 @@ public sealed partial class NvGeForce
         uint wv = SysRead32?.Invoke(a & ~3u) ?? 0;
         if (n == 4) { if ((a & 3) == 0) return wv; uint hi = SysRead32?.Invoke((a & ~3u) + 4) ?? 0; return (uint)((((ulong)hi << 32) | wv) >> (int)((a & 3) * 8)); }
         return n == 2 ? (wv >> (int)((a & 2) * 8)) & 0xffff : (wv >> (int)((a & 3) * 8)) & 0xff;
+    }
+
+    private uint PalRead(in Tex t, uint i)
+    {
+        var (vr, a) = DmaAddr(t.PalDma, t.Pal + i * 4);
+        if (vr) { a &= VramBytes - 1; return a <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)a) : 0; }
+        return SysRead32?.Invoke(a & ~3u) ?? 0;
     }
 
     private static uint C565(uint c) => 0xff000000 | (uint)Raster3D.Rgb565To888((int)c);
@@ -412,6 +421,7 @@ public sealed partial class NvGeForce
         switch (t.Fmt)
         {
             case 0: return 0xff000000 | raw * 0x010101;                                     // L8
+            case 0xb: return PalRead(t, raw);                                                 // INDEX8
             case 1: case 0x13: return raw * 0x01010101;                                      // I8
             case 2: case 0x10: case 3: { uint r = (raw >> 10) & 31, g = (raw >> 5) & 31, b = raw & 31; return ((raw & 0x8000) != 0 || t.Fmt == 3 ? 0xff000000 : 0) | (r << 3 | r >> 2) << 16 | (g << 3 | g >> 2) << 8 | (b << 3 | b >> 2); }
             case 4: { uint a4 = raw >> 12, r = (raw >> 8) & 15, g = (raw >> 4) & 15, b = raw & 15; return a4 * 0x11 << 24 | r * 0x11 << 16 | g * 0x11 << 8 | b * 0x11; }
@@ -520,7 +530,7 @@ public sealed partial class NvGeForce
         var t0 = TexUnit(inst, 0); var t1 = TexUnit(inst, 1);
         if (Triangles3D < 60 && OpLog != null)
         {
-            string Td(in Tex t) { if (!t.Ok) return "off"; var (vr, ad) = DmaAddr(t.Dma, t.Base); return $"fmt {t.Fmt} {t.W}x{t.H} dma {t.Dma:X} {(vr ? "vram" : "sys")} {ad:X} texel0 {Texel(t, 0, 0):X8} texel(5,5) {Texel(t, 5, 5):X8}"; }
+            string Td(in Tex t) { if (!t.Ok) return "off"; var (vr, ad) = DmaAddr(t.Dma, t.Base); return $"fmt {t.Fmt} pal {t.Pal:X} {t.W}x{t.H} dma {t.Dma:X} {(vr ? "vram" : "sys")} {ad:X} texel0 {Texel(t, 0, 0):X8} texel(5,5) {Texel(t, 5, 5):X8}"; }
             OpLog($"uv {a.U0:F2},{a.V0:F2} tex0 {Td(t0)} | tex1 {Td(t1)} | col {a.R:F2},{a.G:F2},{a.B:F2},{a.A:F2} comb {G(inst, 0x268):X8} {G(inst, 0x280):X8} {G(inst, 0x288):X8} {G(inst, 0x28c):X8}");
         }
         bool lod0 = t0.Ok && !t0.Rect && (t0.Mip || t0.MinF != t0.MagF), lod1 = t1.Ok && !t1.Rect && (t1.Mip || t1.MinF != t1.MagF);
