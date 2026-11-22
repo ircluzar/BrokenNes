@@ -448,6 +448,71 @@ def to_v2(a):
           f'launch {L.get("exe")}; {os.path.getsize(a.out) / 1e6:.1f} MB')
 
 
+def make_layer(a):
+    """A system DEPENDENCY LAYER (schema 1, C: only) from a package: its files under the given globs (default C:/WINDOWS/*) and ALL its
+    registry ops (drivers need Enum/Config keys), INI edits on C:. Layers go between the base and the game: base + layers = a system variant."""
+    z, man = load(a.pkg)
+    keep = [g.upper() for g in (a.keep or ['C:/WINDOWS/*'])]
+    want = lambda p: any(fnmatch.fnmatchcase(p.upper(), g) for g in keep)
+    out = zipfile.ZipFile(a.out + '.tmp', 'w', zipfile.ZIP_DEFLATED, compresslevel=6)
+    files = []
+    for f in man['files']:
+        if not want(f['path']): continue
+        if not f.get('dir'): out.writestr(f['zip'], z.read(f['zip']))
+        files.append(f)
+    L = dict(man); L.update({'id': a.id, 'title': a.title or a.id, 'kind': 'layer', 'files': files, 'deleted': [], 'launch': {}, 'saves': [], 'cd': [],
+                             'ini': [i for i in man.get('ini', []) if i['path'].upper().startswith('C:')], 'snapshot': None,
+                             'created': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')})
+    rg = [g.upper() for g in (a.reg or ['*'])]
+    L['registry'] = {k: dict(v, ops=[o for o in v['ops'] if any(fnmatch.fnmatchcase(o['key'].upper(), g) for g in rg)])
+                     for k, v in man['registry'].items() if v.get('drive', 'C') == 'C'}
+    out.writestr('manifest.json', json.dumps(L, indent=1)); out.close(); os.replace(a.out + '.tmp', a.out)
+    print(f'{a.out}: layer {a.id}: {sum(1 for f in files if not f.get("dir"))} files, registry ' +
+          ', '.join(f'{k} {len(v["ops"])} ops' for k, v in L['registry'].items()))
+
+
+def variant(a):
+    """A SYSTEM VARIANT = the seat base + dependency layers, applied in order (files, INI, registry: all of it, at build time, so Windows
+    boots with them) -> a new N98D base with its own identity hash, so it gets its own warm-boot state."""
+    import sparse, tempfile
+    cow = fat32.CowFile(a.base)
+    fs = fat32.Fat32(cow, write=True)
+    for lp in a.layers:
+        z, m = load(lp)
+        for p_ in m['deleted']:
+            d, _, rel = p_.partition(':/')
+            if d == 'C': fs.delete(rel)
+        for f in m['files']:
+            d, _, rel = f['path'].partition(':/')
+            if d != 'C': continue
+            t = tuple(f.get('time', (0, 0, 0, 0, 0)))
+            if f.get('dir'): fs.mkdir(rel, t); continue
+            data = z.read(f['zip'])
+            if hashlib.sha256(data).hexdigest() != f['sha256']: raise SystemExit(f'{lp}: {f["path"]}: content hash mismatch')
+            fs.write_file(rel, data, f.get('attr', 0x20) & 0x27, t)
+        for ini in m.get('ini', []):
+            d, _, rel = ini['path'].partition(':/')
+            if d != 'C': continue
+            e, _ = fs.lookup(rel)
+            old = fs.read_file(rel) if e is not None else b''
+            fs.write_file(rel, ini_apply(old, ini['ops']), e.attr if e is not None else 0x20, (e.ctime, e.cdate, e.adate, e.wtime, e.wdate) if e is not None else (0, 0, 0, 0, 0))
+        for name, r in m['registry'].items():
+            if r.get('drive', 'C') != 'C' or not r['ops']: continue
+            hp = 'WINDOWS/' + name
+            new = creg.Hive(fs.read_file(hp)).apply(r['ops'])
+            for h in (hp, hp[:-1] + '0'):
+                e, _ = fs.lookup(h)
+                if e is not None: fs.write_file(h, new, e.attr, (e.ctime, e.cdate, e.adate, e.wtime, e.wdate))
+        print(f'{lp}: applied')
+    fs.close()
+    tmp = os.path.join(a.work or tempfile.gettempdir(), os.path.basename(a.out) + '.img')
+    cow.save_full(tmp)
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import slim   # zero-fill the free space (the variant is packed like a base) - no culling
+    f2 = fat32.Fat32(tmp, write=True); slim.zero_free(f2); f2.f.close()
+    sparse.write(tmp, a.out + '.tmp'); os.replace(a.out + '.tmp', a.out); os.remove(tmp)
+
+
 def main():
     ap = argparse.ArgumentParser()
     sp = ap.add_subparsers(dest='cmd', required=True)
@@ -461,8 +526,12 @@ def main():
     k = sp.add_parser('cmd'); k.add_argument('pkg'); k.add_argument('out'); k.add_argument('--exit', default='poweroff'); k.add_argument('--preset')
     v = sp.add_parser('v2'); v.add_argument('pkg'); v.add_argument('out'); v.add_argument('--work', default='.')
     v.add_argument('--drop', nargs='*'); v.add_argument('--layers', nargs='*'); v.add_argument('--embed-base'); v.add_argument('--args', help='replace the launch arguments')
+    y = sp.add_parser('layer'); y.add_argument('pkg'); y.add_argument('out'); y.add_argument('--id', required=True); y.add_argument('--title')
+    y.add_argument('--keep', nargs='*'); y.add_argument('--reg', nargs='*', help='registry key globs to keep (default all)')
+    w = sp.add_parser('variant'); w.add_argument('out'); w.add_argument('--base', required=True); w.add_argument('--layers', nargs='+', required=True)
+    w.add_argument('--work')
     a = ap.parse_args()
-    {'capture': capture, 'info': info, 'apply': apply, 'cmd': launch_cmd, 'v2': to_v2}[a.cmd](a)
+    {'capture': capture, 'info': info, 'apply': apply, 'cmd': launch_cmd, 'v2': to_v2, 'layer': make_layer, 'variant': variant}[a.cmd](a)
 
 
 if __name__ == '__main__':

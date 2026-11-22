@@ -98,6 +98,9 @@ public sealed partial class N98Seat
             }
         }
         else baseImg = FindBase();
+        // the system variant the game needs: the base + its dependency layers (DirectX, runtimes, codecs, drivers), built once and cached
+        if (r.TryGetProperty("system", out var sy) && sy.TryGetProperty("layers", out var ly) && ly.ValueKind == JsonValueKind.Array && ly.GetArrayLength() > 0)
+            baseImg = Variant(baseImg, ly.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToArray(), fileName, Path.GetDirectoryName(s.CacheDir) ?? LocalRoot);
         s.ImagePath = baseImg;
         Report("reading Windows 98", 0);
         s.Image = DiskImage.ReadImageFile(baseImg);
@@ -151,6 +154,26 @@ public sealed partial class N98Seat
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BrokenNes");
         s.SavesDir = Path.Combine(savesRoot, "N98Saves", "n98" + s.Id, "files");
         return s;
+    }
+
+    /// <summary>The system variant base + layers: BASE+id1+id2.n98d beside the base or in the nano98 cache's variants folder (made once by
+    /// n98.py variant from the layer packages: BROKENNES_N98_LAYERS, the base's layers folder, LOCALAPPDATA/BrokenNes/nano98/layers). Its own hash
+    /// gives it its own warm-boot state.</summary>
+    private static string Variant(string baseImg, string[] ids, string fileName, string cacheRoot)
+    {
+        foreach (var id in ids) if (id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || id.Contains("..")) throw new InvalidDataException($"{fileName}: bad layer id '{id}'");
+        string name = Path.GetFileNameWithoutExtension(baseImg) + "+" + string.Join("+", ids) + ".n98d";
+        string beside = Path.Combine(Path.GetDirectoryName(baseImg) ?? ".", name), cached = Path.Combine(cacheRoot, "variants", name);
+        if (File.Exists(beside)) return beside;
+        if (File.Exists(cached) && File.GetLastWriteTimeUtc(cached) >= File.GetLastWriteTimeUtc(baseImg)) return cached;
+        var dirs = new[] { Environment.GetEnvironmentVariable("BROKENNES_N98_LAYERS"), Path.Combine(Path.GetDirectoryName(baseImg) ?? ".", "layers"), Path.Combine(LocalRoot, "layers"), Path.Combine(cacheRoot, "layers") }
+            .Where(d => !string.IsNullOrEmpty(d)).ToArray();
+        var layers = ids.Select(id => dirs.Select(d => Path.Combine(d!, id + ".n98")).FirstOrDefault(File.Exists)
+            ?? throw new FileNotFoundException($"{fileName} needs the system layer '{id}' ({id}.n98), not found in: {string.Join("; ", dirs)}")).ToArray();
+        Report("building the system variant (once): " + string.Join(" + ", ids));
+        Directory.CreateDirectory(Path.GetDirectoryName(cached)!);
+        RunTool("variant", $"\"{cached}\" --base \"{baseImg}\" --layers " + string.Join(" ", layers.Select(l => $"\"{l}\"")) + $" --work \"{Path.GetDirectoryName(cached)}\"");
+        return cached;
     }
 
     /// <summary>"N98R" + records (see n98launch.c): registry ops (root 1 = HKLM from SYSTEM.DAT, 2 = HKEY_USERS from USER.DAT), INI edits, 0.</summary>

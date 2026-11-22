@@ -154,8 +154,8 @@ nano98 is a standard minimalist Win98 platform: every game boots on the same mac
 Schema-2 manifest fields (the rest as in schema 1):
 - `schema: 2`. Readers that know only 1 refuse it; the app reads both (schema 1 still goes through `n98.py apply`).
 - `drives.D = {zip: "drives/D.n98d", p256, length}`: the game drive, an N98D container (below), stored uncompressed in the zip.
-- `system = {base: "nano98-se", layers: [...], embedded_base?}`: the system variant the game needs (base + dependency layers; layers are
-  not built yet: a package naming one is refused until they are). `base/C.n98d` (optional member) makes the package self-contained.
+- `system = {base: "nano98-se", layers: [ids], embedded_base?}`: the system variant the game needs = the base + its dependency layers in
+  order. `base/C.n98d` (optional member) makes the package self-contained.
 - `registry`, `ini`: applied AT RUN TIME by the launcher (command port, after the saved files: `N98R` records, see n98launch.c),
   so Windows boots on the plain base and one warm-boot state fits every package. Only `Software\` keys: Enum/Config/hardware changes
   (drivers) belong in a system layer, not in a game.
@@ -199,3 +199,30 @@ Media Player, Jet/ODBC/ADO, scripting, DHTML, VB5 runtime, task scheduler, wallp
 start-up values and the VxD keys of removed files (JAVASUP: "cannot find a device file"), installs the current launcher, zero-fills free
 clusters (so the container stores only used data) and writes the N98D. 2026-11-21 on seat_base_v3: used 333 MB -> 88 MB, N98D 33 MB;
 AoE, HL Uplink, Quake II (software) and StarCraft boot to their menus / in game.
+
+## System dependency layers and variants
+Some games need system pieces the base does not carry (a DirectX version, VB/MFC runtimes, codecs, a 3D card's driver). Those are
+LAYERS between the base and the game; base + layers = a SYSTEM VARIANT, with its own identity hash and therefore its own warm-boot state
+(keyed by base + layers + emulator build, like the base's).
+- A layer is a schema-1 package of C: changes only (`"kind": "layer"`): `n98.py layer PKG.n98 OUT.n98 --id ID [--keep GLOB...] [--reg GLOB...]`
+  cuts one from a captured install (default: its files under C:/WINDOWS, all its registry ops including Enum/Config for drivers, its C: INI edits).
+- `n98.py variant OUT.n98d --base BASE.n98d --layers L1.n98 L2.n98...` applies them at build time (files, INI, registry: Windows boots with
+  them) and packs the result like a base (free space zeroed, N98D).
+- The app: a package naming `system.layers` runs on `BASE+id1+id2.n98d` (beside the base, else the cache's `variants` folder); missing, it is
+  built once from the layer packages (`BROKENNES_N98_LAYERS`, the base's `layers` folder, %LOCALAPPDATA%\BrokenNes
+ano98\layers, the cache's
+  `layers`). Proof 2026-11-21: layer `indeo41` (AoE's Indeo 4.1 codec: ir41_32.dll + SYSTEM.INI drivers32) -> variant p256 76B984B8..., AoE
+  packaged without the codec and naming the layer: variant built in 17 s on first use, its own warm state, AoE menu.
+
+## Base build in one command
+`build_seat.py --workshop EXE --work DIR --out DIR/seat_base.n98d (--iso ISO --accept-eula | --installed IMG)`: setup disk, unattended Setup,
+seat, slim, a settle boot with the standard blank D: attached (Windows meets the D: slot once, at build time) and a clean power-off, pack,
+then the warm-boot state (an empty schema-2 package, `--n98seat --until-warm`) in `seat_base.n98d.warm\<base hash>-<build>`, used by the app
+from beside the base. 2026-11-21 on Garage2 from the installed seat_base_v3: stages 3-7 in 43 s, base 33.7 MB (90.2 MB used), warm state 8.5 MB;
+StarCraft (schema 2, first open, empty cache) resumed from it: N98 RUN at 5.9 s, main menu. Stages 1-2 (Setup from the disc) are the
+existing build_base.py + stage2.steps path, not re-run in this round.
+
+## Loading screen (desktop)
+Opening a .n98 runs the package preparation (and a variant build), the saves layer and the warm-state load off the UI thread; the game area shows
+the nano98 look (black, "nano98 is loading...", the game's title, the stage, a progress bar for the game drive's unpack, a sliding bar for
+stages without a size); the window stays responsive. `N98Seat.Progress` / `PcSession.Prestart`.
