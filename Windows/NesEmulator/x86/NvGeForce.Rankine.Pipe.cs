@@ -520,6 +520,8 @@ public sealed partial class NvGeForce
 
     private readonly bool[] _rcube = new bool[16];
 
+    private readonly bool[] _rcube = new bool[16];
+
     private uint RTex(uint inst, int unit, float u, float v, float r, float bias)
     {
         ref var t = ref _rtex[unit & 15];
