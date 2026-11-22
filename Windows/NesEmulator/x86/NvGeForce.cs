@@ -16,17 +16,23 @@ using System.IO;
 
 namespace NesEmulator.X86;
 
+/// <summary>The NVIDIA chips we build.</summary>
+public enum NvChip { NV10, NV17, NV34 }
+
 public sealed partial class NvGeForce : IPciMmio
 {
     public const ushort Vendor = 0x10de, Device = 0x0101;
     public const string Id = "NV10";
-    public const int VramBytes = 32 * 1024 * 1024;
+    /// <summary>Video memory: 32 MB on the NV10/NV17, 128 MB on the FX 5200 (NV34).</summary>
+    public readonly int VramBytes;
+    public readonly uint VramMask;
+    public static int VramFor(NvChip c) => c == NvChip.NV34 ? 128 * 1024 * 1024 : 32 * 1024 * 1024;
     public const uint Bar0Size = 16 * 1024 * 1024, Bar1Size = 128 * 1024 * 1024;
     public const uint Boot0 = 0x010000a5;
-    public const int RaminBase = VramBytes - 0x100000;
+    public int RaminBase => VramBytes - 0x100000;
     /// <summary>A PRAMIN byte's place in VRAM: instance memory grows down from the end of VRAM in 32-bit words (all address bits flipped
     /// but the low 2; envytools memory/nv1-vram.rst, the same on NV4-NV40). Resman puts buffers right below it (a Z buffer at 31 MB).</summary>
-    public static int RaminVram(uint x) => (int)(((x & 0xfffff) ^ ~3u) & (VramBytes - 1));
+    public int RaminVram(uint x) => (int)(((x & 0xfffff) ^ ~3u) & (VramMask));
 
     private readonly Vga _v;
     /// <summary>The PCI function (set by the bus): the PBUS config mirror reads it.</summary>
@@ -48,14 +54,18 @@ public sealed partial class NvGeForce : IPciMmio
     /// <summary>Diagnostics: every BAR0 access (offset, value, size, write) when set (the driver bring-up log).</summary>
     public Action<uint, uint, int, bool>? Log;
 
-    /// <summary>The chip this card is: the GeForce 256 DDR (NV10) or the GeForce4 MX 440 (NV17: same Celsius 3D, class 0x99, a second CRTC).</summary>
-    public readonly bool Nv17;
-    public ushort DeviceId => Nv17 ? (ushort)0x0171 : Device;
-    public uint BootId => Nv17 ? 0x017200a2u : Boot0;
-    public string CardId => Nv17 ? "NV17" : Id;
-    public string CardName => Nv17 ? "GeForce4 MX 440" : "GeForce 256 DDR";
+    /// <summary>The chip this card is: the GeForce 256 DDR (NV10), the GeForce4 MX 440 (NV17: same Celsius 3D, class 0x99, a second CRTC)
+    /// or the GeForce FX 5200 (NV34: Rankine 3D, DX9 vertex/fragment programs, 128 MB).</summary>
+    public readonly NvChip Chip;
+    public bool Nv17 => Chip == NvChip.NV17;
+    public bool Nv34 => Chip == NvChip.NV34;
+    public ushort DeviceId => Chip switch { NvChip.NV17 => 0x0171, NvChip.NV34 => 0x0322, _ => Device };
+    public uint BootId => Chip switch { NvChip.NV17 => 0x017200a2u, NvChip.NV34 => 0x034200a1u, _ => Boot0 };
+    public byte Revision => Chip switch { NvChip.NV17 => 0xa2, NvChip.NV34 => 0xa1, _ => 0x10 };
+    public string CardId => Chip.ToString();
+    public string CardName => Chip switch { NvChip.NV17 => "GeForce4 MX 440", NvChip.NV34 => "GeForce FX 5200", _ => "GeForce 256 DDR" };
 
-    public NvGeForce(Vga v, bool nv17 = false) { _v = v; Nv17 = nv17; Aperture = new Bar1(this); Reset(); }
+    public NvGeForce(Vga v, NvChip chip = NvChip.NV10) { _v = v; Chip = chip; VramBytes = VramFor(chip); VramMask = (uint)VramBytes - 1; Aperture = new Bar1(this); Reset(); }
 
     public void Reset()
     {
@@ -109,7 +119,7 @@ public sealed partial class NvGeForce : IPciMmio
     public int Width => ((_v.Cr[1] + 1) | ((_v.Cr[0x2d] & 2) << 7)) * 8;
     public int Height => ((_v.Cr[0x12] | ((_v.Cr[7] & 2) << 7) | ((_v.Cr[7] & 0x40) << 3) | ((_v.Cr[0x25] & 2) << 9)) + 1) >> ((_v.Cr[9] & 0x80) != 0 ? 1 : 0);   // (CR09 bit 7: double scan, the 320x240 / 400x300 modes)
     public int Stride => (_v.Cr[0x13] | ((_v.Cr[0x19] >> 5) << 8) | (((_v.Cr[0x42] >> 6) & 1) << 11)) * 8;
-    public int StartByte => (int)(PcrtcStart & (VramBytes - 1));
+    public int StartByte => (int)(PcrtcStart & (VramMask));
 
     private readonly int[] _pal = new int[256];
 
@@ -146,7 +156,7 @@ public sealed partial class NvGeForce : IPciMmio
         // alpha 1 = the colour, alpha 0 with a colour = XOR with the picture (Windows' inverting cursors)
         if ((_v.Cr[0x31] & 1) != 0)
         {
-            uint pos = Reg(0x680300), ca = Reg(0x60080c) & (VramBytes - 1);
+            uint pos = Reg(0x680300), ca = Reg(0x60080c) & (VramMask);
             int cx = (short)(pos & 0xffff), cy = (short)(pos >> 16);
             for (int y = 0; y < 32; y++)
                 for (int x = 0; x < 32; x++)
@@ -303,7 +313,7 @@ public sealed partial class NvGeForce : IPciMmio
                 return a == 0x009400 ? (uint)ns & 0xffffffe0 : (uint)(ns >> 32);
             }
             case 0x100200: return Reg(a);
-            case 0x10020c: return VramBytes;                     // PFB MEM_AMOUNT
+            case 0x10020c: return (uint)VramBytes;                     // PFB MEM_AMOUNT
             case 0x400700: return 0;                             // PGRAPH STATUS: idle
             case 0x600100: return PcrtcIntr;
             case 0x600140: return PcrtcIntrEn;
@@ -325,7 +335,7 @@ public sealed partial class NvGeForce : IPciMmio
             case 0x000200: PmcEnable = v; return;
             case 0x600100: PcrtcIntr &= ~v; UpdateIrq(); return;   // write 1 to clear
             case 0x600140: PcrtcIntrEn = v & 1; UpdateIrq(); return;
-            case 0x600800: PcrtcStart = v & (VramBytes - 1) & ~3u; return;
+            case 0x600800: PcrtcStart = v & (VramMask) & ~3u; return;
             case 0x009400: case 0x009410:
             {
                 long now = TimeNs(_timerReads);
@@ -361,16 +371,16 @@ public sealed partial class NvGeForce : IPciMmio
         public Bar1(NvGeForce n) => _n = n;
         public uint MmioRead(uint off, int size)
         {
-            var ram = _n._v.Ram; int o = (int)(off & (VramBytes - 1));
-            if (size == 4 && o <= VramBytes - 4) return BitConverter.ToUInt32(ram, o);
-            uint v = 0; for (int i = 0; i < size; i++) v |= (uint)ram[(o + i) & (VramBytes - 1)] << (8 * i);
+            var ram = _n._v.Ram; int o = (int)(off & (_n.VramMask));
+            if (size == 4 && o <= _n.VramBytes - 4) return BitConverter.ToUInt32(ram, o);
+            uint v = 0; for (int i = 0; i < size; i++) v |= (uint)ram[(o + i) & (_n.VramMask)] << (8 * i);
             return v;
         }
         public void MmioWrite(uint off, uint v, int size)
         {
-            var ram = _n._v.Ram; int o = (int)(off & (VramBytes - 1));
-            if (size == 4 && o <= VramBytes - 4) { BitConverter.TryWriteBytes(ram.AsSpan(o), v); return; }
-            for (int i = 0; i < size; i++) ram[(o + i) & (VramBytes - 1)] = (byte)(v >> (8 * i));
+            var ram = _n._v.Ram; int o = (int)(off & (_n.VramMask));
+            if (size == 4 && o <= _n.VramBytes - 4) { BitConverter.TryWriteBytes(ram.AsSpan(o), v); return; }
+            for (int i = 0; i < size; i++) ram[(o + i) & (_n.VramMask)] = (byte)(v >> (8 * i));
         }
     }
 

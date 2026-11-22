@@ -40,12 +40,12 @@ public sealed class Vga
     // 70 Hz timing: 449 lines of 800 dots at 25.175 MHz, counted in PIT ticks
     public const double FrameTicks = Pit8254.Freq * 449.0 * 800.0 / 25175000.0;
 
-    public Vga(Func<long> pitNow, bool s3 = false, bool nv = false, bool nv17 = false)
+    public Vga(Func<long> pitNow, bool s3 = false, NvChip? nv = null)
     {
         _pitNow = pitNow;
-        Ram = new byte[s3 ? S3Trio64.VramBytes : nv || nv17 ? NvGeForce.VramBytes : RamSize];
+        Ram = new byte[s3 ? S3Trio64.VramBytes : nv is NvChip c ? NvGeForce.VramFor(c) : RamSize];
         if (s3) S3 = new S3Trio64(this);
-        if (nv || nv17) Nv = new NvGeForce(this, nv17);
+        if (nv is NvChip ch) Nv = new NvGeForce(this, ch);
         InitMode3Defaults();
     }
 

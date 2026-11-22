@@ -353,7 +353,7 @@ public sealed partial class NvGeForce
     private uint TexRead(in Tex t, uint off, int n)
     {
         var (vr, a) = DmaAddr(t.Dma, t.Base + off);
-        if (vr) { a &= VramBytes - 1; return n == 1 ? _v.Ram[a] : n == 2 ? (uint)(_v.Ram[a] | _v.Ram[(a + 1) & (VramBytes - 1)] << 8) : a <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)a) : 0; }
+        if (vr) { a &= VramMask; return n == 1 ? _v.Ram[a] : n == 2 ? (uint)(_v.Ram[a] | _v.Ram[(a + 1) & (VramMask)] << 8) : a <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)a) : 0; }
         uint wv = SysRead32?.Invoke(a & ~3u) ?? 0;
         if (n == 4) { if ((a & 3) == 0) return wv; uint hi = SysRead32?.Invoke((a & ~3u) + 4) ?? 0; return (uint)((((ulong)hi << 32) | wv) >> (int)((a & 3) * 8)); }
         return n == 2 ? (wv >> (int)((a & 2) * 8)) & 0xffff : (wv >> (int)((a & 3) * 8)) & 0xff;
@@ -499,8 +499,8 @@ public sealed partial class NvGeForce
         uint rtf = G(inst, 0x208), pitches = G(inst, 0x20c);
         int cfmt = (int)(rtf & 15), cbpp = cfmt == 3 ? 2 : cfmt == 9 ? 1 : 4;
         uint cdma = G(inst, 0x194 | 0x8000), zdma = G(inst, 0x198 | 0x8000);
-        uint cbase = (cdma != 0 ? DmaAddr(cdma, G(inst, 0x210)).addr : G(inst, 0x210)) & (VramBytes - 1);
-        uint zbase = (zdma != 0 ? DmaAddr(zdma, G(inst, 0x214)).addr : G(inst, 0x214)) & (VramBytes - 1);
+        uint cbase = (cdma != 0 ? DmaAddr(cdma, G(inst, 0x210)).addr : G(inst, 0x210)) & (VramMask);
+        uint zbase = (zdma != 0 ? DmaAddr(zdma, G(inst, 0x214)).addr : G(inst, 0x214)) & (VramMask);
         int cpitch = (int)(pitches & 0xffff), zpitch = (int)(pitches >> 16);
         // Z16 when RT_FORMAT says so, or when the zeta pitch has no room for 4-byte depth (the 5.32 driver: format 0x103 with a 640-wide Z16
         // buffer at pitch 0x600; reading that as Z24S8 wrapped every row at x = 384: a black band in 3D scenes)
@@ -547,7 +547,7 @@ public sealed partial class NvGeForce
                 if (w0 < 0 || w1 < 0 || w2 < 0) continue;
                 float z = w0 * a.Z + w1 * b.Z + w2 * c.Z;
                 // stencil + depth
-                uint za = (uint)(zbase + y * zpitch + x * (z16 ? 2 : 4)) & (VramBytes - 1);
+                uint za = (uint)(zbase + y * zpitch + x * (z16 ? 2 : 4)) & (VramMask);
                 uint zv = z16 ? (uint)Math.Clamp(z * 65535f, 0, 65535) : (uint)Math.Clamp(z * 16777215f, 0, 16777215);
                 int sOld = 0, sNew = -1;
                 if (zTest || zWrite || sTest)
@@ -601,7 +601,7 @@ public sealed partial class NvGeForce
                 var o = Combine(inst, col, spec, tx0, tx1, fogV);
                 int oa = (int)(Math.Clamp(o.W, 0, 1) * 255 + 0.5f);
                 if (aTest && !Raster3D.Compare(aFunc, oa, aRef)) continue;
-                uint ca = (uint)(cbase + y * cpitch + x * cbpp) & (VramBytes - 1);
+                uint ca = (uint)(cbase + y * cpitch + x * cbpp) & (VramMask);
                 uint dst = cbpp == 2 ? 0xff000000 | (uint)Raster3D.Rgb565To888(_v.Ram[ca] | _v.Ram[ca + 1] << 8) : cbpp == 4 ? BitConverter.ToUInt32(_v.Ram, (int)ca) : _v.Ram[ca];
                 if (blend) o = Blend(inst, o, Vec4.FromArgb(dst));
                 uint outc = o.ToArgb();

@@ -76,7 +76,7 @@ internal static class X86BootCli
         // --machine names a whole machine (the desktop's presets): its CPU model and video card, unless --cpu / --video say otherwise
         var preset = Arg(args, "--machine") is string mk && PcMachinePreset.Known(mk) ? PcMachinePreset.Find(mk) : null;
         var model = Arg(args, "--cpu") is string cs ? CpuModel.Parse(cs) ?? throw new ArgumentException($"no CPU model {cs}") : preset?.Cpu;
-        var video = Arg(args, "--video") is string vs ? (vs.ToLowerInvariant() switch { "s3" or "s3trio64" => PcVideo.S3Trio64, "geforce" or "nv10" => PcVideo.GeForce256, "gf4mx" or "nv17" => PcVideo.GeForce4Mx, _ => PcVideo.Vga }) : preset?.Video ?? PcVideo.Vga;
+        var video = Arg(args, "--video") is string vs ? (vs.ToLowerInvariant() switch { "s3" or "s3trio64" => PcVideo.S3Trio64, "geforce" or "nv10" => PcVideo.GeForce256, "gf4mx" or "nv17" => PcVideo.GeForce4Mx, "fx5200" or "nv34" => PcVideo.GeForceFx5200, _ => PcVideo.Vga }) : preset?.Video ?? PcVideo.Vga;
         var m = cfg == PcConfig.Default ? new PcMachine(PcMachine.DefaultMemory, model, video) : new PcMachine(cfg, model, video);
         if (Arg(args, "--ips") is string ips) m.InstructionsPerSecond = long.Parse(ips);
         if (Arg(args, "--wav") != null) _wav = new System.IO.MemoryStream();

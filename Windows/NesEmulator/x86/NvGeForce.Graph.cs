@@ -89,24 +89,24 @@ public sealed partial class NvGeForce
         uint off = G(s, src ? 0x308 : 0x30c);
         uint dma = G(s, (src ? 0x184 : 0x188) | 0x8000);
         uint a = dma != 0 ? DmaAddr(dma, off).addr : off;
-        return new Surf(a & (VramBytes - 1), pitch, bpp);
+        return new Surf(a & (VramMask), pitch, bpp);
     }
 
     private uint Px(in Surf s, int x, int y)
     {
-        uint a = (uint)(s.Base + y * s.Pitch + x * s.Bpp) & (VramBytes - 1);
+        uint a = (uint)(s.Base + y * s.Pitch + x * s.Bpp) & (VramMask);
         var r = _v.Ram;
-        return s.Bpp switch { 1 => r[a], 2 => (uint)(r[a] | r[(a + 1) & (VramBytes - 1)] << 8), _ => a <= VramBytes - 4 ? BitConverter.ToUInt32(r, (int)a) : 0 };
+        return s.Bpp switch { 1 => r[a], 2 => (uint)(r[a] | r[(a + 1) & (VramMask)] << 8), _ => a <= VramBytes - 4 ? BitConverter.ToUInt32(r, (int)a) : 0 };
     }
 
     private void Put(in Surf s, int x, int y, uint v)
     {
-        uint a = (uint)(s.Base + y * s.Pitch + x * s.Bpp) & (VramBytes - 1);
+        uint a = (uint)(s.Base + y * s.Pitch + x * s.Bpp) & (VramMask);
         var r = _v.Ram;
         switch (s.Bpp)
         {
             case 1: r[a] = (byte)v; break;
-            case 2: r[a] = (byte)v; r[(a + 1) & (VramBytes - 1)] = (byte)(v >> 8); break;
+            case 2: r[a] = (byte)v; r[(a + 1) & (VramMask)] = (byte)(v >> 8); break;
             default: if (a <= VramBytes - 4) BitConverter.TryWriteBytes(r.AsSpan((int)a), v); break;
         }
     }
@@ -187,7 +187,7 @@ public sealed partial class NvGeForce
     {
         if (inst == 0) return 0;
         var (vr, a) = DmaAddr(inst, off);
-        if (vr) return _v.Ram[a & (VramBytes - 1)];
+        if (vr) return _v.Ram[a & (VramMask)];
         uint w = SysRead32?.Invoke(a & ~3u) ?? 0; return (byte)(w >> (int)((a & 3) * 8));
     }
 
@@ -195,7 +195,7 @@ public sealed partial class NvGeForce
     {
         if (inst == 0) return;
         var (vr, a) = DmaAddr(inst, off);
-        if (vr) { _v.Ram[a & (VramBytes - 1)] = b; return; }
+        if (vr) { _v.Ram[a & (VramMask)] = b; return; }
         uint w = SysRead32?.Invoke(a & ~3u) ?? 0; int sh = (int)(a & 3) * 8;
         SysWrite32?.Invoke(a & ~3u, (w & ~(0xffu << sh)) | ((uint)b << sh));
     }

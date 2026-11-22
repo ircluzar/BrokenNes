@@ -15,7 +15,7 @@ public sealed partial class PcMachine
     private void VbeNv()
     {
         var nv = Nv!;
-        int vram = NvGeForce.VramBytes;
+        int vram = nv.VramBytes;
         switch (AL)
         {
             case 0x00:

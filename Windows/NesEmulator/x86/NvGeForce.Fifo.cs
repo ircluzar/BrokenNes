@@ -40,8 +40,8 @@ public sealed partial class NvGeForce
     // a 32-bit word: the 4 bytes stay in order (only the word index is reversed)
     public uint Ramin32(uint off) { int a = RaminVram(off & ~3u); return BitConverter.ToUInt32(_v.Ram, a); }
     public void RaminW32(uint off, uint v) => BitConverter.TryWriteBytes(_v.Ram.AsSpan(RaminVram(off & ~3u)), v);
-    private uint Vram32(uint a) { a &= VramBytes - 1; return a <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)a) : 0; }
-    private void VramW32(uint a, uint v) { a &= VramBytes - 1; if (a <= VramBytes - 4) BitConverter.TryWriteBytes(_v.Ram.AsSpan((int)a), v); }
+    private uint Vram32(uint a) { a &= VramMask; return a <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)a) : 0; }
+    private void VramW32(uint a, uint v) { a &= VramMask; if (a <= VramBytes - 4) BitConverter.TryWriteBytes(_v.Ram.AsSpan((int)a), v); }
 
     // ================= DMA objects =================
 
