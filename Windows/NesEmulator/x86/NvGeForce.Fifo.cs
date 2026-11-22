@@ -64,7 +64,9 @@ public sealed partial class NvGeForce
 
     private int ActiveChid => (int)(Reg(0x003204) & 0x1f);
     private bool DmaMode(int chid) => (Reg(0x002504) & (1u << chid)) != 0;
-    private uint RamfcBase => (Reg(0x002214) & 0x1fe) << 8;   // RAMFC (one 32-byte context per channel)
+    private uint RamfcBase => (Reg(0x002214) & 0x1fe) << 8;   // RAMFC (one context per channel)
+    /// <summary>RAMFC entry size: 32 bytes on the NV10, 64 on NV17-NV3x (the driver sets bit 16 of 0x2214 then: semaphore + subroutine state).</summary>
+    private uint RamfcStride => TwoHeads && (Reg(0x002214) & 0x10000) != 0 ? 64u : 32u;
 
     private uint UserRead(uint a)
     {
@@ -73,9 +75,9 @@ public sealed partial class NvGeForce
         return o switch
         {
             0x10 => 0x7c,                                                       // PIO: free bytes
-            0x40 => act ? Reg(0x003240) : Ramin32(RamfcBase + (uint)chid * 32),   // DMA PUT
-            0x44 => act ? Reg(0x003244) : Ramin32(RamfcBase + (uint)chid * 32 + 4), // DMA GET
-            0x48 => act ? Reg(0x003248) : Ramin32(RamfcBase + (uint)chid * 32 + 8), // REF
+            0x40 => act ? Reg(0x003240) : Ramin32(RamfcBase + (uint)chid * RamfcStride),   // DMA PUT
+            0x44 => act ? Reg(0x003244) : Ramin32(RamfcBase + (uint)chid * RamfcStride + 4), // DMA GET
+            0x48 => act ? Reg(0x003248) : Ramin32(RamfcBase + (uint)chid * RamfcStride + 8), // REF
             _ => 0,
         };
     }
@@ -99,7 +101,7 @@ public sealed partial class NvGeForce
     /// <summary>A channel switch: CACHE1's DMA state goes back to the old channel's RAMFC, the new one's comes in.</summary>
     private void SwitchTo(int chid)
     {
-        int old = ActiveChid; uint ob = RamfcBase + (uint)old * 32, nb = RamfcBase + (uint)chid * 32;
+        int old = ActiveChid; uint ob = RamfcBase + (uint)old * RamfcStride, nb = RamfcBase + (uint)chid * RamfcStride;
         RaminW32(ob, Reg(0x003240)); RaminW32(ob + 4, Reg(0x003244)); RaminW32(ob + 8, Reg(0x003248)); RaminW32(ob + 12, Reg(0x00322c));
         _reg[0x003240] = Ramin32(nb); _reg[0x003244] = Ramin32(nb + 4); _reg[0x003248] = Ramin32(nb + 8); _reg[0x00322c] = Ramin32(nb + 12);
         _reg[0x003204] = (Reg(0x003204) & ~0x1fu) | (uint)chid | (DmaMode(chid) ? 0x100u : 0);
