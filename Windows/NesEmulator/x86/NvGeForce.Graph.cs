@@ -7,6 +7,7 @@
 // 0x5F / 0x9F blit, 0x61 / 0x65 image from CPU. Not yet: 0x5C lines, 0x64 indexed image, scaled images, 3D.
 
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.IO;
 
@@ -24,7 +25,9 @@ public sealed partial class NvGeForce
     private void GSet(uint inst, int m, uint v) => _gs[(ulong)inst << 16 | (uint)m] = v;
     private int ClassAt(uint inst) => Alias((int)(Ramin32(inst) & 0xfff));
     /// <summary>The NV30 (FX) 2D classes keep the NV04/NV10 method layouts (envytools nv_object.xml): run them as those.</summary>
-    private static int Alias(int c) => c switch { 0x362 => 0x62, 0x389 => 0x89, 0x39e => 0x52, 0x37b => 0x7b, 0x38a => 0x61, 0x366 => 0x66, 0x364 => 0x64, _ => c };
+    // (X86_NVNOALIAS=362,389,...: diagnostics, leave those classes unaliased)
+    private static readonly HashSet<int> NoAlias = new((Environment.GetEnvironmentVariable("X86_NVNOALIAS") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => Convert.ToInt32(x.Trim(), 16)));
+    private static int Alias(int c) => NoAlias.Contains(c) ? c : c switch { 0x362 => 0x62, 0x389 => 0x89, 0x39e => 0x52, 0x37b => 0x7b, 0x38a => 0x61, 0x366 => 0x66, 0x364 => 0x64, _ => c };
 
     /// <summary>The context object of one of these classes an object was given (methods 0x184-0x1A0), or 0.</summary>
     private uint Ctx(uint inst, params int[] classes)
