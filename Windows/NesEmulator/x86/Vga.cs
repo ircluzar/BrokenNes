@@ -396,11 +396,11 @@ public sealed class Vga
         if ((Ar[0x10] & 1) == 0 || (Gr[6] & 1) == 0) RenderText(); else RenderGraphics();
     }
 
-    /// <summary>Sizes <see cref="Frame"/> (clamped to 8..1280 x 8..1024).</summary>
+    /// <summary>Sizes <see cref="Frame"/> (clamped to 8..1600 x 8..1200; boxv9x tops out at 1600x1200).</summary>
     public void Ensure(int w, int h)
     {
         if (w < 8) w = 8; if (h < 8) h = 8;
-        if (w > 1280) w = 1280; if (h > 1024) h = 1024;
+        if (w > 1600) w = 1600; if (h > 1200) h = 1200;
         Width = w; Height = h;
         if (Frame.Length != w * h) Frame = new int[w * h];
     }
