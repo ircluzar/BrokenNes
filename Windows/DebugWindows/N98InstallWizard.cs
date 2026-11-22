@@ -86,6 +86,28 @@ namespace BrokenNes.Windows.DebugWindows
             f.Controls.Add(_srcDrive);
             f.Controls.Add(Row(_drives, Btn("Refresh", FillDrives)));
             f.Controls.Add(_ripBar);
+            if (!N98Seat.HasBase())
+            {
+                // no seat base yet: built once from the user's own Windows 98 SE disc + product key (the key is used for this build only, never saved)
+                var iso = new TextBox { Width = 300 }; var key = new TextBox { Width = 260, CharacterCasing = CharacterCasing.Upper, PlaceholderText = "XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" };
+                f.Controls.Add(Text1("Windows 98 is not set up yet", true));
+                f.Controls.Add(Text1("It is built once from your own Windows 98 Second Edition disc image and its product key (the key is only used for this build: it is not saved anywhere). It takes a few minutes."));
+                f.Controls.Add(Row(iso, Btn("Browse...", () => { using var d = new OpenFileDialog { Filter = "Windows 98 SE disc image (*.iso)|*.iso|All files|*.*" }; if (d.ShowDialog(this) == DialogResult.OK) iso.Text = d.FileName; })));
+                f.Controls.Add(Row(new Label { Text = "Product key", AutoSize = true, Margin = new Padding(0, 6, 6, 0) }, key));
+                Button? build = null;
+                build = Btn("Build Windows 98", () =>
+                {
+                    if (!N98BaseBuild.KeyLooksRight(key.Text)) { Busy("the product key is 5 groups of 5 letters/digits"); return; }
+                    if (!File.Exists(iso.Text.Trim())) { Busy("pick the Windows 98 SE disc image"); return; }
+                    build!.Enabled = false; string k = key.Text; key.Text = "";
+                    Task.Run(() => N98BaseBuild.Run(iso.Text.Trim(), k, log: l => BeginInvoke(() => Busy(l.Length > 90 ? l[..90] : l)))).ContinueWith(t => BeginInvoke(() =>
+                    {
+                        build.Enabled = true;
+                        Busy(t.IsFaulted ? t.Exception!.InnerException!.Message : t.Result["ok"]?.GetValue<bool>() == true ? "Windows 98 is ready: " + t.Result["base"] : t.Result["error"]?.GetValue<string>() ?? "?");
+                    }));
+                });
+                f.Controls.Add(build);
+            }
             f.Controls.Add(Text1("Windows 98 files", true));
             f.Controls.Add(_winFiles);
             f.Controls.Add(Btn("Choose my Windows 98 SE disc image...", () =>

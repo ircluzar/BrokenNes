@@ -39,6 +39,13 @@ internal static class N98InstallCli
             N98Install.RipDisc(drv, iso, (d, t) => { if (d * 20 / t != last) { last = d * 20 / t; Out(new JsonObject { ["rip"] = $"{d}/{t}" }); } });
             o.Disc = iso; Out(new JsonObject { ["ripped"] = iso });
         }
+        if (A("--build-base") is { } biso)   // --build-base WIN98SE.ISO --key-env VAR [--base-out PATH]: the product key from an environment variable only
+        {
+            string key = Environment.GetEnvironmentVariable(A("--key-env") ?? "N98_PRODUCT_KEY") ?? "";
+            var br = N98BaseBuild.Run(biso, key, A("--base-out"), null, l => Console.WriteLine("n98base: " + l));
+            Out(br); if (br["ok"]?.GetValue<bool>() != true) return 2;
+            if (A("--disc") == null && A("--drive") == null) return 0;
+        }
         if (A("--make-winfiles") is { } w98) { var wr = N98Install.MakeWindowsFilesDisc(w98); Out(wr); if (wr["ok"]?.GetValue<bool>() != true) return 2; }
         string shotDir = A("--shotdir") ?? ".";
         Directory.CreateDirectory(shotDir);

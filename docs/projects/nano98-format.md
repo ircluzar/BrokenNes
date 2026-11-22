@@ -270,8 +270,8 @@ Agents drive the flow the way a user does, step by step, looking at the screen a
 - **CLI** (Workshop): `--n98install --disc ISO [--machine M] [--sound S] [--script FILE | --do "step; step"] [--out PKG --title T --exe auto
   [--layer-id ID]] [--settle-layer ID OUT] [--make-winfiles WIN98SE.ISO] [--shotdir DIR]`. Steps: `wait ready|off|exit|frames N|status TEXT`,
   `setups`, `runsetup`, `run PATH [ARGS]`, `keys TEXT`, `shot NAME.png`, `text`, `disc PATH|none`, `winfiles`, `poweroff`, `restart`,
-  `explorer`, `save/load STATE`. Every result line is `n98install: {json}`. The emulator is deterministic: the same steps give the same frames,
-  so `wait frames N` timings found once replay exactly.
+  `explorer`, `save/load STATE`. Every result line is `n98install: {json}`. Timing is close but not frame-exact between runs (the warm state, disc timing):
+  give `wait frames N` some slack, and look at the screen (shot) before each click.
 - Input tokens (all drivers): text is typed; `{enter} {tab} {esc} {space} {bs} {up}... {f1}..{f12}`, combos `{alt+n}`, `{wait:N}`,
   `{at:x,y}` absolute pointer (corner + small steps; 1 mouse count = 2 pixels on the seat), `{m:dx,dy[,buttons]}`, `{click}` (held 10 frames:
   setup buttons miss shorter ones), `{click:dx,dy}`, `{rclick}`.

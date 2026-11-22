@@ -13,6 +13,7 @@ ap.add_argument('--iso', required=True)
 ap.add_argument('--work', required=True)
 ap.add_argument('--size-mb', type=int, default=2000)   # (x86boot reads the disk with File.ReadAllBytes: < 2 GiB)
 ap.add_argument('--keyfile', default='T:/BrokenDev/Archive/win98_m7_c/productkey.txt')
+ap.add_argument('--key-env', help='read the product key from this environment variable (the app passes it so: never on a command line, in a log or a file of ours)')
 ap.add_argument('--accept-eula', action='store_true')
 ap.add_argument('--zip', default='/WIN98SE.ZIP', help='the SE files inside the ISO (the user\'s disc is a 95/98/98SE/ME compilation)')
 a = ap.parse_args()
@@ -35,7 +36,11 @@ def walk(lba, size, path):
         i += L
 pvd = rd(16, S); root = pvd[156:190]
 files = {n.upper(): (l, s) for n, l, s in walk(struct.unpack_from('<I', root, 2)[0], struct.unpack_from('<I', root, 10)[0], '')}
-if a.zip.upper() not in files: sys.exit(f'{a.zip} not on the ISO')
+if a.zip.upper() not in files:
+    known = 'a Windows 95/98/98SE/ME compilation disc holding WIN98SE.ZIP'
+    if any(k.startswith('/WIN98/') and k.endswith('.CAB') for k in files):
+        sys.exit('N98BASE {"ok": false, "error": "this looks like a stand-alone Windows 98 disc: only ' + known + ' is supported by the unattended build so far"}')
+    sys.exit('N98BASE {"ok": false, "error": "this is not a Windows 98 Second Edition disc this build knows (' + known + ')"}')
 l, s = files[a.zip.upper()]
 z = zipfile.ZipFile(io.BytesIO(rd(l, s)))
 media = {}
@@ -47,7 +52,9 @@ print(f'media: {len(media)} files, {sum(map(len, media.values())) // 1024 // 102
 if 'SETUP.EXE' not in media or not any(n.startswith('WIN98_') for n in media): sys.exit('no Win98 Setup in the zip')
 
 # ---- answer file ----
-key = open(a.keyfile).read().strip() if os.path.exists(a.keyfile) else ''
+import re
+key = os.environ.get(a.key_env, '').strip().upper() if a.key_env else (open(a.keyfile).read().strip() if os.path.exists(a.keyfile) else '')
+if key and not re.fullmatch(r'[A-Z0-9]{5}(-[A-Z0-9]{5}){4}', key): sys.exit('N98BASE {"ok": false, "error": "the product key is 5 groups of 5 letters/digits: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX"}')
 if not key: print('WARNING: no product key file: Setup will stop at the key page')
 msbatch = f"""[BatchSetup]
 Version=3.0 (32-bit)

@@ -47,6 +47,10 @@ public sealed partial class N98Seat
 
     /// <summary>The nano98 tools folder (tools, nano98).</summary>
     public static string ToolsDir() => Tools();
+    /// <summary>The Python 3 command (exe, arguments before the script).</summary>
+    public static (string exe, string pre) PythonCmd() => Python();
+    /// <summary>Is there a seat base (the Windows 98 every game runs on)? The install wizard offers to build it from the user's own disc when not.</summary>
+    public static bool HasBase() { try { FindBase(); return true; } catch (FileNotFoundException) { return false; } }
 
     /// <summary>N98INST.EXE: the app's x86\nano98 folder, else the tools' launcher folder.</summary>
     private static string InstallShell()
