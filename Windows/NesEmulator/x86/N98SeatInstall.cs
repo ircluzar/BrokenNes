@@ -86,6 +86,7 @@ public sealed partial class N98Seat
         Directory.CreateDirectory(LayerFolder);
         string to = Path.Combine(LayerFolder, Path.GetFileName(path));
         if (!Path.GetFullPath(to).Equals(Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase)) File.Copy(path, to, true);
+        N98WarmPrebuild.Kick();   // packages that name this layer get their new variant's warm state in the background
     }
 
     /// <summary>n98.py VERB ARGS, its stdout (throws with stderr on failure).</summary>

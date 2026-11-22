@@ -165,6 +165,9 @@ namespace BrokenNes.Windows
             base.OnShown(e);
             windowShown = true;
             webApiServer?.MarkUiReady();
+            // nano98: warm-boot states missing after an app update (or a new layer) are made in the background, never beside a running PC game
+            NesEmulator.X86.N98WarmPrebuild.Busy = () => session is NesEmulator.X86.PcSession;
+            NesEmulator.X86.N98WarmPrebuild.Kick();
         }
 
         /// <summary>Set once by <see cref="OnShown"/>.</summary>
