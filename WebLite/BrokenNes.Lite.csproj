@@ -126,7 +126,7 @@
     <Compile Include="$(NesRoot)debug\movies\Movie.cs"            Link="NesEmulator\debug\movies\Movie.cs" />
     <!-- BrokenDev D8: the read-only debug bridge (window.brokenNesDebug) for the BrokenDev pages: the debug machines, disassemblers and the viewers'
          decoders (debug\*.cs, top level only: the checks, the port and the movie tools stay out). Nothing of it runs until a page calls it. -->
-    <Compile Include="$(NesRoot)debug\*.cs"                       LinkBase="NesEmulator\debug" />
+    <Compile Include="$(NesRoot)debug\*.cs" Exclude="$(NesRoot)debug\N64Disasm.cs" LinkBase="NesEmulator\debug" /> <!-- N64Disasm needs cor64: desktop only -->
     <Compile Include="$(NesRoot)board\Emulator.DebugBridge.cs"   Link="NesEmulator\board\Emulator.DebugBridge.cs" />
     <Compile Include="$(NesRoot)board\NesController.cs"           Link="NesEmulator\board\NesController.cs" />
     <Compile Include="$(NesRoot)board\NesControllerModels.cs"     Link="NesEmulator\board\NesControllerModels.cs" />
