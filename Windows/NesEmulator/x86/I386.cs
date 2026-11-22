@@ -79,7 +79,8 @@ public sealed partial class I386
     private uint _ifXaddr, _ifPaddr;
 
     // TLB
-    private const int TlbSize = 512;
+    /// <summary>X86_TLBBITS (default 9 = 512 entries): the TLB size as a power of two (direct-mapped; the JIT reads it at emit time).</summary>
+    private static readonly int TlbSize = 1 << (int.TryParse(Environment.GetEnvironmentVariable("X86_TLBBITS"), out var tb) && tb is >= 6 and <= 14 ? tb : 9);
     /// <summary>The TLB slot of a linear page: X86_TLBHASH folds bits 9+ in (pages 2 MB apart no longer share a slot: Win98's VMM / Win16
     /// thunk data against user stacks); default the low bits as before.</summary>
     private static readonly bool TlbHash = Environment.GetEnvironmentVariable("X86_TLBHASH") != null;
@@ -120,7 +121,7 @@ public sealed partial class I386
         Model = model;
         _legacy = model.Legacy;
         _hasFpu = !_legacy && model.Fpu; _has486 = !_legacy && model.Ops486; _hasCpuid = !_legacy && model.Cpuid;
-        _has586 = !_legacy && model.Ops586; _hasMmx = !_legacy && model.Mmx;
+        _has586 = !_legacy && model.Ops586; _hasMmx = !_legacy && model.Mmx; _has686 = !_legacy && model.Ops686;
         _repCost16 = RepCosts(model);
         _memCost = MemCost(model);
         BuildOpCosts(model, out _opCost, out _opCost0F, out _mulCost, out _divCost);
@@ -315,6 +316,7 @@ public sealed partial class I386
         0,1, 1,1,   0,0, 1,1,   0,1, 0,1,   0,0, 0,0,   // wp == 1
     };
 
+    private static readonly bool InvlpgAll = Environment.GetEnvironmentVariable("X86_INVLPGALL") != null;
     private void TlbClear()
     {
         for (int i = 0; i < TlbSize; i++) _tlbLpgno[i] = 0xffffffff;
@@ -885,6 +887,7 @@ public sealed partial class I386
         IdtBase = 0; IdtLimit = 0x3ff; GdtBase = 0; GdtLimit = 0;
         Cr0 = 0; Cr2 = 0; Cr3 = 0;
         if (!_legacy) { Cr4 = 0; if (_hasFpu) Cr0 = 0x10; FpuInit(); }   // ET: a 387-class FPU is there
+        if (_has686) { _sysCs = _sysEsp = _sysEip = 0; Array.Clear(_mtrr); _pmcEvt0 = _pmcEvt1 = _pmc0 = _pmc1 = _biosSign = 0; }
         Array.Clear(Dr);
         _ccMask = 0; SegGen++;
         TlbClear();

@@ -36,6 +36,16 @@ public sealed partial class PcMachine : IX86Bus
     public readonly System.Text.StringBuilder Teletype = new();
     /// <summary>Port E9h output (the Bochs debug port): a test program's log.</summary>
     public readonly System.Text.StringBuilder DebugPort = new();
+    /// <summary>A whole line written to port E9h (guest-initiated status, e.g. the nano98 launcher's "N98 ..." lines): raised at the newline.
+    /// Host side only (not in the savestate); the guest decides what and when, so a replay sees the same lines at the same instructions.</summary>
+    public event Action<string>? StatusLine;
+    /// <summary>nano98 COMMAND PORT (host -> guest, read-only, set before power-on): OUT EAh = rewind, IN EAh = the next byte (0 past the end).
+    /// Only the guest's reads move it, so runs replay exactly; saved as block "N98C" when set (older states: none).</summary>
+    public byte[]? Command;
+    /// <summary>nano98 upload port EBh (guest -> host, host side only): the bytes of the file the last "N98 FILE" status line announced.</summary>
+    public Action<byte>? UploadByte;
+    private int _cmdPos;
+    private int _statusFrom;
     /// <summary>Called for a port the board does not answer (for devices added later: sound cards).</summary>
     public Func<int, int, int>? ExtraIn;     // (port, size) -> value or -1
     public Func<int, int, int, bool>? ExtraOut; // (port, size, value) -> handled
@@ -43,7 +53,20 @@ public sealed partial class PcMachine : IX86Bus
     /// <summary>Speed harness only (Workshop --x86speed): time spent drawing the picture, in Stopwatch ticks. Never part of a state.</summary>
     public bool Profiling; public long RenderTicks;
     public long Clock => Cpu.Cycle + _idle;
-    public long PitNow => (long)((Int128)Clock * Pit8254.Freq / InstructionsPerSecond);
+    public long PitNow => _clkEpoch == 0 && _pitEpoch == 0 ? (long)((Int128)Clock * Pit8254.Freq / InstructionsPerSecond)
+        : _pitEpoch + (long)((Int128)(Clock - _clkEpoch) * Pit8254.Freq / InstructionsPerSecond);
+    /// <summary>Where the current instruction rate began (Clock, PIT time): 0/0 = from power-on. Set when the rate changes under a
+    /// running machine (SetIps: a state loaded with another X86_P2CPI), so guest time stays continuous; saved as the "IPSE" block.</summary>
+    private long _clkEpoch, _pitEpoch;
+    /// <summary>Change the instruction rate of a running machine without a jump in guest time (PIT, FDC clock, TSC).</summary>
+    public void SetIps(long ips)
+    {
+        if (ips == InstructionsPerSecond || ips <= 0) return;
+        long clk = Clock, pit = PitNow;
+        Cpu.RebaseTsc(clk, InstructionsPerSecond, ips);
+        _clkEpoch = clk; _pitEpoch = pit; InstructionsPerSecond = ips;
+    }
+    private long MicrosNow => _clkEpoch == 0 && _pitEpoch == 0 ? (long)((Int128)Clock * 1_000_000 / InstructionsPerSecond) : (long)((Int128)PitNow * 1_000_000 / Pit8254.Freq);
 
     /// <summary>What the board is built with (docs/projects/x86-modular-pc.md). Fixed for the machine's life: a change is a new machine.</summary>
     public readonly PcConfig Config;
@@ -91,13 +114,13 @@ public sealed partial class PcMachine : IX86Bus
         if (config.Storage == PcStorage.Ide) Ata = new AtaController(Pic);
         if (config.Bus != PcBus.Isa)
         {
-            Nic = new Rtl8029();
-            Nic.SetIrq = on => { int irq = Pci!.Isa.Cfg[0x61]; if (irq < 16) Pic.SetIrq(irq, on ? 1 : 0); };
+            if (!config.NoNic) Nic = new Rtl8029();
+            if (Nic != null) Nic.SetIrq = on => { int irq = Pci!.Isa.Cfg[0x61]; if (irq < 16) Pic.SetIrq(irq, on ? 1 : 0); };
             if (config.Voodoo) Voodoo = new Voodoo1();
             Pci = new PciBus(this);
         }
         if (config.Bus == PcBus.Pci430TX && !config.NoFloppy)
-            Fdc = new Fdc82077(n => Floppy[n], Dma[2], on => Pic.SetIrq(6, on ? 1 : 0), () => (long)((Int128)Clock * 1_000_000 / InstructionsPerSecond));
+            Fdc = new Fdc82077(n => Floppy[n], Dma[2], on => Pic.SetIrq(6, on ? 1 : 0), () => MicrosNow);
         Pic.Raise = () => Cpu.RaiseIrq();
         RegisterTraps();
     }
@@ -185,6 +208,7 @@ public sealed partial class PcMachine : IX86Bus
                 return (byte)((_port61 & 0x0f) | (_port61Refresh ? 0x10 : 0) | (Pit.GetOut(2) != 0 ? 0x20 : 0));
             case 0x70: case 0x71: return Cmos.In(port);
             case 0x92: return (byte)(Kbc.A20 ? 2 : 0);
+            case 0xea when Command != null: return _cmdPos < Command.Length ? Command[_cmdPos++] : (byte)0;   // nano98 command port
             case 0x201: return 0xff;                          // no joystick
             case 0x388: AdlibWait(); return AdlibPresent ? Opl.ReadStatus() : (byte)0xff;   // AdLib status (FFh: no AdLib)
             case 0x389: AdlibWait(); return 0xff;
@@ -217,7 +241,12 @@ public sealed partial class PcMachine : IX86Bus
             case 0x70: case 0x71: Cmos.Out(port, v); return;
             case 0x92: Kbc.A20 = (v & 2) != 0; if ((v & 1) != 0) CpuResetRequest(); return;
             case 0x80: return;                                // POST code
-            case 0xe9: DebugPort.Append((char)v); return;
+            case 0xea: _cmdPos = 0; return;                   // nano98 command port: rewind
+            case 0xeb: UploadByte?.Invoke(v); return;         // nano98 upload port: a saved file's bytes (after its "N98 FILE" status line)
+            case 0xe9:
+                DebugPort.Append((char)v);
+                if (v == 10) { var l = DebugPort.ToString(_statusFrom, DebugPort.Length - _statusFrom).TrimEnd((char)13, (char)10); _statusFrom = DebugPort.Length; StatusLine?.Invoke(l); }
+                return;
             case 0x388: AdlibWait(); if (AdlibPresent) Opl.WriteAddress(v); return;   // AdLib (YM3812) address
             case 0x389: AdlibWait(); if (AdlibPresent) Opl.WriteData(v); return;      // AdLib data
             case BiosTrapPort: BiosTrap(); Cpu.MemTouched(); return;   // (our BIOS writes memory directly: compiled blocks check their bytes)
@@ -530,8 +559,10 @@ public sealed partial class PcMachine : IX86Bus
             if (Kbc.HasMouse) { w.Write(0x4d325350); Kbc.SaveMouse(w); }   // "PS2M"
             if (Fdc != null) { w.Write(0x30434446); Fdc.Save(w); }   // "FDC0"
             if (Voodoo != null) { w.Write(0x314f4456); Voodoo.Save(w); }   // "VDO1"
+            if (Command != null) { w.Write(0x4338394e); w.Write(Command.Length); w.Write(Command); w.Write(_cmdPos); }   // "N98C": the nano98 command + read position
             if (Ata != null && (Ata.Primary.BmActive || Ata.Secondary.BmActive)) { w.Write(0x4d424449); Ata.Primary.SaveBm(w); Ata.Secondary.SaveBm(w); }   // "IDBM": bus-master DMA
             if (Ata != null && Ata.Secondary.AudioActive) { w.Write(0x41444443); Ata.Secondary.SaveAudio(w); }   // "CDDA": CD audio playing or paused
+            if (_clkEpoch != 0 || _pitEpoch != 0) { w.Write(0x45535049); w.Write(_clkEpoch); w.Write(_pitEpoch); }   // "IPSE": the instruction rate changed under the running machine (SetIps)
             if (Ata != null && (Ata.Primary.AnyMediaChanged || Ata.Secondary.AnyMediaChanged)) { w.Write(0x434d4443); Ata.Primary.SaveMediaChanged(w); Ata.Secondary.SaveMediaChanged(w); }   // "CDMC": a disc change not yet reported (UNIT ATTENTION)
             // "DSKD": the four drives (A:, B:, C:, D:) as base hash + overlay of changed sectors (DiskImage.SaveDiff)
             w.Write(0x444b5344);
@@ -598,7 +629,7 @@ public sealed partial class PcMachine : IX86Bus
         string? picId = null; byte[]? picBlob = null;
         string? svgaId = null; byte[]? svgaBlob = null;
         PcConfig? saved = null; bool mouse = false;
-        bool nicLoaded = false, fdcLoaded = false, vdoLoaded = false, cdda = false, idbm = false, cdmc = false;
+        bool nicLoaded = false, fdcLoaded = false, vdoLoaded = false, cdda = false, idbm = false, cdmc = false, cmdLoaded = false, ipse = false;
         while (r.BaseStream.Position + 4 <= r.BaseStream.Length)
         {
             int magic = r.ReadInt32();
@@ -617,8 +648,10 @@ public sealed partial class PcMachine : IX86Bus
             else if (magic == 0x3043494e && Nic != null) { Nic.Load(r); nicLoaded = true; }
             else if (magic == 0x30434446 && Fdc != null) { Fdc.Load(r); fdcLoaded = true; }
             else if (magic == 0x314f4456 && Voodoo != null) { Voodoo.Load(r); vdoLoaded = true; }
+            else if (magic == 0x4338394e) { Command = r.ReadBytes(r.ReadInt32()); _cmdPos = r.ReadInt32(); cmdLoaded = true; }
             else if (magic == 0x4d424449 && Ata != null) { Ata.Primary.LoadBm(r); Ata.Secondary.LoadBm(r); idbm = true; }
             else if (magic == 0x41444443 && Ata != null) { Ata.Secondary.LoadAudio(r); cdda = true; }
+            else if (magic == 0x45535049) { _clkEpoch = r.ReadInt64(); _pitEpoch = r.ReadInt64(); ipse = true; }
             else if (magic == 0x434d4443 && Ata != null) { Ata.Primary.LoadMediaChanged(r); Ata.Secondary.LoadMediaChanged(r); cdmc = true; }
             else if (magic == 0x444b5344)
             {
@@ -629,6 +662,9 @@ public sealed partial class PcMachine : IX86Bus
             }
             else throw new InvalidDataException($"unknown block {magic:X8} in an x86 state");
         }
+        if (!cmdLoaded) _cmdPos = 0;
+        if (!ipse) { _clkEpoch = 0; _pitEpoch = 0; }
+        if (Cpu.Model.Gen == 6 && Cpu.Model.Ips != InstructionsPerSecond) SetIps(Cpu.Model.Ips);   // e.g. a P2 state loaded with another X86_P2CPI: time goes on from where it was
         if (!cdda) Ata?.Secondary.ClearAudio();
         if (!cdmc) { Ata?.Primary.ClearAllMediaChanged(); Ata?.Secondary.ClearAllMediaChanged(); }   // no "CDMC" (and every older state): the disc in the drive is the one the guest already knows
         if (!idbm) { Ata?.Primary.ClearBm(); Ata?.Secondary.ClearBm(); }

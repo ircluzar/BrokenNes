@@ -1,0 +1,162 @@
+{
+  "schema": 1,
+  "console": "n64",
+  "game": "sm64",
+  "title": "Super Mario 64",
+  "rom_sha1": "9bef1128717f958171a4afac3ed78ee2bb4e86ce",
+  "chapters": [
+    {
+      "id": "sm64",
+      "title": "Boot -> castle -> Bob-omb Battlefield (the compat certification script)",
+      "start": "power-on",
+      "script": "../../../n64/compat/scripts/sm64.txt",
+      "expect": {
+        "frames": 21426,
+        "checkpoints": {
+          "cp1_face": {
+            "frame": 1800,
+            "video": "53762367CBA5E5BB",
+            "picture": "2BC1FDDAEBC40C0C",
+            "ram": "98E581397082E9BC"
+          },
+          "cp2_filesel": {
+            "frame": 2040,
+            "video": "CC985F05088EDE29",
+            "picture": "2E78528FA0162E12",
+            "ram": "E672FDB2E4257DB9"
+          },
+          "cp3_letter": {
+            "frame": 2400,
+            "video": "21667D55F9CE22B0",
+            "picture": "7E407C4D75BC2E6F",
+            "ram": "325BE8E1CF9470ED"
+          },
+          "intro_lakitu": {
+            "frame": 5040,
+            "video": "A3E58ABD49060BF7",
+            "picture": "49462C9058C0A2F0",
+            "ram": "4B91C540AC59852E"
+          },
+          "intro_pipe": {
+            "frame": 6840,
+            "video": "885AD21B481E059F",
+            "picture": "FF67026365891C30",
+            "ram": "1AF8FE72F43D9419"
+          },
+          "cp4_grounds_dialog": {
+            "frame": 7875,
+            "video": "E8AAD7F416C0461C",
+            "picture": "5521CB628C8465B3",
+            "ram": "D04B2F41C40F0E22"
+          },
+          "cp4_grounds_free": {
+            "frame": 8070,
+            "video": "E21F22BA7D6D3B6D",
+            "picture": "670ADE9AB358C336",
+            "ram": "445EC48E7C74E508"
+          },
+          "cp5_castle_front": {
+            "frame": 8840,
+            "video": "5C611E9030E467A2",
+            "picture": "EC0F6906D28A73F1",
+            "ram": "16DD79D9184B85E0"
+          },
+          "cp6_lobby": {
+            "frame": 9760,
+            "video": "C48C5D6C8899EFCD",
+            "picture": "5A3C984C786CEE96",
+            "ram": "E0F88B96E955CB58"
+          },
+          "speed": {
+            "frame": 9760,
+            "video": "C48C5D6C8899EFCD",
+            "picture": "5A3C984C786CEE96",
+            "ram": "E0F88B96E955CB58"
+          },
+          "bob_room": {
+            "frame": 12058,
+            "video": "45C52F38C2A5ED27",
+            "picture": "E688644302AD0AE0",
+            "ram": "84AFAFCA4403F46A"
+          },
+          "star_select": {
+            "frame": 13442,
+            "video": "7EB2E5319B3C94D7",
+            "picture": "4A3D53A2C98EA6FF",
+            "ram": "DFF090DCB39A17B0"
+          },
+          "bob_start": {
+            "frame": 13812,
+            "video": "1066E4356F6E666F",
+            "picture": "9791F6336FEA573F",
+            "ram": "6F53C0EDD52F5752"
+          },
+          "chain_chomp": {
+            "frame": 15178,
+            "video": "601647177728CEBF",
+            "picture": "1B9A6E02BF8CE6CF",
+            "ram": "3402322247B45E00"
+          },
+          "gate_open": {
+            "frame": 16036,
+            "video": "373DD60B556D282E",
+            "picture": "86E03FA8B7C3BB5A",
+            "ram": "C214D34C36983E16"
+          },
+          "in_cage": {
+            "frame": 17014,
+            "video": "7305A30F773C7660",
+            "picture": "04422318F96271EC",
+            "ram": "86CB711191006794"
+          },
+          "star_got": {
+            "frame": 17461,
+            "video": "94847F60A25098EF",
+            "picture": "143F2F6A18731315",
+            "ram": "0A3D8ABDCA272C86"
+          },
+          "save_prompt": {
+            "frame": 18061,
+            "video": "CD6BCEB978C1BB77",
+            "picture": "E4DA5348E963435C",
+            "ram": "C0888347E115382B"
+          },
+          "after_save": {
+            "frame": 18486,
+            "video": "2C8F038943892035",
+            "picture": "0B93887F3EC1D636",
+            "ram": "1DF81CD5EF264CEF"
+          },
+          "play_end": {
+            "frame": 19386,
+            "video": "5EB0781ACF8A08E8",
+            "picture": "B283F243B7B88C07",
+            "ram": "C668BBF8D5C5D9C2"
+          },
+          "end": {
+            "frame": 21426,
+            "video": "96A141691EC48F83",
+            "picture": "3FA208E4B5A1932A",
+            "ram": "00B3A55112A21ED7"
+          },
+          "reset_filesel": {
+            "frame": 21426,
+            "video": "96A141691EC48F83",
+            "picture": "3FA208E4B5A1932A",
+            "ram": "00B3A55112A21ED7"
+          },
+          "save_end": {
+            "frame": 21426,
+            "video": "96A141691EC48F83",
+            "picture": "3FA208E4B5A1932A",
+            "ram": "00B3A55112A21ED7"
+          }
+        }
+      },
+      "notes": "expect blessed from Garage2 run tast1sm64b (PRDP renderer); equals SessionProbe compat sm64 video/audio/frameHash at all 23 checkpoints",
+      "goal": [
+        "reach: picture(\"star1_hud.png\", 272, 10, 20, 21, 100)"
+      ]
+    }
+  ]
+}

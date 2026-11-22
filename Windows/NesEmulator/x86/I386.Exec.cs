@@ -1852,6 +1852,10 @@ public sealed partial class I386
                 case 0x08: return OK;                                            // INVD
                 case 0x30: return Msr(true);                                     // WRMSR
                 case 0x32: return Msr(false);                                    // RDMSR
+                case 0x33: return Rdpmc();                                       // RDPMC (P6)
+                case 0x34: return SysEnterExit(true);                            // SYSENTER (P6)
+                case 0x35: return SysEnterExit(false);                           // SYSEXIT (P6)
+                case >= 0x18 and <= 0x1f: return K(DecodeModrm());               // hint NOPs (P6): the ModR/M and address decode, no access
             }
         }
         switch (b1)
@@ -1911,7 +1915,7 @@ public sealed partial class I386
             case 0x31: return Rdtsc(); // RDTSC: legacy = the instruction count (deterministic; tiny386 reads the host clock), a model = its clock
             case 0x40: case 0x41: case 0x42: case 0x43: case 0x44: case 0x45: case 0x46: case 0x47: case 0x48: case 0x49: case 0x4a: case 0x4b: case 0x4c: case 0x4d: case 0x4e: case 0x4f: // CMOVcc (P6)
             {
-                if (Gen <= 5) return K(Throw0(EX_UD));
+                if (!_has686) return K(Throw0(EX_UD));
                 if (!DecodeE(V, 1)) return FAIL;
                 uint v = ReadE(V);
                 if (Cond(b1)) SReg(V, _reg, v);
@@ -2093,7 +2097,13 @@ public sealed partial class I386
             }
             case 7: // INVLPG
                 if (_mod == 3 || (!_legacy && !_has486)) return K(Throw0(EX_UD));
-                TlbClear();
+                if (InvlpgAll) TlbClear();
+                else
+                {   // that page's entry only, as the CPU (X86_INVLPGALL: the whole TLB, as before)
+                    uint lp = (SegBase[_curSeg] + _addr) >> 12; int e = TlbIdx(lp);
+                    if (_tlbLpgno[e] == lp) { _tlbLpgno[e] = 0xffffffff; TagClear(e); }
+                    _ifLaddr = ulong.MaxValue; _ifPaddr = 0;
+                }
                 return OK;
         }
         return K(Throw0(EX_UD));

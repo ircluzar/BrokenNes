@@ -64,6 +64,39 @@ namespace BrokenNes.Windows
             }
         }
         
+        /// <summary>nano98 game packages folder: BROKENNES_N98_PACKAGES, else Documents\BrokenNes\Windows 98 games (made on first use).</summary>
+        private static string N98PackagesFolder => Environment.GetEnvironmentVariable("BROKENNES_N98_PACKAGES") is { Length: > 0 } f ? f
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "BrokenNes", "Windows 98 games");
+
+        private void FillN98Menu(ToolStripMenuItem menu)
+        {
+            menu.DropDownItems.Clear();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            void Add(string path, string prefix)
+            {
+                if (!seen.Add(Path.GetFullPath(path))) return;
+                menu.DropDownItems.Add(new ToolStripMenuItem(prefix + Path.GetFileNameWithoutExtension(path), null, (_, _) => LoadRomFile(path)) { ToolTipText = path });
+            }
+            foreach (var r in config.RecentRoms.Where(p => p.EndsWith(".n98", StringComparison.OrdinalIgnoreCase) && File.Exists(p)).Take(8)) Add(r, "Recent: ");
+            try
+            {
+                Directory.CreateDirectory(N98PackagesFolder);
+                int before = menu.DropDownItems.Count;
+                if (before > 0) menu.DropDownItems.Add(new ToolStripSeparator());
+                foreach (var f in Directory.GetFiles(N98PackagesFolder, "*.n98").OrderBy(x => x, StringComparer.OrdinalIgnoreCase)) Add(f, "");
+                if (menu.DropDownItems.Count == before + (before > 0 ? 1 : 0)) menu.DropDownItems.Add(new ToolStripMenuItem("(no packages in the folder yet)") { Enabled = false });
+            }
+            catch (IOException) { } catch (UnauthorizedAccessException) { }
+            menu.DropDownItems.Add(new ToolStripSeparator());
+            menu.DropDownItems.Add(new ToolStripMenuItem("Open the games folder", null, (_, _) => { Directory.CreateDirectory(N98PackagesFolder); System.Diagnostics.Process.Start("explorer.exe", "\"" + N98PackagesFolder + "\""); }) { ToolTipText = N98PackagesFolder });
+        }
+
+        private void OpenN98_Click(object? sender, EventArgs e)
+        {
+            using var d = new OpenFileDialog { Filter = "Windows 98 game packages (*.n98)|*.n98|All files (*.*)|*.*", Title = "Open a game package (.n98): Windows 98 boots straight into the game" };
+            if (d.ShowDialog() == DialogResult.OK) LoadRomFile(d.FileName);
+        }
+
         private void ResetGame()
         {
             if (!string.IsNullOrEmpty(currentRomPath) && File.Exists(currentRomPath))
@@ -85,7 +118,8 @@ namespace BrokenNes.Windows
                     return;
                 }
                 
-                byte[] romData = File.ReadAllBytes(path);
+                if (NesEmulator.X86.N98Seat.IsPackage(path)) { LoadN98File(path); return; }   // (read off the UI thread, loading screen: MainForm.N98Loading.cs)
+                byte[] romData = NesEmulator.X86.DiskImage.ReadImageFile(path);   // (= File.ReadAllBytes; an x86 disk image also gets its cached base hash, IMAGE.p256)
 
                 LoadRomBytes(Path.GetFileName(path), romData, path, addToRecentRoms: true);
             }

@@ -73,7 +73,7 @@ public sealed partial class I386
     private static readonly bool NoStkOp = Environment.GetEnvironmentVariable("X86_NOSTKOP") != null, NoFlagOp = Environment.GetEnvironmentVariable("X86_NOFLAGOP") != null;
     private static readonly bool NoFwaitOp = Environment.GetEnvironmentVariable("X86_NOFWAITOP") != null;
     private static readonly int StkMask = int.TryParse(Environment.GetEnvironmentVariable("X86_STKMASK"), out int sm) ? sm : 15;   // (bit 3 PUSH Sreg: was broken by an Op truncation, PUSH FS pushed GS: Win98 fatal 0D at boot)
-    private static readonly int JitHot = int.TryParse(Environment.GetEnvironmentVariable("X86_JITHOT"), out int jh) ? jh : 512;   // (32 before 2026-11-21: after a state load the background compiler fell ~100 M instructions behind - 85-90% of all interpreted instructions were pending; suite geomean -16.7%, every case faster; an adaptive 32-when-idle variant lost 6.8%)
+    private static readonly int JitHot = int.TryParse(Environment.GetEnvironmentVariable("X86_JITHOT"), out int jh) ? jh : 8192;   // (8192 since 2026-11-21 cpuwarm2: Garage2 suite 3 rounds vs 2048 -4.7% geomean (desktop -19, boot -4, aoe -1, camp 0, sc +2.5; 4096 was -2.1%); PEARL 2-core 3 rounds -4.8% (desktop -17, boot -5, camp -3, aoe 0, sc +1.5); a lower threshold on pages with code (X86_JITHOTPG=256) +12% worse. 2048 since 2026-11-21 cpuwarm: suite Garage2 -7.3% geomean (aoe -9, boot -11, desktop -10, camp -7, sc 0), PEARL 2-core aoe -12 boot -15 desktop -16 camp -6 sc -1.5; 36k soaks unchanged. 512 before that; 32 before 2026-11-21: after a state load the background compiler fell ~100 M instructions behind - 85-90% of all interpreted instructions were pending; suite geomean -16.7%, every case faster; an adaptive 32-when-idle variant lost 6.8%)
     private JitCode? _jitCur;   // the block running now
     private readonly JitEntry[] _je = new JitEntry[1 << JitBits];
     private readonly List<JitCode> _jitAll = new();
@@ -162,8 +162,9 @@ public sealed partial class I386
                 if (PcMachine.TimeProbe) _jtWhy = 1;
                 return JitInvalidated(ref en);
             }
+            if (en.Pending && JitHotQ) en.Visits++;   // (X86_JITHOTQ: the queue compiles the most-run waiting region first)
             if (en.Failed || en.Pending) { if (PcMachine.TimeProbe) _jtWhy = en.Failed ? 2 : 3; return JIT_DECLINE; }
-            if (++en.Visits >= JitHot) { if (PcMachine.TimeProbe) _jtWhy = 4; JitCompile(ref en); }
+            if (++en.Visits >= _jitHotNow) { if (PcMachine.TimeProbe) _jtWhy = 4; JitCompile(ref en); }
             else if (PcMachine.TimeProbe) _jtWhy = 5;
             return JIT_DECLINE;
         }
@@ -281,6 +282,7 @@ public sealed partial class I386
     private int _jsOk, _jsRd;
     private uint _jsGen = 0xffffffffu, _jsMode = 0xffffffffu;   // JSegLoad's memo key (not saved: SegGen moves on at every state load)
     private static readonly bool NoSegMemo = Environment.GetEnvironmentVariable("X86_NOSEGMEMO") != null;
+    private static readonly bool NoSegInl = Environment.GetEnvironmentVariable("X86_NOSEGINL") != null;
     private static readonly bool NoSegLoad = Environment.GetEnvironmentVariable("X86_NOSEGLOAD") != null;
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void JSegLoad(int mask)
@@ -363,6 +365,9 @@ public sealed partial class I386
     }
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JGrp3(int bits) => Grp3Body(bits);
     /// <summary>FE / FF: INC / DEC Eb / Ev, CALL / JMP / PUSH Ev (after JPrep; the far forms are never compiled). False = a fault.</summary>
+    private static readonly bool CmOne = Environment.GetEnvironmentVariable("X86_CMONE") != null;
+    private static readonly bool NoGrp5Inl = Environment.GetEnvironmentVariable("X86_NOGRP5INL") != null;
+    private static bool Grp5Inline(in DEntry e) => !NoGrp5Inl && e.Reg is 2 or 4 or 6 && e.Bits != 8;
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JGrp5(int bits)
     {
         if (_reg < 2) { if (!TranslateE(bits, 3)) return false; IncDec(bits, _reg == 1); return true; }
@@ -569,7 +574,8 @@ public sealed partial class I386
     private static readonly FieldInfo FSrc1 = Fld("_ccSrc1"), FSrc2 = Fld("_ccSrc2"), FDst = Fld("_ccDst"), FDst2 = Fld("_ccDst2"), FOp = Fld("_ccOp"),
         FMask = Fld("_ccMask"), FFlags = Fld("Flags"), FR = Fld("R"), FMem = Fld("Mem"), FSpm = Fld("_spm"),
         FTlbL = Fld("_tlbLpgno"), FTlbX = Fld("_tlbXaddr"), FTlbT = Fld("_tlbTag"), FCpl = Fld("Cpl"), FCodeMark = Fld("_codeMark"), FDeclWhy = Fld("_declWhy"), FJitCur = Fld("_jitCur"),
-        FSegKey = typeof(JitCode).GetField("SegKey")!;
+        FSegKey = typeof(JitCode).GetField("SegKey")!,
+        FSegGen = Fld("SegGen"), FJsGen = Fld("_jsGen"), FJsMode = Fld("_jsMode"), FCr0 = Fld("Cr0");
 
     private static MethodInfo M(string name) => typeof(I386).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
         ?? throw new MissingMethodException(nameof(I386), name);
@@ -730,9 +736,10 @@ public sealed partial class I386
         }
         en.Pending = true;
         if (JitWatch != 0 && pas.Contains(JitWatch)) Console.Error.WriteLine($"jw: post region {start:X8} n {pas.Length}");
-        _jitPending++; JitPosted++; JitInstrCompiled += pas.Length;
+        _jitPending++; JitHotUpdate(); JitPosted++; JitInstrCompiled += pas.Length;
         if (!_jitSeenKeys.Add(key)) JitRecompiles++;
-        JitWorker.Post(() =>
+        if (JitHotQ) en.Visits = 0;
+        JitWorker.Post(this, start, () =>
         {
             if (JitDelay > 0) { int ms; lock (_jitDelayRng) ms = _jitDelayRng.Next(4); if (ms > 0) System.Threading.Thread.Sleep(ms); }
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -761,7 +768,7 @@ public sealed partial class I386
         if (JitDelay > 0) { int r; lock (_jitDelayRng) r = _jitDelayRng.Next(JitDelay); if (r != 0) return; }   // X86_JITDELAY: install at a random later batch
         while (_jitDone.TryDequeue(out var d))
         {
-            _jitPending--;
+            _jitPending--; JitHotUpdate();
             var (code, key) = d;
             bool ok = code.Fn != null && JitSame(code);
             if (JitWatch != 0 && code.Addrs.Contains(JitWatch)) Console.Error.WriteLine($"jw: drain region {code.Start:X8} ok {ok} fn {code.Fn != null}");
@@ -789,14 +796,34 @@ public sealed partial class I386
     private static readonly int JitDelay = int.TryParse(Environment.GetEnvironmentVariable("X86_JITDELAY"), out int jd) ? Math.Max(0, jd) : 0;
     private readonly Random _jitDelayRng = new();
     private int _jitPending;
+    /// <summary>X86_JITBACKP=k (warm-up): the hot threshold is JitHot + k per region still waiting for the background compiler (at most
+    /// X86_JITBACKMAX, default 8192): a burst of new code (a state load, a level) only queues what stays hot while the compiler is behind.
+    /// Never changes what compiled code does (only when a region is asked for); X86_JITSYNC: nothing is ever pending, so JitHot as before.</summary>
+    private static readonly int JitBackP = int.TryParse(Environment.GetEnvironmentVariable("X86_JITBACKP"), out int bp) ? Math.Max(0, bp) : 0;
+    private static readonly int JitBackMax = int.TryParse(Environment.GetEnvironmentVariable("X86_JITBACKMAX"), out int bm) ? bm : 8192;
+    private int _jitHotNow = JitHot;
+    private void JitHotUpdate() { if (JitBackP > 0) _jitHotNow = (int)Math.Min(JitBackMax, JitHot + (long)JitBackP * _jitPending); }
     /// <summary>X86_JITSYNC: compile on the CPU's own thread, at once (as before: a hitch, but the compiled code runs from the 32nd visit).</summary>
     private static readonly bool JitAsync = Environment.GetEnvironmentVariable("X86_JITSYNC") == null;
+
+    /// <summary>The background compiler, shared by every CPU in the process.</summary>
+    /// <summary>X86_JITHOTQ=1: the background compiler takes the waiting region the interpreter has run most often since it was queued
+    /// (its start's visit count, kept counting while pending), newest first on ties; default: newest first. Only the moment a region
+    /// installs changes (the async-JIT parity gate covers any timing).</summary>
+    private static readonly bool JitHotQ = Environment.GetEnvironmentVariable("X86_JITHOTQ") == "1";
+    private int JitPendingHeat(uint start)
+    {
+        ref var e = ref _je[JitIndex(start)];
+        return e.Start == start && e.Pending ? System.Threading.Volatile.Read(ref e.Visits) : -1;
+    }
 
     /// <summary>The background compiler, shared by every CPU in the process.</summary>
     private static class JitWorker
     {
         // newest first: the block hot right now matters more than one queued while a burst of new code went by
         private static readonly System.Collections.Concurrent.BlockingCollection<Action> Q = new(new System.Collections.Concurrent.ConcurrentStack<Action>());
+        private static readonly List<(I386 cpu, uint start, Action a)> HQ = new();
+        private static readonly System.Threading.SemaphoreSlim HSem = new(0);
         public static readonly int Threads = int.TryParse(Environment.GetEnvironmentVariable("X86_JITTHREADS"), out int jt) ? Math.Max(1, jt) : Math.Clamp(Math.Min(Environment.ProcessorCount / 2, Environment.ProcessorCount - 2), 1, 6);
         /// <summary>The compilers run below normal priority (a game load's ~1000 regions must not starve the CPU / sound threads);
         /// X86_JITPRIONORMAL: normal priority (before 2026-11-21).</summary>
@@ -805,10 +832,26 @@ public sealed partial class I386
         {
             // half the host threads (at most 6): a game's start asks for ~1000 blocks at once
             for (int i = 0; i < Threads; i++)
-                new System.Threading.Thread(() => { foreach (var a in Q.GetConsumingEnumerable()) a(); })
+                new System.Threading.Thread(() => { if (JitHotQ) for (;;) TakeHot()(); else foreach (var a in Q.GetConsumingEnumerable()) a(); })
                 { IsBackground = true, Name = "x86 block compiler", Priority = NormalPrio ? System.Threading.ThreadPriority.Normal : System.Threading.ThreadPriority.BelowNormal }.Start();
         }
-        public static void Post(Action a) => Q.Add(a);
+        private static Action TakeHot()
+        {
+            HSem.Wait();
+            lock (HQ)
+            {
+                int best = HQ.Count - 1, bh = int.MinValue;
+                for (int i = HQ.Count - 1; i >= 0; i--) { int h = HQ[i].cpu.JitPendingHeat(HQ[i].start); if (h > bh) { bh = h; best = i; } }
+                var a = HQ[best].a; HQ.RemoveAt(best);
+                return a;
+            }
+        }
+        public static void Post(I386 cpu, uint start, Action a)
+        {
+            if (!JitHotQ) { Q.Add(a); return; }
+            lock (HQ) HQ.Add((cpu, start, a));
+            HSem.Release();
+        }
     }
 
     /// <summary>A CMP / TEST whose next bytes are JZ / JNZ rel8 (tiny386's try_jcc8 folds them).</summary>
@@ -969,8 +1012,19 @@ public sealed partial class I386
             Op(bits == 8 ? OpCodes.Stind_I1 : bits == 16 ? OpCodes.Stind_I2 : OpCodes.Stind_I4);
             // a code line (I386.cs CodeWr): the page moves on
             Ld(cmref); Ld(phys); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1);
-            if (bits != 8) { Ld(cmref); Ld(phys); I4(bits / 8 - 1); Op(OpCodes.Add); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1); Op(OpCodes.Or); }
-            il.Emit(OpCodes.Brfalse, done);
+            if (bits != 8 && !CmOne) { Ld(cmref); Ld(phys); I4(bits / 8 - 1); Op(OpCodes.Add); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1); Op(OpCodes.Or); }
+            if (bits != 8 && CmOne)
+            {   // (X86_CMONE: the second line only when the store crosses into it)
+                var code = il.DefineLabel();
+                il.Emit(OpCodes.Brtrue, code);
+                Ld(phys); I4(63); Op(OpCodes.And); I4(64 - bits / 8); il.Emit(OpCodes.Ble_Un, done);
+                Ld(cmref); Ld(phys); I4(bits / 8 - 1); Op(OpCodes.Add); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1);
+                il.Emit(OpCodes.Brfalse, done);
+                il.MarkLabel(code);
+                Ld0(); Ld(phys); I4(bits / 8); Call("CodeWrite");
+                il.Emit(OpCodes.Br, done);
+            }
+            else il.Emit(OpCodes.Brfalse, done);
             Ld0(); Ld(phys); I4(bits / 8); Call("CodeWrite");
             il.Emit(OpCodes.Br, done);
             il.MarkLabel(slow);
@@ -1057,6 +1111,17 @@ public sealed partial class I386
         int segMask = 0;
         foreach (int s in usedSegs) segMask |= 1 << s;
         bool segLoad = !NoSegLoad && segMask != 0;
+        // JSegLoad with its memo test inline (X86_NOSEGINL: always the call): SegGen / PE / VM unchanged since the last computation = no call
+        void SegLoadCall()
+        {
+            if (NoSegInl || NoSegMemo) { Ld0(); I4(segMask); Call("JSegLoad"); return; }
+            var skip = il.DefineLabel(); var call = il.DefineLabel();
+            Ld0(); il.Emit(OpCodes.Ldfld, FSegGen); Ld0(); il.Emit(OpCodes.Ldfld, FJsGen); il.Emit(OpCodes.Bne_Un, call);
+            LdF(FFlags); I4(16); Op(OpCodes.Shr_Un); I4(2); Op(OpCodes.And); Ld0(); il.Emit(OpCodes.Ldfld, FCr0); I4(1); Op(OpCodes.And); Op(OpCodes.Or);
+            Ld0(); il.Emit(OpCodes.Ldfld, FJsMode); il.Emit(OpCodes.Beq, skip);
+            il.MarkLabel(call); Ld0(); I4(segMask); Call("JSegLoad");
+            il.MarkLabel(skip);
+        }
         // segment generation (X86_SEGGEN: on; off by default): when every segment the block uses is specialized, the block remembers the SegGen / VM / PE
         // key its last full check passed with; the same key again = nothing segment-related changed: no JSegLoad, no per-segment checks
         bool segGenFast = !NoSegGen && segLoad && spec != null && spec.Mask != 0 && (segMask & ~spec.Mask) == 0;
@@ -1066,7 +1131,7 @@ public sealed partial class I386
             Ld0(); Call("JSegKey"); Stl(segKeyL!);
             Ld0(); il.Emit(OpCodes.Ldfld, FJitCur); il.Emit(OpCodes.Ldfld, FSegKey); Ld(segKeyL!); il.Emit(OpCodes.Beq, segFastOk);
         }
-        if (segLoad) { Ld0(); I4(segMask); Call("JSegLoad"); }
+        if (segLoad) SegLoadCall();
         // segment specialization (X86_NOSEGSPEC: off): a segment usable when the block was compiled has its base / span / lo as constants and
         // no per-instruction usability test; the prologue checks it still holds those values (else: decline, and the block is compiled again
         // without the assumption); likewise SpMask
@@ -1274,7 +1339,7 @@ public sealed partial class I386
                 {
                     if (segLoad)
                     {
-                        Ld0(); I4(segMask); Call("JSegLoad");
+                        SegLoadCall();
                         foreach (int s in usedSegs)
                         {
                             if (IsSpec(s)) { Ld0(); I4(s); U4(spec!.Base[s]); U4(spec.Span[s]); U4(spec.Lo[s]); Call("JSSame"); il.Emit(OpCodes.Brfalse, leaveG); continue; }   // (changed: leave after it)
@@ -1331,7 +1396,7 @@ public sealed partial class I386
                     LimitCheck(k, e.Seg, ea, Math.Max(1, bits / 8));
                     LdBase(e.Seg); il.Emit(OpCodes.Ldloc, ea); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, la);
                     // (the forms that run through a helper translate there themselves)
-                    bool helper = e.Kind is DK_GRP3 or DK_GRP5 || (e.Kind == DK_GRP2 && e.Reg is not (4 or 5 or 6 or 7));
+                    bool helper = e.Kind is DK_GRP3 || (e.Kind == DK_GRP5 && !Grp5Inline(e)) || (e.Kind == DK_GRP2 && e.Reg is not (4 or 5 or 6 or 7));
                     bool write = e.Kind is DK_MOVEG or DK_MOVSR or DK_MOVEI or DK_SETCC or DK_GRP2 or DK_XCHG ||
                                  (e.Kind == DK_ALUEG && e.Op != 7) || (e.Kind == DK_GRP1 && e.Reg != 7);
                     if (!helper) Xlat(k, Math.Max(1, bits / 8), write);
@@ -1671,6 +1736,15 @@ public sealed partial class I386
                 case DK_SETCC:
                     CondTop((uint)op); Stl(t); WriteET();
                     break;
+                case DK_CMOV:
+                {   // CMOVcc r, E (P6): the source is read (and may fault) whatever the condition, the register written only when it holds
+                    ReadE(); Stl(t);
+                    var skip = il.DefineLabel();
+                    CondTop((uint)op); il.Emit(OpCodes.Brfalse, skip);
+                    StReg(bits, e.Reg, () => Ld(t));
+                    il.MarkLabel(skip);
+                    break;
+                }
                 case DK_IMUL:
                     // Imul2(bits, reg, a, b): 0F AF a = reg, b = E; 69 / 6B a = E, b = imm
                     if (op == 0) { LdReg(bits, e.Reg); Stl(A); ReadE(); Stl(B); }
@@ -1690,6 +1764,25 @@ public sealed partial class I386
                     StF(FDst, () => Ld(D)); StF(FMask, () => U4(ALL));
                     StReg(bits, e.Reg, () => Ld(D));
                     break;
+                case DK_GRP5 when Grp5Inline(e):
+                {
+                    // CALL / JMP / PUSH Ev inline (X86_NOGRP5INL: through JGrp5): v = E (read first, as the interpreter), then CALL / PUSH as
+                    // DK_CALL / DK_PUSH, JMP: NextIp = v; leave
+                    int pb = e.O16 ? 16 : 32;
+                    ReadE(); Stl(B);
+                    if (e.Reg == 4) { StDec(); LeaveAfter(k, () => Ld(B)); ends = true; break; }
+                    if (e.Reg == 2) IpAt(pe); else Ld(B);
+                    Stl(t);
+                    LdReg(32, 4); I4(pb / 8); Op(OpCodes.Sub); Stl(A);
+                    Ld(A); LdSpm(); Op(OpCodes.And); Stl(ea); LimitCheck(k, SEG_SS, ea, pb / 8);
+                    LdBase(SEG_SS); Ld(A); LdSpm(); Op(OpCodes.And); Op(OpCodes.Add); Stl(la);
+                    Xlat(k, pb / 8, true);
+                    StReg(32, 4, () => { Ld(A); LdSpm(); Op(OpCodes.And); LdReg(32, 4); LdSpm(); Op(OpCodes.Not); Op(OpCodes.And); Op(OpCodes.Or); });
+                    StMem(pb, la, t);
+                    if (e.Reg == 2) { StDec(); LeaveAfter(k, () => Ld(B)); ends = true; }
+                    else SmcCheck(pg ? pax : la, pb / 8);
+                    break;
+                }
                 case DK_GRP5:
                     Prep();
                     Ld0(); I4(bits); Call("JGrp5"); FailIfFalse();
@@ -1886,13 +1979,14 @@ public sealed partial class I386
         return m;
     }
     /// <summary>Does this compiled instruction only read its memory operand (so a readable code segment will do)? Conservative: false when unsure.</summary>
-    private static bool InsReadsOnly(DEntry e) => e.Kind is DK_MOVGE or DK_ALUGE or DK_TESTEG or DK_G3TEST or DK_MOVX or DK_IMUL or DK_SRMOV
+    private static bool InsReadsOnly(DEntry e) => e.Kind is DK_MOVGE or DK_ALUGE or DK_TESTEG or DK_G3TEST or DK_MOVX or DK_IMUL or DK_SRMOV or DK_CMOV
         || (e.Kind == DK_ALUEG && e.Op == 7) || (e.Kind == DK_GRP1 && e.Reg == 7) || (e.Kind == DK_GRP5 && e.Reg is 2 or 4 or 6);   // (MOV Sreg / CALL / JMP / PUSH [mem]: reads)
     private static readonly bool SegLazy = Environment.GetEnvironmentVariable("X86_SEGLAZY") != "0";
 
     private static bool DcHasModrm(byte kind) => kind is DK_MOVEG or DK_MOVGE or DK_ALUEG or DK_ALUGE or DK_GRP1 or DK_GRP2 or DK_TESTEG
-        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU or DK_MMX or DK_XCHG;
+        or DK_G3TEST or DK_GRP3 or DK_MOVEI or DK_LEA or DK_MOVX or DK_SETCC or DK_IMUL or DK_GRP5 or DK_MOVSR or DK_SRMOV or DK_FPU or DK_MMX or DK_XCHG or DK_CMOV;
     /// <summary>X86_XCHGMEM: compile XCHG r, mem inline (opt-in: Garage2 A/B 2026-11-20 StarCraft -0.6%, AoE +2.1%, within noise).</summary>
+    private static readonly bool NoCmovJit = Environment.GetEnvironmentVariable("X86_NOCMOVJIT") != null;
     private static readonly bool NoXchgMem = Environment.GetEnvironmentVariable("X86_XCHGMEM") == null;
 }
 

@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "console": "nes",
+  "game": "smb1",
+  "rom_sha1": "ea343f4e445a9050d4b4fbac2c77d0693b1d0922",
+  "cores": "FIX/FIX/FIX",
+  "power_on": "fceux",
+  "ntsc": false,
+  "chapters": [
+    {
+      "id": "1-2",
+      "start": "state:1-2.start.state",
+      "script": "1-2_t3search.tlog",
+      "goal": [
+        "always: lives >= 1",
+        "always: engine != 11",
+        "reach: engine == 4",
+        "reach: level == 2"
+      ],
+      "notes": "T3 search: delete 1764:3; delete 801:1 -> score goal first at 2087 (base 2091), lag 3 (base 4); 1733 candidates, 2 round(s). Fleet search tas3smb12d 2026-11-21: 2 rounds beam 4, 1733 candidates (286 ok) on 7 fleet PCs; flag (engine==4) 2091 -> 2087, lag 4 -> 3; 1-3 still loads at the same frame (21-frame rule not crossed).",
+      "expect": {
+        "frames": 3060,
+        "checkpoints": {
+          "end": {
+            "frame": 3060,
+            "video": "7B21BC6F0D0F204B",
+            "picture": "1719DCA5CEF7A325",
+            "ram": "A4245855CF9480A5"
+          }
+        }
+      }
+    }
+  ],
+  "ramdb": "../../ramdb/nes/smb1.json",
+  "title": "Super Mario Bros. World 1-2, T3 fleet search result (flag grabbed 4 frames earlier)"
+}

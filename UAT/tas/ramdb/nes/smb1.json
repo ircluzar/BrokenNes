@@ -1,0 +1,28 @@
+{
+  "console": "nes", "game": "smb1", "title": "Super Mario Bros.",
+  "source": "SMB1 disassembly (doppelganger) RAM names",
+  "vars": {
+    "oper_mode":   { "addr": "0770", "notes": "0 title, 1 game, 2 victory, 3 game over" },
+    "oper_task":   { "addr": "0772" },
+    "engine":      { "addr": "000E", "notes": "GameEngineSubroutine: 4 flagpole slide, 5 end of level walk, 7 entering pipe, 8 player control, 11 dying" },
+    "world":       { "addr": "075F", "notes": "0 = World 1" },
+    "level":       { "addr": "075C", "notes": "0 = x-1" },
+    "area":        { "addr": "0760" },
+    "x_page":      { "addr": "006D" },
+    "x_screen":    { "addr": "0086" },
+    "x":           { "expr": "x_page*256+x_screen", "notes": "Mario's level x in pixels" },
+    "x_sub":       { "addr": "0400" },
+    "y":           { "addr": "00CE" },
+    "y_page":      { "addr": "00B5" },
+    "speed":       { "addr": "0057", "type": "s8" },
+    "state":       { "addr": "001D", "notes": "0 ground, 1 jumping, 2 falling, 3 climbing/flagpole" },
+    "size":        { "addr": "0754", "notes": "0 big, 1 small" },
+    "power":       { "addr": "0756", "notes": "0 small, 1 big, 2 fire" },
+    "lives":       { "addr": "075A" },
+    "timer":       { "addr": "07F8", "size": 3, "type": "digits" },
+    "score":       { "addr": "07DD", "size": 6, "type": "digits" },
+    "coins":       { "addr": "075E" },
+    "screen_left": { "addr": "071A" },
+    "frame_ctr":   { "addr": "0009" }
+  }
+}

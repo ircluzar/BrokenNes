@@ -240,7 +240,10 @@ public sealed class S3Trio64
     // ================= the picture =================
 
     public int Width => DispiOn ? Math.Max(8, (int)Dispi[1]) : ((_v.Cr[1] + 1) | ((_v.Cr[0x5d] & 2) << 7)) * 8;
-    public int Height => DispiOn ? Math.Max(8, (int)Dispi[2]) : (_v.Cr[0x12] | ((_v.Cr[7] & 2) << 7) | ((_v.Cr[7] & 0x40) << 3) | ((_v.Cr[0x5e] & 2) << 9)) + 1;
+    /// <summary>Picture lines: the display-end count divided by the scan-line repeat (CR09 max scan line + 1, x2 with double scan).
+    /// Low-res enhanced modes (Half-Life's 320x240x16 through DirectDraw: CR09 = 41h) send each line twice; the picture is the 240 distinct lines.</summary>
+    public int Height => DispiOn ? Math.Max(8, (int)Dispi[2]) : Math.Max(1, ((_v.Cr[0x12] | ((_v.Cr[7] & 2) << 7) | ((_v.Cr[7] & 0x40) << 3) | ((_v.Cr[0x5e] & 2) << 9)) + 1)
+                                     / (((_v.Cr[9] & 0x1f) + 1) * ((_v.Cr[9] >> 7) + 1)));
     public int Stride => DispiOn ? Dispi[6] * DispiBpp : (_v.Cr[0x13] | ((_v.Cr[0x51] & 0x30) << 4)) * 8;
     public int StartByte => DispiOn ? (Dispi[9] * Dispi[6] + Dispi[8]) * DispiBpp : ((_v.Cr[0x0d] | (_v.Cr[0x0c] << 8) | ((_v.Cr[0x31] & 0x30) << 12) | ((_v.Cr[0x69] & 0x1f) << 16))) * 4;
 

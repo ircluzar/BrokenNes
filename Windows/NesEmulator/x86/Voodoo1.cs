@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 // 3dfx Voodoo Graphics (SST-1, "Voodoo 1") PCI add-in card: register file, FIFO model, LFB, texture memory, video/DAC, buffer swaps.
 // Written for BrokenNes (C:\BrokenNes-work\voodoo\SCOPE.md). The register semantics and the pixel pipeline (Voodoo1.Render.cs) are ported from
 // MAME src/devices/video/voodoo.cpp / voodoo_regs.h / voodoo_render.cpp:
@@ -183,8 +184,12 @@ public sealed partial class Voodoo1 : IPciMmio
 
     // ================= PCI memory window =================
 
+    /// <summary>X86_VDOLOG=1: counts of register reads / writes by offset (debugging what a driver polls; not saved).</summary>
+    public static readonly bool Log = Environment.GetEnvironmentVariable("X86_VDOLOG") == "1";
+    public readonly Dictionary<string, long> LogCounts = new();
     public uint MmioRead(uint off, int size)
     {
+        if (Log) { string k = $"R {off:X6}"; LogCounts[k] = LogCounts.GetValueOrDefault(k) + 1; }
         uint d;
         if (off < 0x400000) d = RegRead(off >> 2);
         else if (off < 0x800000) d = LfbRead((off - 0x400000) >> 2);
@@ -195,6 +200,7 @@ public sealed partial class Voodoo1 : IPciMmio
 
     public void MmioWrite(uint off, uint v, int size)
     {
+        if (Log) { string k = off < 0x400000 ? $"W {off:X6}" : "W lfb"; LogCounts[k] = LogCounts.GetValueOrDefault(k) + 1; }
         uint sh = (off & 3) * 8, mask = size == 4 ? 0xffffffff : size == 2 ? 0xffffu << (int)sh : 0xffu << (int)sh;
         uint data = v << (int)sh;
         if (off < 0x400000) RegWrite(off >> 2, data);   // registers: partial writes land as the whole dword (as the PCI byte enables would on real cards, roughly)

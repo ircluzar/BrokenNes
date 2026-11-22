@@ -132,6 +132,7 @@ namespace BrokenNes.Windows
             WireAutoTasApi(server);    // AutoTAS (MainForm.AutoTas.cs)
             server.GetLanShare = LanShareStatus;   // the LAN share's state (D8, MainForm.LanShare.cs): never the token
             WirePortApi(server);       // the debug port (BrokenDev D7, MainForm.DebugPort.cs)        // the bug capture (BrokenDev D6, MainForm.BugCapture.cs)
+            WireN98InstallApi(server);   // nano98 install flow (MainForm.N98Install.cs)
             WireWideMessApi(server);   // WideMess milestone 6 (MainForm.WideMess.cs)
             WireWideMessTestCartApi(server);   // POST /api/widemess/testcart (MainForm.WideMessTestCart.cs)
             server.GetSegaSettings = () => new
@@ -537,6 +538,7 @@ namespace BrokenNes.Windows
                 SaveBatteryRamForNes(nes);
                 nes = null;   // the NES idle screen / game stops; NES-only tools see "no NES" while another console runs
             }
+            if (console == ConsoleKind.Pc && NesEmulator.X86.N98Seat.IsPackage(romName)) { StartN98Session(rom, romName, romPath); return; }   // (off the UI thread, with a loading screen: MainForm.N98Loading.cs)
             IConsoleSession s;
             try
             {
@@ -549,19 +551,53 @@ namespace BrokenNes.Windows
                 LoadEmbeddedRom(allowHomeWebModule: false);
                 return;
             }
+            FinishStartSession(console, s, rom, romName, romPath);
+        }
+
+        /// <summary>The part of starting a console session after the session exists (shared by the nano98 loading path).</summary>
+        private void FinishStartSession(ConsoleKind console, IConsoleSession s, byte[] rom, string romName, string? romPath, bool start = true)
+        {
             session = s; sessionRom = rom; sessionRomName = romName; sessionFrames = 0; consoleNote = "";
             BugGameLoaded(rom, romName);   // the bug capture records the new game from its power-on
             currentRomPath = romPath ?? romName;
             Helpers.ConfigHelper.Update(config, c => c.SelectedConsole = Consoles.Key(console));
             FarmAttach(s, rom, romName);        // record the game from its power-on (before the save RAM is loaded, so the farm can note it)
             LoadSessionSave();
+            if (s is NesEmulator.X86.PcSession { Seat: not null, SavesMismatch: true } && SessionSavePath(s) is string sp && File.Exists(sp))
+            {
+                string aside = sp + "." + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".old";   // never lost: set aside, the game starts fresh
+                try { File.Move(sp, aside); } catch (IOException) { }
+                MessageBox.Show(this, $"The saved progress of {s.Title} was made on another version of its package or of the Windows 98 seat, so it was not loaded. It was kept as:" + Environment.NewLine + aside, "BrokenNes 2", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
             ApplySavedWideMessEnhancements();   // WideMess milestone 6: the enhancements kept for this SNES game (MainForm.WideMess.cs)
             RefreshConsoleMenu();
             UpdateCoresMenus();
             UpdateConsoleTitle();
             Console.WriteLine($"[Console] {s.Description}");
             RefreshRecentRomsMenu();
-            StartEmulation();
+            if (s is NesEmulator.X86.PcSession { Seat: not null } seat) seat.SeatEnded += (kind, detail) => BeginInvoke(() => OnSeatEnded(seat, kind, detail));
+            if (start) StartEmulation();
+        }
+
+        /// <summary>nano98: the seat's game ended. Power-off (the launcher's normal exit) goes back to the menu; a failed start or a non-zero exit
+        /// code asks: restart the game, or back to the menu.</summary>
+        private void OnSeatEnded(NesEmulator.X86.PcSession seat, string kind, string detail)
+        {
+            if (!ReferenceEquals(session, seat)) return;
+            if (seat.Seat?.Id == "install") { N98InstallSeatEnded(kind, detail); return; }   // (the install wizard handles its own power-off)
+            if (kind != "poweroff")
+            {
+                string what = kind == "fail" ? $"could not start (error {detail})" : kind == "crash" ? $"stopped responding ({detail})" : $"ended with exit code {detail}";
+                var r = MessageBox.Show(this, $"{seat.Title} {what}." + Environment.NewLine + Environment.NewLine + "Restart the game? (No: back to the menu)", "BrokenNes 2", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                if (r == DialogResult.Yes)
+                {
+                    StopEmulation();
+                    lock (emulationLock) seat.Reset();
+                    StartEmulation();
+                    return;
+                }
+            }
+            CloseRom_Click(this, EventArgs.Empty);
         }
 
         private void StopSession()
@@ -617,6 +653,10 @@ namespace BrokenNes.Windows
             ConsoleKind.GameGear => Path.Combine(SaveRoot, "GgSaves", s.GameId + ".sav"),
             ConsoleKind.Genesis => Path.Combine(SaveRoot, "MdSaves", s.GameId + ".srm"),
             // the x86 console: the disk image as DOS left it (its battery is the whole disk), by the original image's id
+            // a nano98 seat: its saves layer (only what the game and Windows changed; nano98 PcSession.SeatSaves), apart from the game cache
+            // (the install wizard's seat keeps nothing: what it installed is captured into the package)
+            ConsoleKind.Pc when s is NesEmulator.X86.PcSession { Seat.Id: "install" } => N98InstallDiscardSave,
+            ConsoleKind.Pc when s is NesEmulator.X86.PcSession { Seat: not null } => Path.Combine(SaveRoot, "N98Saves", s.GameId + ".n98s"),
             ConsoleKind.Pc => Path.Combine(SaveRoot, "PcDisks", s.GameId + ".img"),
             // the N64: the cartridge's EEPROM / SRAM / FlashRAM as raw bytes, sized by its type
             ConsoleKind.N64 => Path.Combine(SaveRoot, "N64Saves", s.GameId + ".sav"),

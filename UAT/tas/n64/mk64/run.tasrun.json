@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "console": "n64",
+  "game": "mk64",
+  "title": "Mario Kart 64",
+  "rom_sha1": "579c48e211ae952530ffc8738709f078d5dd215e",
+  "chapters": [
+    {
+      "id": "mk64",
+      "title": "Boot -> Mushroom Cup 50cc, 4 races (the compat certification script, closed-loop pilot recorded as pad input)",
+      "start": "power-on",
+      "script": "../../../n64/compat/scripts/mk64.txt"
+    }
+  ]
+}

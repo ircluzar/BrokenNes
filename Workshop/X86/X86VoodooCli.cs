@@ -22,7 +22,8 @@ internal static class X86VoodooCli
         if (Array.IndexOf(args, "--dump") is int di and >= 0)
         {
             // --dump STATE: the card's registers in a WIN98-P166-VOODOO state
-            var dm = new PcMachine(PcConfig.Win98Voodoo, CpuModel.PentiumMmx, PcVideo.S3Trio64);
+            var dcfg = Array.IndexOf(args, "--machine") is int mi and >= 0 ? PcMachinePreset.Find(args[mi + 1]).Config : PcConfig.Win98Voodoo;   // (--machine win98-p166-voodoo-nano)
+            var dm = new PcMachine(dcfg, CpuModel.PentiumMmx, PcVideo.S3Trio64);
             if (Array.IndexOf(args, "--hdd") is int hi and >= 0) dm.Hdd[0] = new DiskImage(System.IO.File.ReadAllBytes(args[hi + 1]), false);
             dm.LoadState(System.IO.File.ReadAllBytes(args[di + 1]));
             var v = dm.Voodoo!;

@@ -712,6 +712,16 @@ dw 0xaa55
 
 internal static class X86Shots
 {
+    /// <summary>A frame as the app shows it (e.g. <see cref="PcSession.Frame"/>: ARGB, w x h).</summary>
+    public static void SavePng(int[] px, int w, int h, string path)
+    {
+        using var bmp = new System.Drawing.Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        var r = bmp.LockBits(new System.Drawing.Rectangle(0, 0, w, h), System.Drawing.Imaging.ImageLockMode.WriteOnly, bmp.PixelFormat);
+        System.Runtime.InteropServices.Marshal.Copy(px, 0, r.Scan0, w * h);
+        bmp.UnlockBits(r);
+        bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+    }
+
     public static void SavePng(Vga v, string path)
     {
         using var bmp = new System.Drawing.Bitmap(v.Width, v.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);

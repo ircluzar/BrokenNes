@@ -80,6 +80,7 @@ internal static class X86BootCli
         var m = cfg == PcConfig.Default ? new PcMachine(PcMachine.DefaultMemory, model, video) : new PcMachine(cfg, model, video);
         if (Arg(args, "--ips") is string ips) m.InstructionsPerSecond = long.Parse(ips);
         if (Arg(args, "--wav") != null) _wav = new System.IO.MemoryStream();
+        if (Arg(args, "--mp4") is string mp4p) { var sz = (Arg(args, "--mp4size") ?? "640x480").Split('x'); _mp4 = new BrokenNes.Workshop.Movies.Mp4Writer(mp4p, int.Parse(sz[0]), int.Parse(sz[1]), 25175000, 449 * 800, videoKbps: int.Parse(Arg(args, "--mp4kbps") ?? "4000")); }
         if (Arg(args, "--cdwav") != null) _cdWav = new System.IO.MemoryStream();
         if (Arg(args, "--apu") is string apu && !PcSound.Apply(m, apu)) { Console.WriteLine($"x86boot: no sound card {apu}"); return 1; }
         if (Arg(args, "--hdd") is string h) m.Hdd[0] = new DiskImage(DiskImage.ReadImageFile(h), false);
@@ -209,6 +210,10 @@ internal static class X86BootCli
             int i = pk.IndexOf('='); uint a = Convert.ToUInt32(pk[..i], 16);
             foreach (var b in pk[(i + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries)) m.PhysW8(a++, Convert.ToByte(b, 16));
         }
+        // guest status lines (port E9h, the nano98 launcher): printed as they come; --until-status TEXT stops the run at the first line containing TEXT
+        string? untilStatus = Arg(args, "--until-status");
+        if (Arg(args, "--n98cmd") is string ncf && m.Command == null) m.Command = File.ReadAllBytes(ncf);   // the nano98 command port's text (a loaded state keeps its own)
+        m.StatusLine += l => { Console.WriteLine($"x86boot: status \"{l}\" at cycle {m.Cpu.Cycle}"); if (untilStatus != null && l.Contains(untilStatus)) m.Stopped ??= "status: " + l; };
         var shotAt = Args(args, "--shotat").Select(x => { int i = x.IndexOf('='); return (f: int.Parse(x[..i]), p: x[(i + 1)..]); }).OrderBy(x => x.f).ToList();
         int n = 0;
         foreach (var (sf, sp) in shotAt) { n += RunUntil(m, null, sf - n); X86Shots.SavePng(m.Vga, sp); Console.WriteLine($"x86boot: frame {n} at {sw.Elapsed.TotalSeconds:F1} s, cycle {m.Cpu.Cycle}"); }
@@ -459,6 +464,7 @@ internal static class X86BootCli
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.InterpAt.OrderByDescending(x => x.Value).Take(30)) Console.WriteLine($"  interpat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))} [{m.Cpu.JitWhy(kv.Key)}]");
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.OolTicksAt.OrderByDescending(x => x.Value).Take(25)) Console.WriteLine($"  oolms {kv.Key:X8} {kv.Value * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F0} ms / {m.Cpu.OolAt.GetValueOrDefault(kv.Key)} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))}");
         if (args.Contains("--jitstat")) foreach (var kv in m.Cpu.OolAt.OrderByDescending(x => x.Value).Take(40)) Console.WriteLine($"  oolat {kv.Key:X8} {kv.Value} : {string.Join(" ", Enumerable.Range(0, 8).Select(i => m.Phys8(kv.Key + (uint)i).ToString("X2")))}");
+        if (m.Voodoo != null && NesEmulator.X86.Voodoo1.Log) foreach (var kv in m.Voodoo.LogCounts.OrderByDescending(x => x.Value).Take(20)) Console.WriteLine($"  vdo {kv.Key} {kv.Value}");
         if (args.Contains("--irqstat")) Console.WriteLine($"batches {m.Batches} halted {m.HaltBatches} cycle {m.Cpu.Cycle} idle-clock {m.Clock - m.Cpu.Cycle}");
         if (args.Contains("--irqstat")) Console.WriteLine("irqs: " + string.Join(" ", Enumerable.Range(0, 256).Where(i => m.IrqCount[i] > 0).Select(i => $"{i:X2}h={m.IrqCount[i]}")) + $"; PIC imr {m.Pic.MasterImr:X2}/{m.Pic.SlaveImr:X2}; CR0 {m.Cpu.Cr0:X}; CS:EIP {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8}; IF {(m.Cpu.Flags >> 9) & 1}; halt {m.Cpu.Halt}");
         Console.WriteLine("---- screen ----");
@@ -471,6 +477,7 @@ internal static class X86BootCli
             Console.WriteLine($"pair: hub frames {_pairHub!.Frames} (IPX {_pairHub.IpxFrames}, IP {_pairHub.IpFrames}); PC 1 nic sent {m.Nic!.FramesSent} received {m.Nic.FramesReceived}; PC 2 nic sent {_partner.Nic!.FramesSent} received {_partner.Nic.FramesReceived}");
             if (Arg(args, "--pair-save") is string pss) File.WriteAllBytes(pss, _partner.SaveState());
         }
+        if (_mp4 != null) { _mp4.Finish(); Console.WriteLine($"x86boot: mp4 {Arg(args, "--mp4")}: {_mp4.Frames} frames, {_mp4.Seconds:F1} s, {new FileInfo(Arg(args, "--mp4")!).Length >> 20} MB"); _mp4 = null; }
         if (Arg(args, "--wav") is string wavp) WriteWav(wavp);
         if (Arg(args, "--cdwav") is string cdwp) WriteWav(cdwp, _cdWav!.ToArray());
         if (Arg(args, "--savestate") is string ss) File.WriteAllBytes(ss, m.SaveState());
@@ -555,6 +562,18 @@ internal static class X86BootCli
         Console.WriteLine($"bugcapture: {_capCount} states every {_capEvery} frames, between-frames mean {(_capCount > 0 ? _capCopyMs / _capCount : 0):F1} ms max {_capCopyMax:F1} ms (of it waiting on the last pack {_capWaitMs:F0} ms total), last packed {_capBytes >> 20} MB");
     }
 
+    /// <summary>X86_SLOWFRAMES=ms (diagnostic): one line per frame slower than that: GC collections / pause and JIT pipeline moves since the last frame.</summary>
+    private static readonly int SlowMs = int.TryParse(Environment.GetEnvironmentVariable("X86_SLOWFRAMES"), out int sm) ? sm : 0;
+    private static (int g0, int g1, int g2, double pause, long posted, int done, long clears, long alloc) _sfPrev;
+    private static void SlowFrame(PcMachine m, double ms)
+    {
+        var c = m.Cpu;
+        var now = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2), GC.GetTotalPauseDuration().TotalMilliseconds, c.JitPosted, c.JitCompiled, c.JitKeepClears, GC.GetTotalAllocatedBytes());
+        var p = _sfPrev; _sfPrev = now;
+        if (ms < SlowMs || p.alloc == 0) return;
+        Console.WriteLine($"slowframe {_frameMs.Count - 1}: {ms:F0} ms | gc {now.Item1 - p.g0}/{now.Item2 - p.g1}/{now.Item3 - p.g2} pause {now.Item4 - p.pause:F0} ms alloc {(now.Item8 - p.alloc) >> 20} MB | jit posted {now.Item5 - p.posted} installed {now.Item6 - p.done} keep-clears {now.Item7 - p.clears} | ws {Environment.WorkingSet >> 20} MB, host memory load {GC.GetGCMemoryInfo().MemoryLoadBytes >> 20} of {GC.GetGCMemoryInfo().TotalAvailableMemoryBytes >> 20} MB");
+    }
+
     private static bool Frame(PcMachine m)
     {
         _frameSw.Restart();
@@ -562,6 +581,7 @@ internal static class X86BootCli
         if (_partner != null && m != _partner) _partner.RunFrame();
         if (_capEvery > 0 && ++_capFrame % _capEvery == 0) CaptureTick(m);
         _frameMs.Add(_frameSw.Elapsed.TotalMilliseconds);
+        if (SlowMs > 0) SlowFrame(m, _frameMs[^1]);
         if (_cdWav != null && m.Ata != null)
         {
             long now = (long)((Int128)m.PitNow * 44100 / Pit8254.Freq);
@@ -569,14 +589,27 @@ internal static class X86BootCli
             int n = (int)Math.Min(now - _cdLast, _wavBuf.Length / 2) * 2; _cdLast += n / 2;
             if (n > 0) { Array.Clear(_wavBuf, 0, n); m.Ata.Secondary.MixCdAudio(_wavBuf, n); for (int i = 0; i < n; i++) { _cdWav.WriteByte((byte)_wavBuf[i]); _cdWav.WriteByte((byte)(_wavBuf[i] >> 8)); } }
         }
-        if (_wav != null && m.Card is { } c)
+        if ((_wav != null || _mp4 != null) && m.Card is { } c)
         {
             c.Advance();
             int n = Math.Min(c.Pending, _wavBuf.Length) & ~1;
-            if (n > 0) { Array.Clear(_wavBuf, 0, n); int got = c.MixInto(_wavBuf, n); for (int i = 0; i < got; i++) { _wav.WriteByte((byte)_wavBuf[i]); _wav.WriteByte((byte)(_wavBuf[i] >> 8)); } }
+            if (n > 0)
+            {
+                Array.Clear(_wavBuf, 0, n); int got = c.MixInto(_wavBuf, n);
+                if (_wav != null) for (int i = 0; i < got; i++) { _wav.WriteByte((byte)_wavBuf[i]); _wav.WriteByte((byte)(_wavBuf[i] >> 8)); }
+                _mp4?.AddAudio(System.Runtime.InteropServices.MemoryMarshal.AsBytes(_wavBuf.AsSpan(0, got & ~1)));
+            }
+        }
+        if (_mp4 != null)
+        {
+            if (m.Card == null) { long want = (long)Math.Round((_mp4.Frames + 1) * 44100 * Vga.FrameTicks / Pit8254.Freq); _mp4.AddAudio(new byte[(int)(want - _mp4Silence) * 4]); _mp4Silence = want; }   // (no sound card: a silent track)
+            _mp4.AddFrame(m.Vga.Frame, m.Vga.Width, m.Vga.Height);
+            if (_mp4.Frames % 4200 == 0) Console.WriteLine($"x86boot: mp4 {_mp4.Frames} frames ({_mp4.Seconds:F0} s of video)");
         }
         return r;
     }
+    /// <summary>--mp4 OUT.mp4 [--mp4size WxH]: every emulated frame + the sound card's output as H.264/AAC at the VGA's true ~70.09 Hz (Media Foundation; timestamps from the machine clock, so any host speed gives a lag-free video).</summary>
+    private static BrokenNes.Workshop.Movies.Mp4Writer? _mp4; private static long _mp4Silence;
     private static long _wavMark = -1;
     private static void WriteWav(string path)
     {
