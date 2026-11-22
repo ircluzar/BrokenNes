@@ -184,6 +184,11 @@ public sealed partial class NvGeForce
         uint oin = G(inst, 0x30c), oout = G(inst, 0x310);
         int pin = (int)G(inst, 0x314), pout = (int)G(inst, 0x318), len = (int)G(inst, 0x31c), lines = (int)G(inst, 0x320);
         if (len <= 0 || lines <= 0 || lines > 1 << 16 || len > 1 << 20) return;
+        if (OpLog != null && len * lines <= 16)
+        {
+            var (vi, ai) = DmaAddr(din, oin); var (vo, ao) = DmaAddr(dout, oout);
+            OpLog($"m2mf small {len}x{lines} in {din:X}+{oin:X} -> {(vi ? "vram" : "sys")} {ai:X} [{Ramin32(din):X8} {Ramin32(din + 4):X8} {Ramin32(din + 8):X8}] = {DmaRead8(din, oin + 3):X2}{DmaRead8(din, oin + 2):X2}{DmaRead8(din, oin + 1):X2}{DmaRead8(din, oin):X2} out {dout:X}+{oout:X} -> {(vo ? "vram" : "sys")} {ao:X} [{Ramin32(dout):X8} {Ramin32(dout + 4):X8} {Ramin32(dout + 8):X8}]");
+        }
         for (int l = 0; l < lines; l++)
             for (int i = 0; i < len; i++)
                 DmaWrite8(dout, oout + (uint)(l * pout + i), DmaRead8(din, oin + (uint)(l * pin + i)));
