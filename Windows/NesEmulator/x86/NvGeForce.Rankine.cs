@@ -39,18 +39,15 @@ public sealed partial class NvGeForce
                 if (w == 3) _vpUpConst++;
                 return;
             }
-            case 0x1808:                                                                // VERTEX_BEGIN_END
-                if (data != 0)
-                {
-                    RankinePrims++;
-                    if (!_rankineDrawNoted && OpLog != null)
-                    {
-                        _rankineDrawNoted = true;
-                        OpLog($"rankine draw prim {data} (not rendered yet: needs the VP/FP interpreters) vp start {G(inst, 0x1ea0)} fp {G(inst, 0x8e4):X} engine {G(inst, 0x1e94):X}");
-                    }
-                }
-                return;
+            case 0x324: _rankineMaskSeen = true; return;
         }
+        if (mthd == 0x1808 && data != 0)
+        {
+            RankinePrims++;
+            if (!_rankineDrawNoted && OpLog != null) { _rankineDrawNoted = true; OpLog($"rankine first draw prim {data} vp start {G(inst, 0x1ea0)} fp {G(inst, 0x8e4):X} engine {G(inst, 0x1e94):X}"); }
+            LoadFp(inst);
+        }
+        RankineDrawMethod(inst, mthd, data);
     }
 
     /// <summary>CLEAR_BUFFERS: fill the colour target (CLEAR_COLOR_VALUE, A8R8G8B8, with the R/G/B/A mask) and the zeta target
