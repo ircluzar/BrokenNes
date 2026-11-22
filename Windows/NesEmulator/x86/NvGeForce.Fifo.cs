@@ -187,7 +187,7 @@ public sealed partial class NvGeForce
         if (_subcEng[Sc(subc)] == 0) { MethodLog?.Invoke(chid, subc, -2, mthd, data); SoftwareMethod(subc, mthd, data); return; }
         int cls = ClassOf(subc);
         MethodLog?.Invoke(chid, subc, cls, mthd, data);
-        Graph(subc, _subcObj[Sc(subc)], cls, mthd, data);
+        Graph(subc, _subcObj[Sc(subc)], Alias(cls), mthd, data);
     }
 
     /// <summary>A method for a software object: into CACHE1 (METHOD/DATA at 3800h + 8 x entry), PFIFO CACHE_ERROR raised; the pusher
