@@ -466,7 +466,7 @@ namespace BrokenNes.Windows
         }
 
         private DebugWindows.N98PackagingWindow? n98PackagingWindow;
-        private void OpenN98Packaging()
+        internal void OpenN98Packaging()
         {
             if (n98PackagingWindow == null || n98PackagingWindow.IsDisposed) { n98PackagingWindow = new DebugWindows.N98PackagingWindow(p => LoadRomFile(p)); n98PackagingWindow.Show(this); }
             else n98PackagingWindow.Activate();
