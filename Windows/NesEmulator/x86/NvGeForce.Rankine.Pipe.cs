@@ -286,6 +286,7 @@ public sealed partial class NvGeForce
     };
 
     // ---------------- primitive assembly ----------------
+    private static readonly bool RkwRhw = Environment.GetEnvironmentVariable("X86_RKW") == "rhw";
     private sealed class RVert { public float X, Y, Z, Iw; public readonly float[] Var = new float[16 * 4]; }   // screen x, y, depth, 1/w; VP outputs
 
     private void RankineFlush(uint inst)
@@ -302,14 +303,17 @@ public sealed partial class NvGeForce
             RunVp(inst, vin[i], vout);
             var v = new RVert();
             Array.Copy(vout, v.Var, 64);
-            float w = vout[3]; if (w == 0) w = 1e-20f;
-            float iw = 1 / w;
-            v.X = vout[0] * iw * sx + tx; v.Y = vout[1] * iw * sy + ty; v.Z = vout[2] * iw * sz + tz; v.Iw = iw;
+            // Kelvin-style: the program's position is already in screen space (x, y in pixels, z in depth units); w is the clip w,
+            // used for perspective-correct varyings only (X86_RKW=rhw: read it as 1/w instead)
+            float w = vout[3]; if (w == 0 || float.IsNaN(w)) w = 1;
+            v.X = vout[0]; v.Y = vout[1]; v.Z = vout[2]; v.Iw = RkwRhw ? w : 1 / w;
             vs[i] = v;
         }
         if (RankinePrims < 4 && OpLog != null)
         {
             var v0 = vs[0];
+            var i0 = vin[0];
+            OpLog($"rankine in v0 ({i0[0]},{i0[1]},{i0[2]},{i0[3]}) v3 ({i0[12]:F2},{i0[13]:F2},{i0[14]:F2},{i0[15]:F2}) inline {_inline.Count} elems {_elems.Count} fmt0 {G(inst, 0x1740):X} c118 ({F32(_vpConst[472])},{F32(_vpConst[473])},{F32(_vpConst[474])},{F32(_vpConst[475])}) c119 ({F32(_vpConst[476])},{F32(_vpConst[477])},{F32(_vpConst[478])},{F32(_vpConst[479])})");
             OpLog($"rankine prim {_rPrim} verts {vs.Length} v0 scr ({v0.X:F1},{v0.Y:F1},{v0.Z:F1}) iw {v0.Iw:G3} col0 ({v0.Var[12]:F2},{v0.Var[13]:F2},{v0.Var[14]:F2},{v0.Var[15]:F2}) tc0 ({v0.Var[32]:F2},{v0.Var[33]:F2}) vp {G(inst, 0x1ea0)} vt {tx},{ty},{tz} vsc {sx},{sy},{sz}");
         }
         int n = vs.Length;

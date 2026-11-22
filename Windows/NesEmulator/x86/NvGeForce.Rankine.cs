@@ -40,6 +40,10 @@ public sealed partial class NvGeForce
                 return;
             }
             case 0x324: _rankineMaskSeen = true; return;
+            // the viewport is VP constant memory too (as Kelvin's XFCTX VPSCL / VPOFF): SCALE -> c118, TRANSLATE -> c119; the driver's
+            // programs compute screen-space positions with them (oPos = v0 * c118 + c119 for pre-transformed D3D vertices)
+            case >= 0xa20 and < 0xa30: _vpConst[119 * 4 + ((mthd - 0xa20) >> 2)] = data; return;
+            case >= 0xa30 and < 0xa40: _vpConst[118 * 4 + ((mthd - 0xa30) >> 2)] = data; return;
         }
         if (mthd == 0x1808 && data != 0)
         {
