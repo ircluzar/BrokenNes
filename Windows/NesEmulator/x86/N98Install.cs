@@ -337,7 +337,7 @@ public sealed class N98Install : IDisposable
 
     /// <summary>Step 4: the drives -> OUT.n98 (schema 2). layerId: promote hardware changes (drivers, Enum/Config) to a system layer of that id beside the
     /// package (also copied to the nano98 layers folder so the app finds it). Returns n98.py's JSON result.</summary>
-    public JsonObject Capture(string title, string exe, string outPkg, string args = "", string? layerId = null, string[]? saves = null, double p2cpi = 0)
+    public JsonObject Capture(string title, string exe, string outPkg, string args = "", string? layerId = null, string[]? saves = null, double p2cpi = 0, string[]? drop = null)
     {
         var (c, d) = WriteDrives();
         var sb = new StringBuilder($"\"{outPkg}\" --title \"{title}\" --base \"{BasePath}\" --c \"{c}\" --d \"{d}\" --exe \"{exe}\" --machine {Options.Machine.ToUpperInvariant()} --sound {Options.Sound} --work \"{_workDir}\"");
@@ -345,6 +345,7 @@ public sealed class N98Install : IDisposable
         if (Discs.Any(x => !IsWindowsFilesDisc(x))) sb.Append(" --cd ").Append(string.Join(" ", Discs.Where(x => !IsWindowsFilesDisc(x)).Select(x => $"\"{Path.GetFileName(x)}\"")));
         if (Options.Layers.Length > 0) sb.Append(" --layers ").Append(string.Join(" ", Options.Layers));
         if (layerId != null) sb.Append(" --layer-id ").Append(layerId);
+        if (drop is { Length: > 0 }) sb.Append(" --drop ").Append(string.Join(" ", drop.Select(x => $"\"{x}\"")));
         if (p2cpi >= 1.0) sb.Append(" --p2cpi ").Append(p2cpi.ToString(System.Globalization.CultureInfo.InvariantCulture));
         if (saves is { Length: > 0 }) sb.Append(" --saves ").Append(string.Join(" ", saves.Select(x => $"\"{x}\"")));
         string o = N98Seat.RunToolOut("install", sb.ToString());
@@ -439,7 +440,7 @@ public sealed class N98Install : IDisposable
                     string outPkg = S("out") ?? Path.Combine(DefaultPackageFolder, SafeName(title) + ".n98");
                     Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPkg))!);
                     var saves = a["saves"] is JsonArray sa ? sa.Select(x => x!.GetValue<string>()).ToArray() : null;
-                    return Capture(title, exe, outPkg, S("args") ?? "", S("layer_id"), saves, a["p2cpi"]?.GetValue<double>() ?? 0);   // p2cpi: the game's Pentium II cost
+                    return Capture(title, exe, outPkg, S("args") ?? "", S("layer_id"), saves, a["p2cpi"]?.GetValue<double>() ?? 0, a["drop"] is JsonArray dr ? dr.Select(x => x!.GetValue<string>()).ToArray() : null);   // drop: game-drive globs left out (unused HQ assets)   // p2cpi: the game's Pentium II cost
                 }
             case "capture-layer":
                 {

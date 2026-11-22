@@ -79,7 +79,7 @@ public sealed partial class N98Seat
             s.SavePatterns = sv.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 3).ToArray();
         string hw = r.TryGetProperty("hardware", out var h) && h.TryGetProperty("machine", out var mm) ? mm.GetString() ?? "" : "";
         s.Machine = hw.Contains("VOODOO", StringComparison.OrdinalIgnoreCase) ? "win98-p166-voodoo-nano" : "win98-p166-nano";
-        if (hw.EndsWith("-NANO", StringComparison.OrdinalIgnoreCase) && PcMachinePreset.Known(hw)) s.Machine = PcMachinePreset.Find(hw).Key;   // (an installed package names its seat machine)
+        if (hw.Contains("-NANO", StringComparison.OrdinalIgnoreCase) && PcMachinePreset.Known(hw)) s.Machine = PcMachinePreset.Find(hw).Key;   // (an installed package names its seat machine)
         if (r.TryGetProperty("hardware", out var hs) && hs.TryGetProperty("sound", out var so) && so.GetString() is { Length: > 0 } snd) s.Sound = snd;
         if (Environment.GetEnvironmentVariable("BROKENNES_N98_MACHINE") is { Length: > 0 } mo) s.Machine = mo;
         // the Pentium II cost per game (user 2026-11-22 "Per game"): hardware.p2cpi, else the machine preset's own; 1.0 = faithful

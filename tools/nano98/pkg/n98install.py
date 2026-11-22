@@ -14,7 +14,7 @@ D:\\GAME. The app then wrote the two drives as they were left (C.img = seat base
   variant base (and its own warm state) is rebuilt from it by any emulator build without the wizard. Without it they are counted, not kept.
 The last stdout line is 'N98INSTALL {json}' (for the app, the CLI and agents).
 """
-import datetime, json, os, tempfile, types, zipfile
+import datetime, fnmatch, json, os, tempfile, types, zipfile
 
 import fat32, sparse
 
@@ -43,6 +43,9 @@ def install(a, n98):
     D = fat32.Fat32(disk, write=True)
     nfiles = nbytes = 0
     moved = []
+    # --drop: asset folders the game does not need (e.g. unused high-quality movies / textures), as globs under D:\GAME
+    drop = [g.upper().lstrip('/') for g in (a.drop or [])]
+    dropped_files = dropped_bytes = 0
     for p_, e in list(src.walk()):
         up = p_.upper()
         if up in ('N98RSVD.SYS', 'GAME') or n98.noise(p_, n98.FILE_NOISE):
@@ -54,6 +57,8 @@ def install(a, n98):
         if e.is_dir:
             D.mkdir(dst, t)
             continue
+        if drop and any(fnmatch.fnmatchcase(dst.upper(), 'GAME/' + g) or fnmatch.fnmatchcase(dst.upper(), g) for g in drop):
+            dropped_files += 1; dropped_bytes += e.size; continue
         data = src.read_chain(e.cluster, e.size) if e.cluster else b''
         D.write_file(dst, data, e.attr & 0x27, t)
         nfiles += 1
@@ -130,7 +135,7 @@ def install(a, n98):
           'presets': {'default': {}}, 'saves': [W(x) for x in (a.saves or [])],
           'c_files': [{'path': f['path'], 'zip': f['zip'], 'size': f['size'], 'sha256': f['sha256']} for f in c_files],
           'ini': ini, 'registry': reg,
-          'stats': {'d_files': nfiles, 'd_bytes': nbytes, 'c_files': len(c_files), 'driver_files': len(drv_files),
+          'stats': {'d_files': nfiles, 'd_bytes': nbytes, 'd_dropped_files': dropped_files, 'd_dropped_bytes': dropped_bytes, 'c_files': len(c_files), 'driver_files': len(drv_files),
                     'hardware_registry_ops': hw_count, 'hardware_kept': bool(layer_path), 'root_moved_to_game': moved}}
     out.writestr('manifest.json', json.dumps(v2, indent=1))
     out.close()
@@ -169,4 +174,5 @@ def add_parsers(sp):
     n.add_argument('--p2cpi', type=float, help='per-game Pentium II cost (manifest hardware.p2cpi; 1.0 = faithful)')
     n.add_argument('--layers', nargs='*', help='system layers the install ran on'); n.add_argument('--layer-id', help='promote hardware changes to this layer')
     n.add_argument('--layer-out'); n.add_argument('--exclude', nargs='*'); n.add_argument('--work')
+    n.add_argument('--drop', nargs='*', help='game-drive globs left out of the package (relative to D:/GAME, e.g. "MOVIES/HQ/*" "*.BIK")')
     x = sp.add_parser('exes', help='list the programs on a game drive (JSON)'); x.add_argument('d')

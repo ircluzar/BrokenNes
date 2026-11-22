@@ -39,6 +39,8 @@ public sealed record PcConfig
     public static readonly PcConfig Win98Voodoo = Win98 with { Voodoo = true };
     public static readonly PcConfig Win98Nano = Win98 with { NoFloppy = true, NoNic = true, BootOrder = "CH" };
     public static readonly PcConfig Win98VoodooNano = Win98Voodoo with { NoFloppy = true, NoNic = true, BootOrder = "CH" };
+    /// <summary>nano98 seat with 256 MB (user 2026-11-22: big late-90s games; the 430TX takes 256 MB, Win98 SE runs well up to 512 MB).</summary>
+    public static readonly PcConfig Win98Nano256 = Win98Nano with { MemoryMB = 256 };
 
     public bool IsDefault => this == Default;
 
@@ -46,7 +48,7 @@ public sealed record PcConfig
     {
         "DEFAULT" => Default, "DOS-386" => Dos386, "DOS-486" => Dos486, "WIN98-P166" or "WIN98" => Win98, "WIN98-P166-VOODOO" => Win98Voodoo, "WIN98-P166-NANO" => Win98Nano, "WIN98-P166-VOODOO-NANO" => Win98VoodooNano,
         // the Pentium II 400 machines: the same board (the CPU model comes from PcMachinePreset), so a P166 disk boots on either
-        "WIN98-P2" => Win98, "WIN98-P2-VOODOO" => Win98Voodoo, "WIN98-P2-NANO" => Win98Nano,
+        "WIN98-P2" => Win98, "WIN98-P2-VOODOO" => Win98Voodoo, "WIN98-P2-NANO" => Win98Nano, "WIN98-P166-NANO-256" or "WIN98-P2-NANO-256" => Win98Nano256,
         _ => throw new ArgumentException($"no x86 machine preset '{name}' (DEFAULT, DOS-386, DOS-486, WIN98-P166)"),
     };
 
@@ -54,7 +56,7 @@ public sealed record PcConfig
     {
         if (CpuGen is < 3 or > 5) throw new ArgumentException("CpuGen is 3, 4 or 5");
         if (Voodoo && Bus != PcBus.Pci430TX) throw new ArgumentException("the Voodoo needs the PCI board");
-        if (MemoryMB is < 1 or > 128) throw new ArgumentException("MemoryMB is 1..128");
+        if (MemoryMB is < 1 or > 256) throw new ArgumentException("MemoryMB is 1..256");
         foreach (char c in BootOrder) if (c is not ('C' or 'H' or 'F')) throw new ArgumentException("BootOrder uses C, H, F");
     }
 
@@ -102,6 +104,8 @@ public sealed record PcMachinePreset(string Key, string Label, PcConfig Config, 
         new("win98-p2", "Win98 Pentium II 400, S3 Trio64, PCI", PcConfig.Win98, CpuModel.PentiumII, PcVideo.S3Trio64),
         new("win98-p2-voodoo", "Win98 Pentium II 400, S3 Trio64 + 3dfx Voodoo, PCI", PcConfig.Win98Voodoo, CpuModel.PentiumII, PcVideo.S3Trio64),
         new("win98-p2-nano", "nano98 seat: Win98 Pentium II 400, S3 Trio64, PCI, no floppy", PcConfig.Win98Nano, CpuModel.PentiumII, PcVideo.S3Trio64),
+        new("win98-p166-nano-256", "nano98 seat: Win98 Pentium MMX 166, 256 MB, S3 Trio64, PCI, no floppy", PcConfig.Win98Nano256, CpuModel.PentiumMmx, PcVideo.S3Trio64),
+        new("win98-p2-nano-256", "nano98 seat: Win98 Pentium II 400, 256 MB, S3 Trio64, PCI, no floppy", PcConfig.Win98Nano256, CpuModel.PentiumII, PcVideo.S3Trio64),
     };
 
     /// <summary>The preset for a key (case-insensitive); an unknown or empty key is the classic machine.</summary>
