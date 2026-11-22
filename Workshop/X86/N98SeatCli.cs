@@ -6,6 +6,8 @@ namespace BrokenNes.Workshop.X86;
 /// resume snapshot), printing the seat's status lines and how it ended. Uses the same BROKENNES_N98_* settings as the app.</summary>
 internal static class N98SeatCli
 {
+    private static int[] Shown(PcSession s) => System.Runtime.InteropServices.MemoryMarshal.Cast<uint, int>(s.Frame.AsSpan(0, s.FrameWidth * s.FrameHeight)).ToArray();
+
     public static int Run(string[] args)
     {
         string pkg = args[1]; int frames = 6000; string? shot = null, apu = "SB16_D072", saveIn = null, saveOut = null, mp4Path = null, shotDir = null; int shotEvery = 0;
@@ -36,13 +38,13 @@ internal static class N98SeatCli
             if (mp4 != null)
             {
                 long want = (long)Math.Round((mp4.Frames + 1) * 44100 * Vga.FrameTicks / Pit8254.Freq); mp4.AddAudio(new byte[(int)(want - silence) * 4]); silence = want;
-                mp4.AddFrame(s.Machine.Vga.Frame, s.Machine.Vga.Width, s.Machine.Vga.Height);
+                mp4.AddFrame(Shown(s), s.FrameWidth, s.FrameHeight);   // what the app shows (the session's frame), not the raw VGA picture
             }
-            if (shotDir != null && shotEvery > 0 && f % shotEvery == 0) X86Shots.SavePng(s.Machine.Vga, Path.Combine(shotDir, $"f{f:D6}.png"));
+            if (shotDir != null && shotEvery > 0 && f % shotEvery == 0) X86Shots.SavePng(Shown(s), s.FrameWidth, s.FrameHeight, Path.Combine(shotDir, $"f{f:D6}.png"));
         }
         if (mp4 != null) { mp4.Finish(); Console.WriteLine($"n98seat: mp4 {mp4Path}: {mp4.Frames} frames, {mp4.Seconds:F1} s"); }
         Console.WriteLine($"n98seat: {f} frames, {sw.Elapsed.TotalSeconds:F1} s, ended: {ended ?? "no"}");
-        if (shot != null) X86Shots.SavePng(s.Machine.Vga, shot);
+        if (shot != null) X86Shots.SavePng(Shown(s), s.FrameWidth, s.FrameHeight, shot);
         if (saveOut != null) { var b = s.ExportSave(); File.WriteAllBytes(saveOut, b); Console.WriteLine($"n98seat: saves layer {saveOut}: {b.Length / 1024} KB, C: changed {s.Machine.Hdd[0]!.OverlaySectors} sectors"); }
         return 0;
     }
