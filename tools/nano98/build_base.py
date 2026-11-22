@@ -112,6 +112,7 @@ Display=0
 """
 # ---- stage 2 steps (x86boot --stepsfile; frame counts measured 2026-11-21 on win98-p166-nano, deterministic) ----
 NL = chr(92) + 'n'   # x86boot's Enter escape
+DESKTOP = '#008282@630,240'   # x86boot pixel check: the Windows desktop colour at the right edge (Setup screens are blue / black there)
 steps = ['Enter your choice=>2' + NL,                    # CD menu: boot from CD (the compilation's 98 boot disk starts the CD's Setup)
          'To continue with Setup, press ENTER=>{f3}',    # quit that Setup (it would install the first-edition files from D:)
          '@200=>{f3}',
@@ -121,9 +122,12 @@ if a.accept_eula:
     steps += ['@800=>{alt+a}', '@60=>' + NL,           # Licence Agreement: "I accept" (user approved the Win98 SE licence 2026-11-21)
               '@600=>' + NL,                             # Product Key (filled from MSBATCH.INF) -> Next
               '@800=>' + NL,                             # Start Wizard -> Finish: hardware setup + restarts follow
-              '@66000=>' + NL,                           # (hardware setup + restarts take ~50-60k frames) Enter Windows Password: user nano98, blank password -> OK
+              # non-PnP hardware detection hangs at 19% (a probe at port 380h spins on 381h bit 4; 2026-11-22: on every machine preset):
+              # power cycle in the hang, Setup's safe recovery skips that probe on the next boot
+              '@30000=>{powercycle}',
+              DESKTOP + '/80000=>' + NL,                 # the teal desktop behind Enter Windows Password (user nano98, blank) -> OK
               '@3000=>{alt+f4}',                         # close the Welcome window
-              '@300=>']                                  # the desktop (save the state here)
+              DESKTOP + '/20000=>']                      # the desktop (build_seat checks the last screen is the desktop)
 else:
     steps += ['@800=>']                                  # stop on the licence page
 open(os.path.join(a.work, 'stage2.steps'), 'w').write('\n'.join(steps) + '\n')
