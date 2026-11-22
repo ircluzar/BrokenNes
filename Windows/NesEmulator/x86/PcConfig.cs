@@ -48,7 +48,7 @@ public sealed record PcConfig
     {
         "DEFAULT" => Default, "DOS-386" => Dos386, "DOS-486" => Dos486, "WIN98-P166" or "WIN98" => Win98, "WIN98-P166-VOODOO" => Win98Voodoo, "WIN98-P166-NANO" => Win98Nano, "WIN98-P166-VOODOO-NANO" => Win98VoodooNano,
         // the Pentium II 400 machines: the same board (the CPU model comes from PcMachinePreset), so a P166 disk boots on either
-        "WIN98-P2" => Win98, "WIN98-P2-VOODOO" => Win98Voodoo, "WIN98-P2-NANO" => Win98Nano, "WIN98-P166-NANO-256" or "WIN98-P2-NANO-256" => Win98Nano256,
+        "WIN98-P2" => Win98, "WIN98-P2-VOODOO" => Win98Voodoo, "WIN98-P2-NANO" => Win98Nano, "WIN98-P166-NANO-256" or "WIN98-P2-NANO-256" => Win98Nano256, "WIN98-P166-GEFORCE" => Win98, "WIN98-P166-GEFORCE-NANO" => Win98Nano,
         _ => throw new ArgumentException($"no x86 machine preset '{name}' (DEFAULT, DOS-386, DOS-486, WIN98-P166)"),
     };
 
@@ -104,6 +104,7 @@ public sealed record PcMachinePreset(string Key, string Label, PcConfig Config, 
         new("win98-p2", "Win98 Pentium II 400, S3 Trio64, PCI", PcConfig.Win98, CpuModel.PentiumII, PcVideo.S3Trio64),
         new("win98-p2-voodoo", "Win98 Pentium II 400, S3 Trio64 + 3dfx Voodoo, PCI", PcConfig.Win98Voodoo, CpuModel.PentiumII, PcVideo.S3Trio64),
         new("win98-p2-nano", "nano98 seat: Win98 Pentium II 400, S3 Trio64, PCI, no floppy", PcConfig.Win98Nano, CpuModel.PentiumII, PcVideo.S3Trio64),
+        new("win98-p166-geforce-nano", "nano98 seat: Win98 Pentium MMX 166, GeForce 256 DDR 32 MB, PCI, no floppy", PcConfig.Win98Nano, CpuModel.PentiumMmx, PcVideo.GeForce256),
         new("win98-p166-nano-256", "nano98 seat: Win98 Pentium MMX 166, 256 MB, S3 Trio64, PCI, no floppy", PcConfig.Win98Nano256, CpuModel.PentiumMmx, PcVideo.S3Trio64),
         new("win98-p2-nano-256", "nano98 seat: Win98 Pentium II 400, 256 MB, S3 Trio64, PCI, no floppy", PcConfig.Win98Nano256, CpuModel.PentiumII, PcVideo.S3Trio64),
     };
