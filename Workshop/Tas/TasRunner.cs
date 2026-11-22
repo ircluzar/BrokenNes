@@ -196,7 +196,7 @@ public static class TasRunner
             if (ch.Expect["checkpoints"] is JsonObject cps)
                 foreach (var kv in cps)
                 {
-                    var got = a.Checkpoints.FirstOrDefault(c => c.Chapter == ch.Id && c.Name == kv.Key);
+                    var got = a.Checkpoints.LastOrDefault(c => c.Chapter == ch.Id && c.Name == kv.Key);   // the last of a repeated name (a script "checkpoint end" + the automatic end): what --bless kept
                     if (got == null) { miss.Add($"{kv.Key}: not reached"); continue; }
                     foreach (var k in new[] { "video", "picture", "ram" })
                         if (kv.Value?[k] is JsonNode want && (string)want! != (k == "video" ? got.Video : k == "picture" ? got.Picture : got.Ram)) miss.Add($"{kv.Key}.{k}");
