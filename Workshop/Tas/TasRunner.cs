@@ -22,6 +22,8 @@ public interface ITasFrameSink
     void Frame(uint[] argb, int width, int height);
     /// <summary>Stereo interleaved samples the core produced during that frame.</summary>
     void Audio(ReadOnlySpan<short> stereo);
+    /// <summary>The core's current sample rate (N64: the game sets the AI rate, it can change mid-run); called before each frame's Audio.</summary>
+    void Rate(int sampleRate) { }
     void End();
 }
 
@@ -302,6 +304,7 @@ public static class TasRunner
                 if (perFrame.Count > 0) { var gc = new TasEvalContext(t, map, run.Dir, frames, lag); foreach (var g in perFrame) g.OnFrame(gc); }
                 hv = TasTargets.Fnv(t.Argb, t.Width * t.Height, hv);
                 sink?.Frame(t.Argb, t.Width, t.Height);
+                sink?.Rate(t.SampleRate);
                 int got;
                 while ((got = t.ReadSamples(buf)) > 0)
                 {

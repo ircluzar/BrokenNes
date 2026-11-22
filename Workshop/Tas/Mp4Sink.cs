@@ -35,6 +35,8 @@ internal sealed class Mp4Sink : ITasFrameSink
         w!.AddFrame(px, width, height);
     }
 
+    public void Rate(int r) { if (r > 0) inRate = r; }   // resample from the core's current rate (output stays at the rate chosen in Begin)
+
     public void Audio(ReadOnlySpan<short> s)
     {
         if (w == null || s.Length < 2) return;
