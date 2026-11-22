@@ -100,7 +100,7 @@ public sealed partial class NvGeForce : IPciMmio
     public bool Is565 => (Reg(0x680600) & 0x1000) != 0;
     public int BytesPerPixel => Depth switch { 1 => 1, 2 => 2, _ => 4 };
     public int Width => ((_v.Cr[1] + 1) | ((_v.Cr[0x2d] & 2) << 7)) * 8;
-    public int Height => (_v.Cr[0x12] | ((_v.Cr[7] & 2) << 7) | ((_v.Cr[7] & 0x40) << 3) | ((_v.Cr[0x25] & 2) << 9)) + 1;
+    public int Height => ((_v.Cr[0x12] | ((_v.Cr[7] & 2) << 7) | ((_v.Cr[7] & 0x40) << 3) | ((_v.Cr[0x25] & 2) << 9)) + 1) >> ((_v.Cr[9] & 0x80) != 0 ? 1 : 0);   // (CR09 bit 7: double scan, the 320x240 / 400x300 modes)
     public int Stride => (_v.Cr[0x13] | ((_v.Cr[0x19] >> 5) << 8) | (((_v.Cr[0x42] >> 6) & 1) << 11)) * 8;
     public int StartByte => (int)(PcrtcStart & (VramBytes - 1));
 
