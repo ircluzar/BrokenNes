@@ -260,6 +260,7 @@ public sealed partial class I386
 
     private int Rdtsc()
     {
+        if (WsLogging) _wsFail = 2;
         if (_legacy) { R[0] = (uint)Cycle; R[2] = (uint)((ulong)Cycle >> 32); return OK; }
         if ((Cr4 & CR4_TSD) != 0 && Cpl != 0) return K(Throw(EX_GP, 0));
         ulong t = ReadTsc();
@@ -326,6 +327,7 @@ public sealed partial class I386
     /// <summary>RDPMC (P6): counter 0 / 1 (40 bits, kept as WRMSR left them: events are not counted). Ring 3 needs CR4.PCE.</summary>
     private int Rdpmc()
     {
+        if (WsLogging) _wsFail = 2;
         if ((Cr4 & CR4_PCE) == 0 && Cpl != 0 && (Cr0 & 1) != 0) return K(Throw(EX_GP, 0));
         if (R[1] > 1) return K(Throw(EX_GP, 0));
         ulong c = R[1] == 0 ? _pmc0 : _pmc1;
