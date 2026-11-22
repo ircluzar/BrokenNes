@@ -151,6 +151,20 @@ static void run_explorer(void)
     if (CreateProcessA(NULL, "EXPLORER.EXE", NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) { CloseHandle(pi.hThread); CloseHandle(pi.hProcess); }
 }
 
+/* The seat base's cursor scheme is blank (Arrow / Wait / AppStarting = C:\N98\BLANK.CUR, seat_look.py) so no pointer shows from
+ * boot to the game. cursors_on() brings the standard cursors back in memory: drop the values, have USER reload the scheme
+ * (SPI_SETCURSORS), then put the values back so the disk (and the next boot) keeps the blank scheme. */
+static void cursors_on(void)
+{
+    static const char *names[] = { "Arrow", "Wait", "AppStarting" };
+    HKEY k; int i;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Control Panel\\Cursors", 0, KEY_ALL_ACCESS, &k) != ERROR_SUCCESS) return;
+    for (i = 0; i < 3; i++) RegDeleteValueA(k, names[i]);
+    SystemParametersInfoA(SPI_SETCURSORS, 0, NULL, 0);
+    for (i = 0; i < 3; i++) RegSetValueExA(k, names[i], 0, REG_SZ, (const BYTE *)"C:\\N98\\BLANK.CUR", 17);
+    RegCloseKey(k);
+}
+
 int PASCAL WinMain(HINSTANCE hi, HINSTANCE hp, LPSTR cl, int show)
 {
     char run[260], args[260], dir[260], ex[32], line[600];
@@ -158,7 +172,7 @@ int PASCAL WinMain(HINSTANCE hi, HINSTANCE hp, LPSTR cl, int show)
     memset(g_buf, 0, sizeof g_buf);
     status("N98 BOOT");   /* the host takes its resume snapshot here (at its next frame end), before the command is read */
     Sleep(1000);
-    if (!read_cmd(g_buf, sizeof g_buf) || strncmp(g_buf, "N98CMD1", 7) != 0) { status("N98 NOCMD"); run_explorer(); return 0; }
+    if (!read_cmd(g_buf, sizeof g_buf) || strncmp(g_buf, "N98CMD1", 7) != 0) { status("N98 NOCMD"); cursors_on(); run_explorer(); return 0; }
     restore_files();
     status("N98 READY");
     field("run", run, sizeof run); field("args", args, sizeof args); field("dir", dir, sizeof dir); field("exit", ex, sizeof ex);
@@ -166,14 +180,16 @@ int PASCAL WinMain(HINSTANCE hi, HINSTANCE hp, LPSTR cl, int show)
     memset(&si, 0, sizeof si); si.cb = sizeof si;
     sprintf(line + 300, "N98 RUN %s", run); status(line + 300);
     if (!CreateProcessA(run[0] ? run : NULL, line, NULL, NULL, FALSE, 0, NULL, dir[0] ? dir : NULL, &si, &pi)) {
-        sprintf(line, "N98 FAIL %lu", GetLastError()); status(line); run_explorer(); return 1;
+        sprintf(line, "N98 FAIL %lu", GetLastError()); status(line); cursors_on(); run_explorer(); return 1;
     }
     CloseHandle(pi.hThread);
+    WaitForInputIdle(pi.hProcess, 30000);   /* the game's window is up (it draws its own pointer, or uses the standard ones from here) */
+    cursors_on();
     WaitForSingleObject(pi.hProcess, INFINITE);
     GetExitCodeProcess(pi.hProcess, &code); CloseHandle(pi.hProcess);
     upload_saves();
     sprintf(line, "N98 EXIT %lu", code); status(line);
-    if (strcmp(ex, "shell") == 0) { run_explorer(); return 0; }
+    if (strcmp(ex, "shell") == 0) { cursors_on(); run_explorer(); return 0; }
     status(strcmp(ex, "restart") == 0 ? "N98 RESTART" : "N98 POWEROFF");
     ExitWindowsEx(strcmp(ex, "restart") == 0 ? EWX_REBOOT : (EWX_SHUTDOWN | EWX_POWEROFF), 0);
     return 0;
