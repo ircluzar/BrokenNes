@@ -501,7 +501,7 @@ public sealed partial class I386
     private bool IsRam(uint a) => a < MemSize && (!_ioMem || a - 0xa0000u >= 0x20000u);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private uint Load8(ref OptAddr r) => IsRam(r.A1) ? U8(r.A1) : Load8Slow(ref r);
+    private uint Load8(ref OptAddr r) { if (RwOn) RwHit(r.A1, 1); return IsRam(r.A1) ? U8(r.A1) : Load8Slow(ref r); }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private uint Load8Slow(ref OptAddr r)
@@ -514,7 +514,7 @@ public sealed partial class I386
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private uint Load16(ref OptAddr r) => !r.Two && IsRam(r.A1) ? U16(r.A1) : Load16Slow(ref r);
+    private uint Load16(ref OptAddr r) { if (RwOn) RwHit(r.A1, 2); return !r.Two && IsRam(r.A1) ? U16(r.A1) : Load16Slow(ref r); }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private uint Load16Slow(ref OptAddr r)
@@ -527,7 +527,7 @@ public sealed partial class I386
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private uint Load32(ref OptAddr r) => !r.Two && IsRam(r.A1) ? U32(r.A1) : Load32Slow(ref r);
+    private uint Load32(ref OptAddr r) { if (RwOn) RwHit(r.A1, 4); return !r.Two && IsRam(r.A1) ? U32(r.A1) : Load32Slow(ref r); }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private uint Load32Slow(ref OptAddr r)

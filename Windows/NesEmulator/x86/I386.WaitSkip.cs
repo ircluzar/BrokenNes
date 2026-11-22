@@ -275,4 +275,37 @@ public sealed partial class I386
         foreach (var kv in WsDiag.OrderByDescending(k => k.Value.N).Take(40))
             o.WriteLine($"WSDIAG addr {kv.Key:X8} n {kv.Value.N} firstDelta {kv.Value.Delta} sameDelta {kv.Value.Same} const {kv.Value.Const} loopIp {kv.Value.Ip:X8}");
     }
+
+    // X86_RWATCH=1 (diagnostic): data reads of the 8 counter dwords seen by X86_WSDIAG; per reader CS:EIP, count, in-proof or not, code bytes
+    static readonly uint[] RwAddr = { 0x0234F3CC, 0x03942D5C, 0x03942D60, 0x03942D6C, 0x03942D70, 0x03942D90, 0x03942E08, 0x0027B880 };
+    static readonly bool RwOn = Environment.GetEnvironmentVariable("X86_RWATCH") == "1";
+    sealed class RwR { public long N, InProof; public uint Addr, Cs, LastVal; public string Code = ""; public long FirstCycle; }
+    static readonly Dictionary<(uint, uint, uint), RwR> RwReads = new();
+    bool _rwBusy, _rwHooked;
+    void RwHit(uint a, int n)
+    {
+        if (_rwBusy) return;
+        foreach (uint w in RwAddr)
+        {
+            if (a + (uint)n <= w || a >= w + 4) continue;
+            _rwBusy = true;
+            if (!_rwHooked) { _rwHooked = true; AppDomain.CurrentDomain.ProcessExit += (_, _) => RwDump(); }
+            var k = (SegSel[SEG_CS], Ip, w);
+            if (!RwReads.TryGetValue(k, out var e))
+            {
+                e = new RwR { Addr = w, Cs = SegSel[SEG_CS], FirstCycle = Cycle };
+                var sb = new System.Text.StringBuilder();
+                for (uint i = 0; i < 12; i++) { if (((Ip + i) & 0xfff) == 0 && i > 0) break; if (!CpuLoad(8, SEG_CS, Ip + i, out uint b)) break; sb.Append($"{b:X2} "); }
+                e.Code = sb.ToString(); RwReads[k] = e;
+            }
+            e.N++; if (WsLogging) e.InProof++; e.LastVal = BitConverter.ToUInt32(Mem, (int)w);
+            _rwBusy = false;
+            return;
+        }
+    }
+    static void RwDump()
+    {
+        foreach (var kv in RwReads.OrderByDescending(k => k.Value.N))
+            Console.Error.WriteLine($"RWATCH addr {kv.Value.Addr:X8} cs {kv.Key.Item1:X4} eip {kv.Key.Item2:X8} n {kv.Value.N} inProof {kv.Value.InProof} last {kv.Value.LastVal:X8} firstCycle {kv.Value.FirstCycle} code {kv.Value.Code}");
+    }
 }
