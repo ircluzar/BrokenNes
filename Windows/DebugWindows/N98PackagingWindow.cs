@@ -55,7 +55,7 @@ namespace BrokenNes.Windows.DebugWindows
         private void BuildBaseTab()
         {
             var t = Page("Base image", "The seat base every package runs on (seat_base.img). Made once from your own Win98 SE disc: build_base.py, then seat.py install (launcher shell + seat look). The base is a personal copy: never publish or commit it.");
-            PathRow(t, "base", "Seat base (C:)", PathKind.Open, "Disk images|*.img|All|*.*");
+            PathRow(t, "base", "Seat base (C:)", PathKind.Open, "Disk images|*.img;*.n98d|All|*.*");
             Row(t, "", Btn("Use the app's base", () => { var b = AppBase(); if (b != null) Set("base", b); else Log("no seat_base.img in the app's search places (BROKENNES_N98_BASE, app x86\\nano98, %LOCALAPPDATA%\\BrokenNes\\nano98, C:\\BrokenNes-work\\nano98_work)"); }));
             Heading(t, "Rebuild from the disc (build_base.py)");
             PathRow(t, "bb_iso", "Win98 SE ISO", PathKind.Open, "ISO|*.iso|All|*.*");
@@ -81,6 +81,18 @@ namespace BrokenNes.Windows.DebugWindows
                 Btn("Info", () => { if (list.SelectedItem is string p) Run(Py(), Script("pkg/n98.py"), new[] { "info", p }); }));
             PathRow(t, "layers_out", "Compose into folder", PathKind.Folder);
             Row(t, "", Btn("Compose layers onto the base", ComposeLayers));
+            Heading(t, "Schema-2 system layers: n98.py layer cuts one from a captured install; n98.py variant = base .n98d + the listed layers -> a variant base with its own warm state");
+            PathRow(t, "ly_src", "Cut from package", PathKind.Open, "nano98 package|*.n98");
+            TextRow(t, "ly_id", "Layer id", "");
+            TextRow(t, "ly_keep", "--keep file globs", "C:/WINDOWS/*");
+            TextRow(t, "ly_reg", "--reg key globs (empty = all)", "");
+            PathRow(t, "ly_out", "Layer output", PathKind.Save, "nano98 layer|*.n98");
+            Row(t, "", Btn("Cut layer (n98.py layer)", () => Run(Py(), Script("pkg/n98.py"), new[] { "layer", Need("ly_src"), Need("ly_out"), "--id", Need("ly_id"), "--keep" }.Concat(SplitArgs(V("ly_keep")))
+                    .Concat(V("ly_reg").Length > 0 ? new[] { "--reg" }.Concat(SplitArgs(V("ly_reg"))) : Array.Empty<string>()))),
+                Btn("Add it to the list", () => { if (V("ly_out").Length > 0) list.Items.Add(V("ly_out")); }));
+            PathRow(t, "var_out", "Variant output (.n98d)", PathKind.Save, "nano98 base|*.n98d");
+            Row(t, "", Btn("Build variant from the list (n98.py variant)", () => Run(Py(), Script("pkg/n98.py"), new[] { "variant", Need("var_out"), "--base", Need("base"), "--layers" }.Concat(list.Items.Cast<string>()).Concat(new[] { "--work", Path.GetDirectoryName(Need("var_out"))! }))),
+                Btn("Use variant as Base", () => Set("base", V("var_out"))));
         }
 
         private void BuildDrivesTab()
@@ -158,12 +170,39 @@ namespace BrokenNes.Windows.DebugWindows
 
         private void BuildWarmTab()
         {
-            var t = Page("Warm state", "The pre-booted warm state and one-command build are the nano98-slim work (tools/nano98/slim.py). Until it lands in main this tab only runs that script when it exists; nothing here duplicates it.");
-            var status = new Label { AutoSize = true, MaximumSize = new Size(900, 0) };
-            Row(t, "Status", status);
-            TextRow(t, "slim_args", "slim.py args", "-h");
-            Row(t, "", Btn("Run slim.py", () => { var s = Path.Combine(SafeToolsDir(), "slim.py"); if (!File.Exists(s)) { Log("tools/nano98/slim.py is not in this checkout yet (nano98-slim has not landed)."); return; } Run(Py(), s, SplitArgs(V("slim_args"))); }));
-            tabs.SelectedIndexChanged += (_, _) => status.Text = File.Exists(Path.Combine(SafeToolsDir(), "slim.py")) ? "slim.py present: warm state / v2 build available" : "not landed yet: the warm pre-booted state comes with the nano98-slim work. The app's own resume snapshot (Test boot, second run) still applies.";
+            var t = Page("Warm state / v2", "The culled base, its pre-booted warm state and schema-2 packages (tools/nano98: build_seat.py, slim.py, pkg/n98.py v2/layer/variant, pkg/sparse.py). " +
+                "The warm state is taken at the launcher's N98 BOOT with the blank standard D: and is shared by every schema-2 package on that base + emulator build. Heavy stages (settle, warm) boot Windows: run them on Garage2 / the fleet when the PC is busy.");
+            Heading(t, "One command: build_seat.py (each stage is skipped when its output is already in the work folder)");
+            PathRow(t, "bs_workshop", "Workshop exe", PathKind.Open, "BrokenNes.Workshop.exe|BrokenNes.Workshop.exe|All|*.*");
+            PathRow(t, "bs_work", "Work folder", PathKind.Folder);
+            PathRow(t, "bs_out", "Output base (.n98d)", PathKind.Save, "nano98 base|*.n98d");
+            PathRow(t, "bs_installed", "--installed (an installed Win98 disk; else the Base tab's ISO)", PathKind.Open, "Disk images|*.img;*.n98d|All|*.*");
+            Row(t, "", Btn("Run build_seat.py", () => Run(Py(), Script("build_seat.py"), new[] { "--workshop", Need("bs_workshop"), "--work", Need("bs_work"), "--out", Need("bs_out") }
+                    .Concat(V("bs_installed").Length > 0 ? new[] { "--installed", V("bs_installed") } : new[] { "--iso", Need("bb_iso") }.Concat(Args("--keyfile", V("bb_key"))).Concat(C("bb_eula") ? new[] { "--accept-eula" } : Array.Empty<string>())))),
+                Btn("Open work folder", () => Explore(V("bs_work"))), Btn("Use output as Base", () => Set("base", V("bs_out"))));
+            Heading(t, "Single steps");
+            PathRow(t, "slim_in", "slim.py input (raw image)", PathKind.Open, "Disk images|*.img|All|*.*");
+            PathRow(t, "slim_out", "slim.py output (.img)", PathKind.Save, "Disk images|*.img|All|*.*");
+            Row(t, "", Btn("Cull + zero-fill + pack (slim.py --n98d)", () => Run(Py(), Script("slim.py"), new[] { Need("slim_in"), Need("slim_out"), "--n98d", Path.ChangeExtension(Need("slim_out"), ".n98d"), "--list", Path.ChangeExtension(Need("slim_out"), ".removed.txt") })),
+                Btn("Pack only (sparse.py pack)", () => Run(Py(), Script("pkg/sparse.py"), new[] { "pack", Need("slim_in"), Path.ChangeExtension(Need("slim_in"), ".n98d") })),
+                Btn("Unpack .n98d", () => Run(Py(), Script("pkg/sparse.py"), new[] { "unpack", Need("base"), Path.ChangeExtension(Need("base"), ".img") })),
+                Btn("Info on base .n98d", () => Run(Py(), Script("pkg/sparse.py"), new[] { "info", Need("base") })));
+            Heading(t, "Schema 1 -> 2 (n98.py v2): the game moves to D:\\GAME on its own standard drive; registry/INI applied by the launcher at run time");
+            PathRow(t, "v2_in", "Schema-1 package", PathKind.Open, "nano98 package|*.n98");
+            PathRow(t, "v2_out", "Schema-2 output", PathKind.Save, "nano98 package|*.n98");
+            TextRow(t, "v2_drop", "--drop globs (space separated)", "");
+            TextRow(t, "v2_layers", "--layers ids (space separated)", "");
+            TextRow(t, "v2_args", "--args (replace launch args; empty = keep)", "");
+            CheckRow(t, "v2_embed", "--embed-base (the Base tab's .n98d inside the package: self-contained, personal copy only)");
+            Row(t, "", Btn("Convert (n98.py v2)", () => Run(Py(), Script("pkg/n98.py"), new[] { "v2", Need("v2_in"), Need("v2_out"), "--work", Path.GetDirectoryName(Need("v2_out"))! }
+                    .Concat(V("v2_drop").Length > 0 ? new[] { "--drop" }.Concat(SplitArgs(V("v2_drop"))) : Array.Empty<string>())
+                    .Concat(V("v2_layers").Length > 0 ? new[] { "--layers" }.Concat(SplitArgs(V("v2_layers"))) : Array.Empty<string>())
+                    .Concat(V("v2_args").Length > 0 ? new[] { "--args", V("v2_args") } : Array.Empty<string>())
+                    .Concat(C("v2_embed") ? new[] { "--embed-base", Need("base") } : Array.Empty<string>()))),
+                Btn("= Test boot package", () => Set("test_pkg", V("v2_out"))));
+            Heading(t, "The warm state of this base for this app build: made by the first schema-2 package opened (Test boot), or headless:");
+            Row(t, "", Btn("Copy the Workshop warm command", () => { var cmd = $"set BROKENNES_N98_BASE={V("base")} && Workshop --n98seat \"{V("test_pkg")}\" --until-warm --frames 60000"; Clipboard.SetText(cmd); Log("copied: " + cmd); }),
+                Btn("Open warm folders", () => Explore(Path.Combine(LocalRoot, "warm"))));
         }
 
         // ---------- steps that chain existing tools ----------
