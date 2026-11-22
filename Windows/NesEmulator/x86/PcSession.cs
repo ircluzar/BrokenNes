@@ -31,11 +31,12 @@ public sealed class PcSession : IConsoleSession
     private byte[]? _exported;
 
     /// <param name="image">A disk image, or a DOS program (<see cref="PcDisks.IsDosProgram"/>: it is put on a FreeDOS boot disk made for it, <see cref="PcDisks.ForProgram"/>).</param>
-    public PcSession(byte[] image, string fileName = "", string apu = "ADLIB", string cpu = "I386", string ppu = "VGA", CpuModel? model = null, string machine = PcMachinePreset.ClassicKey)
+    public PcSession(byte[] image, string fileName = "", string apu = "ADLIB", string cpu = "I386", string ppu = "VGA", CpuModel? model = null, string machine = PcMachinePreset.ClassicKey, N98Seat? preparedSeat = null)
     {
-        // nano98: a .n98 game package boots straight into its game on the seat machine (N98Seat: the package applied onto the seat base)
-        N98Seat? seat = N98Seat.IsPackage(fileName) ? N98Seat.Prepare(image, fileName) : null;
-        if (seat != null) { image = seat.Image; machine = seat.Machine; }
+        // nano98: a .n98 game package boots straight into its game on the seat machine (N98Seat: the package applied onto the seat base);
+        // preparedSeat: a seat made by the host itself (N98Install: the install shell on the blank game drive)
+        N98Seat? seat = preparedSeat ?? (N98Seat.IsPackage(fileName) ? N98Seat.Prepare(image, fileName) : null);
+        if (seat != null) { image = seat.Image; machine = seat.Machine; if (seat.Sound.Length > 0 && PcSound.CardOptions().Any(o => o.id.Equals(seat.Sound, StringComparison.OrdinalIgnoreCase))) apu = seat.Sound; }
         var preset = PcMachinePreset.Find(machine);
         // X86-02: background (non-blocking) gen2 collections while a PC runs: the JIT's Reflection.Emit garbage made blocking collections the worst frames (A/B: p99 163 -> 124 ms). BROKENNES_X86_GCLAT=0 opts out.
         if (Environment.GetEnvironmentVariable("BROKENNES_X86_GCLAT") != "0") System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
@@ -330,8 +331,12 @@ public sealed class PcSession : IConsoleSession
         FirstPowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart();
     }
 
+    /// <summary>Called at the start of every frame (N98Install: scripted keys / mouse, one step per frame).</summary>
+    public Action? BeforeFrame;
+
     public void RunFrame()
     {
+        BeforeFrame?.Invoke();
         if (!_powered) { FirstPowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); }
         _m.RunFrame();
         _m.Speaker.CatchUp();   // the PC speaker's and the AdLib's samples up to the end of this frame
@@ -398,7 +403,7 @@ public sealed class PcSession : IConsoleSession
         }
         if (why != null) { _seatCrashSent = true; SeatEnded?.Invoke("crash", why); }
     }
-    private string TextScreen()
+    public string TextScreen()
     {
         var v = _m.Vga; int cols = Math.Clamp(v.Cr[1] + 1, 40, 132), start = v.Cr[0x0d] | (v.Cr[0x0c] << 8);
         var sb = new System.Text.StringBuilder();

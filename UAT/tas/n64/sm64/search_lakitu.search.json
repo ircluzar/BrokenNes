@@ -1,0 +1,7 @@
+{
+  "chapter": "sm64", "score": 1, "tail": 60, "slack": 0, "beam": 3, "rounds": 2, "budget": 120, "seed": 64,
+  "generators": [
+    { "kind": "hold", "from": 0, "to": 700, "range": 30 },
+    { "kind": "press", "from": 0, "to": 700, "step": 6, "buttons": ["A"], "len": [2, 2] }
+  ]
+}

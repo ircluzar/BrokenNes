@@ -25,6 +25,7 @@ internal sealed class Args
         return new Args(dict);
     }
 
+    public string? RawJson(string k) => d.TryGetValue(k, out var v) ? v.GetRawText() : null;
     public bool Has(string k) => d.TryGetValue(k, out var v) && v.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
 
     public string? Str(string k)
@@ -39,6 +40,9 @@ internal sealed class Args
             _ => null,
         };
     }
+
+    /// <summary>The raw JSON text of an argument (an object passed through).</summary>
+    public string Raw(string k) => d.TryGetValue(k, out var v) ? v.GetRawText() : "null";
 
     public string Req(string k) => Str(k) is { Length: > 0 } s ? s : throw new ToolError($"'{k}' is required");
 

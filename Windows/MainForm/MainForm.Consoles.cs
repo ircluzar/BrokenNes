@@ -132,6 +132,7 @@ namespace BrokenNes.Windows
             WireAutoTasApi(server);    // AutoTAS (MainForm.AutoTas.cs)
             server.GetLanShare = LanShareStatus;   // the LAN share's state (D8, MainForm.LanShare.cs): never the token
             WirePortApi(server);       // the debug port (BrokenDev D7, MainForm.DebugPort.cs)        // the bug capture (BrokenDev D6, MainForm.BugCapture.cs)
+            WireN98InstallApi(server);   // nano98 install flow (MainForm.N98Install.cs)
             WireWideMessApi(server);   // WideMess milestone 6 (MainForm.WideMess.cs)
             WireWideMessTestCartApi(server);   // POST /api/widemess/testcart (MainForm.WideMessTestCart.cs)
             server.GetSegaSettings = () => new
@@ -583,6 +584,7 @@ namespace BrokenNes.Windows
         private void OnSeatEnded(NesEmulator.X86.PcSession seat, string kind, string detail)
         {
             if (!ReferenceEquals(session, seat)) return;
+            if (seat.Seat?.Id == "install") { N98InstallSeatEnded(kind, detail); return; }   // (the install wizard handles its own power-off)
             if (kind != "poweroff")
             {
                 string what = kind == "fail" ? $"could not start (error {detail})" : kind == "crash" ? $"stopped responding ({detail})" : $"ended with exit code {detail}";
@@ -652,6 +654,8 @@ namespace BrokenNes.Windows
             ConsoleKind.Genesis => Path.Combine(SaveRoot, "MdSaves", s.GameId + ".srm"),
             // the x86 console: the disk image as DOS left it (its battery is the whole disk), by the original image's id
             // a nano98 seat: its saves layer (only what the game and Windows changed; nano98 PcSession.SeatSaves), apart from the game cache
+            // (the install wizard's seat keeps nothing: what it installed is captured into the package)
+            ConsoleKind.Pc when s is NesEmulator.X86.PcSession { Seat.Id: "install" } => N98InstallDiscardSave,
             ConsoleKind.Pc when s is NesEmulator.X86.PcSession { Seat: not null } => Path.Combine(SaveRoot, "N98Saves", s.GameId + ".n98s"),
             ConsoleKind.Pc => Path.Combine(SaveRoot, "PcDisks", s.GameId + ".img"),
             // the N64: the cartridge's EEPROM / SRAM / FlashRAM as raw bytes, sized by its type

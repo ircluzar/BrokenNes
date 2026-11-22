@@ -22,7 +22,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument('--workshop', required=True)
 ap.add_argument('--work', required=True)
 ap.add_argument('--out', required=True)
-ap.add_argument('--iso'); ap.add_argument('--accept-eula', action='store_true'); ap.add_argument('--keyfile'); ap.add_argument('--pyfat', default=sys.executable)
+ap.add_argument('--iso'); ap.add_argument('--accept-eula', action='store_true'); ap.add_argument('--keyfile'); ap.add_argument('--key-env'); ap.add_argument('--pyfat', default=sys.executable)
 ap.add_argument('--installed', help='an installed Win98 SE disk (skips stages 1-2)')
 ap.add_argument('--machine', default='win98-p166-nano')
 ap.add_argument('--install-frames', type=int, default=140000)
@@ -49,16 +49,20 @@ def stage(n, name, out):
 
 installed = a.installed or W('installed.img')
 if not a.installed:
-    if stage(1, 'setup disk', W('hd_setup.img')):
+    if not os.path.exists(installed) and stage(1, 'setup disk', W('hd_setup.img')):
         if not a.iso: sys.exit('--iso (the user\'s Win98 SE disc) or --installed is needed')
         cmd = [a.pyfat, '-I', os.path.join(HERE, 'build_base.py'), '--iso', a.iso, '--work', a.work]
         if a.accept_eula: cmd.append('--accept-eula')
         if a.keyfile: cmd += ['--keyfile', a.keyfile]
+        if a.key_env: cmd += ['--key-env', a.key_env]
         run(cmd)
     if stage(2, 'install', installed):
         run([a.workshop, '--x86boot', '--machine', a.machine, '--hdd', W('hd_setup.img'), '--cd', a.iso, '--bootorder', 'CH',
              '--frames', str(a.install_frames), '--stepsfile', W('stage2.steps'), '--save', installed + '.tmp'], ok=(0, 1))
         os.replace(installed + '.tmp', installed)
+        for f in ('hd_setup.img', 'stage2.steps'):   # (the setup disk's answer file holds the product key: gone once Windows is installed)
+            try: os.remove(W(f))
+            except OSError: pass
 
 if stage(3, 'seat', W('seat.img')):
     if sparse.is_n98d(installed): sparse.unpack(installed, W('seat.img.tmp'))

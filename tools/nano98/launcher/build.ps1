@@ -3,3 +3,5 @@
 Set-Location $PSScriptRoot
 & wcl386 -q -bt=nt -l=nt_win -ox '-fe=N98LAUNCH.EXE' n98launch.c
 Remove-Item -ErrorAction SilentlyContinue n98launch.obj
+& wcl386 -q -bt=nt -l=nt_win -ox '-fe=N98INST.EXE' n98inst.c
+Remove-Item -ErrorAction SilentlyContinue n98inst.obj
