@@ -340,7 +340,7 @@ public sealed partial class NvGeForce
             default: break;
         }
         if (RankinePrims < 12 && OpLog != null)
-            OpLog($"rankine after prim {_rPrim}: tris {RankineTris} pixels {RankinePixels} rt {G(inst, 0x210):X} fmt {G(inst, 0x208):X} pitch {G(inst, 0x20c):X} hz {G(inst, 0x200):X} vt {G(inst, 0x204):X} scis {G(inst, 0x8c0):X}/{G(inst, 0x8c4):X} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} cull {G(inst, 0x183c)}/{G(inst, 0x1830):X} fp {_fp.Length} ops {string.Join(",", Array.ConvertAll(_fp, f => ((f.W0 >> 24) & 0x3f).ToString("X")))} blend {G(inst, 0x310)} cmask {G(inst, 0x324):X} pcrtc {PcrtcStart:X}");
+            OpLog($"rankine after prim {_rPrim}: tris {RankineTris} pixels {RankinePixels} rt {G(inst, 0x210):X} fmt {G(inst, 0x208):X} pitch {G(inst, 0x20c):X} hz {G(inst, 0x200):X} vt {G(inst, 0x204):X} scis {G(inst, 0x8c0):X}/{G(inst, 0x8c4):X} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} cull {G(inst, 0x183c)}/{G(inst, 0x1830):X} fp {_fp.Length} ops {string.Join(",", Array.ConvertAll(_fp, f => ((f.W0 >> 24) & 0x3f).ToString("X")))} blend {G(inst, 0x310)} cmask {G(inst, 0x324):X} pcrtc {PcrtcStart:X} | tex0 {RTexInfo(inst, 0)}");
     }
 
     // ---------------- the rasterizer + fragment program ----------------
@@ -519,6 +519,14 @@ public sealed partial class NvGeForce
     private readonly Tex[] _rtex = new Tex[16];
 
     private readonly bool[] _rcube = new bool[16];
+
+    private string RTexInfo(uint inst, int u)
+    {
+        var t = RTexUnit(inst, u);
+        if (!t.Ok) return $"off (en {G(inst, 0x1a0c + u * 32):X})";
+        var (vr, ad) = DmaAddr(t.Dma, t.Base);
+        return $"fmt {t.Fmt:X} {t.W}x{t.H} rect {t.Rect} base {t.Base:X} {(vr ? "vram" : "sys")} {ad:X} f {G(inst, 0x1a04 + u * 32):X} wrap {G(inst, 0x1a08 + u * 32):X} filt {G(inst, 0x1a14 + u * 32):X} swz {G(inst, 0x1a10 + u * 32):X} t00 {Texel(t, 0, 0):X8} tmid {Texel(t, t.W / 2, t.H / 2):X8}";
+    }
 
     private uint RTex(uint inst, int unit, float u, float v, float r, float bias)
     {
