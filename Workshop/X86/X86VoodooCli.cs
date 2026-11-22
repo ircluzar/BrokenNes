@@ -17,6 +17,73 @@ internal static class X86VoodooCli
 
     private static ulong Hash(int[] f) { ulong h = 14695981039346656037UL; foreach (int p in f) { h ^= (uint)p; h *= 1099511628211UL; } return h; }
 
+    /// <summary>The self-test's register stream (640x480 setup, fastfill, Gouraud triangle, textured triangle); checks only when <paramref name="check"/>.</summary>
+    private static void Scene(PcMachine m, bool check)
+    {
+        void C(bool ok, string what) { if (check) Check(ok, what); }
+        // 640x480: 10 tiles of 64 across, buffer = 150 pages (640*480*2 / 4096), video on (fbiInit0 bit 0, fbiInit1 not blanked)
+        W(m, 0x214, 10u << 4);
+        W(m, 0x218, 150u << 11);
+        W(m, 0x20c, 480u << 16 | 639);
+        C(!m.Voodoo!.Active, "pass-through: the S3 still shows");
+        W(m, 0x210, 1);
+        C(m.Voodoo.Active && m.Voodoo.Width == 640 && m.Voodoo.Height == 480, "fbiInit0 bit 0: the Voodoo drives the monitor at 640x480");
+
+        // fastfill the back buffer dark blue, clear depth
+        W(m, 0x118, 0u << 16 | 640); W(m, 0x11c, 0u << 16 | 480);
+        W(m, 0x148, 0x00102060); W(m, 0x130, 0xffff);
+        W(m, 0x110, 1 | 1 << 9 | 1 << 10 | 1 << 14);   // clip, RGB + aux write, draw buffer = back
+        W(m, 0x124, 0);
+        // Gouraud triangle (iterated RGB, fbzColorPath 0), 12.4 vertices, 12.12 colours
+        W(m, 0x104, 0);
+        W(m, 0x110, 1 | 1 << 8 | 1 << 9 | 1 << 14);    // + dither
+        void Tri(float ax, float ay, float bx, float by, float cx, float cy)
+        {
+            W(m, 0x008, (uint)(int)(ax * 16)); W(m, 0x00c, (uint)(int)(ay * 16));
+            W(m, 0x010, (uint)(int)(bx * 16)); W(m, 0x014, (uint)(int)(by * 16));
+            W(m, 0x018, (uint)(int)(cx * 16)); W(m, 0x01c, (uint)(int)(cy * 16));
+        }
+        Tri(320, 40, 600, 440, 40, 440);
+        // colour planes: R = 255 at A, falls to 0 at the base; G grows to the right; B grows to the left (per pixel, 12.12)
+        W(m, 0x020, 255u << 12); W(m, 0x024, 0); W(m, 0x028, 0); W(m, 0x030, 255u << 12);
+        W(m, 0x040, 0); W(m, 0x060, unchecked((uint)(-(255 << 12) / 400)) & 0xffffff);
+        W(m, 0x044, (uint)((255 << 12) / 560)); W(m, 0x064, (uint)((255 << 12) / 400) / 2);
+        W(m, 0x048, unchecked((uint)(-(255 << 12) / 560)) & 0xffffff); W(m, 0x068, (uint)((255 << 12) / 400) / 2);
+        W(m, 0x080, 0);
+        C(m.Voodoo.Triangles == 1 && m.Voodoo.Pixels > 100_000, $"Gouraud triangle drawn ({m.Voodoo.Pixels} pixels)");
+
+        // textured quad (two triangles): a 256x256 RGB565 checkerboard, point sampled, no perspective; texture = c_local (Glide GR_COMBINE_FUNCTION_LOCAL)
+        W(m, 0x300, 10u << 8 | 1u << 12 | 1u << 18 | 1u << 21 | 1u << 27, 2);   // textureMode (TMU0 only)
+        W(m, 0x304, 0, 2);                                                     // tLOD: lod 0..0, square
+        W(m, 0x30c, 0, 2);
+        for (uint t = 0; t < 256; t++)
+            for (uint s = 0; s < 256; s += 2)
+            {
+                uint c0 = ((s >> 5) ^ (t >> 5)) % 2 == 0 ? 0xffe0u : 0xf81fu;   // yellow / magenta 32x32 squares
+                m.MemWrite32(Base + 0x800000 + (t << 9) + (s << 1), c0 | c0 << 16);
+            }
+        W(m, 0x104, 1 | 1 << 27);                                              // cc_rgbselect = texture, texture enable
+        // S/T: 1 texel per pixel, starting at 0 (registers are 14.18)
+        W(m, 0x034, 0, 2); W(m, 0x038, 0, 2);
+        W(m, 0x054, 1u << 18, 2); W(m, 0x058, 0, 2); W(m, 0x074, 0, 2); W(m, 0x078, 1u << 18, 2);
+        Tri(200, 200, 456, 200, 200, 456);   // texture 0,0 at A
+        W(m, 0x080, 0);
+        C(m.Voodoo.Triangles == 2, "textured triangle drawn");
+
+    }
+
+    private static void EnableCard(PcMachine m)
+    {
+        var pci = m.Pci!;
+        pci.ConfigWrite(0, PciBus.Voodoo1DevFn, 0x10, Base, 4);
+        pci.ConfigWrite(0, PciBus.Voodoo1DevFn, 0x04, 0x02, 1);
+        pci.ConfigWrite(0, PciBus.Voodoo1DevFn, 0x40, 0x01, 4);
+        W(m, 0x22c, 0x700 | 0x01); W(m, 0x22c, 0x800 | 0x500);
+        pci.ConfigWrite(0, PciBus.Voodoo1DevFn, 0x40, 0x05, 4);
+        R(m, 0x218);
+        pci.ConfigWrite(0, PciBus.Voodoo1DevFn, 0x40, 0x01, 4);
+    }
+
     public static int Run(string[] args)
     {
         if (Array.IndexOf(args, "--dump") is int di and >= 0)
@@ -58,55 +125,7 @@ internal static class X86VoodooCli
         Check((R(m, 0x218) & 0xff) == 0x55, "DAC read back through fbiInit2 (initEnable bit 2)");
         pci.ConfigWrite(0, PciBus.Voodoo1DevFn, 0x40, 0x01, 4);
 
-        // 640x480: 10 tiles of 64 across, buffer = 150 pages (640*480*2 / 4096), video on (fbiInit0 bit 0, fbiInit1 not blanked)
-        W(m, 0x214, 10u << 4);
-        W(m, 0x218, 150u << 11);
-        W(m, 0x20c, 480u << 16 | 639);
-        Check(!m.Voodoo!.Active, "pass-through: the S3 still shows");
-        W(m, 0x210, 1);
-        Check(m.Voodoo.Active && m.Voodoo.Width == 640 && m.Voodoo.Height == 480, "fbiInit0 bit 0: the Voodoo drives the monitor at 640x480");
-
-        // fastfill the back buffer dark blue, clear depth
-        W(m, 0x118, 0u << 16 | 640); W(m, 0x11c, 0u << 16 | 480);
-        W(m, 0x148, 0x00102060); W(m, 0x130, 0xffff);
-        W(m, 0x110, 1 | 1 << 9 | 1 << 10 | 1 << 14);   // clip, RGB + aux write, draw buffer = back
-        W(m, 0x124, 0);
-        // Gouraud triangle (iterated RGB, fbzColorPath 0), 12.4 vertices, 12.12 colours
-        W(m, 0x104, 0);
-        W(m, 0x110, 1 | 1 << 8 | 1 << 9 | 1 << 14);    // + dither
-        void Tri(float ax, float ay, float bx, float by, float cx, float cy)
-        {
-            W(m, 0x008, (uint)(int)(ax * 16)); W(m, 0x00c, (uint)(int)(ay * 16));
-            W(m, 0x010, (uint)(int)(bx * 16)); W(m, 0x014, (uint)(int)(by * 16));
-            W(m, 0x018, (uint)(int)(cx * 16)); W(m, 0x01c, (uint)(int)(cy * 16));
-        }
-        Tri(320, 40, 600, 440, 40, 440);
-        // colour planes: R = 255 at A, falls to 0 at the base; G grows to the right; B grows to the left (per pixel, 12.12)
-        W(m, 0x020, 255u << 12); W(m, 0x024, 0); W(m, 0x028, 0); W(m, 0x030, 255u << 12);
-        W(m, 0x040, 0); W(m, 0x060, unchecked((uint)(-(255 << 12) / 400)) & 0xffffff);
-        W(m, 0x044, (uint)((255 << 12) / 560)); W(m, 0x064, (uint)((255 << 12) / 400) / 2);
-        W(m, 0x048, unchecked((uint)(-(255 << 12) / 560)) & 0xffffff); W(m, 0x068, (uint)((255 << 12) / 400) / 2);
-        W(m, 0x080, 0);
-        Check(m.Voodoo.Triangles == 1 && m.Voodoo.Pixels > 100_000, $"Gouraud triangle drawn ({m.Voodoo.Pixels} pixels)");
-
-        // textured quad (two triangles): a 256x256 RGB565 checkerboard, point sampled, no perspective; texture = c_local (Glide GR_COMBINE_FUNCTION_LOCAL)
-        W(m, 0x300, 10u << 8 | 1u << 12 | 1u << 18 | 1u << 21 | 1u << 27, 2);   // textureMode (TMU0 only)
-        W(m, 0x304, 0, 2);                                                     // tLOD: lod 0..0, square
-        W(m, 0x30c, 0, 2);
-        for (uint t = 0; t < 256; t++)
-            for (uint s = 0; s < 256; s += 2)
-            {
-                uint c0 = ((s >> 5) ^ (t >> 5)) % 2 == 0 ? 0xffe0u : 0xf81fu;   // yellow / magenta 32x32 squares
-                m.MemWrite32(Base + 0x800000 + (t << 9) + (s << 1), c0 | c0 << 16);
-            }
-        W(m, 0x104, 1 | 1 << 27);                                              // cc_rgbselect = texture, texture enable
-        // S/T: 1 texel per pixel, starting at 0 (registers are 14.18)
-        W(m, 0x034, 0, 2); W(m, 0x038, 0, 2);
-        W(m, 0x054, 1u << 18, 2); W(m, 0x058, 0, 2); W(m, 0x074, 0, 2); W(m, 0x078, 1u << 18, 2);
-        Tri(200, 200, 456, 200, 200, 456);   // texture 0,0 at A
-        W(m, 0x080, 0);
-        Check(m.Voodoo.Triangles == 2, "textured triangle drawn");
-
+        Scene(m, true);
         // swap (no vsync wait) and show
         W(m, 0x128, 0);
         m.Vga.Render();
@@ -129,6 +148,30 @@ internal static class X86VoodooCli
         bool threw = false;
         try { new PcMachine(PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.S3Trio64).LoadState(state); } catch (System.IO.InvalidDataException) { threw = true; }
         Check(threw, "a Voodoo state refuses to load into the machine without the card");
+
+        // the Enhanced card (WIN98-P166-VOODOO-X2): the same stream gives the same guest framebuffer, registers and state body as the Stock card,
+        // a 2x picture that matches the Stock one, and states that do not cross-load between Stock and Enhanced
+        var e = new PcMachine(PcConfig.Win98VoodooHd(2), CpuModel.PentiumMmx, PcVideo.S3Trio64);
+        EnableCard(e);
+        Scene(e, false);
+        W(e, 0x128, 0);
+        Check(e.Voodoo!.Scale == 2 && e.Voodoo.Fb.AsSpan().SequenceEqual(m.Voodoo.Fb) && e.Voodoo.Reg.AsSpan().SequenceEqual(m.Voodoo.Reg) && e.Voodoo.Pixels == m.Voodoo.Pixels,
+            "Enhanced 2x: guest framebuffer, registers and counters = Stock");
+        e.Vga.Render(); e.Voodoo.RenderInto(e.Vga);
+        Check(e.Vga.Width == 1280 && e.Vga.Height == 960, $"Enhanced 2x: picture is 1280x960 ({e.Vga.Width}x{e.Vga.Height})");
+        int Ex(int x, int y) => e.Vga.Frame[y * e.Vga.Width + x] & 0xffffff;
+        Check(Ex(10, 10) == Px(5, 5) && Ex(420, 420) is 0xffff00 && Ex(500, 420) is 0xff00ff && (Ex(640, 120) >> 16) > 200,
+            $"Enhanced 2x: background, texture checker and red apex where the Stock picture has them ({Ex(10, 10):X6} {Ex(420, 420):X6} {Ex(500, 420):X6} {Ex(640, 120):X6})");
+        var es = e.SaveState();
+        threw = false;
+        try { new PcMachine(PcConfig.Win98Voodoo, CpuModel.PentiumMmx, PcVideo.S3Trio64).LoadState(es); } catch (System.IO.InvalidDataException) { threw = true; }
+        bool threw2 = false;
+        try { new PcMachine(PcConfig.Win98VoodooHd(2), CpuModel.PentiumMmx, PcVideo.S3Trio64).LoadState(state); } catch (System.IO.InvalidDataException) { threw2 = true; }
+        Check(threw && threw2, "Stock and Enhanced Voodoo states refuse each other");
+        var e2 = new PcMachine(PcConfig.Win98VoodooHd(2), CpuModel.PentiumMmx, PcVideo.S3Trio64);
+        e2.LoadState(es); e2.Vga.Render(); e2.Voodoo!.RenderInto(e2.Vga);
+        Check(e2.Vga.Width == 1280 && (e2.Vga.Frame[420 * 1280 + 420] & 0xffffff) == 0xffff00 && (e2.Vga.Frame[10 * 1280 + 10] & 0xffffff) == Px(5, 5),
+            "Enhanced state round trip: a 2x picture comes back (blown up from the native framebuffer until the next frame is drawn)");
 
         if (shot != null) { X86Shots.SavePng(m.Vga, shot); Console.WriteLine($"x86voodoo: picture {shot}"); }
         Console.WriteLine($"x86voodoo: {_pass} passed, {_fail} failed (picture hash {h1:X16})");
