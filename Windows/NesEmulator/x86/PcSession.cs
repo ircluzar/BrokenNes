@@ -239,7 +239,7 @@ public sealed class PcSession : IConsoleSession
     // BROKENNES_X86_MACHINESTATE: start from a machine state saved by the Workshop's x86boot ({save:PATH}) on the same disks (X86-02: StarCraft's menu); used once
     private void FirstPowerOn()
     {
-        _m.PowerOn(); _powered = true; _seatPicture = false; _seatOffSent = false; _seatFrames = 0; _seatCrashSent = false; SeatStatus = null;
+        _m.PowerOn(); _powered = true; _seatPicture = false; _seatBlank = 10; _seatOffSent = false; _seatFrames = 0; _seatCrashSent = false; SeatStatus = null;
         _seatFilesClean = false;
         if (Seat != null) _m.Command = Seat.CommandWith(withFiles: Disk.OverlaySectors == 0 && (_m.Hdd[1]?.OverlaySectors ?? 0) == 0);   // (a sector layer from an unclean end already holds newer saves)
         if (SeatResume()) return;
@@ -373,15 +373,15 @@ public sealed class PcSession : IConsoleSession
     /// <summary>The stored saves layer belongs to another composition of the drives (the package or seat base changed): MainForm keeps the file aside.</summary>
     public bool SavesMismatch { get; private set; }
 
-    private bool _seatPicture;
+    private bool _seatPicture; private int _seatBlank;
     private void CopyFrame()
     {
         var v = _m.Vga;
         int w = v.Width, h = v.Height, n = w * h;
         if (_frame.Length < n) _frame = new uint[n];
-        // a nano98 seat shows black until the guest's first graphics mode (the nano98 boot screen): the power-on / POST text frames
-        // (a white first frame, BIOS text) are not part of the seat's look
-        if (Seat != null && !_seatPicture && (v.Gr[6] & 1) == 0) { Array.Fill(_frame, 0xff000000u, 0, n); _w = w; _h = h; return; }
+        // a nano98 seat shows black for its first frames and until the guest's first graphics mode (the nano98 boot screen): the power-on /
+        // POST frames (a white first picture while the video BIOS initializes, BIOS text) are not part of the seat's look
+        if (Seat != null && (_seatBlank > 0 ? _seatBlank-- > 0 : !_seatPicture && (v.Gr[6] & 1) == 0)) { Array.Fill(_frame, 0xff000000u, 0, n); _w = w; _h = h; return; }
         if (Seat != null) _seatPicture = true;
         for (int i = 0; i < n; i++) _frame[i] = 0xff000000u | (uint)v.Frame[i];
         _w = w; _h = h;
