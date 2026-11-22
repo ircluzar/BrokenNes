@@ -726,7 +726,8 @@ internal static class X86Shots
     {
         using var bmp = new System.Drawing.Bitmap(v.Width, v.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         var r = bmp.LockBits(new System.Drawing.Rectangle(0, 0, v.Width, v.Height), System.Drawing.Imaging.ImageLockMode.WriteOnly, bmp.PixelFormat);
-        System.Runtime.InteropServices.Marshal.Copy(v.Frame, 0, r.Scan0, v.Width * v.Height);
+        var px = new int[v.Width * v.Height]; for (int i = 0; i < px.Length; i++) px[i] = v.Frame[i] | unchecked((int)0xff000000);   // opaque: a frame not drawn yet is black, not a transparent PNG (viewers show it white)
+        System.Runtime.InteropServices.Marshal.Copy(px, 0, r.Scan0, px.Length);
         bmp.UnlockBits(r);
         bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
     }
