@@ -55,3 +55,10 @@ Rules: builds on this PC only under heavylock.sh; timed runs only on Garage2; pa
 2. Then in-game states (skirmish / AoE random map) and timed P2 vs P166 + idle delta (run 300 and 1200 frames, diff idle-clock and clock).
 3. Look at the 1891-s frame (rerun m_sc_P2_1200 alone on an idle slot; --jitstat).
 4. Benchmarks + gate + merge as before (nothing merged yet; branch x86-p2 now d8553ed3 + this note).
+
+## Step 3 done (stall_P2, same state, run alone in a free slot, other agents on the box)
+- Same 1200 frames, same end state (cycle 32327018418, CS:EIP 015F:BFF71425): 87 s total, max frame 4.0 s. The 1891-s frame does NOT reproduce
+  -> host contention / host stall on Garage2, not a deterministic emulator hang.
+- REAL finding: --jitstat says compiled 401, runs 0, compiled-instrs 0 (0.0%), invalid 976, recompiles 49: the busy P2 code runs 100% in the
+  interpreter (371 M instr/s host, 20% real time). The JIT compiles the regions but never runs them, and keeps invalidating them. Next: find out why
+  (16-bit code / self-modifying writes near the loop at 17D7:0C4F / a P6-only check in block entry). Compare with the same loop on the P166.
