@@ -57,7 +57,7 @@ if not a.installed:
         run(cmd)
     if stage(2, 'install', installed):
         run([a.workshop, '--x86boot', '--machine', a.machine, '--hdd', W('hd_setup.img'), '--cd', a.iso, '--bootorder', 'CH',
-             '--frames', str(a.install_frames), '--stepsfile', W('stage2.steps'), '--save', installed + '.tmp'])
+             '--frames', str(a.install_frames), '--stepsfile', W('stage2.steps'), '--save', installed + '.tmp'], ok=(0, 1))
         os.replace(installed + '.tmp', installed)
 
 if stage(3, 'seat', W('seat.img')):
@@ -77,7 +77,8 @@ if stage(5, 'settle', W('settled.img')):
     cmdf = W('settle.cmd')
     open(cmdf, 'wb').write(b'N98CMD1\r\nrun=C:\\WINDOWS\\RUNDLL32.EXE\r\nexit=poweroff\r\n')
     run([a.workshop, '--x86boot', '--machine', a.machine, '--hdd', W('slim.img'), '--hdd2', blank, '--n98cmd', cmdf,
-         '--frames', str(a.settle_frames), '--save', W('settled.img.tmp')])
+         '--frames', str(a.settle_frames), '--save', W('settled.img.tmp')], ok=(0, 1))   # (x86boot returns 1 when the machine powered off: expected)
+    if not os.path.exists(W('settled.img.tmp')): sys.exit('settle boot saved no disk')
     os.replace(W('settled.img.tmp'), W('settled.img'))
 
 if stage(6, 'pack', a.out):
