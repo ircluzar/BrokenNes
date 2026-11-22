@@ -88,7 +88,7 @@ internal static partial class ClientTest
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var o = await Call("open_rom", new { path = hdd, machine, hdd2 = hdd2.Length > 0 ? hdd2 : null, state = state.Length > 0 ? state : null });
         string h = S(o["session"]);
-        Check("x86_win98_open", !o.IsError && S(o["machine"]).StartsWith("WIN98"), o.ToString());
+        Check("x86_win98_open", !o.IsError && S(o["machine"]).StartsWith("WIN98", StringComparison.OrdinalIgnoreCase), o.ToString());
         var r = await Call("run", new { session = h, frames });
         var shot = await Call("screenshot", new { session = h });
         Check("x86_win98_desktop", S(r["outcome"]) == "frames" && L(shot["colours"]) >= 8 && L(shot["width"]) >= 640, $"{frames} frames in {sw.Elapsed.TotalSeconds:F0} s; {shot}");
