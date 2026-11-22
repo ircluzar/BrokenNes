@@ -39,7 +39,7 @@ public static class N98BaseBuild
     private static string? PyFat()
     {
         if (Environment.GetEnvironmentVariable("BROKENNES_N98_PYFAT") is { Length: > 0 } p) return p;
-        const string dev = @"C:\BrokenNes-work	ools\pyfat_venv\Scripts\python.exe";
+        const string dev = @"C:\BrokenNes-work\tools\pyfat_venv\Scripts\python.exe";
         return File.Exists(dev) ? dev : null;
     }
 
