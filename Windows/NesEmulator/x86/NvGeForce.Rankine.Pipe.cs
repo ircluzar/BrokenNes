@@ -520,6 +520,27 @@ public sealed partial class NvGeForce
 
     private readonly bool[] _rcube = new bool[16];
 
+    // diagnostics: X86_NVTEXDUMP=DIR writes each texture the rasterizer samples (once per base/format/size) as a BMP, through Texel()
+    private static readonly string? TexDumpDir = Environment.GetEnvironmentVariable("X86_NVTEXDUMP");
+    private readonly HashSet<string> _dumped = new();
+    private void DumpTex(in Tex t)
+    {
+        string key = $"{t.Base:X}_{t.Fmt:X}_{t.W}x{t.H}";
+        if (_dumped.Count > 64 || !_dumped.Add(key)) return;
+        int w = Math.Min(t.W, 1024), h = Math.Min(t.H, 1024);
+        var px = new byte[w * h * 4];
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++)
+        {
+            uint c = Texel(t, x, y); int o = ((h - 1 - y) * w + x) * 4;
+            px[o] = (byte)c; px[o + 1] = (byte)(c >> 8); px[o + 2] = (byte)(c >> 16); px[o + 3] = 255;
+        }
+        using var f = System.IO.File.Create(System.IO.Path.Combine(TexDumpDir!, key + ".bmp"));
+        using var bw = new System.IO.BinaryWriter(f);
+        bw.Write((ushort)0x4d42); bw.Write(54 + px.Length); bw.Write(0); bw.Write(54);
+        bw.Write(40); bw.Write(w); bw.Write(h); bw.Write((ushort)1); bw.Write((ushort)32); bw.Write(0); bw.Write(px.Length); bw.Write(2835); bw.Write(2835); bw.Write(0); bw.Write(0);
+        bw.Write(px);
+    }
+
     private string RTexInfo(uint inst, int u)
     {
         var t = RTexUnit(inst, u);
@@ -658,6 +679,7 @@ public sealed partial class NvGeForce
         uint keep = ((cmask & 0xff) == 0 ? 0xffu : 0) | ((cmask & 0xff00) == 0 ? 0xff00u : 0) | ((cmask & 0xff0000) == 0 ? 0xff0000u : 0) | ((cmask & 0xff000000) == 0 ? 0xff000000u : 0);
         float zmax = z16 ? 65535f : 16777215f;
         for (int u = 0; u < 16; u++) { _rtex[u] = RTexUnit(inst, u); _rcube[u] = (G(inst, 0x1a04 + u * 32) & 4) != 0; }
+        if (TexDumpDir != null) for (int u = 0; u < 4; u++) if (_rtex[u].Ok) DumpTex(_rtex[u]);
         float inv = 1 / area;
         for (int y = y0; y <= y1; y++)
         {
