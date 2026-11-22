@@ -333,7 +333,11 @@ public sealed partial class NvGeForce
             case 7: case 10: for (int i = 1; i + 1 < n; i++) RTri(inst, vs[0], vs[i], vs[i + 1]); break;                // FAN, POLYGON
             case 8: for (int i = 0; i + 3 < n; i += 4) { RTri(inst, vs[i], vs[i + 1], vs[i + 2]); RTri(inst, vs[i], vs[i + 2], vs[i + 3]); } break;
             case 9: for (int i = 0; i + 3 < n; i += 2) { RTri(inst, vs[i], vs[i + 1], vs[i + 3]); RTri(inst, vs[i], vs[i + 3], vs[i + 2]); } break;
-            default: break;                                                                                             // points / lines: not yet
+            case 1: foreach (var v in vs) RPoint(inst, v); break;                                                       // POINTS
+            case 2: for (int i = 0; i + 1 < n; i += 2) RLine(inst, vs[i], vs[i + 1]); break;                           // LINES
+            case 3: for (int i = 0; i < n; i++) RLine(inst, vs[i], vs[(i + 1) % n]); break;                             // LINE_LOOP
+            case 4: for (int i = 0; i + 1 < n; i++) RLine(inst, vs[i], vs[i + 1]); break;                               // LINE_STRIP
+            default: break;
         }
         if (RankinePrims < 12 && OpLog != null)
             OpLog($"rankine after prim {_rPrim}: tris {RankineTris} pixels {RankinePixels} rt {G(inst, 0x210):X} fmt {G(inst, 0x208):X} pitch {G(inst, 0x20c):X} hz {G(inst, 0x200):X} vt {G(inst, 0x204):X} scis {G(inst, 0x8c0):X}/{G(inst, 0x8c4):X} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} cull {G(inst, 0x183c)}/{G(inst, 0x1830):X} fp {_fp.Length} ops {string.Join(",", Array.ConvertAll(_fp, f => ((f.W0 >> 24) & 0x3f).ToString("X")))} blend {G(inst, 0x310)} cmask {G(inst, 0x324):X} pcrtc {PcrtcStart:X}");
@@ -520,12 +524,81 @@ public sealed partial class NvGeForce
         return SampleLevel(t, 0, u, v, t.Lin);
     }
 
+    private static RVert Moved(RVert v, float dx, float dy)
+    {
+        var r = new RVert { X = v.X + dx, Y = v.Y + dy, Z = v.Z, Iw = v.Iw };
+        Array.Copy(v.Var, r.Var, 64);
+        return r;
+    }
+
+    /// <summary>A point: a screen-aligned square of the point size (output 6 .x, or POINT_SIZE), texcoords 0..1 across it when point
+    /// sprites are on (0x1EE8 POINT_SPRITE).</summary>
+    private void RPoint(uint inst, RVert v)
+    {
+        float size = v.Var[6 * 4] > 0 ? v.Var[6 * 4] : F32(G(inst, 0x1ee0));
+        if (!(size > 0)) size = 1;
+        float h = Math.Clamp(size, 1, 256) * 0.5f;
+        bool sprite = (G(inst, 0x1ee8) & 1) != 0;
+        var q = new[] { Moved(v, -h, -h), Moved(v, h, -h), Moved(v, h, h), Moved(v, -h, h) };
+        if (sprite)
+        {
+            float[] su = { 0, 1, 1, 0 }, sv = { 0, 0, 1, 1 };
+            for (int k = 0; k < 4; k++) for (int t = 0; t < 8; t++) { q[k].Var[(8 + t) * 4] = su[k]; q[k].Var[(8 + t) * 4 + 1] = sv[k]; }
+        }
+        _noCullR = true;
+        try { RTri(inst, q[0], q[1], q[2]); RTri(inst, q[0], q[2], q[3]); } finally { _noCullR = false; }
+    }
+
+    /// <summary>A line: a one-pixel-wide quad along it.</summary>
+    private void RLine(uint inst, RVert a, RVert b)
+    {
+        float dx = b.X - a.X, dy = b.Y - a.Y;
+        float len = MathF.Sqrt(dx * dx + dy * dy); if (len == 0) return;
+        float nx = -dy / len * 0.5f, ny = dx / len * 0.5f;
+        _noCullR = true;
+        try
+        {
+            var a0 = Moved(a, nx, ny); var a1 = Moved(a, -nx, -ny); var b0 = Moved(b, nx, ny); var b1 = Moved(b, -nx, -ny);
+            RTri(inst, a0, b0, b1); RTri(inst, a0, b1, a1);
+        }
+        finally { _noCullR = false; }
+    }
+    private bool _noCullR;
+
+    /// <summary>Near-plane clipping: a triangle with a vertex at w <= 0 is clipped against w >= eps in clip space (x*w, y*w, z*w, w; the
+    /// screen positions are the projected ones), varyings linear in clip space, and the pieces drawn.</summary>
     private void RTri(uint inst, RVert a, RVert b, RVert c)
     {
-        if (a.Iw <= 0 || b.Iw <= 0 || c.Iw <= 0) return;   // (no clipping yet: drop triangles crossing the near plane)
+        if (a.Iw > 0 && b.Iw > 0 && c.Iw > 0) { RTriIn(inst, a, b, c); return; }
+        const float eps = 1e-5f;
+        float W(RVert v) => v.Iw == 0 ? -1 : 1 / v.Iw;
+        var poly = new List<RVert> { a, b, c };
+        var outp = new List<RVert>();
+        for (int i = 0; i < poly.Count; i++)
+        {
+            RVert p = poly[i], q = poly[(i + 1) % poly.Count];
+            float wp = W(p), wq = W(q);
+            bool pin = wp >= eps, qin = wq >= eps;
+            if (pin) outp.Add(p);
+            if (pin != qin)
+            {
+                float t = (eps - wp) / (wq - wp);
+                var r = new RVert();
+                float cxp = p.X * wp, cyp = p.Y * wp, czp = p.Z * wp, cxq = q.X * wq, cyq = q.Y * wq, czq = q.Z * wq;
+                float w = wp + (wq - wp) * t;
+                r.X = (cxp + (cxq - cxp) * t) / w; r.Y = (cyp + (cyq - cyp) * t) / w; r.Z = (czp + (czq - czp) * t) / w; r.Iw = 1 / w;
+                for (int k = 0; k < 64; k++) r.Var[k] = p.Var[k] + (q.Var[k] - p.Var[k]) * t;
+                outp.Add(r);
+            }
+        }
+        for (int i = 1; i + 1 < outp.Count; i++) RTriIn(inst, outp[0], outp[i], outp[i + 1]);
+    }
+
+    private void RTriIn(uint inst, RVert a, RVert b, RVert c)
+    {
         float area = (b.X - a.X) * (c.Y - a.Y) - (c.X - a.X) * (b.Y - a.Y);
         if (area == 0 || float.IsNaN(area)) return;
-        if (G(inst, 0x183c) != 0)
+        if (G(inst, 0x183c) != 0 && !_noCullR)
         {
             bool ccw = area < 0;                                       // (y grows downward on the screen)
             bool front = G(inst, 0x1834) == 0x900 ? !ccw : ccw;
