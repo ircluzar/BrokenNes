@@ -76,7 +76,7 @@ internal static class X86BootCli
         // --machine names a whole machine (the desktop's presets): its CPU model and video card, unless --cpu / --video say otherwise
         var preset = Arg(args, "--machine") is string mk && PcMachinePreset.Known(mk) ? PcMachinePreset.Find(mk) : null;
         var model = Arg(args, "--cpu") is string cs ? CpuModel.Parse(cs) ?? throw new ArgumentException($"no CPU model {cs}") : preset?.Cpu;
-        var video = Arg(args, "--video") is string vs ? (vs.ToLowerInvariant() is "s3" or "s3trio64" ? PcVideo.S3Trio64 : PcVideo.Vga) : preset?.Video ?? PcVideo.Vga;
+        var video = Arg(args, "--video") is string vs ? (vs.ToLowerInvariant() switch { "s3" or "s3trio64" => PcVideo.S3Trio64, "geforce" or "nv10" => PcVideo.GeForce256, _ => PcVideo.Vga }) : preset?.Video ?? PcVideo.Vga;
         var m = cfg == PcConfig.Default ? new PcMachine(PcMachine.DefaultMemory, model, video) : new PcMachine(cfg, model, video);
         if (Arg(args, "--ips") is string ips) m.InstructionsPerSecond = long.Parse(ips);
         if (Arg(args, "--wav") != null) _wav = new System.IO.MemoryStream();
@@ -322,6 +322,19 @@ internal static class X86BootCli
             Console.WriteLine($"traceat: at {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} after {sl} slices");
             foreach (var t in tring) Console.WriteLine("  ring " + t);
         }
+        if (Arg(args, "--nvtrace") is string nvt && m.Nv != null)   // --nvtrace HEXPUT:N:FILE: run until the driver writes that DMA PUT, then log N instructions
+        {
+            var np = nvt.Split(':', 3); m.Nv.TracePut = Convert.ToUInt32(np[0], 16); long sl = 0;
+            while (!m.Nv.PutHit && sl++ < 50_000_000) m.RunClock(2000);
+            using var tw2 = new StreamWriter(np[2]);
+            tw2.WriteLine($"nvtrace: PUT hit after {sl} slices");
+            for (int k = 0; k < int.Parse(np[1]); k++)
+            {
+                uint lin = m.Cpu.SegBase[1] + m.Cpu.Ip;
+                tw2.WriteLine($"{m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} EAX {m.Cpu.R[0]:X8} EBX {m.Cpu.R[3]:X8} ECX {m.Cpu.R[1]:X8} EDX {m.Cpu.R[2]:X8} ESI {m.Cpu.R[6]:X8} EDI {m.Cpu.R[7]:X8} EBP {m.Cpu.R[5]:X8} ESP {m.Cpu.R[4]:X8} | {LinBytes(m, lin, 8)}");
+                m.Cpu.Step(1);
+            }
+        }
         if (Arg(args, "--trace") is string trc)   // one instruction at a time: where a hang loops
         {
             Console.WriteLine("  IVT " + string.Join(" ", Enumerable.Range(0, 32).Select(i => $"{i:X2}={m.Phys16((uint)i * 4 + 2):X4}:{m.Phys16((uint)i * 4):X4}")) + $" | 40:67 {m.Phys32(0x467):X8} CMOS0F {m.Cmos.Ram[0x0f]:X2} 40:72 {m.Phys16(0x472):X4}");
@@ -339,6 +352,8 @@ internal static class X86BootCli
         if (args.Contains("--portlog"))
             Console.WriteLine("ports: " + string.Join(" ", Enumerable.Range(0, 0x20000).Where(i => portCount[i] > 0).OrderByDescending(i => portCount[i]).Take(40)
                 .Select(i => $"{((i & 0x10000) != 0 ? "out" : "in")}{i & 0xffff:X}={portCount[i]}")));
+        if (Arg(args, "--nvstart") is string nvs && m.Nv != null) { m.Nv.PcrtcStart = Convert.ToUInt32(nvs, 16); m.Vga.Render(); X86Shots.SavePng(m.Vga, Arg(args, "--shot") + ".start.png"); }   // a diagnostic: show another buffer
+        if (Arg(args, "--nvfind") is string nvf && m.Nv != null) foreach (var l in m.Nv.FindDma(Convert.ToUInt32(nvf, 16))) Console.WriteLine("nvfind " + l);
         if (args.Contains("--vgadump"))   // why a picture is blank: the registers, the palette and how much video memory is non-zero
         {
             if (m.Vga.S3 is { VBox: true } vb) Console.WriteLine($"dispi on {vb.DispiOn} regs " + string.Join(" ", vb.Dispi.Select(x => x.ToString("X4"))) + $" lfb {vb.LfbBase:X8} lfbwrites {vb.LfbWrites} bankwrites {vb.BankWrites} pcibar {vb.PciRead(0x10):X8} w {vb.Width} h {vb.Height} stride {vb.Stride} bpp {vb.BytesPerPixel}");
@@ -346,6 +361,10 @@ internal static class X86BootCli
             string H(byte[] b) => string.Join(" ", b.Select(x => x.ToString("X2")));
             Console.WriteLine($"vga SR {H(v.Sr)}\nvga GR {H(v.Gr[..9])}\nvga AR {H(v.Ar)}\nvga CR {H(v.Cr[..0x19])}\nvga DAC0-15 {H(v.Palette[..48])}");
             Console.WriteLine($"vga ram non-zero bytes {v.Ram.Count(b => b != 0)} of {v.Ram.Length}; S3 {(m.S3 != null ? "yes" : "no")}; CR30-6F {H(v.Cr[0x30..0x70])}");
+            Console.WriteLine($"cpu CS:EIP {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} csbase {m.Cpu.SegBase[1]:X8} ES {m.Cpu.SegSel[0]:X4} base {m.Cpu.SegBase[0]:X8} EBP {m.Cpu.R[5]:X8}");
+            if (m.Nv is { } nv2) Console.WriteLine("nv fifo " + string.Join(" ", new uint[] { 0x2100, 0x2140, 0x2500, 0x2504, 0x3200, 0x3204, 0x3210, 0x3220, 0x3240, 0x3244, 0x3250, 0x3270, 0x400100, 0x400140 }.Select(r => $"{r:X}={nv2.MmioRead(r, 4):X}")));
+            if (m.Nv is { } nv3) { var hist = new Dictionary<int, int>(); for (int yy = 0; yy < nv3.Height; yy++) for (int xx = 0; xx < nv3.Width; xx++) { int o = nv3.StartByte + yy * nv3.Stride + xx * 2; int pv = v.Ram[o] | v.Ram[o + 1] << 8; hist[pv] = hist.GetValueOrDefault(pv) + 1; } Console.WriteLine("nv screen colours " + string.Join(" ", hist.OrderByDescending(kv => kv.Value).Take(12).Select(kv => $"{kv.Key:X4}x{kv.Value}"))); }
+            if (m.Nv is { } nv) Console.WriteLine($"nv CR19-4F {H(v.Cr[0x19..0x50])} depth {nv.Depth} {nv.Width}x{nv.Height} stride {nv.Stride} start {nv.StartByte:X} 565 {nv.Is565} methods {nv.Methods} push {nv.PushWords} tris {nv.Triangles3D} px3d {nv.Pixels3D} nonzero-first-2MB {v.Ram.Take(2 << 20).Count(b => b != 0)}");
             { int cb = ((v.Cr[0x4c] & 0x0f) << 8 | v.Cr[0x4d]) * 1024; for (int l = 0; l < 4; l++) Console.WriteLine($"vga cursor@{cb:X} line {l}: {H(v.Ram[(cb + l * 16)..(cb + l * 16 + 16)])}"); }
             { var nz = new List<string>(); int run = -1; for (int k = 0x4b000; k < v.Ram.Length; k += 256) { bool any = false; for (int q = 0; q < 256; q++) if (v.Ram[k + q] != 0) { any = true; break; } if (any && run < 0) run = k; if (!any && run >= 0) { nz.Add($"{run:X}-{k:X}"); run = -1; } } Console.WriteLine("vga offscreen non-zero: " + string.Join(" ", nz.Take(30))); }
             Console.WriteLine($"system RAM A0000-BFFFF non-zero bytes {m.Cpu.Mem.AsSpan(0xa0000, 0x20000).ToArray().Count(b => b != 0)} (should stay 0: the VGA owns it)");

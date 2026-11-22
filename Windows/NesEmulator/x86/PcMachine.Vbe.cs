@@ -8,13 +8,15 @@ using System.Text;
 namespace NesEmulator.X86;
 
 /// <summary>The video card on the board.</summary>
-public enum PcVideo { Vga, S3Trio64, VBoxVga }
+public enum PcVideo { Vga, S3Trio64, GeForce256, VBoxVga }   // (append only: the numbers are stored)
 
 public sealed partial class PcMachine
 {
     public readonly PcVideo Video;
     /// <summary>The S3 Trio64's extensions (null on the plain VGA).</summary>
     public readonly S3Trio64? S3;
+    /// <summary>The GeForce 256's extensions (null unless the board has that card).</summary>
+    public readonly NvGeForce? Nv;
 
     private const uint VRom = 0xc0000, VRomSeg = 0xc000;
     private const ushort WinFuncOff = 0x0040, OemOff = 0x0050, VendorOff = 0x0080, ProductOff = 0x0090, RevOff = 0x00a0, ModeListOff = 0x00c0;
@@ -42,9 +44,9 @@ public sealed partial class PcMachine
         byte[] wf = { 0xb8, 0x05, 0x4f, 0xcd, 0x10, 0xcb };
         Array.Copy(wf, 0, m, VRom + WinFuncOff, wf.Length);
         void Str(ushort off, string s) { var b = Encoding.ASCII.GetBytes(s + "\0"); Array.Copy(b, 0, m, VRom + off, b.Length); }
-        Str(OemOff, "BrokenNes S3 Trio64 VBE 2.0");
+        Str(OemOff, Nv != null ? "BrokenNes GeForce 256 VBE 2.0" : "BrokenNes S3 Trio64 VBE 2.0");
         Str(VendorOff, "BrokenNes");
-        Str(ProductOff, "S3 Trio64");
+        Str(ProductOff, Nv != null ? "GeForce 256 DDR" : "S3 Trio64");
         Str(RevOff, "1.0");
         uint o = VRom + ModeListOff;
         foreach (var vm in VbeModes) { m[o] = (byte)vm.Number; m[o + 1] = (byte)(vm.Number >> 8); o += 2; }

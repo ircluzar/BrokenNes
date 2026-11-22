@@ -25,7 +25,8 @@ public sealed partial class PcMachine
         else if (mode == 0x13) { Vga.SetRegs(Vga.Mode13); cols = 40; rows = 25; pageSize = 0; }
         else if (mode is 0x12 or 0x11) { Vga.SetRegs(Vga.Mode12); cols = 80; rows = 30; pageSize = 0; mode = 0x12; }
         else return;                                             // not offered: the mode stays as it was
-        Vga.S3?.LeaveEnhanced();   // also from V86 (a DOS box under Windows): a real S3 BIOS mode set leaves the enhanced mode, and Int10 replays the CR31/CR3x changes through the VDD (Quake in a full-screen DOS box was drawn by the enhanced-mode path, 2026-11-20)
+        Vga.S3?.LeaveEnhanced();
+        Vga.Nv?.LeaveEnhanced();   // also from V86 (a DOS box under Windows): a real S3 BIOS mode set leaves the enhanced mode, and Int10 replays the CR31/CR3x changes through the VDD (Quake in a full-screen DOS box was drawn by the enhanced-mode path, 2026-11-20)
         if (mode == 0x13) Vga.LoadDefaultDac256(); else { Array.Clear(Vga.Palette); Vga.LoadEgaDac(); }
         if (!noClear)
         {
@@ -335,6 +336,7 @@ public sealed partial class PcMachine
             }
             case 0x1a: if (AL == 0) { AL = 0x1a; BX = 0x0008; } break;
             case 0x4f when S3 != null: Vbe(); break;
+            case 0x4f when Nv != null: VbeNv(); break;
         }
     }
 

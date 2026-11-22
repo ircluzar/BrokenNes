@@ -28,6 +28,7 @@ internal static class Program
         if (Flag("client-test")) return ClientTest.Run(args, ClientTest.Suite.Client);
         if (Flag("demo")) return ClientTest.Run(args, ClientTest.Suite.Demo);
         if (Flag("live-test")) return ClientTest.Run(args, ClientTest.Suite.Live);
+        if (Flag("x86-test")) return ClientTest.Run(args, ClientTest.Suite.X86);
         if (Flag("agentloop-test")) return AgentLoopTest.Run(args);   // play_step / record / reference (compat catalog P0)
         if (Flag("autotas-test")) return AutoTasCli.Test(args);        // AutoTAS packages, state files, milestones, stitch + verify
         if (Flag("autotas")) return AutoTasCli.Run(args);

@@ -16,9 +16,9 @@ namespace BrokenNes.Mcp;
 /// </code>
 /// Prints a line per check and one JSON line last; exit 0 when every check passed.
 /// </summary>
-internal static class ClientTest
+internal static partial class ClientTest
 {
-    public enum Suite { Client, Demo, Live }
+    public enum Suite { Client, Demo, Live, X86 }
 
     private sealed class Res
     {
@@ -87,6 +87,7 @@ internal static class ClientTest
             {
                 case Suite.Client: await ClientSuite(dir); break;
                 case Suite.Demo: await DemoSuite(dir, Opt("out", "")); break;
+                case Suite.X86: await X86Win98Suite(Opt("hdd", ""), Opt("hdd2", ""), Opt("state", ""), Opt("machine", "WIN98-P166"), int.Parse(Opt("frames", "0"))); break;
                 case Suite.Live: await LiveSuite(int.Parse(Opt("ro-pid", "0")), int.Parse(Opt("ctl-pid", "0")), Opt("roms", dir)); break;
             }
         }
@@ -434,6 +435,8 @@ internal static class ClientTest
         await Call("close_session", new { session = hmd }, log: false);
         var dom = await Call("list_domains", new { session = hm });
         Check("sega_domains", (dom["domains"] as JsonArray)?.Count > 0, string.Join(", ", (dom["domains"] as JsonArray)?.Select(d => S(d?["id"])) ?? Array.Empty<string>()));
+
+        await X86BootSector(dir);
 
         // ---------------------------------------------------------------- live sessions refuse without a desktop app; BrokenDev; a real project if built
         var nolive = await Call("attach_live", new { pid = 1 });
