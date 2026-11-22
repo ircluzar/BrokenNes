@@ -18,6 +18,7 @@ namespace BrokenNes.Windows
         private async void LoadN98File(string path)
         {
             int gen = ++n98LoadGeneration;
+            NesEmulator.X86.N98WarmPrebuild.Remember(path);
             ShowN98Loading(System.IO.Path.GetFileNameWithoutExtension(path));
             NesEmulator.X86.N98Seat.Report("reading the package", -1);
             byte[] data;
