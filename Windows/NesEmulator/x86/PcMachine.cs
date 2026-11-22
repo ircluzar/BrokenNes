@@ -106,7 +106,7 @@ public sealed partial class PcMachine : IX86Bus
         Pit = new Pit8254(() => PitNow, () => Pic.Pulse(0));
         Kbc = new Kbc8042(Pic, config.Bus == PcBus.Pci430TX && Environment.GetEnvironmentVariable("X86_NOMOUSE") == null);   // (X86_NOMOUSE: a diagnostic)   // the Windows 98 board has the PS/2 mouse
         Cmos = new Cmos(() => PitNow, MemKb);
-        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video == PcVideo.GeForce256);
+        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video == PcVideo.GeForce256, video == PcVideo.VBoxVga, config.VramMB * 1024 * 1024);
         S3 = Vga.S3;
         Nv = Vga.Nv;
         _vramNs = Cpu.Model.Legacy ? 0 : S3 != null || Nv != null ? 150 : Cpu.Model.Gen <= 3 ? 650 : 450;
@@ -165,6 +165,8 @@ public sealed partial class PcMachine : IX86Bus
     private byte RawRead8(uint a) => Mmio(a, out uint mo) is { } md ? (byte)md.MmioRead(mo, 1) : a < 0xc0000 ? Vga.MemRead(a) : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
     private void RawWrite8(uint a, byte v) { if (Mmio(a, out uint mo) is { } md) md.MmioWrite(mo, v, 1); else if (a < 0xc0000) Vga.MemWrite(a, v); else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
     private ushort RawRead16(uint a) => Mmio(a, out uint mo) is { } md && Mmio(a + 1) == md ? (ushort)md.MmioRead(mo, 2) : (ushort)(RawRead8(a) | (RawRead8(a + 1) << 8));
+    private static readonly bool DispiLog = Environment.GetEnvironmentVariable("X86_DISPILOG") == "1";   // diagnosis: DISPI port writes
+    private int _dispiLogN;
     private void RawWrite16(uint a, ushort v)
     {
         if (Mmio(a, out uint mo) is { } md && Mmio(a + 1) == md) { md.MmioWrite(mo, v, 2); return; }
@@ -210,6 +212,7 @@ public sealed partial class PcMachine : IX86Bus
         if (Fdc != null && Fdc82077.IsPort(port)) return Fdc.In(port);
         if (Card != null && Card.In(port, false, out int cv)) return (byte)cv;
         if (S3 != null && S3Trio64.IsEnginePort(port)) return (byte)S3.EngineIn(port & 0xfffe, (port & 1) != 0);
+        if (S3 is { VBox: true } && S3Trio64.IsDispiPort(port)) return port == 0x1ce ? (byte)S3.DispiIndex : (byte)(port == 0x1cf ? S3.DispiRead() : S3.DispiRead() >> 8);
         switch (port)
         {
             case 0x20: case 0x21: case 0xa0: case 0xa1: return Pic.In(port);
@@ -244,6 +247,7 @@ public sealed partial class PcMachine : IX86Bus
         if (Fdc != null && Fdc82077.IsPort(port)) { Fdc.Out(port, v); return; }
         if (Card != null && Card.Out(port, false, v)) return;
         if (S3 != null && S3Trio64.IsEnginePort(port)) { S3.EngineOut8(port, v); return; }
+        if (S3 is { VBox: true } && S3Trio64.IsDispiPort(port)) { if (DispiLog && _dispiLogN++ < 400) Console.WriteLine($"dispilog out {port:X3} {v:X4} idx {S3.DispiIndex:X} @{Cpu.SegSel[1]:X4}:{Cpu.Ip:X8}"); if (port == 0x1ce) S3.DispiIndex = v; else S3.DispiWrite(v); return; }
         switch (port)
         {
             case 0x20: case 0x21: case 0xa0: case 0xa1: Pic.Out(port, v); return;
@@ -277,6 +281,7 @@ public sealed partial class PcMachine : IX86Bus
         if (Ata != null && Ata.In(port, true, out int av)) return (ushort)av;
         if (Card != null && Card.In(port, true, out int cv)) return (ushort)cv;
         if (S3 != null && S3Trio64.IsEnginePort(port)) return (ushort)(S3.EngineIn(port, false) | S3.EngineIn(port, true) << 8);
+        if (S3 is { VBox: true } && S3Trio64.IsDispiPort(port)) return port == 0x1ce ? (ushort)S3.DispiIndex : S3.DispiRead();
         if (ExtraIn != null) { int v = ExtraIn(port, 16); if (v >= 0) return (ushort)v; }
         return (ushort)(In8(port) | (In8(port + 1) << 8));
     }
@@ -288,12 +293,13 @@ public sealed partial class PcMachine : IX86Bus
         if (Ata != null && Ata.Out(port, true, v)) return;
         if (Card != null && Card.Out(port, true, v)) return;
         if (S3 != null && S3Trio64.IsEnginePort(port)) { S3.EngineOut16(port, v); return; }
+        if (S3 is { VBox: true } && S3Trio64.IsDispiPort(port)) { if (DispiLog && _dispiLogN++ < 400) Console.WriteLine($"dispilog out {port:X3} {v:X4} idx {S3.DispiIndex:X} @{Cpu.SegSel[1]:X4}:{Cpu.Ip:X8}"); if (port == 0x1ce) S3.DispiIndex = v; else S3.DispiWrite(v); return; }
         if (ExtraOut != null && ExtraOut(port, 16, v)) return;
         Out8(port, (byte)v); Out8(port + 1, (byte)(v >> 8));
     }
     // a 32-bit access to an IDE data port is two 16-bit cycles on that same port
     private bool IsAtaData(int port) => Ata != null && (port == 0x1f0 || port == 0x170);
-    public uint In32(int port) => Pci != null && Pci.In(port, 4, out uint pv) ? pv : IsAtaData(port) ? (uint)(In16(port) | (In16(port) << 16)) : (uint)(In16(port) | (In16(port + 2) << 16));
+    public uint In32(int port) => Pci != null && Pci.In(port, 4, out uint pv) ? pv : S3 is { VBox: true } && port == 0x1cf ? (uint)S3.VramBytes : IsAtaData(port) ? (uint)(In16(port) | (In16(port) << 16)) : (uint)(In16(port) | (In16(port + 2) << 16));
     public void Out32(int port, uint v)
     {
         if (Pci != null && Pci.Out(port, 4, v)) return;
@@ -564,7 +570,7 @@ public sealed partial class PcMachine : IX86Bus
                 var ss = new MemoryStream();
                 using (var sw = new BinaryWriter(ss)) S3.Save(sw);
                 var blob = ss.ToArray();
-                w.Write(0x41475653); w.Write(S3Trio64.Id); w.Write(blob.Length); w.Write(blob);   // "SVGA"
+                w.Write(0x41475653); w.Write(S3.CardId); w.Write(blob.Length); w.Write(blob);   // "SVGA"
             }
             // the machine config and its new devices, last: a classic machine's state is byte for byte what it was
             if (ConfigInState)
@@ -660,7 +666,8 @@ public sealed partial class PcMachine : IX86Bus
             else if (magic == 0x47464350)
             {
                 saved = PcConfig.Read(r);
-                if (saved with { MemoryMB = Config.MemoryMB } != Config) throw new InvalidDataException($"this x86 state is for a {saved} machine, this machine is {Config}");
+                // (VramMB is not in the config block: the SVGA card id, VBOXVGA-16MB, carries the video memory size and is checked below)
+                if (saved with { MemoryMB = Config.MemoryMB, VramMB = Config.VramMB } != Config) throw new InvalidDataException($"this x86 state is for a {saved} machine, this machine is {Config}");
                 WireAta();
                 if (r.ReadBoolean()) Ata!.Load(r);
                 LoadBiosExtras(r);
@@ -697,7 +704,7 @@ public sealed partial class PcMachine : IX86Bus
         if (saved == null && ConfigInState) throw new InvalidDataException($"this x86 state is for the classic machine (486, BIOS disks), this machine is {Config}");
         WireAta();
         // the video card must be the one the state was saved on: a mismatch is an error, never a guess
-        string cardId = S3 != null ? S3Trio64.Id : Nv != null ? NvGeForce.Id : "VGA";
+        string cardId = S3 != null ? S3.CardId : Nv != null ? NvGeForce.Id : "VGA";
         if ((svgaId ?? "VGA") != cardId)
             throw new InvalidDataException($"this state was saved with the {svgaId ?? "VGA"} video card, this machine has the {cardId}");
         if (Nv != null) { using var nr = new BinaryReader(new MemoryStream(svgaBlob!)); Nv.Load(nr); }

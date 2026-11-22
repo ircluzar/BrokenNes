@@ -475,7 +475,9 @@ public sealed class PcSession : IConsoleSession
     public uint[] Frame => _frame;
     public int FrameWidth => _w;
     public int FrameHeight => _h;
-    public int DisplayWidth => _h * 4 / 3;   // a 4:3 monitor (720 x 400 text and 640 x 400 mode 13h are shown 4:3 too)
+    /// <summary>A 4:3 monitor (720 x 400 text and 640 x 400 / 320 x 200 low-res modes are shown 4:3 too), except guest-chosen wide modes
+    /// (480 lines or more and wider than 4:3, e.g. boxv9x 1280x720 / 1600x900 / 1280x800): square pixels, shown at their own width.</summary>
+    public int DisplayWidth => _h >= 480 && _w * 3 > _h * 4 ? _w : _h * 4 / 3;
     public int SampleRate => Rate;
 
     /// <summary>The PC speaker with the AdLib and the sound card (if any) added on top (both drawn up to the end of the last frame on the same 44.1 kHz timeline).</summary>

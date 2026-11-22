@@ -21,7 +21,10 @@ namespace NesEmulator.X86;
 
 public sealed class S3Trio64
 {
-    public const int VramBytes = 4 * 1024 * 1024;
+    /// <summary>The Trio64's 4 MB (also the VBOXVGA default).</summary>
+    public const int TrioVramBytes = 4 * 1024 * 1024;
+    /// <summary>This card's video memory: 4 MB, or 8/16 MB on a VBOXVGA machine with <see cref="PcConfig.VramMB"/> (a power of two: BAR 0 is sized to it).</summary>
+    public int VramBytes => _v.Ram.Length;
     public const string Id = "S3TRIO64";
     private readonly Vga _v;
     public readonly byte[] SrExt = new byte[0x20];        // SR08-SR1F (SR00-07 stay the VGA's)
@@ -30,18 +33,61 @@ public sealed class S3Trio64
     public int Bank;                                      // 64 KB units
     public int VbeMode;                                   // the VBE mode the BIOS set (0: a VGA mode)
 
-    public S3Trio64(Vga v) { _v = v; Reset(); }
+    public S3Trio64(Vga v, bool vbox = false) { _v = v; VBox = vbox; Reset(); }
+
+    // ================= VirtualBox VGA / Bochs DISPI (the WIN98-P166-WIDE preset) =================
+    // An optional identity for the same card: PCI 80EE:BEEF and the Bochs VBE DISPI registers (index port 1CEh, data 1CFh), what
+    // the open-source boxv9x Win9x driver programs: any width x height at 8/15/16/24/32 bpp in the linear framebuffer. Our own
+    // implementation from the public Bochs VBE register list; the VGA core and the S3 registers stay (unused by that driver).
+    public readonly bool VBox;
+    public const string VBoxId = "VBOXVGA";
+    /// <summary>The card id in a savestate: the Trio64, or VBOXVGA (+ "-16MB" etc. when not 4 MB, so states never load into a card of another memory size).</summary>
+    public string CardId => !VBox ? Id : VramBytes == TrioVramBytes ? VBoxId : $"{VBoxId}-{VramBytes >> 20}MB";
+    public readonly ushort[] Dispi = new ushort[16];
+    public int DispiIndex;
+    public bool DispiOn => VBox && (Dispi[4] & 1) != 0 && !DispiDiagOff;
+    private static readonly bool DispiDiagOff = Environment.GetEnvironmentVariable("X86_DISPIOFF") == "1";   // diagnosis: show the VGA picture
+    public static bool IsDispiPort(int port) => port is 0x1ce or 0x1cf or 0x1d0;
+    public ushort DispiRead() => DispiIndex switch
+    {
+        0 => 0xb0c4,                                                    // VBE_DISPI_ID4
+        0x0a => (ushort)(VramBytes / 65536),                             // video memory in 64 KB units (VirtualBox)
+        0x0b => (ushort)(LfbBase >> 16),                                 // VBE_DISPI_INDEX_FB_BASE_HI (VirtualBox): the LFB's address (boxv9x reads it; 0 = its E000 default)
+        4 => (ushort)(Dispi[4] & 0xc3),
+        _ => DispiIndex < 16 ? Dispi[DispiIndex] : (ushort)0,
+    };
+    public void DispiWrite(ushort v)
+    {
+        int i = DispiIndex;
+        if (i >= 16 || i == 0 || i == 0x0a || i == 0x0b) return;
+        if (i == 3 && v is not (4 or 8 or 15 or 16 or 24 or 32)) return;
+        Dispi[i] = v;
+        if (i == 1 || i == 3) Dispi[6] = Dispi[1];                       // a new width resets the virtual width
+        if (i == 2) Dispi[7] = Dispi[2];
+        if (i == 4 && (v & 1) != 0)
+        {
+            if (Dispi[6] < Dispi[1]) Dispi[6] = Dispi[1];
+            if ((v & 0x80) == 0) Array.Clear(_v.Ram, 0, Math.Min(VramBytes, Dispi[6] * Dispi[2] * DispiBpp));
+            _shadowFrame = null;
+        }
+        if (i == 5) Bank = v;
+        SyncDac8();
+    }
+    /// <summary>The 8BIT_DAC enable bit switches the VGA DAC to 8-bit entries while DISPI is on.</summary>
+    public void SyncDac8() => _v.Dac8 = DispiOn && (Dispi[4] & 0x20) != 0;
+    private int DispiBpp => Dispi[3] switch { 15 or 16 => 2, 24 => 3, 32 => 4, _ => 1 };
 
     public void Reset()
     {
         Array.Clear(SrExt);
         Array.Clear(PciConfig);
-        W16(0x00, 0x5333); W16(0x02, 0x8811);             // vendor S3, device Trio32/64
+        if (VBox) { W16(0x00, 0x80ee); W16(0x02, 0xbeef); } else { W16(0x00, 0x5333); W16(0x02, 0x8811); }   // vendor S3, device Trio32/64 (or VirtualBox VGA)
+        Array.Clear(Dispi); DispiIndex = 0; Dispi[3] = 8; _v.Dac8 = false;
         W16(0x04, 0x0003);                                // I/O + memory decode on
         PciConfig[0x08] = 0x00; PciConfig[0x0b] = 0x03;  // class 030000: VGA-compatible display
         PciConfig[0x0e] = 0x00;
         LfbBase = 0xE0000000;
-        W32(0x10, LfbBase);
+        W32(0x10, LfbBase | (VBox ? 8u : 0u));            // (VBOXVGA: prefetchable, as VirtualBox reports it)
         PciConfig[0x3d] = 1;                              // INTA#
         Bank = 0; VbeMode = 0;
         var cr = _v.Cr;
@@ -65,7 +111,8 @@ public sealed class S3Trio64
         switch (reg)
         {
             case 0x04: W16(0x04, (int)(v & 0x0023)); break;
-            case 0x10: LfbBase = v & 0xFC000000u; W32(0x10, LfbBase); _v.Cr[0x59] = (byte)(LfbBase >> 24); _v.Cr[0x5a] = (byte)(LfbBase >> 16); break;
+            case 0x10: LfbBase = v & (VBox ? ~(uint)(VramBytes - 1) : 0xFC000000u);   // (VBOXVGA: BAR 0 = the whole video memory (4/8/16 MB), like VirtualBox; boxv9x takes the devnode's largest memory range)
+                 W32(0x10, LfbBase | (VBox ? 8u : 0u)); _v.Cr[0x59] = (byte)(LfbBase >> 24); _v.Cr[0x5a] = (byte)(LfbBase >> 16); break;
             case 0x30: W32(0x30, 0); break;               // no ROM BAR: the video BIOS is the board's own
             case 0x3c: PciConfig[0x3c] = (byte)v; break;
         }
@@ -111,13 +158,13 @@ public sealed class S3Trio64
     /// <summary>CR31 bit 3 (enhanced memory mapping) changes CPU access only together with chain 4 (SR4 bit 3): in a planar/odd-even VGA
     /// mode (a full-screen DOS box, Windows' text-mode screens) the A0000-BFFFF window stays the VGA's (the text was swallowed: garbage).</summary>
     private bool EnhancedMap => Enhanced && (_v.Sr[4] & 0x08) != 0;
-    public bool LinearOn => (_v.Cr[0x58] & 0x10) != 0;
+    public bool LinearOn => (_v.Cr[0x58] & 0x10) != 0 || DispiOn;
     /// <summary>CR58 bits 1-0: the linear window's size. The 64 KB one (at A0000) is still banked.</summary>
-    public int LfbSize => (_v.Cr[0x58] & 3) switch { 0 => 0x10000, 1 => 0x100000, 2 => 0x200000, _ => 0x400000 };
-    private bool Window64K => LinearOn && LfbSize == 0x10000;
+    public int LfbSize => DispiOn ? VramBytes : (_v.Cr[0x58] & 3) switch { 0 => 0x10000, 1 => 0x100000, 2 => 0x200000, _ => VBox ? VramBytes : 0x400000 };   // (VBOXVGA: the 4 MB setting opens all 8/16 MB, for the wide VBE modes)
+    private bool Window64K => !DispiOn && LinearOn && LfbSize == 0x10000;
     public long VgaMmioWrites;   // diagnostics
     public bool OldMmio => (_v.Cr[0x53] & 0x10) != 0 && (_v.Sr[4] & 0x08) != 0;   // (not in a planar VGA mode: Windows' VDD loads the text font through A0000 with CR53 still set)
-    public int BytesPerPixel => (_v.Cr[0x67] >> 4) switch { 0x3 or 0x5 => 2, 0xd => 4, _ => 1 };
+    public int BytesPerPixel => DispiOn ? DispiBpp : (_v.Cr[0x67] >> 4) switch { 0x3 or 0x5 => 2, 0xd => 4, _ => 1 };
 
     /// <summary>A0000-BFFFF access the S3 takes over (MMIO, enhanced banking, the window off while linear is on); false: the VGA's.</summary>
     public bool MemWrite(uint addr, byte v)
@@ -130,6 +177,7 @@ public sealed class S3Trio64
             else EngineOut8((int)(addr & 0xffff), v);
             return true;
         }
+        if (DispiOn && off < 0x10000) { BankWrites++; if ((uint)(Bank << 16) + off < VramBytes) _v.Ram[(Bank << 16) + (int)off] = v; return true; }   // DISPI: A0000 is a 64 KB bank of the linear memory (any VGA map)
         if (!EnhancedMap && !Window64K) return false;
         if (LinearOn && !Window64K) return true;
         if (off >= 0x10000) return true;
@@ -148,6 +196,7 @@ public sealed class S3Trio64
             else if (off >= 0x8000) v = (byte)EngineIn((int)(addr & 0xfffe), (addr & 1) != 0);
             return true;
         }
+        if (DispiOn && off < 0x10000) { if ((uint)(Bank << 16) + off < VramBytes) v = _v.Ram[(Bank << 16) + (int)off]; return true; }
         if (!EnhancedMap && !Window64K) return false;
         if ((LinearOn && !Window64K) || off >= 0x10000) return true;
         uint a = (uint)(Bank << 16) + off;
@@ -169,12 +218,14 @@ public sealed class S3Trio64
         return true;
     }
 
+    public long LfbWrites, BankWrites;
     public bool InLfb(uint a) => LinearOn && !Window64K && a - LfbBase < Math.Min(VramBytes, LfbSize);
     public byte LfbRead8(uint a) => _v.Ram[a - LfbBase];
-    public void LfbWrite8(uint a, byte v) => _v.Ram[a - LfbBase] = v;
+    public void LfbWrite8(uint a, byte v) { LfbWrites++; _v.Ram[a - LfbBase] = v; }
     public uint LfbRead32(uint a) { uint o = a - LfbBase; return o <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)o) : LfbRead8(a); }
     public void LfbWrite32(uint a, uint v)
     {
+        LfbWrites++;
         uint o = a - LfbBase;
         if (o <= VramBytes - 4) BitConverter.TryWriteBytes(_v.Ram.AsSpan((int)o), v);
         else for (int i = 0; i < 4 && o + i < VramBytes; i++) _v.Ram[o + i] = (byte)(v >> (8 * i));
@@ -183,6 +234,7 @@ public sealed class S3Trio64
     /// <summary>Back to plain VGA (a standard BIOS mode set).</summary>
     public void LeaveEnhanced()
     {
+        Dispi[4] = 0; SyncDac8();                         // a BIOS mode set also turns the DISPI mode off (as the Bochs VGA BIOS does)
         var cr = _v.Cr;
         cr[0x31] = 0; cr[0x35] = 0; cr[0x51] = 0; cr[0x53] = 0; cr[0x58] = 0; cr[0x5d] = 0; cr[0x5e] = 0; cr[0x67] = 0; cr[0x69] = 0; cr[0x6a] = 0;
         cr[0x45] = 0;
@@ -192,13 +244,13 @@ public sealed class S3Trio64
 
     // ================= the picture =================
 
-    public int Width => ((_v.Cr[1] + 1) | ((_v.Cr[0x5d] & 2) << 7)) * 8;
+    public int Width => DispiOn ? Math.Max(8, (int)Dispi[1]) : ((_v.Cr[1] + 1) | ((_v.Cr[0x5d] & 2) << 7)) * 8;
     /// <summary>Picture lines: the display-end count divided by the scan-line repeat (CR09 max scan line + 1, x2 with double scan).
     /// Low-res enhanced modes (Half-Life's 320x240x16 through DirectDraw: CR09 = 41h) send each line twice; the picture is the 240 distinct lines.</summary>
-    public int Height => Math.Max(1, ((_v.Cr[0x12] | ((_v.Cr[7] & 2) << 7) | ((_v.Cr[7] & 0x40) << 3) | ((_v.Cr[0x5e] & 2) << 9)) + 1)
+    public int Height => DispiOn ? Math.Max(8, (int)Dispi[2]) : Math.Max(1, ((_v.Cr[0x12] | ((_v.Cr[7] & 2) << 7) | ((_v.Cr[7] & 0x40) << 3) | ((_v.Cr[0x5e] & 2) << 9)) + 1)
                                      / (((_v.Cr[9] & 0x1f) + 1) * ((_v.Cr[9] >> 7) + 1)));
-    public int Stride => (_v.Cr[0x13] | ((_v.Cr[0x51] & 0x30) << 4)) * 8;
-    public int StartByte => ((_v.Cr[0x0d] | (_v.Cr[0x0c] << 8) | ((_v.Cr[0x31] & 0x30) << 12) | ((_v.Cr[0x69] & 0x1f) << 16))) * 4;
+    public int Stride => DispiOn ? Dispi[6] * DispiBpp : (_v.Cr[0x13] | ((_v.Cr[0x51] & 0x30) << 4)) * 8;
+    public int StartByte => DispiOn ? (Dispi[9] * Dispi[6] + Dispi[8]) * DispiBpp : ((_v.Cr[0x0d] | (_v.Cr[0x0c] << 8) | ((_v.Cr[0x31] & 0x30) << 12) | ((_v.Cr[0x69] & 0x1f) << 16))) * 4;
 
     private readonly int[] _pal = new int[256];
 
@@ -219,7 +271,7 @@ public sealed class S3Trio64
         var fr = _v.Frame; var ram = _v.Ram;
         int start = StartByte;
         if (bpp == 1) for (int i = 0; i < 256; i++) _pal[i] = _v.Dac(i & _v.DacMask);
-        bool r555k = (_v.Cr[0x67] >> 4) == 0x3;
+        bool r555k = DispiOn ? Dispi[3] == 15 : (_v.Cr[0x67] >> 4) == 0x3;
         long key = ((long)w << 48) ^ ((long)h << 36) ^ ((long)stride << 20) ^ ((long)bpp << 16) ^ (r555k ? 1L << 15 : 0) ^ ((long)start << 22);
         int lineBytes = w * bpp;
         bool valid = _shadowFrame == fr && _shadowSerial == _v.RenderSerial - 1 && _shadowKey == key && _shadow.Length == lineBytes * h
@@ -245,7 +297,7 @@ public sealed class S3Trio64
             {
                 case 1: for (int x = 0; x < w; x++) fr[o + x] = _pal[ram[src + x]]; break;
                 case 2:
-                    bool r555 = (_v.Cr[0x67] >> 4) == 0x3;
+                    bool r555 = r555k;
                     for (int x = 0; x < w; x++)
                     {
                         int p = ram[src + 2 * x] | ram[src + 2 * x + 1] << 8, r, g, b;
@@ -255,6 +307,7 @@ public sealed class S3Trio64
                         fr[o + x] = unchecked((int)0xff000000) | r << 16 | g << 8 | b;
                     }
                     break;
+                case 3: for (int x = 0; x < w; x++) fr[o + x] = unchecked((int)0xff000000) | ram[src + 3 * x] | ram[src + 3 * x + 1] << 8 | ram[src + 3 * x + 2] << 16; break;   // 24 bpp (DISPI only)
                 default: for (int x = 0; x < w; x++) fr[o + x] = unchecked((int)0xff000000) | (BitConverter.ToInt32(ram, src + 4 * x) & 0xffffff); break;
             }
         }
@@ -602,6 +655,7 @@ public sealed class S3Trio64
             _px, _py, _pw, _ph, _cntX, _cntY }) w.Write(v);
         foreach (uint v in new[] { _bkColor, _fgColor, _wrtMask, _rdMask, _colorCmp }) w.Write(v);
         w.Write(_subsysCtl); w.Write(_advCtl); w.Write(_waitCpu); w.Write(_hiWordNext);
+        if (VBox) { w.Write(DispiIndex); foreach (var d in Dispi) w.Write(d); }   // (only the VBOXVGA card: S3 states stay as they were)
     }
 
     public void Load(BinaryReader r)
@@ -613,5 +667,6 @@ public sealed class S3Trio64
         (_px, _py, _pw, _ph, _cntX, _cntY) = (a[16], a[17], a[18], a[19], a[20], a[21]);
         _bkColor = r.ReadUInt32(); _fgColor = r.ReadUInt32(); _wrtMask = r.ReadUInt32(); _rdMask = r.ReadUInt32(); _colorCmp = r.ReadUInt32();
         _subsysCtl = r.ReadUInt16(); _advCtl = r.ReadUInt16(); _waitCpu = r.ReadBoolean(); _hiWordNext = r.ReadBoolean();
+        if (VBox) { DispiIndex = r.ReadInt32(); for (int i = 0; i < Dispi.Length; i++) Dispi[i] = r.ReadUInt16(); } SyncDac8();
     }
 }

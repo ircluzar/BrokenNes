@@ -387,6 +387,7 @@ internal static class X86BootCli
         if (Arg(args, "--nvfind") is string nvf && m.Nv != null) foreach (var l in m.Nv.FindDma(Convert.ToUInt32(nvf, 16))) Console.WriteLine("nvfind " + l);
         if (args.Contains("--vgadump"))   // why a picture is blank: the registers, the palette and how much video memory is non-zero
         {
+            if (m.Vga.S3 is { VBox: true } vb) Console.WriteLine($"dispi on {vb.DispiOn} regs " + string.Join(" ", vb.Dispi.Select(x => x.ToString("X4"))) + $" lfb {vb.LfbBase:X8} lfbwrites {vb.LfbWrites} bankwrites {vb.BankWrites} pcibar {vb.PciRead(0x10):X8} w {vb.Width} h {vb.Height} stride {vb.Stride} bpp {vb.BytesPerPixel}");
             var v = m.Vga;
             string H(byte[] b) => string.Join(" ", b.Select(x => x.ToString("X2")));
             Console.WriteLine($"vga SR {H(v.Sr)}\nvga GR {H(v.Gr[..9])}\nvga AR {H(v.Ar)}\nvga CR {H(v.Cr[..0x19])}\nvga DAC0-15 {H(v.Palette[..48])}");
@@ -429,6 +430,12 @@ internal static class X86BootCli
         {
             var parts = da.Split(':'); uint a0 = Convert.ToUInt32(parts[0], 16); int len = parts.Length > 1 ? int.Parse(parts[1]) : 64;
             for (int k = 0; k < len; k += 16) Console.WriteLine($"dump {a0 + (uint)k:X8}: {LinBytes(m, a0 + (uint)k, Math.Min(16, len - k))}");
+        }
+        foreach (var fp in Args(args, "--findphys"))   // --findphys HEXPHYS[:BYTES]: which linear pages map onto a physical range (paging on)
+        {
+            var parts = fp.Split(':'); uint p0 = Convert.ToUInt32(parts[0], 16), plen = parts.Length > 1 ? Convert.ToUInt32(parts[1], 16) : 0x1000; int hits = 0;
+            for (ulong la = 0; la < 0x100000000UL && hits < 64; la += 4096) { uint p = LinPhys(m, (uint)la); if (p != 0xffffffff && p - p0 < plen) { Console.WriteLine($"findphys lin {la:X8} -> phys {p:X8}"); hits++; } }
+            Console.WriteLine($"findphys {p0:X8}+{plen:X}: {hits} page(s)");
         }
         foreach (var la in Args(args, "--linmap"))   // --linmap HEXLIN[:COUNTPAGES]: where linear pages land (paging on)
         {

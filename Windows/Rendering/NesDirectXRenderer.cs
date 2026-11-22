@@ -609,7 +609,8 @@ namespace BrokenNes.Windows.Rendering
             
             float destWidth, destHeight;
             
-            if (PixelPerfect)
+            // (a picture bigger than the window even at 1x - an x86 1600x900 or 1920x1080 desktop - is scaled down to fit, never shown 1:1 and cut off)
+            if (PixelPerfect && clientWidth >= logicalWidth && clientHeight >= nesHeight)
             {
                 // Calculate integer scale that fits in the window
                 int scaleX = (int)(clientWidth / logicalWidth);
