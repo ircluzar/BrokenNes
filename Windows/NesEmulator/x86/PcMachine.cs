@@ -364,6 +364,7 @@ public sealed partial class PcMachine : IX86Bus
         while (Vga.FrameIndex(PitNow) < target)
         {
             if (!RunBatch()) return false;
+            if (Cpu.Debug is { Stop: true }) return true;   // the debugger stopped mid-frame (I386.Debug.cs): the frame carries on at the next call
             Vga.Picture?.Poll();
             if (++guard > 100_000_000) { Stopped = "frame never ended"; return false; }
         }
