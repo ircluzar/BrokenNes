@@ -40,6 +40,10 @@ public sealed partial class NvGeForce
         return 0;
     }
 
+    /// <summary>X86_NVNONOTIFYIRQ=1: NOTIFY never raises the PGRAPH interrupt (the old behaviour).</summary>
+    public static bool NoNotifyIrq = Environment.GetEnvironmentVariable("X86_NVNONOTIFYIRQ") == "1";
+    public long NotifyIrqs;
+
     private void WriteNotify(int subc, uint inst, int index)
     {
         uint n = G(inst, 0x180 | 0x8000);
@@ -57,7 +61,20 @@ public sealed partial class NvGeForce
         GSet(inst, mthd, data);
         if (cls is 0x44 or 0x18 && mthd is >= 0x400 and < 0x800) GSet(inst, 0x7ffc, (uint)(mthd & 0x700));   // which colour pattern block was loaded
         if (mthd is >= 0x180 and <= 0x1a0 || (IsRankine(cls) && mthd is > 0x1a0 and <= 0x1b0)) { uint ci = RamhtLookup(data, ActiveChid); GSet(inst, mthd | 0x8000, ci); if (mthd == 0x180) _notifyObj[subc] = ci; return; }
-        if (mthd == 0x104) { WriteNotify(subc, inst, 0); return; }
+        if (mthd == 0x104)
+        {
+            WriteNotify(subc, inst, 0);
+            if (data != 0 && !NoNotifyIrq)   // NOTIFY style 1 = write then awaken: PGRAPH raises NOTIFY (INTR bit 0, NSOURCE NOTIFICATION); the
+            {                                // RM's ISR finds the object from TRAPPED_ADDR / DATA and the subchannel's class cache (as nouveau nv20_gr_intr)
+                _reg[0x400100] = Reg(0x400100) | 1; _reg[0x400108] = 1; _reg[0x400718] = 0x00100000u | ((data & 0xf) << 16);   // NOTIFY: pending + style
+                _reg[0x400704] = ((uint)ActiveChid << 20) | ((uint)subc << 16) | 0x104; _reg[0x400708] = data;
+                // CTX_SWITCH1-4 = the object's RAMIN words 0-2 and its instance (>> 4), as nouveau nv04/nv10 load them on a subchannel switch
+                _reg[0x40014c] = Ramin32(inst); _reg[0x400150] = Ramin32(inst + 4); _reg[0x400154] = Ramin32(inst + 8); _reg[0x400158] = inst >> 4;
+                _reg[0x400160 + (uint)subc * 4] = (Reg(0x400160 + (uint)subc * 4) & ~0xfffu) | (uint)cls;
+                NotifyIrqs++; UpdateIrq();
+            }
+            return;
+        }
         if (mthd == 0x100) return;
         switch (cls)
         {
