@@ -31,7 +31,7 @@ public sealed class X86Debug
     public uint SkipLin = 0xffffffff;
 
     // the trace ring: (CS selector, EIP, linear) of the last instructions run while debugging
-    public readonly uint[] TrCs, TrEip, TrLin;
+    public readonly uint[] TrCs, TrEip, TrLin, TrEsp;
     public readonly byte[] TrMode;
     public long TrCount;
 
@@ -43,7 +43,7 @@ public sealed class X86Debug
 
     public X86Debug(int traceRing = 65536)
     {
-        TrCs = new uint[traceRing]; TrEip = new uint[traceRing]; TrLin = new uint[traceRing]; TrMode = new byte[traceRing];
+        TrCs = new uint[traceRing]; TrEip = new uint[traceRing]; TrLin = new uint[traceRing]; TrEsp = new uint[traceRing]; TrMode = new byte[traceRing];
     }
 
     internal void Port(I386 c, int port, bool write, uint v, int bits)
@@ -91,7 +91,7 @@ public sealed partial class I386
             }
             d.SkipLin = 0xffffffff;
             int t = (int)(d.TrCount++ % mask);
-            d.TrCs[t] = SegSel[SEG_CS]; d.TrEip[t] = NextIp; d.TrLin[t] = lin;
+            d.TrCs[t] = SegSel[SEG_CS]; d.TrEip[t] = NextIp; d.TrLin[t] = lin; d.TrEsp[t] = R[4];
             d.TrMode[t] = (byte)((Cr0 & 1) == 0 ? 0 : (Flags & VM) != 0 ? 1 : Code16 ? 2 : 3);
             int r = Step1(false);
             if (d.StepBudget > 0 && --d.StepBudget == 0 && !d.Stop)

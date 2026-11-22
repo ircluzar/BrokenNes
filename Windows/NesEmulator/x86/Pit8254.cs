@@ -26,6 +26,8 @@ public sealed class Pit8254
     private readonly Action _irq0;
     /// <summary>Called when channel 2's programming changes (the speaker follows it).</summary>
     public Action? Ch2Changed;
+    /// <summary>X86_NOTICKDROP=1: the old behaviour (every missed period replayed).</summary>
+    public static bool NoTickDrop = Environment.GetEnvironmentVariable("X86_NOTICKDROP") == "1";
 
     public Pit8254(Func<long> now, Action irq0) { _now = now; _irq0 = irq0; Reset(); }
 
@@ -155,7 +157,13 @@ public sealed class Pit8254
         switch (s.Mode2)
         {
             case 2: case 3:
-                if (s.LastIrqCount + s.Count <= d) { _irq0(); s.LastIrqCount += s.Count; }
+                if (s.LastIrqCount + s.Count <= d)
+                {
+                    _irq0(); s.LastIrqCount += s.Count;
+                    // ticks missed while the CPU could not see them (a long CLI) are lost, as on the chip: OUT only pulses once per
+                    // period and the 8259 latches one edge; a backlog here would replay them back to back (nested IRQ 0s, Win98 VMM stack overflow)
+                    if (s.Count > 0 && s.LastIrqCount + s.Count <= d && !NoTickDrop) s.LastIrqCount += (d - s.LastIrqCount) / s.Count * s.Count;
+                }
                 break;
             case 0: case 4:
                 if (s.ReloadPending != 0) break;
