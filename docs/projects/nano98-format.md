@@ -51,6 +51,17 @@ Fields:
   Applying onto another base is allowed (that is the point: the nano98 base) and only noted.
 - `hardware`: `machine` (x86boot machine preset), `video` (S3 / VGA), `ram_mb` (64 default, 128 max), `min_cpu`
   (warn below it, never refuse), optional `sound`, `3d` (e.g. Voodoo 1), `net`.
+  Optional `p2cpi` (user 2026-11-22 "Per game"): the Pentium II cost on a gen-6 machine (1.0 = faithful default, e.g. StarCraft 5.3;
+  a machine preset may carry its own via its CPU model). Applied when the seat starts; part of the warm-state folder name (`-cpiN`), so
+  states never mix. X86_P2CPI (dev override) wins. Set it in the packaging window's Manifest tab or with the agent API `capture {p2cpi}`.
+  Machines with 256 MB: `WIN98-P166-NANO-256`, `WIN98-P2-NANO-256` (hardware.machine). `capture {drop: ["MOVIES/HQ/*", ...]}` /
+  `n98.py install --drop` leaves game-drive folders out of the package (globs under D:/GAME; stats d_dropped_files/bytes).
+  Large game drives (2026-11-22): `--drive-mb N` (CLI) / `start {drive_mb: N}` (HTTP, MCP) installs onto an N MB FAT32 D:, captured with
+  `--d-size-mb N` (n98.py install / v2, packaging window field). The seat reads the size from drives/D.n98d; its blank twin and warm state are
+  per size (warm folder `-dN`). Disks past 2 GB use DiskBigBase (64 MB chunks, zero chunks free; same p256). Proven: 8000 MB AoE (cold 12 s,
+  warm 6 s), 8000 + 16000 MB install-flow packages (22 KB each), state round trip exact. Each new size: check the seat log "N differ" once and
+  add its mount-probe data sector to N98Seat.ProbeSector + fat32.mkfs (measured: 2000, 4000, 8000, 12000, 16000, 32000 MB; all boot, 0 differ).
+  Note: a cold (NORESUME) seat 300-frame state round trip differs on every size, 2000 MB too (pre-existing, not the big drive).
 - `launch`: what the seat launcher runs. Paths use `/`; `n98.py cmd` turns them into the seat COMMAND PORT text
   (format owned by `tools/nano98/seat.py` / `n98launch.c`: `N98CMD1`, `run=`, `args=`, `dir=`, `exit=`).
 - `cd`: disc images the game needs, by reference only (the user's own rips, never inside the package).
@@ -278,4 +289,10 @@ Agents drive the flow the way a user does, step by step, looking at the screen a
   `{at:x,y}` absolute pointer (corner + small steps; 1 mouse count = 2 pixels on the seat), `{m:dx,dy[,buttons]}`, `{click}` (held 10 frames:
   setup buttons miss shorter ones), `{click:dx,dy}`, `{rclick}`.
 - Proof script: tools/nano98/install/aoe.steps (Age of Empires from the user's ISO, end to end).
+- Driver layers (settle on a new machine; GeForce 2026-11-22): `--n98install --machine win98-p166-geforce-nano --disc NVWIN.iso` where NVWIN.iso =
+  the Windows 98 SE files disc + the catalog driver's files in WIN98 (the NVIDIA INF also copies Windows files: without them error code 69).
+  The hardware wizard comes BEFORE the seat's warm point, so the disc is not in yet: step `disc NVWIN.iso` first. Then: Next, "Display a list"
+  ({at:180,143}{click}), Next, Have Disk ({at:400,258}{click}), `E:\WIN98{enter}`, OK, Next, Finish, Yes (restart), wait ready,
+  `--settle-layer geforce-nv532 OUT.n98` (17 files, 214 SYSTEM.DAT ops). A package then names it: `system.layers ["geforce-nv532"]` +
+  `hardware.machine WIN98-P166-GEFORCE-NANO`; Quake II (`+set vid_ref gl`) runs on it in OpenGL (console + connect drawn by the GeForce).
 Licences: a game's EULA screen needs the user's OK per program before an agent clicks I Agree.

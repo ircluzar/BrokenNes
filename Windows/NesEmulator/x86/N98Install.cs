@@ -36,6 +36,8 @@ public sealed class N98Install : IDisposable
         public string Sound = "SB16_D072";
         /// <summary>Settle mode: no game, only the machine's hardware wizard (the result is a system layer).</summary>
         public bool Settle;
+        /// <summary>The game drive's size in MB (2000 = the standard; larger for big games: its own blank drive and warm state).</summary>
+        public int DriveMb = N98Seat.StandardDriveMb;
         /// <summary>System layers to run on (ids; base + layers = the variant the install runs on and the package names).</summary>
         public string[] Layers = Array.Empty<string>();
     }
@@ -77,7 +79,7 @@ public sealed class N98Install : IDisposable
     {
         if (!PcMachinePreset.Known(o.Machine) || !o.Machine.EndsWith("-nano", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException($"'{o.Machine}' is not a nano98 seat machine ({string.Join(", ", Machines().Select(m => m.key))})");
         if (o.Disc != null && !File.Exists(o.Disc)) throw new FileNotFoundException("the disc image was not found", o.Disc);
-        var seat = N98Seat.ForInstall(o.Machine, o.Sound, o.Disc, o.Layers);
+        var seat = N98Seat.ForInstall(o.Machine, o.Sound, o.Disc, o.Layers, o.DriveMb);
         var s = new PcSession(seat.Image, "install.n98", o.Sound, "I386", "VGA", machine: seat.Machine, preparedSeat: seat);
         string work = Path.Combine(seat.CacheDir, "work");
         Directory.CreateDirectory(work);
@@ -321,8 +323,8 @@ public sealed class N98Install : IDisposable
         if (!PoweredOff) throw new InvalidOperationException("power the machine off first (Windows writes its caches to the drives as it shuts down)");
         string c = Path.Combine(_workDir, "C.img"), d = Path.Combine(_workDir, "D.img");
         var m = Session.Machine;
-        File.WriteAllBytes(c, m.Hdd[0]!.ToArray());
-        File.WriteAllBytes(d, m.Hdd[1]!.ToArray());
+        m.Hdd[0]!.WriteFile(c);
+        m.Hdd[1]!.WriteFile(d);   // (a large game drive is written by chunks)
         return (c, d);
     }
 
@@ -337,7 +339,7 @@ public sealed class N98Install : IDisposable
 
     /// <summary>Step 4: the drives -> OUT.n98 (schema 2). layerId: promote hardware changes (drivers, Enum/Config) to a system layer of that id beside the
     /// package (also copied to the nano98 layers folder so the app finds it). Returns n98.py's JSON result.</summary>
-    public JsonObject Capture(string title, string exe, string outPkg, string args = "", string? layerId = null, string[]? saves = null)
+    public JsonObject Capture(string title, string exe, string outPkg, string args = "", string? layerId = null, string[]? saves = null, double p2cpi = 0, string[]? drop = null)
     {
         var (c, d) = WriteDrives();
         var sb = new StringBuilder($"\"{outPkg}\" --title \"{title}\" --base \"{BasePath}\" --c \"{c}\" --d \"{d}\" --exe \"{exe}\" --machine {Options.Machine.ToUpperInvariant()} --sound {Options.Sound} --work \"{_workDir}\"");
@@ -345,6 +347,9 @@ public sealed class N98Install : IDisposable
         if (Discs.Any(x => !IsWindowsFilesDisc(x))) sb.Append(" --cd ").Append(string.Join(" ", Discs.Where(x => !IsWindowsFilesDisc(x)).Select(x => $"\"{Path.GetFileName(x)}\"")));
         if (Options.Layers.Length > 0) sb.Append(" --layers ").Append(string.Join(" ", Options.Layers));
         if (layerId != null) sb.Append(" --layer-id ").Append(layerId);
+        if (drop is { Length: > 0 }) sb.Append(" --drop ").Append(string.Join(" ", drop.Select(x => $"\"{x}\"")));
+        if (Options.DriveMb != N98Seat.StandardDriveMb) sb.Append(" --d-size-mb ").Append(Options.DriveMb);
+        if (p2cpi >= 1.0) sb.Append(" --p2cpi ").Append(p2cpi.ToString(System.Globalization.CultureInfo.InvariantCulture));
         if (saves is { Length: > 0 }) sb.Append(" --saves ").Append(string.Join(" ", saves.Select(x => $"\"{x}\"")));
         string o = N98Seat.RunToolOut("install", sb.ToString());
         string line = o.Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.StartsWith("N98INSTALL ", StringComparison.Ordinal)) ?? throw new InvalidOperationException("n98.py install gave no result");
@@ -438,7 +443,7 @@ public sealed class N98Install : IDisposable
                     string outPkg = S("out") ?? Path.Combine(DefaultPackageFolder, SafeName(title) + ".n98");
                     Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPkg))!);
                     var saves = a["saves"] is JsonArray sa ? sa.Select(x => x!.GetValue<string>()).ToArray() : null;
-                    return Capture(title, exe, outPkg, S("args") ?? "", S("layer_id"), saves);
+                    return Capture(title, exe, outPkg, S("args") ?? "", S("layer_id"), saves, a["p2cpi"]?.GetValue<double>() ?? 0, a["drop"] is JsonArray dr ? dr.Select(x => x!.GetValue<string>()).ToArray() : null);   // drop: game-drive globs left out (unused HQ assets)   // p2cpi: the game's Pentium II cost
                 }
             case "capture-layer":
                 {

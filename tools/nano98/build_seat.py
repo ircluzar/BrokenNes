@@ -25,6 +25,7 @@ ap.add_argument('--out', required=True)
 ap.add_argument('--iso'); ap.add_argument('--accept-eula', action='store_true'); ap.add_argument('--keyfile'); ap.add_argument('--key-env'); ap.add_argument('--pyfat', default=sys.executable)
 ap.add_argument('--installed', help='an installed Win98 SE disk (skips stages 1-2)')
 ap.add_argument('--machine', default='win98-p166-nano')
+ap.add_argument('--sound', default='SB16_D072')   # the seat's sound card: Setup installs its driver while C:/WIN98 is still there (a later New Hardware Found asks for the CD)
 ap.add_argument('--install-frames', type=int, default=1)   # frames run BEFORE the steps (x86boot runs --frames first): 1, or the CD menu times out and boots the empty C:
 ap.add_argument('--settle-frames', type=int, default=60000)
 a = ap.parse_args()
@@ -79,16 +80,23 @@ if not a.installed:
         if a.key_env: cmd += ['--key-env', a.key_env]
         run(cmd)
     if stage(2, 'install', installed):
-        run([a.workshop, '--x86boot', '--machine', a.machine, '--hdd', W('hd_setup.img'), '--cd', a.iso, '--bootorder', 'CH',
-             '--frames', str(a.install_frames), '--stepsfile', W('stage2.steps'), '--shot', W('stage2_end.png'), '--save', installed + '.tmp'], ok=(0, 1))
+        cmd2 = [a.workshop, '--x86boot', '--machine', a.machine, '--apu', a.sound, '--hdd', W('hd_setup.img'), '--cd', a.iso, '--bootorder', 'CH',
+                '--frames', str(a.install_frames), '--stepsfile', W('stage2.steps'), '--shot', W('stage2_end.png'), '--save', installed + '.tmp']
+        print('>', ' '.join(cmd2), flush=True)
+        p2 = subprocess.Popen(cmd2, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
+        steps_ok = None
+        for line in p2.stdout:   # every Setup screen check is printed; the last one is the finished desktop
+            print(line, end='', flush=True)
+            if line.startswith('x86boot: step '): steps_ok = ' found after ' in line and 'NOT found' not in line
+        p2.wait()
         sys.path.insert(0, os.path.join(HERE, 'pkg')); import fat32 as _f
-        try: _f.Fat32(installed + '.tmp').read_file('WINDOWS/SYSTEM.INI'); ok2 = True
+        try: _f.Fat32(installed + '.tmp').read_file('WINDOWS/SYSTEM.INI'); ok2 = bool(steps_ok)
         except FileNotFoundError: ok2 = False
         if not ok2:   # Setup did not finish: keep nothing that holds the key, say where the last screen is
             for f in ('hd_setup.img', 'stage2.steps', installed + '.tmp') + tuple(n for n in os.listdir(a.work) if n.startswith('stage2_end_step')):
                 try: os.remove(W(f) if not os.path.isabs(f) else f)
                 except OSError: pass
-            sys.exit('stage 2: Windows Setup did not finish (no C:/WINDOWS/SYSTEM.INI); last screen: ' + W('stage2_end.png'))
+            sys.exit('stage 2: Windows Setup did not reach the desktop (a screen check failed or no C:/WINDOWS/SYSTEM.INI); last screen: ' + W('stage2_end.png'))
         scrub_key(installed + '.tmp')
         os.replace(installed + '.tmp', installed)
         for f in ('hd_setup.img', 'stage2.steps') + tuple(n for n in os.listdir(a.work) if n.startswith('stage2_end')):   # (step shots show the key page)   # (the setup disk's answer file holds the product key: gone once Windows is installed)
@@ -111,7 +119,7 @@ if stage(5, 'settle', W('settled.img')):
     m = fat32.MemDisk(2000 << 20); fat32.mkfs(m, 2000); sparse.write_mem(m, blank)
     cmdf = W('settle.cmd')
     open(cmdf, 'wb').write(b'N98CMD1\r\nrun=C:\\WINDOWS\\RUNDLL32.EXE\r\nexit=poweroff\r\n')
-    run([a.workshop, '--x86boot', '--machine', a.machine, '--hdd', W('slim.img'), '--hdd2', blank, '--n98cmd', cmdf,
+    run([a.workshop, '--x86boot', '--machine', a.machine, '--apu', a.sound, '--hdd', W('slim.img'), '--hdd2', blank, '--n98cmd', cmdf,
          '--frames', str(a.settle_frames), '--save', W('settled.img.tmp')], ok=(0, 1))   # (x86boot returns 1 when the machine powered off: expected)
     if not os.path.exists(W('settled.img.tmp')): sys.exit('settle boot saved no disk')
     os.replace(W('settled.img.tmp'), W('settled.img'))

@@ -40,11 +40,11 @@ public sealed class Vga
     // 70 Hz timing: 449 lines of 800 dots at 25.175 MHz, counted in PIT ticks
     public const double FrameTicks = Pit8254.Freq * 449.0 * 800.0 / 25175000.0;
 
-    public Vga(Func<long> pitNow, bool s3 = false, NvChip? nv = null)
+    public Vga(Func<long> pitNow, bool s3 = false, NvChip? nv = null, bool vbox = false, int vramBytes = 0)
     {
         _pitNow = pitNow;
-        Ram = new byte[s3 ? S3Trio64.VramBytes : nv is NvChip c ? NvGeForce.VramFor(c) : RamSize];
-        if (s3) S3 = new S3Trio64(this);
+        Ram = new byte[s3 || vbox ? (vbox && vramBytes > 0 ? vramBytes : S3Trio64.TrioVramBytes) : nv is NvChip c ? NvGeForce.VramFor(c) : RamSize];
+        if (s3 || vbox) S3 = new S3Trio64(this, vbox);
         if (nv is NvChip ch) Nv = new NvGeForce(this, ch);
         InitMode3Defaults();
     }
@@ -137,7 +137,7 @@ public sealed class Vga
             case 0x3c8: DacWriteIndex = (byte)val; DacSub = 0; DacState = 0; break;
             case 0x3c9:
                 DacWrites++; if (val > 0x3f) DacWritesOver63++;
-                _dacCache[DacSub] = (byte)(val & 0x3f);
+                _dacCache[DacSub] = (byte)(Dac8 ? val : val & 0x3f);
                 if (++DacSub == 3)
                 {
                     Buffer.BlockCopy(_dacCache, 0, Palette, DacWriteIndex * 3, 3);
@@ -370,7 +370,10 @@ public sealed class Vga
 
     public long DacWrites, DacWritesOver63;   // diagnostics (not saved): an 8-bit DAC driver writes values above 3Fh
     private static int C6(int v) => (v << 2) | (v >> 4);
-    public int Dac(int i) => unchecked((int)0xff000000) | (C6(Palette[i * 3] & 63) << 16) | (C6(Palette[i * 3 + 1] & 63) << 8) | C6(Palette[i * 3 + 2] & 63);
+    /// <summary>8-bit DAC (the VBOXVGA's DISPI 8BIT_DAC enable bit): palette entries are 0-255, not 0-63. Not saved: the card sets it from its DISPI registers.</summary>
+    public bool Dac8;
+    public int Dac(int i) => Dac8 ? unchecked((int)0xff000000) | (Palette[i * 3] << 16) | (Palette[i * 3 + 1] << 8) | Palette[i * 3 + 2]
+        : unchecked((int)0xff000000) | (C6(Palette[i * 3] & 63) << 16) | (C6(Palette[i * 3 + 1] & 63) << 8) | C6(Palette[i * 3 + 2] & 63);
 
     private void Palette16(int[] pal)
     {
@@ -394,17 +397,19 @@ public sealed class Vga
     {
         RenderSerial++;
         FrameCount++;
-        if (S3 != null && S3.Enhanced && (Gr[6] & 1) != 0) { S3.Render(); GuiSinceText = true; return; }
+        if (S3 != null && (S3.DispiOn || S3.Enhanced && (Gr[6] & 1) != 0)) { S3.Render(); GuiSinceText = true; return; }
         if (Nv != null && Nv.Enhanced && (Gr[6] & 1) != 0) { Nv.Render(); GuiSinceText = true; return; }
         if (Picture != null) { Picture.Render(); return; }
         if ((Ar[0x10] & 1) == 0 || (Gr[6] & 1) == 0) RenderText(); else RenderGraphics();
     }
 
-    /// <summary>Sizes <see cref="Frame"/> (clamped to 8..1280 x 8..1024).</summary>
-    public void Ensure(int w, int h)
+    /// <summary>Sizes <see cref="Frame"/> (clamped to 8..1920 x 8..1200: 1920x1080 / 1920x1200 wide modes).</summary>
+    public void Ensure(int w, int h) => Ensure(w, h, 1920, 1200);
+    /// <summary>Sizes <see cref="Frame"/> with a larger limit (the Enhanced Voodoo's N x render-scale picture, up to 3200x2400).</summary>
+    public void Ensure(int w, int h, int maxW, int maxH)
     {
         if (w < 8) w = 8; if (h < 8) h = 8;
-        if (w > 1280) w = 1280; if (h > 1024) h = 1024;
+        if (w > maxW) w = maxW; if (h > maxH) h = maxH;
         Width = w; Height = h;
         if (Frame.Length != w * h) Frame = new int[w * h];
     }

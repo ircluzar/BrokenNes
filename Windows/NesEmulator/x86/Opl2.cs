@@ -715,7 +715,7 @@ public sealed partial class Opl2
     {
         w.Write(_regs); w.Write(_address); w.Write(_envCounter); w.Write(_status); w.Write(_irqMask); w.Write(_irqState);
         w.Write(_timerRunning); w.Write(_timerEnd[0]); w.Write(_timerEnd[1]);
-        w.Write(_lfoAmCounter); w.Write(_lfoPmCounter); w.Write(_noiseLfsr); w.Write(_lfoAm); w.Write(_samples); w.Write(_prepareCount);
+        w.Write(_lfoAmCounter); w.Write(_lfoPmCounter); w.Write(_noiseLfsr); w.Write(_lfoAm); w.Write(_samples); w.Write(_prepareCount | (_modifiedChannels << 16));   // (the pending re-prepare rides in the counter's high bits: an exact round trip, same layout)
         foreach (var c in _ch) { w.Write(c.Fb0); w.Write(c.Fb1); w.Write(c.FbIn); }
         foreach (var o in _ops) { w.Write(o.Phase); w.Write(o.EnvAtt); w.Write((byte)o.EnvState); w.Write(o.KeyState); w.Write(o.KeyonLive); }
     }
@@ -724,10 +724,14 @@ public sealed partial class Opl2
     {
         r.Read(_regs, 0, 256); _address = r.ReadByte(); _envCounter = r.ReadUInt32(); _status = r.ReadByte(); _irqMask = r.ReadByte(); _irqState = r.ReadByte();
         r.Read(_timerRunning, 0, 2); _timerEnd[0] = r.ReadInt64(); _timerEnd[1] = r.ReadInt64();
-        _lfoAmCounter = r.ReadUInt16(); _lfoPmCounter = r.ReadUInt16(); _noiseLfsr = r.ReadUInt32(); _lfoAm = r.ReadByte(); _samples = r.ReadInt64(); _prepareCount = r.ReadUInt32();
+        _lfoAmCounter = r.ReadUInt16(); _lfoPmCounter = r.ReadUInt16(); _noiseLfsr = r.ReadUInt32(); _lfoAm = r.ReadByte(); _samples = r.ReadInt64(); uint pc = r.ReadUInt32(); _prepareCount = pc & 0xffff; uint modified = pc >> 16;
         foreach (var c in _ch) { c.Fb0 = r.ReadInt16(); c.Fb1 = r.ReadInt16(); c.FbIn = r.ReadInt16(); }
         foreach (var o in _ops) { o.Phase = r.ReadUInt32(); o.EnvAtt = r.ReadUInt16(); o.EnvState = r.ReadByte(); o.KeyState = r.ReadByte(); o.KeyonLive = r.ReadByte(); }
-        _modifiedChannels = 0x1ff;   // ymfm invalidates the caches after a restore
+        // the operator caches are not in the state: rebuild them now, without touching the prepare counter or the pending set (2026-11-22: setting every
+        // channel modified, as ymfm does, reset the counter one sample later than the live machine: a loaded run's state differed from the live one)
+        _activeChannels = 0;
+        if (_alt == null) for (int c = 0; c < 9; c++) { bool a = Prepare(_ch[c].Op0); a |= Prepare(_ch[c].Op1); if (a) _activeChannels |= 1u << c; }   // (an alternative engine draws the sound: the ymfm core stays as saved)
+        _modifiedChannels = modified;
         _out.Clear();
         if (_alt != null) { _alt.Reset(); _altQueue.Clear(); ReplayIntoAlt(); }   // re-keyed from the registers; LoadEngine then puts the engine's own saved state back
     }

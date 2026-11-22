@@ -37,7 +37,7 @@ internal static partial class Tools
                                 n98?.Dispose(); n98 = null;
                                 var o = new N98Install.InstallOptions
                                 {
-                                    Disc = body["disc"]?.GetValue<string>(), Machine = body["machine"]?.GetValue<string>() ?? "win98-p166-nano", Sound = body["sound"]?.GetValue<string>() ?? "SB16_D072",
+                                    Disc = body["disc"]?.GetValue<string>(), Machine = body["machine"]?.GetValue<string>() ?? "win98-p166-nano", Sound = body["sound"]?.GetValue<string>() ?? "SB16_D072", DriveMb = body["drive_mb"]?.GetValue<int>() ?? N98Seat.StandardDriveMb,
                                     Settle = body["settle"]?.GetValue<bool>() ?? false, Layers = body["layers"] is JsonArray la ? la.Select(x => x!.GetValue<string>()).ToArray() : Array.Empty<string>(),
                                 };
                                 n98 = N98Install.Start(o);

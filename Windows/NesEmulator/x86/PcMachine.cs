@@ -77,6 +77,7 @@ public sealed partial class PcMachine : IX86Bus
     public readonly Rtl8029? Nic;
     /// <summary>The 3dfx Voodoo Graphics add-in card (PCI board with PcConfig.Voodoo only; off by default).</summary>
     public readonly Voodoo1? Voodoo;
+    private static readonly bool AcceptOtherVoodooScale = Environment.GetEnvironmentVariable("X86_VOODOO_ACCEPT_STOCK") == "1";
     /// <summary>The 82077AA floppy controller (the PCI 430TX board only; the other boards serve floppies through the BIOS alone).</summary>
     public readonly Fdc82077? Fdc;
     private bool BmPort(int port, out int off) { off = 0; if (Ata == null || Pci == null || !Pci.Functions.TryGetValue(PciBus.IdeDevFn, out var f)) return false; int b = f.Bar4Base; if (b < 0 || port < b || port >= b + 16) return false; off = port - b; return true; }
@@ -109,7 +110,7 @@ public sealed partial class PcMachine : IX86Bus
         Pit = new Pit8254(() => PitNow, () => Pic.Pulse(0));
         Kbc = new Kbc8042(Pic, config.Bus == PcBus.Pci430TX && Environment.GetEnvironmentVariable("X86_NOMOUSE") == null);   // (X86_NOMOUSE: a diagnostic)   // the Windows 98 board has the PS/2 mouse
         Cmos = new Cmos(() => PitNow, MemKb);
-        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video switch { PcVideo.GeForce256 => NvChip.NV10, PcVideo.GeForce4Mx => NvChip.NV17, PcVideo.GeForceFx5200 => NvChip.NV34, _ => null });
+        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video switch { PcVideo.GeForce256 => NvChip.NV10, PcVideo.GeForce4Mx => NvChip.NV17, PcVideo.GeForceFx5200 => NvChip.NV34, _ => null }, video == PcVideo.VBoxVga, config.VramMB * 1024 * 1024);
         S3 = Vga.S3;
         Nv = Vga.Nv;
         _vramNs = Cpu.Model.Legacy ? 0 : S3 != null || Nv != null ? 150 : Cpu.Model.Gen <= 3 ? 650 : 450;
@@ -121,7 +122,7 @@ public sealed partial class PcMachine : IX86Bus
         {
             if (!config.NoNic) Nic = new Rtl8029();
             if (Nic != null) Nic.SetIrq = on => { int irq = Pci!.Isa.Cfg[0x61]; if (irq < 16) Pic.SetIrq(irq, on ? 1 : 0); };
-            if (config.Voodoo) Voodoo = new Voodoo1();
+            if (config.Voodoo) Voodoo = new Voodoo1(Math.Max(1, config.VoodooScale));
             Pci = new PciBus(this);
             if (Nv != null)
             {
@@ -192,6 +193,8 @@ public sealed partial class PcMachine : IX86Bus
     private byte RawRead8(uint a) => Mmio(a, out uint mo) is { } md ? (byte)md.MmioRead(mo, 1) : a < 0xc0000 ? Vga.MemRead(a) : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
     private void RawWrite8(uint a, byte v) { if (Mmio(a, out uint mo) is { } md) md.MmioWrite(mo, v, 1); else if (a < 0xc0000) Vga.MemWrite(a, v); else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
     private ushort RawRead16(uint a) => Mmio(a, out uint mo) is { } md && Mmio(a + 1) == md ? (ushort)md.MmioRead(mo, 2) : (ushort)(RawRead8(a) | (RawRead8(a + 1) << 8));
+    private static readonly bool DispiLog = Environment.GetEnvironmentVariable("X86_DISPILOG") == "1";   // diagnosis: DISPI port writes
+    private int _dispiLogN;
     private void RawWrite16(uint a, ushort v)
     {
         if (Mmio(a, out uint mo) is { } md && Mmio(a + 1) == md) { md.MmioWrite(mo, v, 2); return; }
@@ -237,6 +240,7 @@ public sealed partial class PcMachine : IX86Bus
         if (Fdc != null && Fdc82077.IsPort(port)) return Fdc.In(port);
         if (Card != null && Card.In(port, false, out int cv)) return (byte)cv;
         if (S3 != null && S3Trio64.IsEnginePort(port)) return (byte)S3.EngineIn(port & 0xfffe, (port & 1) != 0);
+        if (S3 is { VBox: true } && S3Trio64.IsDispiPort(port)) return port == 0x1ce ? (byte)S3.DispiIndex : (byte)(port == 0x1cf ? S3.DispiRead() : S3.DispiRead() >> 8);
         switch (port)
         {
             case 0x20: case 0x21: case 0xa0: case 0xa1: return Pic.In(port);
@@ -271,6 +275,7 @@ public sealed partial class PcMachine : IX86Bus
         if (Fdc != null && Fdc82077.IsPort(port)) { Fdc.Out(port, v); return; }
         if (Card != null && Card.Out(port, false, v)) return;
         if (S3 != null && S3Trio64.IsEnginePort(port)) { S3.EngineOut8(port, v); return; }
+        if (S3 is { VBox: true } && S3Trio64.IsDispiPort(port)) { if (DispiLog && _dispiLogN++ < 400) Console.WriteLine($"dispilog out {port:X3} {v:X4} idx {S3.DispiIndex:X} @{Cpu.SegSel[1]:X4}:{Cpu.Ip:X8}"); if (port == 0x1ce) S3.DispiIndex = v; else S3.DispiWrite(v); return; }
         switch (port)
         {
             case 0x20: case 0x21: case 0xa0: case 0xa1: Pic.Out(port, v); return;
@@ -304,6 +309,7 @@ public sealed partial class PcMachine : IX86Bus
         if (Ata != null && Ata.In(port, true, out int av)) return (ushort)av;
         if (Card != null && Card.In(port, true, out int cv)) return (ushort)cv;
         if (S3 != null && S3Trio64.IsEnginePort(port)) return (ushort)(S3.EngineIn(port, false) | S3.EngineIn(port, true) << 8);
+        if (S3 is { VBox: true } && S3Trio64.IsDispiPort(port)) return port == 0x1ce ? (ushort)S3.DispiIndex : S3.DispiRead();
         if (ExtraIn != null) { int v = ExtraIn(port, 16); if (v >= 0) return (ushort)v; }
         return (ushort)(In8(port) | (In8(port + 1) << 8));
     }
@@ -315,12 +321,13 @@ public sealed partial class PcMachine : IX86Bus
         if (Ata != null && Ata.Out(port, true, v)) return;
         if (Card != null && Card.Out(port, true, v)) return;
         if (S3 != null && S3Trio64.IsEnginePort(port)) { S3.EngineOut16(port, v); return; }
+        if (S3 is { VBox: true } && S3Trio64.IsDispiPort(port)) { if (DispiLog && _dispiLogN++ < 400) Console.WriteLine($"dispilog out {port:X3} {v:X4} idx {S3.DispiIndex:X} @{Cpu.SegSel[1]:X4}:{Cpu.Ip:X8}"); if (port == 0x1ce) S3.DispiIndex = v; else S3.DispiWrite(v); return; }
         if (ExtraOut != null && ExtraOut(port, 16, v)) return;
         Out8(port, (byte)v); Out8(port + 1, (byte)(v >> 8));
     }
     // a 32-bit access to an IDE data port is two 16-bit cycles on that same port
     private bool IsAtaData(int port) => Ata != null && (port == 0x1f0 || port == 0x170);
-    public uint In32(int port) => Pci != null && Pci.In(port, 4, out uint pv) ? pv : IsAtaData(port) ? (uint)(In16(port) | (In16(port) << 16)) : (uint)(In16(port) | (In16(port + 2) << 16));
+    public uint In32(int port) => Pci != null && Pci.In(port, 4, out uint pv) ? pv : S3 is { VBox: true } && port == 0x1cf ? (uint)S3.VramBytes : IsAtaData(port) ? (uint)(In16(port) | (In16(port) << 16)) : (uint)(In16(port) | (In16(port + 2) << 16));
     public void Out32(int port, uint v)
     {
         if (Pci != null && Pci.Out(port, 4, v)) return;
@@ -547,6 +554,27 @@ public sealed partial class PcMachine : IX86Bus
     }
 
     /// <summary>The state written to <paramref name="stream"/> (left open): the same bytes as <see cref="SaveState()"/> (the bug capture's state a second reuses one buffer).</summary>
+    /// <summary>Diagnostics (state round-trip checks): the state's parts one by one, to name the one that differs.</summary>
+    public List<(string name, byte[] data)> DebugStateParts()
+    {
+        var parts = new List<(string, byte[])>();
+        void P(string n, Action<BinaryWriter> a) { var ms = new MemoryStream(); using (var w = new BinaryWriter(ms)) a(w); parts.Add((n, ms.ToArray())); }
+        P("cpu", w => Cpu.SaveState(w));
+        P("core", w => { w.Write(_idle); w.Write(_port61); w.Write(_lastFrame); w.Write(InstructionsPerSecond); w.Write(_clkEpoch); w.Write(_pitEpoch); });
+        P("pic", w => Pic.Save(w)); P("pit", w => Pit.Save(w)); P("kbc", w => Kbc.Save(w)); P("cmos", w => Cmos.Save(w)); P("vga", w => Vga.Save(w));
+        P("opl", w => Opl.Save(w)); P("oplengine", w => Opl.SaveEngine(w)); P("dma", w => Dma.Save(w));
+        if (Card != null) P("card", w => Card.Save(w));
+        if (S3 != null) P("s3", w => S3.Save(w));
+        if (Ata != null) P("ata", w => Ata.Save(w));
+        P("bios", w => SaveBiosExtras(w));
+        if (Config.Bus != PcBus.Isa) P("pci", w => SavePci(w));
+        if (Kbc.HasMouse) P("mouse", w => Kbc.SaveMouse(w));
+        if (Command != null) P("n98cmd", w => { w.Write(Command.Length); w.Write(Command); w.Write(_cmdPos); });
+        if (Ata != null) P("ata-bm", w => { Ata.Primary.SaveBm(w); Ata.Secondary.SaveBm(w); });
+        for (int i = 0; i < 4; i++) { var d = i < 2 ? Floppy[i] : Hdd[i - 2]; if (d != null) P("disk" + i, w => w.Write(d.ContentKey())); }
+        return parts;
+    }
+
     public void SaveState(Stream stream) => SaveState(stream, false);
 
     /// <summary><paramref name="undo"/>: a copy only this process loads back (LoadState's undo): the disks named by object, not by hash (no wait for a hash).</summary>
@@ -591,7 +619,7 @@ public sealed partial class PcMachine : IX86Bus
                 var ss = new MemoryStream();
                 using (var sw = new BinaryWriter(ss)) S3.Save(sw);
                 var blob = ss.ToArray();
-                w.Write(0x41475653); w.Write(S3Trio64.Id); w.Write(blob.Length); w.Write(blob);   // "SVGA"
+                w.Write(0x41475653); w.Write(S3.CardId); w.Write(blob.Length); w.Write(blob);   // "SVGA"
             }
             // the machine config and its new devices, last: a classic machine's state is byte for byte what it was
             if (ConfigInState)
@@ -687,7 +715,11 @@ public sealed partial class PcMachine : IX86Bus
             else if (magic == 0x47464350)
             {
                 saved = PcConfig.Read(r);
-                if (saved with { MemoryMB = Config.MemoryMB } != Config) throw new InvalidDataException($"this x86 state is for a {saved} machine, this machine is {Config}");
+                // (VramMB is not in the config block: the SVGA card id, VBOXVGA-16MB, carries the video memory size and is checked below)
+                // X86_VOODOO_ACCEPT_STOCK=1 (explicit, test tools only): a Stock Voodoo state loads into an Enhanced Voodoo machine and back (the render
+                // scale is presentation only; the guest state is the same); without it the scale is part of the machine and a mismatch is refused
+                if (AcceptOtherVoodooScale && saved.Voodoo && Config.Voodoo) saved = saved with { VoodooScale = Config.VoodooScale };
+                if (saved with { MemoryMB = Config.MemoryMB, VramMB = Config.VramMB } != Config) throw new InvalidDataException($"this x86 state is for a {saved} machine, this machine is {Config}");
                 WireAta();
                 if (r.ReadBoolean()) Ata!.Load(r);
                 LoadBiosExtras(r);
@@ -705,7 +737,8 @@ public sealed partial class PcMachine : IX86Bus
             {
                 var bases = new List<byte[]?>();
                 foreach (var o in old) bases.Add(o?.Base);
-                for (int i = 0; i < 4; i++) disks[i] = r.ReadBoolean() ? DiskImage.LoadDiff(r, bases) : null;
+                var bigs = old.Select(o => o?.Big).ToList();   // (nano98 large game drives)
+                for (int i = 0; i < 4; i++) disks[i] = r.ReadBoolean() ? DiskImage.LoadDiff(r, bases, bigs) : null;
                 Floppy[0] = disks[0]; Floppy[1] = disks[1]; Hdd[0] = disks[2]; Hdd[1] = disks[3];
             }
             else throw new InvalidDataException($"unknown block {magic:X8} in an x86 state");
@@ -723,7 +756,7 @@ public sealed partial class PcMachine : IX86Bus
         if (saved == null && ConfigInState) throw new InvalidDataException($"this x86 state is for the classic machine (486, BIOS disks), this machine is {Config}");
         WireAta();
         // the video card must be the one the state was saved on: a mismatch is an error, never a guess
-        string cardId = S3 != null ? S3Trio64.Id : Nv != null ? Nv.CardId : "VGA";
+        string cardId = S3 != null ? S3.CardId : Nv != null ? Nv.CardId : "VGA";
         if ((svgaId ?? "VGA") != cardId)
             throw new InvalidDataException($"this state was saved with the {svgaId ?? "VGA"} video card, this machine has the {cardId}");
         if (Nv != null) { using var nr = new BinaryReader(new MemoryStream(svgaBlob!)); Nv.Load(nr); }

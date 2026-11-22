@@ -458,6 +458,7 @@ public sealed partial class Voodoo1
 
     private void Fastfill()
     {
+        if (_sfb != null) FastfillShadow();
         uint fbz = Reg[RFbzMode];
         if ((fbz & (3 << 9)) == 0) return;
         int dest = DrawBuffer((int)(fbz >> 14) & 3);
@@ -488,6 +489,7 @@ public sealed partial class Voodoo1
     private void Triangle()
     {
         Triangles++;
+        if (_sfb != null) TriangleShadow();   // first: the native pass below moves the start registers (subpixel correction)
         uint fbz = Reg[RFbzMode];
         int dest = DrawBuffer((int)(fbz >> 14) & 3);
         if (dest < 0) return;

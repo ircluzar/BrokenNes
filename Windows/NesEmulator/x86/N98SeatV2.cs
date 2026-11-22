@@ -79,9 +79,11 @@ public sealed partial class N98Seat
             s.SavePatterns = sv.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 3).ToArray();
         string hw = r.TryGetProperty("hardware", out var h) && h.TryGetProperty("machine", out var mm) ? mm.GetString() ?? "" : "";
         s.Machine = hw.Contains("VOODOO", StringComparison.OrdinalIgnoreCase) ? "win98-p166-voodoo-nano" : "win98-p166-nano";
-        if (hw.EndsWith("-NANO", StringComparison.OrdinalIgnoreCase) && PcMachinePreset.Known(hw)) s.Machine = PcMachinePreset.Find(hw).Key;   // (an installed package names its seat machine)
+        if (hw.Contains("-NANO", StringComparison.OrdinalIgnoreCase) && PcMachinePreset.Known(hw)) s.Machine = PcMachinePreset.Find(hw).Key;   // (an installed package names its seat machine)
         if (r.TryGetProperty("hardware", out var hs) && hs.TryGetProperty("sound", out var so) && so.GetString() is { Length: > 0 } snd) s.Sound = snd;
         if (Environment.GetEnvironmentVariable("BROKENNES_N98_MACHINE") is { Length: > 0 } mo) s.Machine = mo;
+        // the Pentium II cost per game (user 2026-11-22 "Per game"): hardware.p2cpi, else the machine preset's own; 1.0 = faithful
+        if (r.TryGetProperty("hardware", out var hc) && hc.TryGetProperty("p2cpi", out var pc) && pc.ValueKind == JsonValueKind.Number && pc.GetDouble() >= 1.0) s.P2Cpi = pc.GetDouble();
         if (r.TryGetProperty("cd", out var cds) && cds.ValueKind == JsonValueKind.Array)
             foreach (var cd in cds.EnumerateArray())
                 if (cd.TryGetProperty("ref", out var rf) && rf.GetString() is { Length: > 0 } name)
@@ -106,13 +108,24 @@ public sealed partial class N98Seat
         s.ImagePath = baseImg;
         Report("reading Windows 98", 0);
         s.Image = DiskImage.ReadImageFile(baseImg);
-        s.WarmDir = WarmDirFor(baseImg, s.Image, Path.GetDirectoryName(s.CacheDir) is { Length: > 0 } pd ? pd : s.CacheDir, s.Machine, s.Sound);
+        s.WarmDir = WarmDirFor(baseImg, s.Image, Path.GetDirectoryName(s.CacheDir) is { Length: > 0 } pd ? pd : s.CacheDir, s.Machine, s.Sound, s.EffectiveP2Cpi);
 
         // D: the package's game drive, and the blank standard drive the machine boots with
         var dEntry = z.GetEntry("drives/D.n98d") ?? throw new InvalidDataException($"{fileName}: a schema-2 package without its game drive (drives/D.n98d)");
+        long dLen; using (var dh0 = dEntry.Open()) dLen = DiskImage.SparseLength(dh0);
+        if (dLen != (long)StandardDriveMb << 20)
+        {
+            // a large game drive (user 2026-11-22: past 2 GB): its own blank drive of the same size, its own warm state (folder -dSIZE)
+            if (dLen <= 0 || dLen % (1 << 20) != 0 || dLen < (512L << 20)) throw new InvalidDataException($"{fileName}: the game drive is {dLen} bytes (a whole number of MB from 512 MB up)");
+            s.DriveMb = (int)(dLen >> 20);
+            using (var ds = new CountingStream(dEntry.Open(), dEntry.Length, "unpacking the game")) s.GameDriveBig = DiskImage.ReadSparseBig(ds, fileName + ":D");
+            Report("starting Windows");
+            s.BlankDriveBig = MakeBlankDriveBig(s.DriveMb);
+            s.WarmDir = WarmDirFor(baseImg, s.Image, Path.GetDirectoryName(s.CacheDir) is { Length: > 0 } pd2 ? pd2 : s.CacheDir, s.Machine, s.Sound, s.EffectiveP2Cpi, s.DriveMb);
+            goto launch;
+        }
         using (var ds = new CountingStream(dEntry.Open(), dEntry.Length, "unpacking the game")) s.GameDrive = DiskImage.ReadSparse(ds, fileName + ":D");
         Report("starting Windows");
-        if (s.GameDrive.LongLength != (long)StandardDriveMb << 20) throw new InvalidDataException($"{fileName}: the game drive is {s.GameDrive.LongLength} bytes, not the standard {StandardDriveMb} MB");
         s.BlankDrive = MakeBlankDrive(StandardDriveMb);
         // the blank drive's identity hash (what the warm state names it by): cached beside the warm state, made once in the background
         try
@@ -124,6 +137,7 @@ public sealed partial class N98Seat
         catch (IOException) { }
         s.Image2 = s.BlankDrive;
 
+    launch:
         // the launcher's command (no Python needed for schema 2)
         var L = r.GetProperty("launch");
         string W(string p) => p.Replace('/', '\\');
@@ -155,12 +169,21 @@ public sealed partial class N98Seat
 
     /// <summary>The sound card the seat runs with (the manifest's hardware.sound; the app's x86 APU choice when empty).</summary>
     public string Sound = "";
+    /// <summary>The game drive's size (StandardDriveMb, or a large drive's: then GameDriveBig / BlankDriveBig hold the drives, not the arrays).</summary>
+    public int DriveMb = StandardDriveMb;
+    public DiskBigBase? GameDriveBig, BlankDriveBig;
+    /// <summary>The package's Pentium II cost (manifest hardware.p2cpi); 0 = the machine preset's (X86_P2CPI, a dev override, wins over both).</summary>
+    public double P2Cpi;
+    /// <summary>The P2 CPI this seat runs with on a gen-6 machine (1.0 on others): part of the warm-state key, so states never mix.</summary>
+    public double EffectiveP2Cpi => PcMachinePreset.Find(Machine).Cpu is { Gen: 6 } c ? (CpuModel.P2CpiOverride ?? (P2Cpi > 0 ? P2Cpi : c.Cpi)) : 1.0;
 
     /// <summary>Where the shared warm-boot state of a base lives: (cache)\warm\(base hash 16)-(emulator build), plus -(machine)[-(sound)] when the seat is not the
     /// default win98-p166-nano machine (a state is only valid on the machine it was saved on). A state shipped beside the base (BASE.n98d.warm\...) wins.</summary>
-    public static string WarmDirFor(string baseImg, byte[] image, string cacheRoot, string machine, string sound = "")
+    public static string WarmDirFor(string baseImg, byte[] image, string cacheRoot, string machine, string sound = "", double p2cpi = 1.0, int driveMb = StandardDriveMb)
     {
         string name = DiskImage.HashOf(image).Replace("p256:", "")[..16] + "-" + EmulatorVersion;
+        if (driveMb != StandardDriveMb) name += "-d" + driveMb;
+        if (p2cpi != 1.0) name += "-cpi" + p2cpi.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
         if (!machine.Equals("win98-p166-nano", StringComparison.OrdinalIgnoreCase)) name += "-" + machine.ToLowerInvariant();
         if (sound.Length > 0 && !sound.Equals("SB16_D072", StringComparison.OrdinalIgnoreCase)) name += "-" + sound.ToLowerInvariant();
         string dir = Path.Combine(cacheRoot, "warm", name);
@@ -178,9 +201,14 @@ public sealed partial class N98Seat
         ids = ids.Select(N98Drivers.MapLayer).ToArray();   // (the user's driver override, else the package's pinned layers)
         foreach (var id in ids) if (id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || id.Contains("..")) throw new InvalidDataException($"{fileName}: bad layer id '{id}'");
         string name = Path.GetFileNameWithoutExtension(baseImg) + "+" + string.Join("+", ids) + ".n98d";
-        string beside = Path.Combine(Path.GetDirectoryName(baseImg) ?? ".", name), cached = Path.Combine(cacheRoot, "variants", name);
+        string beside = Path.Combine(Path.GetDirectoryName(baseImg) ?? ".", name);
         if (File.Exists(beside)) return beside;
-        if (File.Exists(cached) && File.GetLastWriteTimeUtc(cached) >= File.GetLastWriteTimeUtc(baseImg)) return cached;
+        // the cached variant is named after WHICH base made it (path, size, time): two bases with the same file name never share one (2026-11-22: a test
+        // base's variant was picked up by the user's own base, only the time was compared)
+        var bi = new FileInfo(baseImg);
+        string tag = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes($"{bi.FullName.ToUpperInvariant()}|{bi.Length}|{bi.LastWriteTimeUtc.Ticks}")))[..10];
+        string cached = Path.Combine(cacheRoot, "variants", Path.GetFileNameWithoutExtension(baseImg) + "-" + tag + "+" + string.Join("+", ids) + ".n98d");
+        if (File.Exists(cached)) return cached;
         var dirs = new[] { Environment.GetEnvironmentVariable("BROKENNES_N98_LAYERS"), Path.Combine(Path.GetDirectoryName(baseImg) ?? ".", "layers"), Path.Combine(LocalRoot, "layers"), Path.Combine(cacheRoot, "layers") }
             .Where(d => !string.IsNullOrEmpty(d)).ToArray();
         var layers = ids.Select(id => dirs.Select(d => Path.Combine(d!, id + ".n98")).FirstOrDefault(File.Exists)
@@ -230,13 +258,14 @@ public sealed partial class N98Seat
 
     /// <summary>The blank standard game drive (byte-identical to tools/nano98/pkg/fat32.py mkfs): MBR + one FAT32 LBA partition at sector 63,
     /// 4 KB clusters, fixed volume serial, FSInfo free count and next-free "unknown", label NANO98GAME, the reserved file + the empty GAME folder (what Windows reads at mount is the same on every game drive).</summary>
-    public static byte[] MakeBlankDrive(int sizeMb)
+    public static byte[] MakeBlankDrive(int sizeMb, bool headOnly = false)
     {
         const int Sec = 512, Part = 63, Rsvd = 32, NFats = 2, Spc = 8; const uint Serial = 0x4E393844;
         long total = (long)sizeMb * 1024 * 1024 / Sec; long psec = total - Part;
         long fatsz = 1;
         while (true) { long nclus = (psec - Rsvd - NFats * fatsz) / Spc; long need = ((nclus + 2) * 4 + Sec - 1) / Sec; if (need <= fatsz) break; fatsz = need; }
-        var d = new byte[total * Sec];
+        // headOnly: only the sectors this writes (MBR .. GAME's cluster); the rest of the drive is zeros (a big drive's chunked base gets just this)
+        var d = new byte[(headOnly ? Math.Min(total, Part + Rsvd + NFats * fatsz + 128L * Spc + 8) : total) * Sec];
         byte[] Chs(long lba) { long c = lba / (255 * 63), rr = lba % (255 * 63), hh = rr / 63, ss = rr % 63; c = Math.Min(c, 1023); return new[] { (byte)hh, (byte)(((c >> 2) & 0xc0) | (ss + 1)), (byte)(c & 0xff) }; }
         d[446] = 0; Chs(Part).CopyTo(d, 447); d[450] = 0x0c; Chs(total - 1).CopyTo(d, 451);
         BitConverter.GetBytes((uint)Part).CopyTo(d, 454); BitConverter.GetBytes((uint)psec).CopyTo(d, 458);
@@ -265,7 +294,7 @@ public sealed partial class N98Seat
         BitConverter.GetBytes(0x0FFFFFFFu).CopyTo(fat, 127 * 4); BitConverter.GetBytes(0x0FFFFFFFu).CopyTo(fat, 128 * 4);
         long data = Part + Rsvd + NFats * fatsz;
         // FAT sector 408 and the cluster of data sector 3598978 (both read by Windows at mount): bad clusters on every standard drive
-        long probe = (3598978 - data) / Spc + 2;
+        long probe = (ProbeSector(sizeMb) - data) / Spc + 2;
         for (int k = 0; k < NFats; k++)
         {
             long fl = (Part + Rsvd + k * fatsz) * Sec;
@@ -284,5 +313,17 @@ public sealed partial class N98Seat
         Ent(root + 32, "N98RSVD SYS", 0x07, 3, 125u * Spc * Sec); Ent(root + 64, "GAME       ", 0x10, 128, 0);
         long g = (data + (128 - 2) * Spc) * Sec; Ent(g, ".          ", 0x10, 128, 0); Ent(g + 32, "..         ", 0x10, 0, 0);
         return d;
+    }
+
+    /// <summary>The blank game drive of a non-standard size (nano98 large game drives: past 2 GB) as a chunked base: the same layout rule as <see cref="MakeBlankDrive"/>.</summary>
+    /// <summary>The data sector Windows reads when it mounts the game drive, per drive size (measured from the seat's warm-point log): its cluster is
+    /// marked bad so it reads the same on every drive of that size. A size not measured yet keeps the 2000 MB value (check the log: "0 differ").</summary>
+    public static long ProbeSector(int sizeMb) => sizeMb switch { 4000 => 7184653, 8000 => 6089731, 12000 => 2704453, 16000 => 10121746, 32000 => 5964151, _ => 3598978 };
+
+    public static DiskBigBase MakeBlankDriveBig(int sizeMb)
+    {
+        var b = new DiskBigBase((long)sizeMb << 20);
+        b.Fill(0, MakeBlankDrive(sizeMb, headOnly: true));
+        return b;
     }
 }

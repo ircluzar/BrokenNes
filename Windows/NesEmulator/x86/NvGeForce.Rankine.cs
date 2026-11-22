@@ -40,6 +40,14 @@ public sealed partial class NvGeForce
                 if (w == 3) _vpUpConst++;
                 return;
             }
+            case 0x130 when Environment.GetEnvironmentVariable("X86_NVFLIPINTR") is string fi:   // experiment: FLIP_WAIT raises PGRAPH INTR bit N (BUFFER_NOTIFY = 16)
+            {
+                int bit = int.Parse(fi);
+                _reg[0x400100] = Reg(0x400100) | (1u << bit); _reg[0x400108] = Reg(0x400108) | 1;
+                _reg[0x400704] = ((uint)ActiveChid << 20) | 0x130; _reg[0x400708] = data; UpdateIrq();
+                OpLog?.Invoke($"rankine flip-wait intr bit {bit}");
+                return;
+            }
             case 0x324: _rankineMaskSeen = true; return;
             case 0x1d70:                                                                // FENCE_VALUE: written to DMA_FENCE + FENCE_OFFSET
             {
