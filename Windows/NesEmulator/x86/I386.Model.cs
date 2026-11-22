@@ -76,8 +76,14 @@ public sealed record CpuModel
     public static CpuModel PentiumII => new CpuModel()
     {
         Id = "P2", Name = "Intel Pentium II 400 MHz", Gen = 6, Fpu = true, Ops486 = true, Cpuid = true, Ops586 = true, Mmx = true, Ops686 = true,
-        Signature = 0x0652, FeatureEdx = 0x1 | 0x4 | 0x10 | 0x20 | 0x80 | 0x100 | 0x800 | 0x1000 | 0x8000 | 0x800000, ClockHz = 400_000_000, Cpi = 1.0,
+        Signature = 0x0652, FeatureEdx = 0x1 | 0x4 | 0x10 | 0x20 | 0x80 | 0x100 | 0x800 | 0x1000 | 0x8000 | 0x800000, ClockHz = 400_000_000, Cpi = P2Cpi,
     }.EnvOverride();
+
+    /// <summary>The P2's guest clocks per instruction. 1.0 = the faithful model (400 M instructions per guest second); higher = fewer
+    /// instructions per guest second (less host work), while RDTSC still counts 400 MHz, so Windows and Sandra still see a PII 400.
+    /// X86_P2CPI overrides (user 2026-11-21: "try a cheaper P2 cost model first").</summary>
+    private static double P2Cpi => double.TryParse(Environment.GetEnvironmentVariable("X86_P2CPI"), System.Globalization.NumberStyles.Float,
+        System.Globalization.CultureInfo.InvariantCulture, out double v) && v >= 1.0 ? v : 1.0;
 
     /// <summary>Bisect switches (measurement only): X86_CPUID_SIG / X86_CPUID_EDX (hex) replace CPUID 1 EAX / EDX.</summary>
     private CpuModel EnvOverride()
@@ -235,6 +241,14 @@ public sealed partial class I386
             case >= 0xd0 and <= 0xff: return _hasMmx && MmxOpcode(b1);
         }
         return true;
+    }
+
+    /// <summary>The machine's instruction rate changes from <paramref name="oldIps"/> (what the TSC counted with so far) to the model's:
+    /// move the TSC offset so RDTSC goes on from its value at instruction clock <paramref name="clk"/> (PcMachine.SetIps).</summary>
+    public void RebaseTsc(long clk, long oldIps, long newIps)
+    {
+        if (Model.Legacy || oldIps <= 0 || newIps != Model.Ips) return;
+        _tscOffset += (long)((Int128)clk * Model.ClockHz / oldIps) - (long)((Int128)clk * Model.ClockHz / newIps);
     }
 
     private ulong ReadTsc()
