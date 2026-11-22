@@ -71,7 +71,7 @@ public sealed partial class I386
     // ---- memory ----
     public readonly byte[] Mem;                      // physical RAM (16 spare bytes at the end so a word access at the last byte stays in the array)
     public readonly uint MemSize;
-    private readonly IX86Bus _bus;
+    private IX86Bus _bus;
     private readonly bool _ioMem;
 
     // instruction fetch cache
@@ -175,7 +175,7 @@ public sealed partial class I386
     // ---- the compiled blocks' code-change test (I386.Jit.cs JitSame): a store to a 64-byte line some compiled block was made from bumps the
     // generation of its 4 KB page; a block runs without comparing its bytes while its pages' generations (and _memEpoch) are the ones it saw.
     // Writes to memory from outside the CPU (the BIOS, DMA, disk loads, save states, tools) bump _memEpoch: every block compares once.
-    private readonly byte[] _codeMark;   // per 64-byte line of RAM: 1 = a compiled block's bytes are there
+    private byte[] _codeMark;   // per 64-byte line of RAM: 1 = a compiled block's bytes are there
     private readonly uint[] _pgGen;      // per 4 KB page: the code write generation
     private uint _memEpoch;
     /// <summary>Memory was written by something other than the CPU's own stores (the BIOS, DMA, a disk load, a tool): compiled blocks check their bytes.</summary>
@@ -200,6 +200,7 @@ public sealed partial class I386
     private void CodeWrite(uint a, uint n)
     {
         if (a >= MemSize) return;
+        if (_wsRealMark != null && !WsLog(a, n)) return;   // X86_WAITSKIP proof: every store comes here (I386.WaitSkip.cs)
         if (n == 4 && JitLiveImmOn) SmcNote(a);
         _pgGen[a >> 12]++;
         uint e = a + n - 1;
@@ -877,6 +878,7 @@ public sealed partial class I386
 
     public void Reset()
     {
+        WsReset();
         _memEpoch++;
         Array.Clear(R);
         Flags = 0x2; Cpl = 0; Code16 = true; SpMask = 0xffff; Halt = false;
@@ -944,6 +946,7 @@ public sealed partial class I386
     {
         if ((Flags & IF) != 0 && Intr)
         {
+            if (WaitSkipOn) WsOnIrq();
             Intr = false; Halt = false;
             int no = _bus.AckIrq();
             Ip = NextIp;
@@ -952,7 +955,7 @@ public sealed partial class I386
         if (Halt) return;
         if (!_jitDone.IsEmpty) JitDrain();
         long tq0 = PcMachine.TimeProbe ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
-        bool ret = Exec1(stepcount);
+        bool ret = WaitSkipOn && WsBegin() ? WsExec(stepcount) : Exec1(stepcount);
         if (PcMachine.TimeProbe) TicksExec1 += System.Diagnostics.Stopwatch.GetTimestamp() - tq0;
         _ifPaddr = 0;
         if (!ret)
@@ -962,5 +965,6 @@ public sealed partial class I386
             ExceptionLog?.Invoke(Excno, Excerr);
             if (!CallIsr(Excno, pusherr, 1)) Abort($"exception {Excno} delivery failed");
         }
+        if (_wsRealMark != null) WsLogOff();
     }
 }

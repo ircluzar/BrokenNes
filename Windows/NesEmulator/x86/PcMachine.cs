@@ -421,10 +421,27 @@ public sealed partial class PcMachine : IX86Bus
         return RunBatchCpu();
     }
 
+    /// <summary>A halted (or wait-parked) CPU's batch: guest time to the next timer interrupt, at most 16 batches.</summary>
+    private long SleepInstr()
+    {
+        long nextPit = Pit.NextIrq0();
+        long nowPit = PitNow;
+        long sleepPit = nextPit == long.MaxValue ? 1000 : Math.Max(1, nextPit - nowPit);
+        long sleepInstr = Math.Max(1, (long)((Int128)sleepPit * InstructionsPerSecond / Pit8254.Freq));
+        return Math.Min(sleepInstr, Batch * 16);
+    }
+
     private bool RunBatchCpu()
     {
         try
         {
+            if (Cpu.WsParked)
+            {
+                // X86_WAITSKIP: the CPU sits at a proven no-change point of a polling loop (I386.WaitSkip.cs): idle like HLT until an interrupt
+                if (Cpu.Intr && (Cpu.Flags & I386.IF) != 0) { Cpu.WsUnpark(); Cpu.Step(Batch); return true; }
+                long s = SleepInstr(); _idle += s; Cpu.WsParkedBatch(s);
+                return true;
+            }
             if (Cpu.Halt)
             {
                 HaltBatches++;
@@ -558,6 +575,7 @@ public sealed partial class PcMachine : IX86Bus
             if (Command != null) { w.Write(0x4338394e); w.Write(Command.Length); w.Write(Command); w.Write(_cmdPos); }   // "N98C": the nano98 command + read position
             if (Ata != null && (Ata.Primary.BmActive || Ata.Secondary.BmActive)) { w.Write(0x4d424449); Ata.Primary.SaveBm(w); Ata.Secondary.SaveBm(w); }   // "IDBM": bus-master DMA
             if (Ata != null && Ata.Secondary.AudioActive) { w.Write(0x41444443); Ata.Secondary.SaveAudio(w); }   // "CDDA": CD audio playing or paused
+            if (Cpu.WsActive) { w.Write(0x54494157); Cpu.WsSaveBlock(w); }   // "WAIT": the wait-loop skip's detector (X86_WAITSKIP)
             if (_clkEpoch != 0 || _pitEpoch != 0) { w.Write(0x45535049); w.Write(_clkEpoch); w.Write(_pitEpoch); }   // "IPSE": the instruction rate changed under the running machine (SetIps)
             if (Ata != null && (Ata.Primary.AnyMediaChanged || Ata.Secondary.AnyMediaChanged)) { w.Write(0x434d4443); Ata.Primary.SaveMediaChanged(w); Ata.Secondary.SaveMediaChanged(w); }   // "CDMC": a disc change not yet reported (UNIT ATTENTION)
             // "DSKD": the four drives (A:, B:, C:, D:) as base hash + overlay of changed sectors (DiskImage.SaveDiff)
@@ -625,7 +643,7 @@ public sealed partial class PcMachine : IX86Bus
         string? picId = null; byte[]? picBlob = null;
         string? svgaId = null; byte[]? svgaBlob = null;
         PcConfig? saved = null; bool mouse = false;
-        bool nicLoaded = false, fdcLoaded = false, vdoLoaded = false, cdda = false, idbm = false, cdmc = false, cmdLoaded = false, ipse = false;
+        bool nicLoaded = false, fdcLoaded = false, vdoLoaded = false, cdda = false, idbm = false, cdmc = false, cmdLoaded = false, ipse = false, wait = false;
         while (r.BaseStream.Position + 4 <= r.BaseStream.Length)
         {
             int magic = r.ReadInt32();
@@ -647,6 +665,7 @@ public sealed partial class PcMachine : IX86Bus
             else if (magic == 0x4338394e) { Command = r.ReadBytes(r.ReadInt32()); _cmdPos = r.ReadInt32(); cmdLoaded = true; }
             else if (magic == 0x4d424449 && Ata != null) { Ata.Primary.LoadBm(r); Ata.Secondary.LoadBm(r); idbm = true; }
             else if (magic == 0x41444443 && Ata != null) { Ata.Secondary.LoadAudio(r); cdda = true; }
+            else if (magic == 0x54494157) { Cpu.WsLoadBlock(r); wait = true; }
             else if (magic == 0x45535049) { _clkEpoch = r.ReadInt64(); _pitEpoch = r.ReadInt64(); ipse = true; }
             else if (magic == 0x434d4443 && Ata != null) { Ata.Primary.LoadMediaChanged(r); Ata.Secondary.LoadMediaChanged(r); cdmc = true; }
             else if (magic == 0x444b5344)
@@ -660,6 +679,7 @@ public sealed partial class PcMachine : IX86Bus
         }
         if (!cmdLoaded) _cmdPos = 0;
         if (!ipse) { _clkEpoch = 0; _pitEpoch = 0; }
+        if (!wait) Cpu.WsResetState();
         if (Cpu.Model.Gen == 6 && Cpu.Model.Ips != InstructionsPerSecond) SetIps(Cpu.Model.Ips);   // e.g. a P2 state loaded with another X86_P2CPI: time goes on from where it was
         if (!cdda) Ata?.Secondary.ClearAudio();
         if (!cdmc) { Ata?.Primary.ClearAllMediaChanged(); Ata?.Secondary.ClearAllMediaChanged(); }   // no "CDMC" (and every older state): the disc in the drive is the one the guest already knows
