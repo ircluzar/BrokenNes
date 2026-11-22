@@ -35,6 +35,18 @@ public sealed partial class NvGeForce
     /// <summary>CACHE1 holds a method the driver must run (a software object's): the pusher waits until its ISR took it (GET == PUT).</summary>
     // software methods queued in CACHE1 and not yet read by the driver's ISR (its DATA register read = taken); kept in the register store (3FF0h) so it is in the state
     private uint SwPending { get => Reg(0x003ff0); set => _reg[0x003ff0] = value; }
+    /// <summary>Diagnostics: the PFIFO state in one line (active channel, push enables, GET/PUT of every channel that has a RAMFC entry, stall reasons).</summary>
+    public string FifoDump()
+    {
+        var sb = new System.Text.StringBuilder($"active ch{ActiveChid} push0 {Reg(0x003200):X} push1 {Reg(0x003204):X} dmapush {Reg(0x003220):X} pfifo-intr {Reg(0x002100):X}/{Reg(0x002140):X} sw {SwPending} pgraph-intr {Reg(0x400100):X}/{Reg(0x400140):X} dmastate {Reg(0x003228):X}");
+        for (int ch = 0; ch < 32; ch++)
+        {
+            uint put = UserRead((uint)ch << 16 | 0x40), get = UserRead((uint)ch << 16 | 0x44);
+            if (put != 0 || get != 0) sb.Append($" | ch{ch} put {put:X} get {get:X}");
+        }
+        return sb.ToString();
+    }
+
     private bool Stalled => (Reg(0x002100) & 1) != 0 || SwPending != 0;   // (CACHE1 GET/PUT are the driver's to move while it holds the channel)
 
     // a 32-bit word: the 4 bytes stay in order (only the word index is reversed)
