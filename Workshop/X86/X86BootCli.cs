@@ -80,7 +80,7 @@ internal static class X86BootCli
         var m = cfg == PcConfig.Default ? new PcMachine(PcMachine.DefaultMemory, model, video) : new PcMachine(cfg, model, video);
         if (Arg(args, "--ips") is string ips) m.InstructionsPerSecond = long.Parse(ips);
         if (Arg(args, "--wav") != null) _wav = new System.IO.MemoryStream();
-        if (Arg(args, "--mp4") is string mp4p) { var sz = (Arg(args, "--mp4size") ?? "640x480").Split('x'); _mp4 = new BrokenNes.Workshop.Movies.Mp4Writer(mp4p, int.Parse(sz[0]), int.Parse(sz[1]), 25175000, 449 * 800, videoKbps: int.Parse(Arg(args, "--mp4kbps") ?? "4000")); }
+        if (Arg(args, "--mp4") is string mp4p) { var sz = (Arg(args, "--mp4size") ?? "640x480").Split('x'); _mp4 = new BrokenNes.Workshop.Movies.Mp4Writer(mp4p, int.Parse(sz[0]), int.Parse(sz[1]), 25175000, 449 * 800, audioRate: _mp4Rate = int.Parse(Arg(args, "--mp4rate") ?? "44100"), videoKbps: int.Parse(Arg(args, "--mp4kbps") ?? "4000")); }   // --mp4rate 48000: the 44.1 kHz card sound resampled (linear) for the AAC track
         if (Arg(args, "--cdwav") != null) _cdWav = new System.IO.MemoryStream();
         if (Arg(args, "--apu") is string apu && !PcSound.Apply(m, apu)) { Console.WriteLine($"x86boot: no sound card {apu}"); return 1; }
         if (Arg(args, "--hdd") is string h) m.Hdd[0] = new DiskImage(DiskImage.ReadImageFile(h), false);
@@ -683,12 +683,12 @@ internal static class X86BootCli
             {
                 Array.Clear(_wavBuf, 0, n); int got = c.MixInto(_wavBuf, n);
                 if (_wav != null) for (int i = 0; i < got; i++) { _wav.WriteByte((byte)_wavBuf[i]); _wav.WriteByte((byte)(_wavBuf[i] >> 8)); }
-                _mp4?.AddAudio(System.Runtime.InteropServices.MemoryMarshal.AsBytes(_wavBuf.AsSpan(0, got & ~1)));
+                if (_mp4 != null) Mp4Audio(_wavBuf, got & ~1);
             }
         }
         if (_mp4 != null)
         {
-            if (m.Card == null) { long want = (long)Math.Round((_mp4.Frames + 1) * 44100 * Vga.FrameTicks / Pit8254.Freq); _mp4.AddAudio(new byte[(int)(want - _mp4Silence) * 4]); _mp4Silence = want; }   // (no sound card: a silent track)
+            if (m.Card == null) { long want = (long)Math.Round((_mp4.Frames + 1) * _mp4Rate * Vga.FrameTicks / Pit8254.Freq); _mp4.AddAudio(new byte[(int)(want - _mp4Silence) * 4]); _mp4Silence = want; }   // (no sound card: a silent track)
             _mp4.AddFrame(m.Vga.Frame, m.Vga.Width, m.Vga.Height);
             if (_mp4.Frames % 4200 == 0) Console.WriteLine($"x86boot: mp4 {_mp4.Frames} frames ({_mp4.Seconds:F0} s of video)");
         }
@@ -841,6 +841,21 @@ internal static class X86BootCli
     }
 
     /// <summary>A linear address through the page tables (when paging is on), for the tools: 0xffffffff when not present.</summary>
+    static int _mp4Rate = 44100; static double _rsPos; static short _rsL, _rsR;
+    /// <summary>Card sound (stereo 44.1 kHz) into the MP4, resampled linearly to --mp4rate (state carries across calls).</summary>
+    static void Mp4Audio(short[] src, int count)
+    {
+        if (_mp4Rate == 44100) { _mp4!.AddAudio(System.Runtime.InteropServices.MemoryMarshal.AsBytes(src.AsSpan(0, count))); return; }
+        int frames = count / 2; double step = 44100.0 / _mp4Rate; var o = new List<short>(frames * 2 * _mp4Rate / 44100 + 4);
+        while (_rsPos < frames)
+        {
+            int i = (int)Math.Floor(_rsPos); double f = _rsPos - i;
+            short l0 = i - 1 < 0 ? _rsL : src[(i - 1) * 2], r0 = i - 1 < 0 ? _rsR : src[(i - 1) * 2 + 1], l1 = src[i * 2], r1 = src[i * 2 + 1];
+            o.Add((short)(l0 + (l1 - l0) * f)); o.Add((short)(r0 + (r1 - r0) * f)); _rsPos += step;
+        }
+        _rsPos -= frames; if (frames > 0) { _rsL = src[(frames - 1) * 2]; _rsR = src[(frames - 1) * 2 + 1]; }
+        _mp4!.AddAudio(System.Runtime.InteropServices.MemoryMarshal.AsBytes(o.ToArray().AsSpan()));
+    }
     public static uint LinPhys(PcMachine m, uint la)
     {
         if ((m.Cpu.Cr0 & 0x80000000) == 0) return la;
