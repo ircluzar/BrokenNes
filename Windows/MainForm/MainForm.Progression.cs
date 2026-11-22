@@ -465,6 +465,13 @@ namespace BrokenNes.Windows
             }
         }
 
+        private DebugWindows.N98PackagingWindow? n98PackagingWindow;
+        private void OpenN98Packaging()
+        {
+            if (n98PackagingWindow == null || n98PackagingWindow.IsDisposed) { n98PackagingWindow = new DebugWindows.N98PackagingWindow(p => LoadRomFile(p)); n98PackagingWindow.Show(this); }
+            else n98PackagingWindow.Activate();
+        }
+
         private void RebuildToolsMenu(GameSave? save = null)
         {
             if (toolsMenu == null)
@@ -540,6 +547,9 @@ namespace BrokenNes.Windows
                 toolsMenu.DropDownItems.Add(new ToolStripSeparator());
             }
             AddModuleItems(tools);
+            // nano98 Packaging (dev): the central place to customize .n98 packaging (base, layers, drives, capture, manifest, look, test boot)
+            toolsMenu.DropDownItems.Add(new ToolStripSeparator());
+            toolsMenu.DropDownItems.Add(new ToolStripMenuItem("nano98 Packaging (dev)...", null, (_, _) => OpenN98Packaging()) { Name = "n98PackagingMenu", ToolTipText = "Windows 98 game packages (.n98): wraps tools/nano98" });
             AtAddMenuItem(toolsMenu);   // AutoTAS: only when the running game has a package (MainForm.AutoTas.cs)
 
             if (currentToolOrActivityModule != null)
