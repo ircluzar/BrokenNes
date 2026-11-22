@@ -25,6 +25,7 @@ ap.add_argument('--out', required=True)
 ap.add_argument('--iso'); ap.add_argument('--accept-eula', action='store_true'); ap.add_argument('--keyfile'); ap.add_argument('--key-env'); ap.add_argument('--pyfat', default=sys.executable)
 ap.add_argument('--installed', help='an installed Win98 SE disk (skips stages 1-2)')
 ap.add_argument('--machine', default='win98-p166-nano')
+ap.add_argument('--sound', default='SB16_D072')   # the seat's sound card: Setup installs its driver while C:/WIN98 is still there (a later New Hardware Found asks for the CD)
 ap.add_argument('--install-frames', type=int, default=1)   # frames run BEFORE the steps (x86boot runs --frames first): 1, or the CD menu times out and boots the empty C:
 ap.add_argument('--settle-frames', type=int, default=60000)
 a = ap.parse_args()
@@ -79,7 +80,7 @@ if not a.installed:
         if a.key_env: cmd += ['--key-env', a.key_env]
         run(cmd)
     if stage(2, 'install', installed):
-        cmd2 = [a.workshop, '--x86boot', '--machine', a.machine, '--hdd', W('hd_setup.img'), '--cd', a.iso, '--bootorder', 'CH',
+        cmd2 = [a.workshop, '--x86boot', '--machine', a.machine, '--apu', a.sound, '--hdd', W('hd_setup.img'), '--cd', a.iso, '--bootorder', 'CH',
                 '--frames', str(a.install_frames), '--stepsfile', W('stage2.steps'), '--shot', W('stage2_end.png'), '--save', installed + '.tmp']
         print('>', ' '.join(cmd2), flush=True)
         p2 = subprocess.Popen(cmd2, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
@@ -118,7 +119,7 @@ if stage(5, 'settle', W('settled.img')):
     m = fat32.MemDisk(2000 << 20); fat32.mkfs(m, 2000); sparse.write_mem(m, blank)
     cmdf = W('settle.cmd')
     open(cmdf, 'wb').write(b'N98CMD1\r\nrun=C:\\WINDOWS\\RUNDLL32.EXE\r\nexit=poweroff\r\n')
-    run([a.workshop, '--x86boot', '--machine', a.machine, '--hdd', W('slim.img'), '--hdd2', blank, '--n98cmd', cmdf,
+    run([a.workshop, '--x86boot', '--machine', a.machine, '--apu', a.sound, '--hdd', W('slim.img'), '--hdd2', blank, '--n98cmd', cmdf,
          '--frames', str(a.settle_frames), '--save', W('settled.img.tmp')], ok=(0, 1))   # (x86boot returns 1 when the machine powered off: expected)
     if not os.path.exists(W('settled.img.tmp')): sys.exit('settle boot saved no disk')
     os.replace(W('settled.img.tmp'), W('settled.img'))
