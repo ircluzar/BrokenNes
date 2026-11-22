@@ -77,3 +77,21 @@ Rules: builds on this PC only under heavylock.sh; timed runs only on Garage2; pa
   P166 74% / P2 88% halted. Results g2 results/t_{sc,aoe}_{300,1200}.
 - Sandra/WinBench on the P2 NOT done: their installs live only in P166 bench state diffs (C:\BrokenNes-work\bench\st); route = flatten
   bench C: with --save from the latest wb state, cold boot WIN98-P2, dismiss dialogs, rerun sa9/wb21-style steps.
+
+## 2026-11-21 late: cheaper P2 cost model (X86_P2CPI) + wait-loop profile
+- X86_P2CPI=N (default 1.0 = faithful): P2 guest clocks per instruction. RDTSC still counts 400 MHz. PcMachine.SetIps rebases guest time
+  (PIT/FDC epoch + TSC offset, optional "IPSE" state block), so a state saved at one CPI loads at another without a time jump.
+  Before SetIps, loading a P2 state with another CPI was WRONG (the state's IPS was kept, only the cost table shrank: slower).
+- Garage2 in-game 1200 fr, 3 rounds, % real time (A = CPI 1.0):
+  | CPI | SC | AoE |  (P166 for reference: SC 118%, AoE 119%)
+  | 1.0 | 19% | 39% |
+  | 2.0 | 26% | - |
+  | 2.65 | 34% | 56% |
+  | 4.0 | 49% | 79% |
+  | 5.3 | 66% | 91% |
+  Default left at 1.0; the coordinator/user picks. Sandra Dhrystone/Whetstone will scale down by ~1/CPI (MHz stays 400).
+- Wait-loop profile (X86_IDLEPROF on branch x86-p2idle, results g2 prof_sc): HLT 0, spin 0, pure table-search loops ~9%. StarCraft's
+  main loop (01651020 -> 026de020 -> 0380b180 -> 00a2d2e0 + the 16-bit thunk 002cc258) runs ~943k times in 600 frames (~1570 per
+  frame, ~3.6k instructions each): it polls the message queue/timer until the next game tick. That poll loop is the skip target;
+  a generic "no progress" detector was NOT built (needs a dedicated lane: detect the loop head, prove the iteration's writes repeat
+  and only timer reads change, then jump guest time to the next timer/IRQ event, deterministic + savestate-exact).
