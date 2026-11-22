@@ -361,6 +361,9 @@ public sealed partial class NvGeForce
         return n == 2 ? (wv >> (int)((a & 2) * 8)) & 0xffff : (wv >> (int)((a & 3) * 8)) & 0xff;
     }
 
+    /// <summary>Diagnostics: how many triangles the OpLog describes (X86_NVTRILOG, default 60).</summary>
+    private static readonly long TriLogN = long.TryParse(Environment.GetEnvironmentVariable("X86_NVTRILOG"), out var tl) ? tl : 60;
+
     private uint PalRead(in Tex t, uint i)
     {
         var (vr, a) = DmaAddr(t.PalDma, t.Pal + i * 4);
@@ -504,7 +507,7 @@ public sealed partial class NvGeForce
             if (cf == 0x408 || (cf == 0x405 && !front) || (cf == 0x404 && front)) return;
         }
         Triangles3D++;
-        if (Triangles3D < 40) OpLog?.Invoke($"tri ({a.X:F1},{a.Y:F1},{a.Z:F2},{a.W:F2} c{a.R:F2}) ({b.X:F1},{b.Y:F1}) ({c.X:F1},{c.Y:F1}) rt {G(inst, 0x210):X} pitch {G(inst, 0x20c):X} fmt {G(inst, 0x208):X}");
+        if (Triangles3D < TriLogN - 20) OpLog?.Invoke($"tri ({a.X:F1},{a.Y:F1},{a.Z:F2},{a.W:F2} c{a.R:F2}) ({b.X:F1},{b.Y:F1}) ({c.X:F1},{c.Y:F1}) rt {G(inst, 0x210):X} pitch {G(inst, 0x20c):X} fmt {G(inst, 0x208):X}");
         // the target
         uint rtf = G(inst, 0x208), pitches = G(inst, 0x20c);
         int cfmt = (int)(rtf & 15), cbpp = cfmt == 3 ? 2 : cfmt == 9 ? 1 : 4;
@@ -528,9 +531,9 @@ public sealed partial class NvGeForce
         int minY = Math.Max(cy0, (int)MathF.Floor(MathF.Min(a.Y, MathF.Min(b.Y, c.Y)))), maxY = Math.Min(cy1 - 1, (int)MathF.Ceiling(MathF.Max(a.Y, MathF.Max(b.Y, c.Y))));
         if (minX > maxX || minY > maxY) return;
         var t0 = TexUnit(inst, 0); var t1 = TexUnit(inst, 1);
-        if (Triangles3D < 60 && OpLog != null)
+        if (Triangles3D < TriLogN && OpLog != null)
         {
-            string Td(in Tex t) { if (!t.Ok) return "off"; var (vr, ad) = DmaAddr(t.Dma, t.Base); return $"fmt {t.Fmt} pal {t.Pal:X} {t.W}x{t.H} dma {t.Dma:X} {(vr ? "vram" : "sys")} {ad:X} texel0 {Texel(t, 0, 0):X8} texel(5,5) {Texel(t, 5, 5):X8}"; }
+            string Td(in Tex t) { if (!t.Ok) return "off"; var (vr, ad) = DmaAddr(t.Dma, t.Base); return $"fmt {t.Fmt} pal {t.Pal:X} {t.W}x{t.H} dma {t.Dma:X} {(vr ? "vram" : "sys")} {ad:X} texel0 {Texel(t, 0, 0):X8} texel(5,5) {Texel(t, 5, 5):X8} raw0-7 {TexRead(t, 0, 4):X8}{TexRead(t, 4, 4):X8} pal0-3 {(t.Fmt == 0xb ? $"{PalRead(t, 0):X8},{PalRead(t, 1):X8},{PalRead(t, 2):X8},{PalRead(t, 3):X8} pdma {t.PalDma:X} raw250 {G(inst, 0x250):X} 254 {G(inst, 0x254):X} dmaA {G(inst, 0x184 | 0x8000):X} dmaB {G(inst, 0x188 | 0x8000):X} B@pal {DmaRead32Any(G(inst, 0x188 | 0x8000), t.Pal + 8):X8} Baddr {DmaAddr(G(inst, 0x188 | 0x8000), t.Pal).Item2:X} Aaddr {DmaAddr(t.PalDma, t.Pal).Item2:X}" : "")}"; }
             OpLog($"uv {a.U0:F2},{a.V0:F2} tex0 {Td(t0)} | tex1 {Td(t1)} | col {a.R:F2},{a.G:F2},{a.B:F2},{a.A:F2} comb {G(inst, 0x268):X8} {G(inst, 0x280):X8} {G(inst, 0x288):X8} {G(inst, 0x28c):X8}");
         }
         bool lod0 = t0.Ok && !t0.Rect && (t0.Mip || t0.MinF != t0.MagF), lod1 = t1.Ok && !t1.Rect && (t1.Mip || t1.MinF != t1.MagF);

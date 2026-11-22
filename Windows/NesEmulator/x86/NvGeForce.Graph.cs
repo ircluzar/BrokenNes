@@ -270,7 +270,25 @@ public sealed partial class NvGeForce
         if (mthd is 0x304 or 0x308) _ifcPix = 0;
         if (mthd < 0x400 || mthd >= 0x2000) return;
         uint sf = Ctx(inst, 0x52);
-        if (sf == 0) return;
+        if (sf == 0)
+        {
+            // a linear destination (surfaces 2D, 0x42 / 0x62): the OpenGL ICD loads its texture palettes this way (Quake II's shared palette,
+            // 256 A8R8G8B8 entries at the surface offset), pixels in the surface's format
+            var d = SurfOf(inst, false);
+            if (!d.Ok) return;
+            uint lp = G(inst, 0x304), ls = G(inst, 0x308);
+            int lx = (int)(lp & 0xffff), ly = (int)(lp >> 16), lw2 = (int)(ls & 0xffff), lh2 = (int)(ls >> 16);
+            if (lw2 <= 0) return;
+            int lper = d.Bpp == 1 ? 4 : d.Bpp == 2 ? 2 : 1;
+            for (int k = 0; k < lper; k++, _ifcPix++)
+            {
+                int x = _ifcPix % lw2, y = _ifcPix / lw2;
+                if (y >= lh2) return;
+                uint v = lper == 1 ? data : lper == 2 ? (data >> (16 * k)) & 0xffff : (data >> (8 * k)) & 0xff;
+                Draw(inst, d, lx + x, ly + y, v, 0xcc, (0, 0, 32767, 32767));
+            }
+            return;
+        }
         uint fmt = G(sf, 0x300); int lw = (int)(fmt >> 16) & 15, lh = (int)(fmt >> 24) & 15, W = 1 << lw, H = 1 << lh;
         int bpp = (fmt & 0xff) is 0xa or 0xb or 6 or 7 or 8 or 9 ? 4 : (fmt & 0xff) == 1 ? 1 : 2;
         uint dma = G(sf, 0x184 | 0x8000), off = G(sf, 0x304);
