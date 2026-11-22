@@ -84,6 +84,7 @@ public sealed partial class NvGeForce : IPciMmio
         _reg[0x680600] = 0x00100000;   // PRAMDAC_GENERAL_CONTROL: 8-bit DAC off, 555 (bit 12 off)
         for (int i = 0x19; i < 0x100; i++) _v.Cr[i] = 0;
         _v.Cr[0x37] = _v.Cr[0x3f] = _v.Cr[0x51] = 0x31;   // DDC lines released
+        _cr2[0x37] = _cr2[0x3f] = _cr2[0x51] = 0x31;
     }
 
     // ================= the extended CRTC (3D4/3D5) =================
@@ -240,8 +241,22 @@ public sealed partial class NvGeForce : IPciMmio
     // a VGA mirror: the port at the address (3B0-3DF)
     private static int MirrorPort(uint off, uint blk) => off - blk is >= 0x3b0 and <= 0x3df ? (int)(off - blk) : -1;
 
+    // ---- head 1 (NV17+): its own CRTC at PRMCIO 0x603000 (3D4 index / 3D5 data); the lock (CR1F) is shared with head 0 ----
+    private readonly byte[] _cr2 = new byte[256];
+    private byte _cr2Idx;
+    private bool TwoHeads => Chip != NvChip.NV10;
+
+    private byte Cr2Read(int i)
+    {
+        if (i == 0x1f) return (byte)(Unlocked ? 3 : 0);
+        if (!Unlocked) return 0;
+        return i is 0x36 or 0x3e or 0x50 ? (byte)(((_cr2[i + 1] & 0x20) != 0 ? 4 : 0) | ((_cr2[i + 1] & 0x10) != 0 ? 8 : 0)) : _cr2[i];
+    }
+
     private byte Read8(uint off)
     {
+        if (TwoHeads && off is 0x6033d4 or 0x6033b4) return _cr2Idx;
+        if (TwoHeads && off is 0x6033d5 or 0x6033b5) return Cr2Read(_cr2Idx);
         if (off >= 0x700000 && off < 0x800000) return _v.Ram[RaminVram(off - 0x700000)];
         if (off >= 0x300000 && off < 0x310000) return RomByte?.Invoke((int)(off - 0x300000)) ?? 0xff;
         int p;
@@ -254,6 +269,8 @@ public sealed partial class NvGeForce : IPciMmio
 
     private void Write8(uint off, byte v)
     {
+        if (TwoHeads && off is 0x6033d4 or 0x6033b4) { _cr2Idx = v; return; }
+        if (TwoHeads && off is 0x6033d5 or 0x6033b5) { if (_cr2Idx == 0x1f) CrWrite(0x1f, v); else if (Unlocked) _cr2[_cr2Idx] = v; return; }
         if (off >= 0x700000 && off < 0x800000) { _v.Ram[RaminVram(off - 0x700000)] = v; return; }
         if (off >= 0x300000 && off < 0x310000) return;
         int p;
@@ -266,7 +283,7 @@ public sealed partial class NvGeForce : IPciMmio
     }
 
     private static bool ByteBlock(uint off) => off is >= 0x700000 and < 0x800000 or >= 0x300000 and < 0x310000
-        or >= 0x0c0000 and < 0x0c0400 or >= 0x601000 and < 0x601400 or >= 0x681000 and < 0x681400;
+        or >= 0x0c0000 and < 0x0c0400 or >= 0x601000 and < 0x601400 or >= 0x681000 and < 0x681400 or >= 0x603000 and < 0x603400;
 
     public uint MmioRead(uint off, int size)
     {
@@ -395,6 +412,7 @@ public sealed partial class NvGeForce : IPciMmio
         w.Write(_reg.Count);
         foreach (var (k, v) in _reg) { w.Write(k); w.Write(v); }
         SaveFifo(w);
+        if (TwoHeads) { w.Write(_cr2Idx); w.Write(_cr2); }   // (NV17/NV34 states only: the NV10 format is unchanged)
     }
 
     public void Load(BinaryReader r)
@@ -408,6 +426,7 @@ public sealed partial class NvGeForce : IPciMmio
         int n = r.ReadInt32();
         for (int i = 0; i < n; i++) { uint k = r.ReadUInt32(); _reg[k] = r.ReadUInt32(); }
         if (ver >= 4) LoadFifo(r, ver); else ResetFifo();
+        if (TwoHeads && r.BaseStream.Position < r.BaseStream.Length) { _cr2Idx = r.ReadByte(); r.Read(_cr2, 0, 256); }
         if (ver < 7)   // a state from before the reversed PRAMIN: move instance memory from the old straight layout (top 1 MB) to the real one
         {
             var old = _v.Ram.AsSpan(RaminBase, 0x100000).ToArray();
