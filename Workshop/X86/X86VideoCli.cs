@@ -108,7 +108,9 @@ internal static class X86VideoCli
         byte[] boot = X86DevCli.Assemble(nasm, tmp, t.Name, t.Asm);
         var img = new byte[1474560];
         Array.Copy(boot, img, boot.Length);
-        var m = t.Video == PcVideo.GeForce256 ? new PcMachine(PcConfig.Win98 with { BootOrder = "F" }, CpuModel.PentiumMmx, t.Video) : new PcMachine(PcMachine.DefaultMemory, video: t.Video);
+        var m = t.Video == PcVideo.GeForce256 ? new PcMachine(PcConfig.Win98 with { BootOrder = "F" }, CpuModel.PentiumMmx, t.Video)
+            : t.Video == PcVideo.VBoxVga ? new PcMachine(PcConfig.Win98 with { BootOrder = "F", VramMB = 16 }, CpuModel.PentiumMmx, t.Video)
+            : new PcMachine(PcMachine.DefaultMemory, video: t.Video);
         m.Floppy[0] = new DiskImage(img, true);
         m.PowerOn();
         for (int i = 0; i < t.Frames && m.RunFrame(); i++) { }
@@ -299,6 +301,51 @@ gdtr: dw 15
             c.Eq("pixel (400,300) in video memory", (400 >> 5) << 11 | (300 >> 4) << 5, p);
             int r = (400 >> 5) << 3 | (400 >> 5) >> 2, g = (300 >> 4) << 2 | (300 >> 4) >> 4;
             c.Eq("picture (400,300)", r << 16 | g << 8, Px(m, 400, 300));
+        }),
+
+        // ---- VBOXVGA (16 MB): the wide OEM VBE mode 14Bh = 1920x1080x32, linear; 4F01 reports it; two pixels through the LFB (the far one past 4 MB)
+        new("vbox_wide_vbe", PcVideo.VBoxVga, Head + @"
+    mov ax, 0x4f01
+    mov cx, 0x14b
+    mov di, 0x9100
+    int 0x10
+    mov [0x9002], ax
+    mov ax, 0x4f02
+    mov bx, 0x414b
+    int 0x10
+    mov [0x9000], ax
+    cli
+    lgdt [gdtr]
+    mov eax, cr0
+    or al, 1
+    mov cr0, eax
+    jmp $+2
+    mov bx, 8
+    mov fs, bx
+    and al, 0xfe
+    mov cr0, eax
+    jmp $+2
+    xor ax, ax
+    mov fs, ax
+    sti
+    mov edi, [0x9100+0x28]
+    mov dword [fs:edi], 0x00ff0000
+    add edi, (1000*1920+1800)*4
+    mov dword [fs:edi], 0x0000ff00
+" + Done + @"
+gdt: dq 0
+    dq 0x008f92000000ffff
+gdtr: dw 15
+    dd gdt
+" + Tail, Frames: 80, Check: (m, c) =>
+        {
+            c.Eq("4F01 ok", 0x4f, m.Phys16(0x9002));
+            c.Eq("4F01 width", 1920, m.Phys16(0x9100 + 0x12)); c.Eq("4F01 height", 1080, m.Phys16(0x9100 + 0x14));
+            c.Eq("set ok", 0x4f, m.Phys16(0x9000));
+            c.Eq("16 MB", 16 << 20, m.S3!.VramBytes);
+            c.Eq("1920 wide", 1920, m.Vga.Width); c.Eq("1080 high", 1080, m.Vga.Height);
+            c.Eq("picture (0,0)", 0xff0000, Px(m, 0, 0));
+            c.Eq("picture (1800,1000), past 4 MB", 0x00ff00, Px(m, 1800, 1000));
         }),
 
         // ---- the drawing engine at 640x480x8: a rectangle fill, a BitBLT of it, a line, a mono CPU-data expansion
