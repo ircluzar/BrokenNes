@@ -730,7 +730,7 @@ public sealed partial class Opl2
         // the operator caches are not in the state: rebuild them now, without touching the prepare counter or the pending set (2026-11-22: setting every
         // channel modified, as ymfm does, reset the counter one sample later than the live machine: a loaded run's state differed from the live one)
         _activeChannels = 0;
-        for (int c = 0; c < 9; c++) { bool a = Prepare(_ch[c].Op0); a |= Prepare(_ch[c].Op1); if (a) _activeChannels |= 1u << c; }
+        if (_alt == null) for (int c = 0; c < 9; c++) { bool a = Prepare(_ch[c].Op0); a |= Prepare(_ch[c].Op1); if (a) _activeChannels |= 1u << c; }   // (an alternative engine draws the sound: the ymfm core stays as saved)
         _modifiedChannels = modified;
         _out.Clear();
         if (_alt != null) { _alt.Reset(); _altQueue.Clear(); ReplayIntoAlt(); }   // re-keyed from the registers; LoadEngine then puts the engine's own saved state back

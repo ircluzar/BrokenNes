@@ -102,7 +102,7 @@ internal static class X86EnginesCli
                     string v = Rms(b) < 100 ? "SILENT" : err == 0 && a2.Length == b.Length ? "exact" : $"NOT EXACT (err {err:F3})";
                     // 2026-11-22: the chip's own state after the same run must match too (a loaded chip used to reset its prepare counter a sample late)
                     byte[] S(Opl2 c) { var m = new MemoryStream(); var w2 = new BinaryWriter(m); c.Save(w2); w2.Flush(); return m.ToArray(); }
-                    if (v == "exact" && !S(r.Chip).AsSpan().SequenceEqual(S(r2.Chip))) v = "STATE DIFFERS after the run";
+                    { var s1 = S(r.Chip); var s2 = S(r2.Chip); int o = 0; while (o < Math.Min(s1.Length, s2.Length) && s1[o] == s2[o]) o++; if (v == "exact" && !s1.AsSpan().SequenceEqual(s2)) v = $"STATE DIFFERS after the run (byte {o} of {s1.Length}: {(o < s1.Length ? s1[o] : 0):X2} vs {(o < s2.Length ? s2[o] : 0):X2})"; }
                     if (v != "exact") flagged++;
                     Console.WriteLine($"{id,-8} {"state",-11} {Rms(b),7:F0}  {v} (before the save {Rms(a):F0})");
                 }
