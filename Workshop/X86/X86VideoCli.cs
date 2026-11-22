@@ -117,6 +117,8 @@ internal static class X86VideoCli
         return m;
     }
 
+    private static bool Refuses(byte[] st, PcMachine m) { try { m.LoadState(st); return false; } catch (InvalidDataException) { return true; } }
+
     private static string? Arg(string[] a, string k) { int i = Array.FindIndex(a, x => x.Equals(k, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
 
     private const string Head = "bits 16\norg 0x7c00\n    cli\n    xor ax, ax\n    mov ds, ax\n    mov es, ax\n    mov ss, ax\n    mov sp, 0x7c00\n    sti\n";
@@ -346,6 +348,10 @@ gdtr: dw 15
             c.Eq("1920 wide", 1920, m.Vga.Width); c.Eq("1080 high", 1080, m.Vga.Height);
             c.Eq("picture (0,0)", 0xff0000, Px(m, 0, 0));
             c.Eq("picture (1800,1000), past 4 MB", 0x00ff00, Px(m, 1800, 1000));
+            var st = m.SaveState(); string? err = null;
+            try { m.LoadState(st); } catch (Exception e) { err = e.Message; }
+            c.True("16 MB state loads back" + (err != null ? ": " + err : ""), err == null);
+            c.True("4 MB VBOXVGA refuses the 16 MB state", Refuses(st, new PcMachine(PcConfig.Win98 with { BootOrder = "F" }, CpuModel.PentiumMmx, PcVideo.VBoxVga)));
         }),
 
         // ---- the drawing engine at 640x480x8: a rectangle fill, a BitBLT of it, a line, a mono CPU-data expansion

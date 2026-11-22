@@ -666,7 +666,8 @@ public sealed partial class PcMachine : IX86Bus
             else if (magic == 0x47464350)
             {
                 saved = PcConfig.Read(r);
-                if (saved with { MemoryMB = Config.MemoryMB } != Config) throw new InvalidDataException($"this x86 state is for a {saved} machine, this machine is {Config}");
+                // (VramMB is not in the config block: the SVGA card id, VBOXVGA-16MB, carries the video memory size and is checked below)
+                if (saved with { MemoryMB = Config.MemoryMB, VramMB = Config.VramMB } != Config) throw new InvalidDataException($"this x86 state is for a {saved} machine, this machine is {Config}");
                 WireAta();
                 if (r.ReadBoolean()) Ata!.Load(r);
                 LoadBiosExtras(r);
