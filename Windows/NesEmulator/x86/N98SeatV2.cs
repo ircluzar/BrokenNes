@@ -318,7 +318,7 @@ public sealed partial class N98Seat
     /// <summary>The blank game drive of a non-standard size (nano98 large game drives: past 2 GB) as a chunked base: the same layout rule as <see cref="MakeBlankDrive"/>.</summary>
     /// <summary>The data sector Windows reads when it mounts the game drive, per drive size (measured from the seat's warm-point log): its cluster is
     /// marked bad so it reads the same on every drive of that size. A size not measured yet keeps the 2000 MB value (check the log: "0 differ").</summary>
-    public static long ProbeSector(int sizeMb) => sizeMb switch { 8000 => 6089731, _ => 3598978 };
+    public static long ProbeSector(int sizeMb) => sizeMb switch { 4000 => 7184653, 8000 => 6089731, 12000 => 2704453, 16000 => 10121746, 32000 => 5964151, _ => 3598978 };
 
     public static DiskBigBase MakeBlankDriveBig(int sizeMb)
     {

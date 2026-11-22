@@ -509,7 +509,7 @@ def mkfs(path, size_mb, label=b'NANO98GAME ', serial=0x4E393844, spc=8):
         # standard drive, so both read the same everywhere (nothing is ever allocated there)
         bad = bytearray(SECTOR)
         for i in range(0, SECTOR, 4): struct.pack_into('<I', bad, i, 0x0FFFFFF7)
-        probe = ({8000: 6089731}.get(size_mb, 3598978) - data) // spc + 2   # per size, measured (N98Seat.ProbeSector)
+        probe = ({4000: 7184653, 8000: 6089731, 12000: 2704453, 16000: 10121746, 32000: 5964151}.get(size_mb, 3598978) - data) // spc + 2   # per size, measured (N98Seat.ProbeSector)
         for k in range(nfats):
             f.seek((part + rsvd + k * fatsz) * SECTOR); f.write(bytes(fat)); f.write(bytes(fat1))
             f.seek((part + rsvd + k * fatsz + 408) * SECTOR); f.write(bytes(bad))

@@ -60,7 +60,8 @@ Fields:
   `--d-size-mb N` (n98.py install / v2, packaging window field). The seat reads the size from drives/D.n98d; its blank twin and warm state are
   per size (warm folder `-dN`). Disks past 2 GB use DiskBigBase (64 MB chunks, zero chunks free; same p256). Proven: 8000 MB AoE (cold 12 s,
   warm 6 s), 8000 + 16000 MB install-flow packages (22 KB each), state round trip exact. Each new size: check the seat log "N differ" once and
-  add its mount-probe data sector to N98Seat.ProbeSector + fat32.mkfs (measured: 2000 -> 3598978, 8000 -> 6089731).
+  add its mount-probe data sector to N98Seat.ProbeSector + fat32.mkfs (measured: 2000, 4000, 8000, 12000, 16000, 32000 MB; all boot, 0 differ).
+  Note: a cold (NORESUME) seat 300-frame state round trip differs on every size, 2000 MB too (pre-existing, not the big drive).
 - `launch`: what the seat launcher runs. Paths use `/`; `n98.py cmd` turns them into the seat COMMAND PORT text
   (format owned by `tools/nano98/seat.py` / `n98launch.c`: `N98CMD1`, `run=`, `args=`, `dir=`, `exit=`).
 - `cd`: disc images the game needs, by reference only (the user's own rips, never inside the package).
