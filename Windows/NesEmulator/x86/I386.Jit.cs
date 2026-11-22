@@ -368,6 +368,12 @@ public sealed partial class I386
     private static readonly bool CmOne = Environment.GetEnvironmentVariable("X86_CMONE") != null;
     private static readonly bool NoGrp5Inl = Environment.GetEnvironmentVariable("X86_NOGRP5INL") != null;
     /// <summary>X86_NOILXLAT: a per-site page-fault exit after each inline TLB miss (default: one shared exit per region, smaller IL).</summary>
+    /// <summary>X86_ILSTK: PUSH r/imm and POP r through one helper each (the interpreter's Push / PopReg) instead of inline stack code.</summary>
+    private static readonly bool IlStk = Environment.GetEnvironmentVariable("X86_ILSTK") != null;
+    /// <summary>X86_ILMISS: the TLB-miss path in one call that returns the physical address (FFFFFFFE = a fault) instead of JXlat + JPa.</summary>
+    private static readonly bool IlMiss = Environment.GetEnvironmentVariable("X86_ILMISS") != null;
+    /// <summary>X86_ILCW: a RAM store's code-line test (_codeMark) through JCodeChk instead of inline.</summary>
+    private static readonly bool IlCw = Environment.GetEnvironmentVariable("X86_ILCW") != null;
     private static readonly bool NoIlXlat = Environment.GetEnvironmentVariable("X86_NOILXLAT") != null;
     private static bool Grp5Inline(in DEntry e) => !NoGrp5Inl && e.Reg is 2 or 4 or 6 && e.Bits != 8;
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JGrp5(int bits)
@@ -404,6 +410,20 @@ public sealed partial class I386
         0x06 => PushSeg(SEG_ES), 0x0e => PushSeg(SEG_CS), 0x16 => PushSeg(SEG_SS), 0x1e => PushSeg(SEG_DS),
         0xf0 => PushSeg(SEG_FS), _ => PushSeg(SEG_GS),
     };
+    /// <summary>X86_ILSTK PUSH: the interpreter's Push. 0 = a fault (raised), 1 = done, 2 = done but the store may have touched
+    /// the region's code [lo, hi) (or split over two pages): leave after it.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int JPushH(int bits, uint val, uint lo, uint hi)
+    {
+        uint sp = R[4], n = (uint)(bits / 8);
+        var m = new OptAddr();
+        if (!Translate(ref m, 2, SEG_SS, (sp - n) & _spm, bits / 8)) return 0;
+        SetSp(sp - n, _spm);
+        Store(bits, ref m, val);
+        return m.Two || m.A1 - (lo - n + 1) < hi - lo + n - 1 ? 2 : 1;
+    }
+    /// <summary>X86_ILSTK POP r: the interpreter's PopReg; false = a fault (raised).</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool JPopH(int bits, int reg) => PopReg(bits, reg);
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JMovSeg(int seg, uint v) => LoadSegChecked(seg, v);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegSel(int seg) => SegSel[seg];
     /// <summary>A REP / REPNE string instruction (after JPrep), the interpreter's own loop (it charges the iterations to Cycle). False = a fault.</summary>
@@ -469,6 +489,10 @@ public sealed partial class I386
         return true;
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JPa() => _jpa;
+    [MethodImpl(MethodImplOptions.NoInlining)] private uint JXlatPa(uint la, int rwm, int size) => JXlat(la, rwm, size) ? _jpa : 0xfffffffe;
+    /// <summary>X86_ILCW: the inline store's code-line test (as StMem's, CmOne off): a store on a code line moves the page on.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void JCodeChk(uint pa, int n) { if ((_codeMark[pa >> 6] | _codeMark[(pa + (uint)n - 1) >> 6]) != 0) CodeWrite(pa, (uint)n); }
     /// <summary>A load / store not on plain RAM (or split over two pages), from its linear address (translated already: no fault).</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private uint JRdLin(int bits, uint la)
@@ -586,7 +610,7 @@ public sealed partial class I386
         var d = new Dictionary<string, MethodInfo>();
         foreach (var n in new[] { "JRam", "JSegKey", "JGetCF", "JSegLoad", "JSSame", "JSSameLive", "JSpecFail", "JSOk", "JSRd", "JSBase", "JSSpan", "JSLo", "JSegOk", "JSegRdOk", "JSegBase", "JSegLim", "JSegLo", "JSegSpan", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JImul2", "JGrp5", "JLeave", "JMovSeg", "JSegSel", "JRepStr", "JFpu", "JFpuNmRefund", "JMmxNmRefund", "JMmx", "JCodeSame", "JCall", "JRet",
                      "JExitOk", "JExitLink", "JExitFail", "JLimitFault", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm",
-                     "JXlat", "JFlagOp", "JStk", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite" })
+                     "JXlat", "JFlagOp", "JStk", "JPa", "JRdLin", "JWrLin", "JPhys", "JSpinRam", "CodeWrite", "JPushH", "JPopH", "JXlatPa", "JCodeChk" })
             d[n] = M(n);
         return d;
     });
@@ -1017,6 +1041,7 @@ public sealed partial class I386
             Ld(mref); Ld(phys); Op(OpCodes.Conv_U); Op(OpCodes.Add); Ld(val);
             if (bits != 8) il.Emit(OpCodes.Unaligned, (byte)1);
             Op(bits == 8 ? OpCodes.Stind_I1 : bits == 16 ? OpCodes.Stind_I2 : OpCodes.Stind_I4);
+            if (IlCw) { Ld0(); Ld(phys); I4(bits / 8); Call("JCodeChk"); il.Emit(OpCodes.Br, done); goto slowPart; }
             // a code line (I386.cs CodeWr): the page moves on
             Ld(cmref); Ld(phys); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1);
             if (bits != 8 && !CmOne) { Ld(cmref); Ld(phys); I4(bits / 8 - 1); Op(OpCodes.Add); I4(6); Op(OpCodes.Shr_Un); Op(OpCodes.Conv_U); Op(OpCodes.Add); Op(OpCodes.Ldind_U1); Op(OpCodes.Or); }
@@ -1034,6 +1059,7 @@ public sealed partial class I386
             else il.Emit(OpCodes.Brfalse, done);
             Ld0(); Ld(phys); I4(bits / 8); Call("CodeWrite");
             il.Emit(OpCodes.Br, done);
+            slowPart:
             il.MarkLabel(slow);
             Ld0(); I4(bits); Ld(addr); Ld(val); Call(pg ? "JWrLin" : "JWrSlow");
             il.MarkLabel(done);
@@ -1326,6 +1352,14 @@ public sealed partial class I386
             Ld(tlbX); Ld(te); I4(4); Op(OpCodes.Mul); Op(OpCodes.Add); Op(OpCodes.Ldind_U4); Ld(la); Op(OpCodes.Xor); Stl(pax); il.Emit(OpCodes.Br, done);
             il.MarkLabel(slow);
             var ok = il.DefineLabel();
+            if (IlMiss)
+            {
+                Ld0(); Ld(la); I4(write ? 3 : 1); I4(size); Call("JXlatPa"); Stl(pax);
+                Ld(pax); I4(-2); il.Emit(OpCodes.Bne_Un, done);
+                U4(pas[k] - start); Stl(lfOff); Adj(0, 0); il.Emit(OpCodes.Br, xlFail);
+                il.MarkLabel(done);
+                return;
+            }
             Ld0(); Ld(la); I4(write ? 3 : 1); I4(size); Call("JXlat"); il.Emit(OpCodes.Brtrue, ok);
             if (NoIlXlat) ExitFail(k);
             else { U4(pas[k] - start); Stl(lfOff); Adj(0, 0); il.Emit(OpCodes.Br, xlFail); }
@@ -1673,6 +1707,16 @@ public sealed partial class I386
                 {
                     // Push(bits, R[reg]): la = SS base + ((sp - n) & spm); SetSp(sp - n); store
                     int pb = e.O16 ? 16 : 32;
+                    if (IlStk)
+                    {
+                        var okP = il.DefineLabel(); var smcP = il.DefineLabel();
+                        Ld0(); I4(pb); if (op == 8) U4(e.Imm); else LdReg(pb, op); U4(lo); U4(hi); Call("JPushH"); Stl(Y);
+                        Ld(Y); I4(1); il.Emit(OpCodes.Beq, okP);
+                        Ld(Y); FailIfFalse();
+                        LeaveAfterDec(k, () => IpAt(pe));
+                        il.MarkLabel(okP);
+                        break;
+                    }
                     if (op == 8) U4(e.Imm); else LdReg(pb, op); Stl(t);   // (Op 8: PUSH imm)
                     LdReg(32, 4); I4(pb / 8); Op(OpCodes.Sub); Stl(A);
                     Ld(A); LdSpm(); Op(OpCodes.And); Stl(ea); LimitCheck(k, SEG_SS, ea, pb / 8);
@@ -1691,6 +1735,7 @@ public sealed partial class I386
                     int pb = e.O16 ? 16 : 32;
                     bool leave = e.Kind == DK_LEAVE;
                     if (leave) op = 5;
+                    if (IlStk && !leave) { Ld0(); I4(pb); I4(op); Call("JPopH"); FailIfFalse(); break; }
                     LdReg(32, leave ? 5 : 4); Stl(A);
                     Ld(A); LdSpm(); Op(OpCodes.And); Stl(ea); LimitCheck(k, SEG_SS, ea, pb / 8);
                     LdBase(SEG_SS); Ld(A); LdSpm(); Op(OpCodes.And); Op(OpCodes.Add); Stl(la);
