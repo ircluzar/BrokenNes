@@ -128,3 +128,12 @@ ano98_seat_quake2_package_software.png); geforce (`+set vid_ref gl`) reaches N98
 - Desktop path (`Workshop --n98seat`, same PcSession as the app), time to N98 RUN, cold / resumed: StarCraft 60.3 s (44 s first apply) / 7.1 s,
   AoE 24.7 s / 3.5 s, HL Uplink (voodoo-nano) 63.4 s / 2.7 s. Packages that write D: (StarCraft) now get their D base
   (`BROKENNES_N98_BASE_D`, or the manifest's D image beside the seat base / in BROKENNES_N98_CDS) as the primary slave.
+
+## Seat polish (2026-11-21)
+- Boot screen: `tools/nano98/seat_look.py` (called by `seat.py install`, or run on a base image) writes C:\LOGO.SYS = white with
+  black "nano98 is loading..." (5x7 font in the script, byte-reproducible), black LOGOW.SYS / LOGOS.SYS, and
+  `.DEFAULT\Control Panel\Colors Background = 0 0 0` + no wallpaper/pattern (black desktop instead of teal).
+- Add New Hardware wizard on every package: the seat machine had the PCI RTL8029 network card, the seat base was installed
+  without one. `PcConfig.NoNic` (config block version 5) is set on `win98-p166-nano` and `win98-p166-voodoo-nano`.
+- `Workshop --n98seat PKG --mp4 OUT.mp4 --shotevery N --shotdir DIR`: the desktop seat path recorded frame by frame.
+  StarCraft proof: splash (white) -> black -> StarCraft splash -> menu, no wizard, no teal, N98 RUN.
