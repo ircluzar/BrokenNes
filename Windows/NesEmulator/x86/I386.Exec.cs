@@ -1186,6 +1186,7 @@ public sealed partial class I386
     {
         if ((Flags & VM) != 0 && GetIOPL() < 3) return Throw(EX_GP, 0);
         uint oldip = Ip;
+        Debug?.Int(this, (int)no, 0, 0);
         Ip = NextIp;
         if (!CallIsr((int)no, false, 0)) { Ip = oldip; return false; }
         return true;
@@ -1454,8 +1455,8 @@ public sealed partial class I386
         return true;
     }
 
-    private uint PortIn(int bits, int port) => bits == 8 ? _bus.In8(port) : bits == 16 ? _bus.In16(port) : _bus.In32(port);
-    private void PortOut(int bits, int port, uint v) { if (bits == 8) _bus.Out8(port, (byte)v); else if (bits == 16) _bus.Out16(port, (ushort)v); else _bus.Out32(port, v); }
+    private uint PortIn(int bits, int port) { uint v = bits == 8 ? _bus.In8(port) : bits == 16 ? _bus.In16(port) : _bus.In32(port); Debug?.Port(this, port, false, v, bits); return v; }
+    private void PortOut(int bits, int port, uint v) { Debug?.Port(this, port, true, v, bits); if (bits == 8) _bus.Out8(port, (byte)v); else if (bits == 16) _bus.Out16(port, (ushort)v); else _bus.Out32(port, v); }
 
     private bool In(int bits, int port)
     {

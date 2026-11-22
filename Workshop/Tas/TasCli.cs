@@ -16,6 +16,7 @@
 //                lowest first frame of goal --score N, default the last reach/within goal) is kept, the table goes to DIR/variants.json
 //   --tas diff   A B [--rom R] [--romb R] [--ram-every N] [--max F] --out DIR    first diverging frame (picture / RAM), bytes, vars, input before it
 //   --tas vars   RUN --chapter ID --frame F                                      the RAM map variables at a frame
+// T3 (search, Workshop/Tas/TasSearch.cs): --tas search | search-merge | search-pack (fleet driver tools/tas/fleetsearch.py)
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -34,9 +35,12 @@ internal static class TasCli
     {
         string Opt(string n, string d = "") { int i = Array.FindIndex(args, 2, a => a.Equals("--" + n, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
         bool Has(string n) => args.Skip(2).Any(a => a.Equals("--" + n, StringComparison.OrdinalIgnoreCase));
-        if (args.Length < 3) { Console.Error.WriteLine("usage: --tas run|check|expand|import|import-autotas|export|branch|render|edit|diff|vars ... (Workshop/Tas/TasCli.cs)"); return 2; }
+        if (args.Length < 3) { Console.Error.WriteLine("usage: --tas run|check|expand|import|import-autotas|export|branch|render|edit|diff|vars|search|search-merge|search-pack ... (Workshop/Tas/TasCli.cs)"); return 2; }
         RomTestCli.EnsureConsole();
         string verb = args[1].ToLowerInvariant(), target = args[2];
+        if (verb is "search" or "search-merge" or "search-pack")
+            try { return TasSearch.Run(args); }
+            catch (Exception e) when (e is ArgumentException or FormatException or FileNotFoundException or NotSupportedException or InvalidDataException) { Console.Error.WriteLine("TAS: " + e.Message); return 2; }
         try
         {
             switch (verb)
@@ -156,8 +160,8 @@ internal static class TasCli
                 {
                     var run = LoadRun(target, Opt("console"), Opt("rom"), Opt("start", "power-on"));
                     using var s = new TasSession(run, Opt("chapter", run.Chapters[0].Id), Opt("rom") is { Length: > 0 } r ? r : null, Options(run, Opt, Has).Open, Path.Combine(Path.GetTempPath(), "brokennes-tas", "vars"));
-                    s.Seek(int.Parse(Opt("frame", "0")));
-                    Console.WriteLine(s.Status().ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                    foreach (var fr in Opt("frame", "0").Split(',', StringSplitOptions.RemoveEmptyEntries))   // --frame F[,F..]: several frames in one pass
+                    { s.Seek(int.Parse(fr)); Console.WriteLine(s.Status().ToJsonString(new JsonSerializerOptions { WriteIndented = true })); }
                     return 0;
                 }
                 case "export":

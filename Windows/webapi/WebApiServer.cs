@@ -311,6 +311,7 @@ namespace BrokenNes.Windows.WebApi
             RegisterTimeJumpEndpoints(app);
             RegisterInputEndpoints(app);
             RegisterConsoleEndpoints(app);   // BrokenNes 2: SNES / Game Boy sessions, console + core selection
+            RegisterN98InstallEndpoints(app);  // nano98 install flow
             RegisterWideMessEndpoints(app);  // WideMess milestone 6: the SNES games' enhancements on the WideMess console
             RegisterDebugEndpoints(app);     // the debugger (BrokenDev D1): state always readable, control behind enableDebuggerControl
             RegisterBugEndpoints(app);

@@ -105,6 +105,35 @@ internal static partial class Tools
                 throw new ArgumentException($"action {act}: open | step | seek | set | insert | delete | status | goals | save | close");
             }), false);
 
+        // ---- T3: input search (Workshop/Tas/TasSearch.cs)
+        add("tas_search",
+            "Automatic input search for the frame-exact spots of a TAS chapter (docs/projects/tas-format.md, T3). spec (a SEARCH.json path or the object itself): " +
+            "{chapter, score: goal index (default the last reach/within goal), maximize: expression (tie-break), beam K, rounds, budget (candidates per parent), seed, slack, tail, " +
+            "generators: [{kind: shift|hold|delete|insert|set|press|random, from, to, range, step, len: [lo,hi], buttons: [..], count, edits, ops}]}. " +
+            "Each candidate = its parent's edits + one generated edit set; scored by the chapter's goals (first frame of the score goal, all goals met; lower wins), " +
+            "beam: the best K distinct ones expand next round. The best is written back as a chapter (trimmed at the goal + the base's tail, played twice, blessed): out/best/edited.tasrun.json. " +
+            "Runs here, in this process (small budgets; NES ~5 ms/frame). For big searches use the fleet: the result's fleetCommand (tools/tas/fleetsearch.py).",
+            Schema(("path", P("string", "the run file or script"), true), ("spec", P("object", "the search spec, or a string path to SEARCH.json"), true),
+                   ("chapter", P("string", "the chapter (default: spec.chapter / the first)"), false), ("rom", P("string", "the ROM"), false),
+                   ("console", P("string", "a bare script's console"), false), ("out", P("string", "the results folder"), false)),
+            a => Wrap(() =>
+            {
+                string outDir = Path.GetFullPath(a.Str("out") ?? Path.Combine(Path.GetTempPath(), "brokennes-tas", "search_" + DateTime.Now.ToString("yyyyMMdd_HHmmss")));
+                Directory.CreateDirectory(outDir);
+                string specPath = a.Str("spec") is { } sp && File.Exists(sp) ? sp : Path.Combine(outDir, "spec.json");
+                if (specPath == Path.Combine(outDir, "spec.json")) File.WriteAllText(specPath, a.RawJson("spec") ?? throw new ToolError("spec"));
+                var argv = new List<string> { "--tas", "search", a.Req("path"), "--spec", specPath, "--out", outDir, "--local" };
+                foreach (var k in new[] { "chapter", "rom", "console" }) if (a.Str(k) is { } v) { argv.Add("--" + k); argv.Add(v); }
+                int rc = TasSearch.Run(argv.ToArray());
+                var bj = Path.Combine(outDir, "best.json");
+                var o = File.Exists(bj) ? JsonNode.Parse(File.ReadAllText(bj))!.AsObject() : new JsonObject { ["error"] = "no candidate met the goals" };
+                var merged = Directory.GetFiles(outDir, "merged_r*.json").OrderBy(x => x).LastOrDefault();
+                if (merged != null) o["top"] = JsonNode.Parse(File.ReadAllText(merged))!["top"]!.DeepClone();
+                o["rc"] = rc; o["out"] = outDir;
+                o["fleetCommand"] = $"python -I tools/tas/fleetsearch.py --run \"{a.Req("path")}\" --chapter <ID> --spec \"{specPath}\" --rom <ROM> --name <NAME> --shards 20";
+                return new ToolOut(o);
+            }), false);
+
         add("tas_diff",
             "Why did this frame differ: plays two TAS runs (run files or scripts) in lockstep and returns the first frame whose picture differs and the first whose RAM differs, " +
             "the differing RAM bytes and RAM-map variables there, the picture's differing box (a.png, b.png, diff.png in out), the first input difference and the inputs just before. " +

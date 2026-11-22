@@ -1,0 +1,11 @@
+{
+  "console": "n64", "game": "sm64", "title": "Super Mario 64 (U)",
+  "source": "SM64 decomp (US) symbol addresses: gMarioStates = 8033B170",
+  "vars": {
+    "action":     { "addr": "8033B17C", "type": "u32be", "notes": "gMarioStates[0].action: 0C400201 idle, 04000440 walking, 20001306 waiting for dialog, 0C400205 ? (decomp sm64/sm64.h)" },
+    "action_timer": { "addr": "8033B18A", "type": "u16be" },
+    "level":      { "addr": "8032DDF8", "type": "s16be", "notes": "gCurrLevelNum: 16 castle grounds, 6 castle inside, 9 Bob-omb Battlefield" },
+    "stars":      { "addr": "8033B21A", "type": "s16be", "notes": "gMarioStates[0].numStars" },
+    "global_timer": { "addr": "8032D5D4", "type": "u32be", "notes": "gGlobalTimer" }
+  }
+}

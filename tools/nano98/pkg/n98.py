@@ -530,7 +530,11 @@ def main():
     y.add_argument('--keep', nargs='*'); y.add_argument('--reg', nargs='*', help='registry key globs to keep (default all)')
     w = sp.add_parser('variant'); w.add_argument('out'); w.add_argument('--base', required=True); w.add_argument('--layers', nargs='+', required=True)
     w.add_argument('--work')
+    import n98install
+    n98install.add_parsers(sp)
     a = ap.parse_args()
+    if a.cmd in ('install', 'exes'):
+        return getattr(n98install, a.cmd)(a, *( [sys.modules[__name__]] if a.cmd == 'install' else []))
     {'capture': capture, 'info': info, 'apply': apply, 'cmd': launch_cmd, 'v2': to_v2, 'layer': make_layer, 'variant': variant}[a.cmd](a)
 
 

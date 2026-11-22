@@ -1,0 +1,23 @@
+{
+ "format": "n98-drivers", "version": 1,
+ "note": "The nano98 driver catalog (user design 2026-11-21: a repository of supported drivers, archived like oldversions, maybe hosted later as redistributables). A system layer made from a driver names its catalog id (layer manifest 'driver'). Resolution: the local archive first (BROKENNES_N98_DRIVERS, else T:/BrokenDev/Archive/drivers, else %LOCALAPPDATA%/BrokenNes/nano98/drivers), then download_base (not set: no public hosting yet). Every file is checked against its sha256.",
+ "download_base": null,
+ "drivers": [
+  {"id": "nvidia-5.32", "title": "NVIDIA reference driver 5.32 (Win95/98, 26 Jun 2000)", "card": "GeForce 256 (NV10)",
+   "pci": ["10DE:0100", "10DE:0101", "10DE:0103"], "version": "5.32", "file": "nvidia_5-32_win9x.zip", "size": 1727325,
+   "sha256": "256de999ffa73df978ad194d5f8e89d63b716e6c22f3ee6bb4ee8e78abfbaece", "source": "https://dosdays.co.uk/media/nvidia/tnt/drivers/nvidia_5-32_win9x.zip",
+   "install": "Add New Hardware > Have Disk (INF)", "licence": "NVIDIA proprietary period freeware; no licence screen (INF install)", "machines": ["win98-p166-geforce"]},
+  {"id": "nvidia-45.23", "title": "NVIDIA 45.23 Win9x/ME international (2003)", "card": "GeForce4 MX / FX 5200",
+   "pci": ["10DE:0170", "10DE:0171", "10DE:0172", "10DE:0173"], "version": "45.23", "file": "nvidia_45-23_win9x_international.zip", "size": 19284511,
+   "sha256": "857e3801222c9b47e794e51cf5e26485dd9e27966d5e747fa7a1df6924b25209", "source": "https://dosdays.co.uk/media/nvidia/tnt/drivers/nvidia_45-23_win9x_international.zip",
+   "install": "InstallShield (unpacked with 7-Zip, INF)", "licence": "NVIDIA proprietary freeware; its licence accepted by the user 2026-11-21", "machines": []},
+  {"id": "3dfx-voodoo1-3.01.00", "title": "3dfx Voodoo Graphics Driver Kit 3.01.00 (Win9x, May 1999)", "card": "3dfx Voodoo 1 (SST-1)",
+   "pci": ["121A:0001"], "version": "3.01.00", "file": "voodoo1_w9x_3010.zip", "size": 1717032,
+   "sha256": "9a7f9b60b8a7ea242901d1892bc3ec93cd67cd9fd132e0e68574e059c3a8ad7f", "source": "https://philscomputerlab.com/uploads/3/7/2/3/37231621/voodoo_graphics_driver_kit_version_3.01.00.zip",
+   "install": "Add New Hardware > Have Disk (INF)", "licence": "3dfx proprietary (license.txt inside)", "machines": ["win98-p166-voodoo-nano"]},
+  {"id": "s3-trio64-win98", "title": "S3 Trio64 (Windows 98 SE's own driver)", "card": "S3 Trio64V+", "pci": ["5333:8811"], "version": "win98se",
+   "file": null, "inbox": true, "licence": "part of Windows 98 SE (the user's own disc)", "machines": ["win98-p166-nano", "win98-p166-voodoo-nano", "win98-p2-nano"]},
+  {"id": "s3-virge-win98", "title": "S3 ViRGE (Windows 98 SE's own S3V driver)", "card": "S3 ViRGE 325", "pci": ["5333:5631"], "version": "win98se",
+   "file": null, "inbox": true, "licence": "part of Windows 98 SE (the user's own disc; from its CABs, see the Windows 98 SE files disc)", "machines": []}
+ ]
+}
