@@ -261,6 +261,40 @@ public sealed class DiskImage
         return img;
     }
 
+    /// <summary>An N98D disk of any size into a chunked base (nano98 large game drives); zero runs stay unallocated.</summary>
+    public static DiskBigBase ReadSparseBig(Stream s, string name)
+    {
+        using var r = new BinaryReader(s, System.Text.Encoding.ASCII, true);
+        if (r.ReadUInt32() != 0x4438394E) throw new InvalidDataException($"{name}: not an N98D disk");
+        if (r.ReadInt32() != 1) throw new InvalidDataException($"{name}: N98D version this build does not know");
+        long len = r.ReadInt64();
+        if (len <= 0 || len % SectorSize != 0) throw new InvalidDataException($"{name}: bad N98D length {len}");
+        string hash = System.Text.Encoding.ASCII.GetString(r.ReadBytes(r.ReadByte()));
+        var big = new DiskBigBase(len); var buf = new byte[1 << 20];
+        for (int n = r.ReadInt32(); n > 0; n--)
+        {
+            long first = r.ReadInt64(); int count = r.ReadInt32(), clen = r.ReadInt32();
+            if (first < 0 || count <= 0 || (first + count) * SectorSize > len || clen < 0) throw new InvalidDataException($"{name}: N98D chunk outside its disk");
+            using var z = new System.IO.Compression.ZLibStream(new MemoryStream(r.ReadBytes(clen)), System.IO.Compression.CompressionMode.Decompress);
+            long off = first * SectorSize, left = (long)count * SectorSize;
+            while (left > 0)
+            {
+                int want = (int)Math.Min(buf.Length, left), got = 0;
+                while (got < want) { int g = z.Read(buf, got, want - got); if (g <= 0) throw new InvalidDataException($"{name}: N98D chunk truncated"); got += g; }
+                big.Fill(off, buf.AsSpan(0, want)); off += want; left -= want;
+            }
+        }
+        if (hash.StartsWith("p256:", StringComparison.Ordinal)) big.SeedHash(hash);
+        return big;
+    }
+
+    /// <summary>The disk size an N98D header names (without reading the disk).</summary>
+    public static long SparseLength(Stream s)
+    {
+        var h = new byte[16]; int got = 0; while (got < 16) { int g = s.Read(h, got, 16 - got); if (g <= 0) break; got += g; }
+        return got == 16 && BitConverter.ToUInt32(h, 0) == 0x4438394E ? BitConverter.ToInt64(h, 8) : -1;
+    }
+
     private static string SampleHash(byte[] a)
     {
         using var h = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);

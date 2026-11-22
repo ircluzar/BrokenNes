@@ -59,6 +59,13 @@ public sealed class DiskBigBase
     /// <summary>p256 of the whole content (the same value <see cref="DiskImage.HashOf"/> gives a byte[] of these bytes).</summary>
     public string Hash => _hash ??= ComputeHash();
 
+    /// <summary>A trusted hash from the image's own header (N98D): the base is not hashed again (X86_N98D_VERIFY=1 checks it).</summary>
+    public void SeedHash(string hash)
+    {
+        if (Environment.GetEnvironmentVariable("X86_N98D_VERIFY") == "1" && ComputeHash() != hash) throw new InvalidDataException($"N98D content does not match its hash {hash}");
+        _hash = hash;
+    }
+
     private string ComputeHash()
     {
         int n = (int)((Length + Piece - 1) / Piece);
