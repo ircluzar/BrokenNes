@@ -82,6 +82,8 @@ public sealed partial class N98Seat
         if (hw.EndsWith("-NANO", StringComparison.OrdinalIgnoreCase) && PcMachinePreset.Known(hw)) s.Machine = PcMachinePreset.Find(hw).Key;   // (an installed package names its seat machine)
         if (r.TryGetProperty("hardware", out var hs) && hs.TryGetProperty("sound", out var so) && so.GetString() is { Length: > 0 } snd) s.Sound = snd;
         if (Environment.GetEnvironmentVariable("BROKENNES_N98_MACHINE") is { Length: > 0 } mo) s.Machine = mo;
+        // the Pentium II cost per game (user 2026-11-22 "Per game"): hardware.p2cpi, else the machine preset's own; 1.0 = faithful
+        if (r.TryGetProperty("hardware", out var hc) && hc.TryGetProperty("p2cpi", out var pc) && pc.ValueKind == JsonValueKind.Number && pc.GetDouble() >= 1.0) s.P2Cpi = pc.GetDouble();
         if (r.TryGetProperty("cd", out var cds) && cds.ValueKind == JsonValueKind.Array)
             foreach (var cd in cds.EnumerateArray())
                 if (cd.TryGetProperty("ref", out var rf) && rf.GetString() is { Length: > 0 } name)
@@ -106,7 +108,7 @@ public sealed partial class N98Seat
         s.ImagePath = baseImg;
         Report("reading Windows 98", 0);
         s.Image = DiskImage.ReadImageFile(baseImg);
-        s.WarmDir = WarmDirFor(baseImg, s.Image, Path.GetDirectoryName(s.CacheDir) is { Length: > 0 } pd ? pd : s.CacheDir, s.Machine, s.Sound);
+        s.WarmDir = WarmDirFor(baseImg, s.Image, Path.GetDirectoryName(s.CacheDir) is { Length: > 0 } pd ? pd : s.CacheDir, s.Machine, s.Sound, s.EffectiveP2Cpi);
 
         // D: the package's game drive, and the blank standard drive the machine boots with
         var dEntry = z.GetEntry("drives/D.n98d") ?? throw new InvalidDataException($"{fileName}: a schema-2 package without its game drive (drives/D.n98d)");
@@ -155,12 +157,17 @@ public sealed partial class N98Seat
 
     /// <summary>The sound card the seat runs with (the manifest's hardware.sound; the app's x86 APU choice when empty).</summary>
     public string Sound = "";
+    /// <summary>The package's Pentium II cost (manifest hardware.p2cpi); 0 = the machine preset's (X86_P2CPI, a dev override, wins over both).</summary>
+    public double P2Cpi;
+    /// <summary>The P2 CPI this seat runs with on a gen-6 machine (1.0 on others): part of the warm-state key, so states never mix.</summary>
+    public double EffectiveP2Cpi => PcMachinePreset.Find(Machine).Cpu is { Gen: 6 } c ? (CpuModel.P2CpiOverride ?? (P2Cpi > 0 ? P2Cpi : c.Cpi)) : 1.0;
 
     /// <summary>Where the shared warm-boot state of a base lives: (cache)\warm\(base hash 16)-(emulator build), plus -(machine)[-(sound)] when the seat is not the
     /// default win98-p166-nano machine (a state is only valid on the machine it was saved on). A state shipped beside the base (BASE.n98d.warm\...) wins.</summary>
-    public static string WarmDirFor(string baseImg, byte[] image, string cacheRoot, string machine, string sound = "")
+    public static string WarmDirFor(string baseImg, byte[] image, string cacheRoot, string machine, string sound = "", double p2cpi = 1.0)
     {
         string name = DiskImage.HashOf(image).Replace("p256:", "")[..16] + "-" + EmulatorVersion;
+        if (p2cpi != 1.0) name += "-cpi" + p2cpi.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
         if (!machine.Equals("win98-p166-nano", StringComparison.OrdinalIgnoreCase)) name += "-" + machine.ToLowerInvariant();
         if (sound.Length > 0 && !sound.Equals("SB16_D072", StringComparison.OrdinalIgnoreCase)) name += "-" + sound.ToLowerInvariant();
         string dir = Path.Combine(cacheRoot, "warm", name);

@@ -122,7 +122,7 @@ def install(a, n98):
     cwd = W(a.cwd) if a.cwd else exe.rsplit('/', 1)[0]
     v2 = {'format': 'n98', 'schema': 2, 'id': pid, 'title': a.title, 'tool': 'tools/nano98/pkg/n98.py install',
           'created': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
-          'hardware': {'machine': a.machine or 'WIN98-P166-NANO', 'video': 'S3', 'ram_mb': 64, 'min_cpu': 'P133', 'sound': a.sound or 'SB16_D072'},
+          'hardware': {'machine': a.machine or 'WIN98-P166-NANO', 'video': 'S3', 'ram_mb': 64, 'min_cpu': 'P133', 'sound': a.sound or 'SB16_D072', **({'p2cpi': a.p2cpi} if a.p2cpi and a.p2cpi >= 1.0 else {})},
           'system': {'base': 'nano98-se', 'layers': layers},
           'drives': {'D': {'zip': 'drives/D.n98d', 'p256': dh, 'length': STD_DRIVE_MB << 20}},
           'launch': {'exe': exe, 'args': a.args or '', 'cwd': cwd},
@@ -166,6 +166,7 @@ def add_parsers(sp):
     n.add_argument('--exe', required=True); n.add_argument('--args'); n.add_argument('--cwd')
     n.add_argument('--cd', nargs='*', help="disc image file names the game needs (the user's own, by reference)")
     n.add_argument('--saves', nargs='*'); n.add_argument('--machine'); n.add_argument('--sound')
+    n.add_argument('--p2cpi', type=float, help='per-game Pentium II cost (manifest hardware.p2cpi; 1.0 = faithful)')
     n.add_argument('--layers', nargs='*', help='system layers the install ran on'); n.add_argument('--layer-id', help='promote hardware changes to this layer')
     n.add_argument('--layer-out'); n.add_argument('--exclude', nargs='*'); n.add_argument('--work')
     x = sp.add_parser('exes', help='list the programs on a game drive (JSON)'); x.add_argument('d')

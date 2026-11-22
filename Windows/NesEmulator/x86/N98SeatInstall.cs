@@ -21,7 +21,7 @@ public sealed partial class N98Seat
         s.ImagePath = baseImg;
         Report("reading Windows 98", 0);
         s.Image = DiskImage.ReadImageFile(baseImg);
-        s.WarmDir = WarmDirFor(baseImg, s.Image, cache, s.Machine, sound);
+        s.WarmDir = WarmDirFor(baseImg, s.Image, cache, s.Machine, sound, s.EffectiveP2Cpi);
         s.BlankDrive = MakeBlankDrive(StandardDriveMb);
         s.GameDrive = s.BlankDrive;   // (DiskImage never writes its base: the install's writes land in the game drive's overlay)
         string bh = Path.Combine(s.WarmDir, "blank.p256");
