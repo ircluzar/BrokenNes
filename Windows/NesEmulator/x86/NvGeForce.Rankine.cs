@@ -16,6 +16,7 @@ public sealed partial class NvGeForce
     private int _vpUpInst, _vpUpWord, _vpUpConst, _vpUpConstWord;
     public long RankineClears, RankinePrims, VpInstUploads, VpConstUploads;   // diagnostics
     private bool _rankineDrawNoted;
+    private long _queryBase;
 
     private static bool IsRankine(int cls) => cls is 0x397 or 0x497 or 0x697;
 
@@ -40,6 +41,23 @@ public sealed partial class NvGeForce
                 return;
             }
             case 0x324: _rankineMaskSeen = true; return;
+            case 0x1d70:                                                                // FENCE_VALUE: written to DMA_FENCE + FENCE_OFFSET
+            {
+                uint fd = G(inst, 0x1a4 | 0x8000);
+                if (fd != 0) DmaWrite32(fd, G(inst, 0x1d6c), data);
+                return;
+            }
+            case 0x1800:                                                                // QUERY_GET: a 16-byte report at DMA_QUERY + offset
+            {
+                uint qd = G(inst, 0x1a8 | 0x8000);
+                if (qd == 0) return;
+                uint off = data & 0xffffff; long ns = TimeNs(0);
+                DmaWrite32(qd, off, (uint)ns); DmaWrite32(qd, off + 4, (uint)(ns >> 32));
+                DmaWrite32(qd, off + 8, (uint)(data >> 24 == 1 ? Math.Min(RankinePixels - _queryBase, uint.MaxValue) : 0));
+                DmaWrite32(qd, off + 12, 0);
+                return;
+            }
+            case 0x17c8: _queryBase = RankinePixels; return;                           // (query counter reset)
             // the viewport is VP constant memory too (as Kelvin's XFCTX VPSCL / VPOFF): SCALE -> c118, TRANSLATE -> c119; the driver's
             // programs compute screen-space positions with them (oPos = v0 * c118 + c119 for pre-transformed D3D vertices)
             case >= 0xa20 and < 0xa30: _vpConst[119 * 4 + ((mthd - 0xa20) >> 2)] = data; return;

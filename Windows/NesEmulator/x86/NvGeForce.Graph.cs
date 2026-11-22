@@ -56,7 +56,7 @@ public sealed partial class NvGeForce
         GraphOps++;
         GSet(inst, mthd, data);
         if (cls is 0x44 or 0x18 && mthd is >= 0x400 and < 0x800) GSet(inst, 0x7ffc, (uint)(mthd & 0x700));   // which colour pattern block was loaded
-        if (mthd is >= 0x180 and <= 0x1a0) { uint ci = RamhtLookup(data, ActiveChid); GSet(inst, mthd | 0x8000, ci); if (mthd == 0x180) _notifyObj[subc] = ci; return; }
+        if (mthd is >= 0x180 and <= 0x1a0 || (IsRankine(cls) && mthd is > 0x1a0 and <= 0x1b0)) { uint ci = RamhtLookup(data, ActiveChid); GSet(inst, mthd | 0x8000, ci); if (mthd == 0x180) _notifyObj[subc] = ci; return; }
         if (mthd == 0x104) { WriteNotify(subc, inst, 0); return; }
         if (mthd == 0x100) return;
         switch (cls)
