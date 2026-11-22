@@ -11,6 +11,7 @@ public sealed partial class I386
     // per-instruction decode state (tiny386 cpu_exec1 locals)
     private bool _opsz16, _adsz16, _c16;
     private int _rep, _curSeg, _steps;
+    private static readonly bool IPageLink = Environment.GetEnvironmentVariable("X86_IPAGE") == "1";
     private uint _spm;
     private int _mod, _reg, _rm;
     private uint _addr;
@@ -74,6 +75,7 @@ public sealed partial class I386
             Ip = NextIp;
             uint b1;
             uint laddr = SegBase[SEG_CS] + Ip;
+            if (IPageLink && ((ulong)laddr ^ _ifLaddr) >= 4096 - 16) LinkPage(laddr, Ip);   // X86_IPAGE=1: a TLB hit caches the fetch page without the full translation
             if (((ulong)laddr ^ _ifLaddr) < 4096 - 16)
             {
                 uint paddr = _ifXaddr ^ laddr;
