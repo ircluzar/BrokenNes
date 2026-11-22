@@ -25,7 +25,7 @@ ap.add_argument('--out', required=True)
 ap.add_argument('--iso'); ap.add_argument('--accept-eula', action='store_true'); ap.add_argument('--keyfile'); ap.add_argument('--key-env'); ap.add_argument('--pyfat', default=sys.executable)
 ap.add_argument('--installed', help='an installed Win98 SE disk (skips stages 1-2)')
 ap.add_argument('--machine', default='win98-p166-nano')
-ap.add_argument('--install-frames', type=int, default=140000)
+ap.add_argument('--install-frames', type=int, default=1)   # frames run BEFORE the steps (x86boot runs --frames first): 1, or the CD menu times out and boots the empty C:
 ap.add_argument('--settle-frames', type=int, default=60000)
 a = ap.parse_args()
 os.makedirs(a.work, exist_ok=True)
@@ -58,7 +58,15 @@ if not a.installed:
         run(cmd)
     if stage(2, 'install', installed):
         run([a.workshop, '--x86boot', '--machine', a.machine, '--hdd', W('hd_setup.img'), '--cd', a.iso, '--bootorder', 'CH',
-             '--frames', str(a.install_frames), '--stepsfile', W('stage2.steps'), '--save', installed + '.tmp'], ok=(0, 1))
+             '--frames', str(a.install_frames), '--stepsfile', W('stage2.steps'), '--shot', W('stage2_end.png'), '--save', installed + '.tmp'], ok=(0, 1))
+        sys.path.insert(0, os.path.join(HERE, 'pkg')); import fat32 as _f
+        try: _f.Fat32(installed + '.tmp').read_file('WINDOWS/SYSTEM.INI'); ok2 = True
+        except FileNotFoundError: ok2 = False
+        if not ok2:   # Setup did not finish: keep nothing that holds the key, say where the last screen is
+            for f in ('hd_setup.img', 'stage2.steps', installed + '.tmp'):
+                try: os.remove(W(f) if not os.path.isabs(f) else f)
+                except OSError: pass
+            sys.exit('stage 2: Windows Setup did not finish (no C:\WINDOWS\SYSTEM.INI); last screen: ' + W('stage2_end.png'))
         os.replace(installed + '.tmp', installed)
         for f in ('hd_setup.img', 'stage2.steps'):   # (the setup disk's answer file holds the product key: gone once Windows is installed)
             try: os.remove(W(f))
