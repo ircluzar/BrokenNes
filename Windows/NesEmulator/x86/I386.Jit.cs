@@ -367,6 +367,8 @@ public sealed partial class I386
     /// <summary>FE / FF: INC / DEC Eb / Ev, CALL / JMP / PUSH Ev (after JPrep; the far forms are never compiled). False = a fault.</summary>
     private static readonly bool CmOne = Environment.GetEnvironmentVariable("X86_CMONE") != null;
     private static readonly bool NoGrp5Inl = Environment.GetEnvironmentVariable("X86_NOGRP5INL") != null;
+    /// <summary>X86_NOILXLAT: a per-site page-fault exit after each inline TLB miss (default: one shared exit per region, smaller IL).</summary>
+    private static readonly bool NoIlXlat = Environment.GetEnvironmentVariable("X86_NOILXLAT") != null;
     private static bool Grp5Inline(in DEntry e) => !NoGrp5Inl && e.Reg is 2 or 4 or 6 && e.Bits != 8;
     [MethodImpl(MethodImplOptions.NoInlining)] private bool JGrp5(int bits)
     {
@@ -913,7 +915,7 @@ public sealed partial class I386
         var sb = new LocalBuilder?[6];
         var sl = new LocalBuilder?[6];
         var slo = new LocalBuilder?[6];   // (expand-down: the lowest valid offset; 0 for the usual kind)
-        var lfOff = il.DeclareLocal(typeof(uint)); var lfSeg = il.DeclareLocal(typeof(int)); var limFail = il.DefineLabel();
+        var lfOff = il.DeclareLocal(typeof(uint)); var lfSeg = il.DeclareLocal(typeof(int)); var limFail = il.DefineLabel(); var xlFail = il.DefineLabel();
         int n = ins.Length;
         var index = new Dictionary<uint, int>();
         for (int k = 0; k < n; k++) index[pas[k]] = k;
@@ -1212,6 +1214,9 @@ public sealed partial class I386
             il.MarkLabel(limFail);
             Ld0(); Ld(lfSeg); Call("JLimitFault"); Op(OpCodes.Pop);
             Ld0(); Ld(ip0); Ld(lfOff); Op(OpCodes.Add); il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldloc, st); Call("JExitFail"); il.Emit(OpCodes.Ret);
+            // the shared page-fault exit of the inline translations (Xlat: JXlat raised the fault; leave before that instruction)
+            il.MarkLabel(xlFail);
+            Ld0(); Ld(ip0); Ld(lfOff); Op(OpCodes.Add); il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldloc, st); Call("JExitFail"); il.Emit(OpCodes.Ret);
             il.MarkLabel(skip);
         }
 
@@ -1232,12 +1237,21 @@ public sealed partial class I386
         il.Emit(OpCodes.Switch, pre);
         Ld0(); I4(2); il.Emit(OpCodes.Stfld, FDeclWhy);
         il.Emit(OpCodes.Ldc_I4, JIT_DECLINE); il.Emit(OpCodes.Ret);
-        for (int k = 0; k < n; k++)
-        {   // entered at instruction k (Exec1 checked the step budget)
-            il.MarkLabel(pre[k]);
-            Ld0(); Call("JIp"); U4(pas[k] - start); il.Emit(OpCodes.Sub); il.Emit(OpCodes.Stloc, ip0);
-            Adj(P[k], Q[k]);
-            il.Emit(OpCodes.Br, body[k]);
+        if (UsePend || NoIlXlat)
+            for (int k = 0; k < n; k++)
+            {   // entered at instruction k (Exec1 checked the step budget)
+                il.MarkLabel(pre[k]);
+                Ld0(); Call("JIp"); U4(pas[k] - start); il.Emit(OpCodes.Sub); il.Emit(OpCodes.Stloc, ip0);
+                Adj(P[k], Q[k]);
+                il.Emit(OpCodes.Br, body[k]);
+            }
+        else
+        {   // (smaller IL: each entry only loads its offset; one Ip computation, then a second switch to the instruction)
+            var join = il.DefineLabel();
+            for (int k = 0; k < n; k++) { il.MarkLabel(pre[k]); U4(pas[k] - start); il.Emit(OpCodes.Br, join); }
+            il.MarkLabel(join);
+            Stl(lfOff); Ld0(); Call("JIp"); Ld(lfOff); il.Emit(OpCodes.Sub); il.Emit(OpCodes.Stloc, ip0);
+            il.Emit(OpCodes.Ldarg_1); il.Emit(OpCodes.Switch, body);
         }
 
         // after instruction k (st already counted down): go on at Ip `next` (on the stack-free action), inside the region when it is the
@@ -1313,7 +1327,8 @@ public sealed partial class I386
             il.MarkLabel(slow);
             var ok = il.DefineLabel();
             Ld0(); Ld(la); I4(write ? 3 : 1); I4(size); Call("JXlat"); il.Emit(OpCodes.Brtrue, ok);
-            ExitFail(k);
+            if (NoIlXlat) ExitFail(k);
+            else { U4(pas[k] - start); Stl(lfOff); Adj(0, 0); il.Emit(OpCodes.Br, xlFail); }
             il.MarkLabel(ok);
             Ld0(); Call("JPa"); Stl(pax);
             il.MarkLabel(done);
@@ -1473,7 +1488,8 @@ public sealed partial class I386
             {
                 var ok = il.DefineLabel();
                 il.Emit(OpCodes.Brtrue, ok);
-                ExitFail(k);
+                if (NoIlXlat) ExitFail(k);
+                else { U4(pas[k] - start); Stl(lfOff); Adj(0, 0); il.Emit(OpCodes.Br, xlFail); }
                 il.MarkLabel(ok);
             }
 
