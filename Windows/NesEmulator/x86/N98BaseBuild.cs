@@ -35,6 +35,14 @@ public static class N98BaseBuild
         catch (Exception) { return null; }
     }
 
+    /// <summary>The Python with pyfatfs the setup-disk stage needs: BROKENNES_N98_PYFAT, else the dev venv when it is there.</summary>
+    private static string? PyFat()
+    {
+        if (Environment.GetEnvironmentVariable("BROKENNES_N98_PYFAT") is { Length: > 0 } p) return p;
+        const string dev = @"C:\BrokenNes-work	ools\pyfat_venv\Scripts\python.exe";
+        return File.Exists(dev) ? dev : null;
+    }
+
     /// <summary>Runs the whole build. log gets the build's own lines (never the key). Returns {ok, base, warm} or {ok:false, error}.</summary>
     public static JsonObject Run(string iso, string key, string? outPath = null, string? work = null, Action<string>? log = null)
     {
@@ -46,7 +54,7 @@ public static class N98BaseBuild
         work ??= Path.Combine(Path.GetDirectoryName(Path.GetFullPath(outPath))!, "base_build");
         Directory.CreateDirectory(work);
         var (py, pre) = N98Seat.PythonCmd();
-        var psi = new ProcessStartInfo(py, $"{pre}-I \"{Path.Combine(N98Seat.ToolsDir(), "build_seat.py")}\" --workshop \"{ws}\" --work \"{work}\" --out \"{outPath}\" --iso \"{iso}\" --accept-eula --key-env N98_PRODUCT_KEY")
+        var psi = new ProcessStartInfo(py, $"{pre}-I \"{Path.Combine(N98Seat.ToolsDir(), "build_seat.py")}\" --workshop \"{ws}\" --work \"{work}\" --out \"{outPath}\" --iso \"{iso}\" --accept-eula --key-env N98_PRODUCT_KEY" + (PyFat() is { } pf ? $" --pyfat \"{pf}\"" : ""))
         { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
         psi.Environment["N98_PRODUCT_KEY"] = key;
         using var p = Process.Start(psi) ?? throw new InvalidOperationException("Python 3 was not found (set BROKENNES_PYTHON)");
