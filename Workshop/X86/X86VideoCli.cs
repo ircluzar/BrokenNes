@@ -71,6 +71,34 @@ internal static class X86VideoCli
             Console.WriteLine($"  {(chk.Failed == 0 ? "PASS" : "FAIL")} {"states",-16} {chk.Total - chk.Failed}/{chk.Total}");
         }
         try { Directory.Delete(tmp, true); } catch { }
+        // the GeForce: PCI BAR sizing from C#, a state round trip, refused on the S3 machine
+        if (only == null || "nv_states".Contains(only, StringComparison.OrdinalIgnoreCase))
+        {
+            var chk = new X86DevCli.Checker2("nv_states");
+            Directory.CreateDirectory(tmp);
+            try
+            {
+                var m = Boot(nasm, tmp, Tests().First(x => x.Name == "nv_linear_16bpp"));
+                var pci = m.Pci!;
+                uint b0 = pci.ConfigRead(0, PciBus.VgaDevFn, 0x10), b1 = pci.ConfigRead(0, PciBus.VgaDevFn, 0x14);
+                pci.ConfigWrite(0, PciBus.VgaDevFn, 0x10, 0xffffffff, 4); pci.ConfigWrite(0, PciBus.VgaDevFn, 0x14, 0xffffffff, 4);
+                chk.Eq("BAR0 sizes as 16 MB", 0xff000000, pci.ConfigRead(0, PciBus.VgaDevFn, 0x10));
+                chk.Eq("BAR1 sizes as 128 MB prefetchable", 0xf8000008, pci.ConfigRead(0, PciBus.VgaDevFn, 0x14));
+                pci.ConfigWrite(0, PciBus.VgaDevFn, 0x10, b0, 4); pci.ConfigWrite(0, PciBus.VgaDevFn, 0x14, b1, 4);
+                chk.Eq("PBUS mirror = PCI ID", 0x010110de, m.MemRead32(0xe0001800));
+                chk.Eq("PFB memory amount", 32u << 20, m.MemRead32(0xe010020c));
+                var st = m.SaveState();
+                var m2 = new PcMachine(PcConfig.Win98 with { BootOrder = "F" }, CpuModel.PentiumMmx, PcVideo.GeForce256);
+                m2.LoadState(st); m2.RunFrame(); m.RunFrame();
+                chk.True("GeForce state round trip: same picture", X86DevCli.Hash(m.Vga.Frame) == X86DevCli.Hash(m2.Vga.Frame) && m2.Nv!.VbeMode == 0x114);
+                bool refused = false;
+                try { new PcMachine(PcConfig.Win98 with { BootOrder = "F" }, CpuModel.PentiumMmx, PcVideo.S3Trio64).LoadState(st); } catch (InvalidDataException) { refused = true; }
+                chk.True("a GeForce state is refused on the S3 machine", refused);
+            }
+            catch (Exception e) { chk.True("ran", false, e.GetType().Name + ": " + e.Message); }
+            checks += chk.Total; failed += chk.Failed;
+            Console.WriteLine($"  {(chk.Failed == 0 ? "PASS" : "FAIL")} {"nv_states",-16} {chk.Total - chk.Failed}/{chk.Total}");
+        }
         Console.WriteLine($"x86video: {tests.Count + 1} tests, checks {checks - failed}/{checks} pass ({sw.Elapsed.TotalSeconds:F1}s)");
         return failed == 0 ? 0 : 1;
     }
@@ -80,7 +108,7 @@ internal static class X86VideoCli
         byte[] boot = X86DevCli.Assemble(nasm, tmp, t.Name, t.Asm);
         var img = new byte[1474560];
         Array.Copy(boot, img, boot.Length);
-        var m = new PcMachine(PcMachine.DefaultMemory, video: t.Video);
+        var m = t.Video == PcVideo.GeForce256 ? new PcMachine(PcConfig.Win98 with { BootOrder = "F" }, CpuModel.PentiumMmx, t.Video) : new PcMachine(PcMachine.DefaultMemory, video: t.Video);
         m.Floppy[0] = new DiskImage(img, true);
         m.PowerOn();
         for (int i = 0; i < t.Frames && m.RunFrame(); i++) { }
@@ -495,6 +523,167 @@ gdtr: dw 15
             c.Eq("cursor pixel", 0xffffff, Px(m, 105, 55));
             c.Eq("transparent part", 0, Px(m, 130, 55));
             c.Eq("outside the cursor", 0, Px(m, 99, 55));
+        }),
+        // ---- GeForce 256: PCI ID through CF8/CFC, the CR1F lock, PMC_BOOT_0 through BAR0, VBE 4F00/4F01
+        new("nv_id_vbe", PcVideo.GeForce256, Head + @"
+    mov dx, 0xcf8
+    mov eax, 0x80004800     ; bus 0, device 9, function 0, reg 0
+    out dx, eax
+    mov dx, 0xcfc
+    in eax, dx
+    mov [0x9000], eax
+    mov dx, 0xcf8
+    mov eax, 0x80004808
+    out dx, eax
+    mov dx, 0xcfc
+    in eax, dx
+    mov [0x9004], eax
+    mov dx, 0x3d4
+    mov al, 0x1f
+    out dx, al
+    inc dx
+    in al, dx
+    mov [0x9008], al        ; locked: 0
+    mov al, 0x57
+    out dx, al
+    in al, dx
+    mov [0x9009], al        ; unlocked: 3
+    dec dx
+    mov ax, 0x5a28          ; CR28 = 5A (kept while unlocked)
+    out dx, ax
+    mov al, 0x28
+    out dx, al
+    inc dx
+    in al, dx
+    mov [0x900a], al
+    dec dx
+    mov ax, 0x0028
+    out dx, ax
+    mov ax, 0x991f          ; lock
+    out dx, ax
+    mov al, 0x28
+    out dx, al
+    inc dx
+    in al, dx
+    mov [0x900b], al        ; locked: reads 0
+    cli
+    lgdt [gdtr]
+    mov eax, cr0
+    or al, 1
+    mov cr0, eax
+    jmp $+2
+    mov bx, 8
+    mov fs, bx
+    and al, 0xfe
+    mov cr0, eax
+    jmp $+2
+    xor ax, ax
+    mov fs, ax
+    sti
+    mov esi, 0xe0000000
+    mov eax, [fs:esi]
+    mov [0x900c], eax       ; PMC_BOOT_0
+    mov esi, 0xe00c03cc
+    mov eax, [fs:esi]
+    mov [0x9010], eax       ; PRMVIO: bytes at 3CC (misc output read) .. 3CF
+    mov dword [0x9100], 'VBE2'
+    mov ax, 0x4f00
+    mov di, 0x9100
+    int 0x10
+    mov [0x9014], ax
+    mov ax, 0x4f01
+    mov cx, 0x114
+    mov di, 0x9400
+    int 0x10
+    mov [0x9016], ax
+" + Done + @"
+gdt: dq 0
+    dq 0x008f92000000ffff
+gdtr: dw 15
+    dd gdt
+" + Tail, (m, c) =>
+        {
+            c.Eq("PCI ID 10DE:0101", 0x010110de, m.Phys32(0x9000));
+            c.Eq("class 030000", 0x030000, m.Phys32(0x9004) >> 8);
+            c.Eq("CR1F locked", 0, m.Phys8(0x9008));
+            c.Eq("CR1F unlocked", 3, m.Phys8(0x9009));
+            c.Eq("CR28 written unlocked", 0x5a, m.Phys8(0x900a));
+            c.Eq("CR28 reads 0 locked", 0, m.Phys8(0x900b));
+            c.Eq("PMC_BOOT_0", NvGeForce.Boot0, m.Phys32(0x900c));
+            c.Eq("PRMVIO byte at 3CC = misc output", m.Vga.Msr, m.Phys8(0x9010));
+            c.Eq("4F00 ok", 0x4f, m.Phys16(0x9014));
+            c.Eq("32 MB", 512, m.Phys16(0x9112));
+            c.Eq("4F01 ok", 0x4f, m.Phys16(0x9016));
+            c.Eq("0x114 LFB at F0000000 (BAR1)", 0xF0000000, m.Phys32(0x9400 + 0x28));
+        }),
+
+        // ---- GeForce 800x600x16 linear through BAR1, then back to text mode 3
+        new("nv_linear_16bpp", PcVideo.GeForce256, Head + @"
+    mov ax, 0x4f02
+    mov bx, 0x4114
+    int 0x10
+    mov [0x9000], ax
+    cli
+    lgdt [gdtr]
+    mov eax, cr0
+    or al, 1
+    mov cr0, eax
+    jmp $+2
+    mov bx, 8
+    mov fs, bx
+    and al, 0xfe
+    mov cr0, eax
+    jmp $+2
+    xor ax, ax
+    mov fs, ax
+    sti
+    mov edi, 0xf0000000
+    xor edx, edx
+.y: xor ecx, ecx
+.x: mov eax, ecx
+    shr eax, 5
+    shl eax, 11
+    mov ebx, edx
+    shr ebx, 4
+    shl ebx, 5
+    or eax, ebx
+    mov [fs:edi], ax
+    add edi, 2
+    inc ecx
+    cmp ecx, 800
+    jb .x
+    inc edx
+    cmp edx, 600
+    jb .y
+" + Done + @"
+gdt: dq 0
+    dq 0x008f92000000ffff
+gdtr: dw 15
+    dd gdt
+" + Tail, Frames: 80, Check: (m, c) =>
+        {
+            c.Eq("set ok", 0x4f, m.Phys16(0x9000));
+            c.True("enhanced, 565", m.Nv!.Enhanced && m.Nv.Is565);
+            c.Eq("800 wide", 800, m.Vga.Width); c.Eq("600 high", 600, m.Vga.Height);
+            c.Eq("stride", 1600, m.Nv.Stride);
+            int r = (400 >> 5) << 3 | (400 >> 5) >> 2, g = (300 >> 4) << 2 | (300 >> 4) >> 4;
+            c.Eq("picture (400,300)", r << 16 | g << 8, Px(m, 400, 300));
+        }),
+
+        new("nv_back_to_text", PcVideo.GeForce256, Head + @"
+    mov ax, 0x4f02
+    mov bx, 0x4112
+    int 0x10
+    mov ax, 0x0003
+    int 0x10
+    mov ah, 0x0e
+    mov al, 'N'
+    int 0x10
+" + Done + Tail, (m, c) =>
+        {
+            c.True("not enhanced", !m.Nv!.Enhanced && m.Nv.VbeMode == 0);
+            c.Eq("text 720 wide", 720, m.Vga.Width);
+            c.Eq("char in B8000", 'N', m.Vga.Ram[0]);
         }),
     };
 }

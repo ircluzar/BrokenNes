@@ -145,7 +145,7 @@ public sealed partial class PcMachine
         Code(ConfigTable, -1, 0x08, 0x00, 0xfc, 0x01, 0x00, 0x70, 0x00, 0x00, 0x00, 0x00);
         Code(DisketteTable, -1, 0xaf, 0x02, 0x25, 0x02, 0x12, 0x1b, 0xff, 0x6c, 0xf6, 0x0f, 0x08);
         Code(0xe010, -1, Encoding.ASCII.GetBytes("BrokenNes x86 BIOS (C#)"));
-        if (S3 != null) VideoRomInit();
+        if (S3 != null || Nv != null) VideoRomInit();
 
         // interrupt vectors
         void Vec(int n, uint off) { PhysW16((uint)n * 4, (ushort)off); PhysW16((uint)n * 4 + 2, (ushort)RomSeg); }

@@ -118,6 +118,25 @@ cut the reference down to the HUD glyph you care about (alpha 0 elsewhere) and i
   difference and the 12 inputs before it, and a one-line `why` (input change N frames earlier / no input change = start state, ROM, cores, nondeterminism).
 - **`--tas vars RUN --chapter ID --frame F`**: the RAM-map variables at a frame.
 
+## Search (T3)
+Automatic input search for the frame-exact spots (Workshop/Tas/TasSearch.cs, fleet driver tools/tas/fleetsearch.py, MCP `tas_search`).
+- Spec `SEARCH.json`: `{chapter, score (goal index; default the last reach/within goal), maximize (expression, tie-break), beam K, rounds, budget (candidates per parent),
+  seed, slack (cutoff = base score + slack), tail (frames kept after the goal; default the base's), generators: [...]}`.
+- Generators (frames are chapter frames of the parent's program): `shift` (move each input change point in [from,to) by -range..range, length kept),
+  `hold` (hold the input before a change point 1..range frames longer = insert, or shorter = delete: later input moves), `delete` / `insert` / `set`
+  (every `step` frames in the window, `len: [lo,hi]`, `buttons`), `press` (OR `buttons` into the frames), `random` (`count` candidates of 1..`edits` random `ops`).
+- A candidate = its parent's edits + one generated edit set (the `--variants` syntax). Score = first frame of the score goal with every goal met (lower wins),
+  then `-maximize`, then lag frames. Plays stop early: at goal + tail, at the cutoff, or when an `always:` goal fails. Candidates run late-edit-first, so each replays
+  only from its own edit (the savestate ring). Beam: the best K distinct end states expand next round. Generation is seeded: every shard builds the same list.
+- `--tas search RUN --spec S --out D --local`: every round here, then the best is written back. `--shard I/N --round R --parents P.json`: one fleet shard
+  (D/results.json). `--tas search-merge RUN --spec S --round R --in D.. --out D [--final]`: top K -> D/parents_r{R+1}.json; `--final` replays the best,
+  trims it at the score goal + tail, plays it twice with the runner and blesses it: D/best/edited.tasrun.json + D/best.json (gain, lag, determinism).
+- `--tas search-pack RUN --chapter ID [--frame F] --out PACK`: a portable start (state at F + one-chapter run + ramdb + *.png refs + rom) for the fleet.
+- Fleet: `python -I tools/tas/fleetsearch.py --run R --chapter ID --spec S --rom ROM --name NAME --shards 20 [--bin NAME] [--n64] [--pack-on-fleet]`:
+  shards are agent-tier `submit.py n64` items (generic bash on the PC kit; item `files` travel with the job as `$JOBDIR`), the Workshop build is
+  `C:\brokennes\x86\bin\<bin>` (push with `fleet\x86sync.py --bin NAME=pubdir`), results are pulled to `C:\BrokenNes-work\n64\fleet\NAME_rR`; the N64 write-back runs on a PC too.
+- `--tas vars RUN --chapter ID --frame F,F,..`: the RAM-map variables at several frames in one pass.
+
 ## Render
 
 `--tas render RUN|SCRIPT --mp4 OUT.mp4 [--mp4size WxH] [--mp4kbps N]`: one pass (no twice check), every frame + the core's sound through Workshop/Movies/Mp4Writer

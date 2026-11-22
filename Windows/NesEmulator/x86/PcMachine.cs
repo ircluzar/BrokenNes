@@ -93,6 +93,7 @@ public sealed partial class PcMachine : IX86Bus
     {
         Video = video;
         config.Validate();
+        if (video == PcVideo.GeForce256 && config.Bus != PcBus.Pci430TX) throw new ArgumentException("the GeForce 256 needs the PCI board");
         Config = config with { MemoryMB = Math.Max(1, memBytes >> 20) };
         MemKb = memBytes / 1024;
         Cpu = cpu == null || cpu.Legacy ? new I386(config.CpuGen, memBytes, this) : new I386(cpu, memBytes, this);
@@ -105,9 +106,10 @@ public sealed partial class PcMachine : IX86Bus
         Pit = new Pit8254(() => PitNow, () => Pic.Pulse(0));
         Kbc = new Kbc8042(Pic, config.Bus == PcBus.Pci430TX && Environment.GetEnvironmentVariable("X86_NOMOUSE") == null);   // (X86_NOMOUSE: a diagnostic)   // the Windows 98 board has the PS/2 mouse
         Cmos = new Cmos(() => PitNow, MemKb);
-        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64);
+        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video == PcVideo.GeForce256);
         S3 = Vga.S3;
-        _vramNs = Cpu.Model.Legacy ? 0 : S3 != null ? 150 : Cpu.Model.Gen <= 3 ? 650 : 450;
+        Nv = Vga.Nv;
+        _vramNs = Cpu.Model.Legacy ? 0 : S3 != null || Nv != null ? 150 : Cpu.Model.Gen <= 3 ? 650 : 450;
         Speaker = new PcSpeaker(this);
         Opl = new Opl2(() => PitNow);
         Dma = new Dma8237(this);
@@ -118,6 +120,20 @@ public sealed partial class PcMachine : IX86Bus
             if (Nic != null) Nic.SetIrq = on => { int irq = Pci!.Isa.Cfg[0x61]; if (irq < 16) Pic.SetIrq(irq, on ? 1 : 0); };
             if (config.Voodoo) Voodoo = new Voodoo1();
             Pci = new PciBus(this);
+            if (Nv != null)
+            {
+                Nv.SetIrq = on => { int irq = Pci!.Isa.Cfg[0x60]; if (irq < 16) Pic.SetIrq(irq, on ? 1 : 0); };
+                if (Environment.GetEnvironmentVariable("X86_NVLOG") is string nvl and not "")
+                {
+                    var lw = new System.IO.StreamWriter(nvl) { AutoFlush = true }; long nlog = 0;
+                    Nv.OpLog = t => { if (nlog++ < 300_000) lw.WriteLine($"{Vga.FrameCount} OP {t}"); };
+                    Nv.MethodLog = (ch, sc, cl, mt, d) => { if (nlog++ < 300_000) lw.WriteLine($"{Vga.FrameCount} M ch{ch} s{sc} c{cl:X3} {mt:X4} {d:X8}"); };
+                    Nv.Log = (o, v, sz, wr) => { if (nlog++ < 300_000) lw.WriteLine($"{Vga.FrameCount} {(wr ? 'W' : 'R')}{sz} {o:X6} {v:X8} {Cpu.SegSel[1]:X4}:{Cpu.Ip:X8}"); };
+                }
+                Nv.SysRead32 = a => a <= Cpu.MemSize - 4 ? BitConverter.ToUInt32(Cpu.Mem, (int)a) : 0xffffffff;
+                Nv.SysWrite32 = (a, v) => { if (a <= Cpu.MemSize - 4) { BitConverter.TryWriteBytes(Cpu.Mem.AsSpan((int)a), v); Cpu.MemTouched(); } };
+                Nv.RomByte = i => i < 0x8000 && VRom + i < Cpu.MemSize ? Cpu.Mem[VRom + i] : (byte)0xff;
+            }
         }
         if (config.Bus == PcBus.Pci430TX && !config.NoFloppy)
             Fdc = new Fdc82077(n => Floppy[n], Dma[2], on => Pic.SetIrq(6, on ? 1 : 0), () => MicrosNow);
@@ -144,20 +160,21 @@ public sealed partial class PcMachine : IX86Bus
     // emulated time and the boot ran at a third of real time. Only the PCI board (the other machines keep their timing byte for byte).
     private void IsaWait() { if (Pci != null) _idle += Math.Max(1, InstructionsPerSecond / 1_000_000); }
     private void VramWait() { if (_vramNs != 0) _idle += Math.Max(1, _vramNs * InstructionsPerSecond / 1_000_000_000); }
-    private PciFunction? Mmio(uint a) => a >= 0xe0000000 && Pci != null && Pci.MmioFns.Length != 0 ? Pci.MmioAt(a) : null;
-    private byte RawRead8(uint a) => Mmio(a) is { } mf ? (byte)mf.Mmio!.MmioRead(a - mf.MemBase, 1) : a < 0xc0000 ? Vga.MemRead(a) : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
-    private void RawWrite8(uint a, byte v) { if (Mmio(a) is { } mf) mf.Mmio!.MmioWrite(a - mf.MemBase, v, 1); else if (a < 0xc0000) Vga.MemWrite(a, v); else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
-    private ushort RawRead16(uint a) => Mmio(a) is { } mf && Mmio(a + 1) == mf ? (ushort)mf.Mmio!.MmioRead(a - mf.MemBase, 2) : (ushort)(RawRead8(a) | (RawRead8(a + 1) << 8));
+    private IPciMmio? Mmio(uint a, out uint off) { if (a >= 0xe0000000 && Pci != null && Pci.MmioFns.Length != 0) return Pci.MmioAt(a, out off); off = 0; return null; }
+    private IPciMmio? Mmio(uint a) => Mmio(a, out _);
+    private byte RawRead8(uint a) => Mmio(a, out uint mo) is { } md ? (byte)md.MmioRead(mo, 1) : a < 0xc0000 ? Vga.MemRead(a) : S3 != null && S3.InLfb(a) ? S3.LfbRead8(a) : (byte)0xff;
+    private void RawWrite8(uint a, byte v) { if (Mmio(a, out uint mo) is { } md) md.MmioWrite(mo, v, 1); else if (a < 0xc0000) Vga.MemWrite(a, v); else if (S3 != null && S3.InLfb(a)) S3.LfbWrite8(a, v); }
+    private ushort RawRead16(uint a) => Mmio(a, out uint mo) is { } md && Mmio(a + 1) == md ? (ushort)md.MmioRead(mo, 2) : (ushort)(RawRead8(a) | (RawRead8(a + 1) << 8));
     private void RawWrite16(uint a, ushort v)
     {
-        if (Mmio(a) is { } mf && Mmio(a + 1) == mf) { mf.Mmio!.MmioWrite(a - mf.MemBase, v, 2); return; }
+        if (Mmio(a, out uint mo) is { } md && Mmio(a + 1) == md) { md.MmioWrite(mo, v, 2); return; }
         if (S3 != null && (S3.InLfb(a) && S3.InLfb(a + 1) ? WriteLfb16(a, v) : a < 0xc0000 && S3.MmioWrite(a, v, 16))) return;
         RawWrite8(a, (byte)v); RawWrite8(a + 1, (byte)(v >> 8));
     }
-    private uint RawRead32(uint a) => Mmio(a) is { } mf && Mmio(a + 3) == mf ? mf.Mmio!.MmioRead(a - mf.MemBase, 4) : S3 != null && S3.InLfb(a) ? S3.LfbRead32(a) : (uint)(RawRead16(a) | (RawRead16(a + 2) << 16));
+    private uint RawRead32(uint a) => Mmio(a, out uint mo) is { } md && Mmio(a + 3) == md ? md.MmioRead(mo, 4) : S3 != null && S3.InLfb(a) ? S3.LfbRead32(a) : (uint)(RawRead16(a) | (RawRead16(a + 2) << 16));
     private void RawWrite32(uint a, uint v)
     {
-        if (Mmio(a) is { } mf && Mmio(a + 3) == mf) { mf.Mmio!.MmioWrite(a - mf.MemBase, v, 4); return; }
+        if (Mmio(a, out uint mo) is { } md && Mmio(a + 3) == md) { md.MmioWrite(mo, v, 4); return; }
         if (S3 != null)
         {
             if (S3.InLfb(a)) { S3.LfbWrite32(a, v); return; }
@@ -377,11 +394,13 @@ public sealed partial class PcMachine : IX86Bus
         while (Vga.FrameIndex(PitNow) < target)
         {
             if (!RunBatch()) return false;
+            if (Cpu.Debug is { Stop: true }) return true;   // the debugger stopped mid-frame (I386.Debug.cs): the frame carries on at the next call
             Vga.Picture?.Poll();
             if (++guard > 100_000_000) { Stopped = "frame never ended"; return false; }
         }
         _lastFrame = target;
         Voodoo?.TickFrame();
+        Nv?.TickFrame();
         if (Profiling || TimeProbe) { long t0 = System.Diagnostics.Stopwatch.GetTimestamp(); Vga.Render(); RenderTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0; }
         else if (AllocProbe) { long a0 = GC.GetAllocatedBytesForCurrentThread(); Vga.Render(); AllocRender += GC.GetAllocatedBytesForCurrentThread() - a0; }
         else Vga.Render();
@@ -467,6 +486,7 @@ public sealed partial class PcMachine : IX86Bus
         Card?.Reset();
         Vga.Picture?.Reset();
         S3?.Reset();
+        Nv?.Reset();
         _lastFrame = -1;
         _cdEmu = null; _cdBoot = false;
         WireAta();
@@ -532,6 +552,13 @@ public sealed partial class PcMachine : IX86Bus
                 w.Write(0x50434956); w.Write(Vga.Picture.Id); w.Write(blob.Length); w.Write(blob);   // "VICP"
             }
             // the S3's own registers, after everything else (its video memory is the VGA's, saved above): a plain-VGA state is unchanged
+            if (Nv != null)
+            {
+                var ss = new MemoryStream();
+                using (var sw = new BinaryWriter(ss)) Nv.Save(sw);
+                var blob = ss.ToArray();
+                w.Write(0x41475653); w.Write(NvGeForce.Id); w.Write(blob.Length); w.Write(blob);   // "SVGA"
+            }
             if (S3 != null)
             {
                 var ss = new MemoryStream();
@@ -571,7 +598,7 @@ public sealed partial class PcMachine : IX86Bus
     /// <summary>Loads a state; a state that does not fit this machine (another video card) throws and leaves the machine as it was.</summary>
     public void LoadState(byte[] s)
     {
-        if (S3 == null) { LoadStateCore(s); return; }       // the plain VGA: exactly as before
+        if (S3 == null && Nv == null) { LoadStateCore(s); return; }       // the plain VGA: exactly as before
         var um = new MemoryStream(); SaveState(um, undo: true); var undo = um.ToArray();
         try { LoadStateCore(s); }
         catch { LoadStateCore(undo); throw; }
@@ -669,8 +696,10 @@ public sealed partial class PcMachine : IX86Bus
         if (saved == null && ConfigInState) throw new InvalidDataException($"this x86 state is for the classic machine (486, BIOS disks), this machine is {Config}");
         WireAta();
         // the video card must be the one the state was saved on: a mismatch is an error, never a guess
-        if ((svgaId ?? "VGA") != (S3 != null ? S3Trio64.Id : "VGA"))
-            throw new InvalidDataException($"this state was saved with the {svgaId ?? "VGA"} video card, this machine has the {(S3 != null ? S3Trio64.Id : "VGA")}");
+        string cardId = S3 != null ? S3Trio64.Id : Nv != null ? NvGeForce.Id : "VGA";
+        if ((svgaId ?? "VGA") != cardId)
+            throw new InvalidDataException($"this state was saved with the {svgaId ?? "VGA"} video card, this machine has the {cardId}");
+        if (Nv != null) { using var nr = new BinaryReader(new MemoryStream(svgaBlob!)); Nv.Load(nr); }
         if (S3 != null) { using var sr = new BinaryReader(new MemoryStream(svgaBlob!)); S3.Load(sr); }
         if (Vga.Picture != null)
         {

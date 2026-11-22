@@ -40,16 +40,19 @@ public sealed class Vga
     // 70 Hz timing: 449 lines of 800 dots at 25.175 MHz, counted in PIT ticks
     public const double FrameTicks = Pit8254.Freq * 449.0 * 800.0 / 25175000.0;
 
-    public Vga(Func<long> pitNow, bool s3 = false)
+    public Vga(Func<long> pitNow, bool s3 = false, bool nv = false)
     {
         _pitNow = pitNow;
-        Ram = new byte[s3 ? S3Trio64.VramBytes : RamSize];
+        Ram = new byte[s3 ? S3Trio64.VramBytes : nv ? NvGeForce.VramBytes : RamSize];
         if (s3) S3 = new S3Trio64(this);
+        if (nv) Nv = new NvGeForce(this);
         InitMode3Defaults();
     }
 
     /// <summary>The S3 Trio64's extensions when this VGA is the core of one (x86/S3Trio64.cs); null on the plain VGA (which then behaves exactly as before).</summary>
     public readonly S3Trio64? S3;
+    /// <summary>The GeForce 256's extensions when this VGA is the core of one (x86/NvGeForce.cs); null otherwise.</summary>
+    public readonly NvGeForce? Nv;
 
     /// <summary>The picture chip drawing this card's memory (the VGA harvest: another emulator's renderer, x86/VgaPictures.cs), or null for the stock picture.
     /// It sees the card's port writes and memory accesses as they happen and replaces <see cref="Render"/>; the registers and memory stay this card's.</summary>
@@ -83,7 +86,7 @@ public sealed class Vga
             case 0x3ce: return GrIndex;
             case 0x3cf: return Gr[GrIndex];
             case 0x3b4: case 0x3d4: return CrIndex;
-            case 0x3b5: case 0x3d5: return Cr[CrIndex];
+            case 0x3b5: case 0x3d5: return Nv != null && NvGeForce.IsExt(CrIndex) ? Nv.CrRead(CrIndex) : Cr[CrIndex];
             case 0x3ba: case 0x3da: ArFlipFlop = 0; return Status1();
             default: return 0;
         }
@@ -151,6 +154,7 @@ public sealed class Vga
                     return;
                 }
                 if (S3 != null && CrIndex >= 0x2d && S3.CrWrite(CrIndex, v)) break;
+                if (Nv != null && NvGeForce.IsExt(CrIndex)) { Nv.CrWrite(CrIndex, v); break; }
                 Cr[CrIndex] = (byte)val;
                 break;
             case 0x3ba: case 0x3da: Fcr = (byte)(val & 0x10); break;
@@ -175,6 +179,7 @@ public sealed class Vga
     public void MemWrite(uint addr, byte val8)
     {
         if (S3 != null && S3.MemWrite(addr, val8)) return;
+        if (Nv != null && Nv.MemWrite(addr, val8)) return;
         if ((Msr & 2) == 0) return;
         Picture?.NoteWrite(addr, val8);
         if (!MapAddr(ref addr)) return;
@@ -245,6 +250,7 @@ public sealed class Vga
     public byte MemRead(uint addr)
     {
         if (S3 != null && S3.MemRead(addr, out byte sv)) return sv;
+        if (Nv != null && Nv.MemRead(addr, out byte nvv)) return nvv;
         if ((Msr & 2) == 0) return 0xff;
         Picture?.NoteRead(addr);
         if (!MapAddr(ref addr)) return 0xff;
@@ -389,6 +395,7 @@ public sealed class Vga
         RenderSerial++;
         FrameCount++;
         if (S3 != null && S3.Enhanced && (Gr[6] & 1) != 0) { S3.Render(); GuiSinceText = true; return; }
+        if (Nv != null && Nv.Enhanced && (Gr[6] & 1) != 0) { Nv.Render(); GuiSinceText = true; return; }
         if (Picture != null) { Picture.Render(); return; }
         if ((Ar[0x10] & 1) == 0 || (Gr[6] & 1) == 0) RenderText(); else RenderGraphics();
     }
