@@ -48,7 +48,14 @@ public sealed partial class NvGeForce : IPciMmio
     /// <summary>Diagnostics: every BAR0 access (offset, value, size, write) when set (the driver bring-up log).</summary>
     public Action<uint, uint, int, bool>? Log;
 
-    public NvGeForce(Vga v) { _v = v; Aperture = new Bar1(this); Reset(); }
+    /// <summary>The chip this card is: the GeForce 256 DDR (NV10) or the GeForce4 MX 440 (NV17: same Celsius 3D, class 0x99, a second CRTC).</summary>
+    public readonly bool Nv17;
+    public ushort DeviceId => Nv17 ? (ushort)0x0171 : Device;
+    public uint BootId => Nv17 ? 0x017200a2u : Boot0;
+    public string CardId => Nv17 ? "NV17" : Id;
+    public string CardName => Nv17 ? "GeForce4 MX 440" : "GeForce 256 DDR";
+
+    public NvGeForce(Vga v, bool nv17 = false) { _v = v; Nv17 = nv17; Aperture = new Bar1(this); Reset(); }
 
     public void Reset()
     {
@@ -282,7 +289,7 @@ public sealed partial class NvGeForce : IPciMmio
     {
         switch (a)
         {
-            case 0x000000: return Boot0;
+            case 0x000000: return BootId;
             case 0x000100: return PmcIntr;
             case 0x000140: return PmcIntrEn;
             case 0x000200: return PmcEnable;

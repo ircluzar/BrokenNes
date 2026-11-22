@@ -138,7 +138,7 @@ public sealed class PciBus
         }
         if (_m.Nv != null)
         {
-            var nf = Functions[VgaDevFn] = new PciFunction("GeForce 256 DDR", NvGeForce.Vendor, NvGeForce.Device, 0x030000, 0x10)
+            var nf = Functions[VgaDevFn] = new PciFunction(_m.Nv.CardName, NvGeForce.Vendor, _m.Nv.DeviceId, 0x030000, (byte)(_m.Nv.Nv17 ? 0xa2 : 0x10))
                 { MemBarSize = NvGeForce.Bar0Size, Mmio = _m.Nv, Bar1Size = NvGeForce.Bar1Size, Mmio1 = _m.Nv.Aperture };
             nf.Cfg[0x14] = 0x08;                                  // BAR1 prefetchable
             nf.Cfg[0x3d] = 1;                                     // INTA#

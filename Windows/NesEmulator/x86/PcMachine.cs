@@ -80,7 +80,7 @@ public sealed partial class PcMachine : IX86Bus
     {
         Video = video;
         config.Validate();
-        if (video == PcVideo.GeForce256 && config.Bus != PcBus.Pci430TX) throw new ArgumentException("the GeForce 256 needs the PCI board");
+        if (video is PcVideo.GeForce256 or PcVideo.GeForce4Mx && config.Bus != PcBus.Pci430TX) throw new ArgumentException("the GeForce needs the PCI board");
         Config = config with { MemoryMB = Math.Max(1, memBytes >> 20) };
         MemKb = memBytes / 1024;
         Cpu = cpu == null || cpu.Legacy ? new I386(config.CpuGen, memBytes, this) : new I386(cpu, memBytes, this);
@@ -93,7 +93,7 @@ public sealed partial class PcMachine : IX86Bus
         Pit = new Pit8254(() => PitNow, () => Pic.Pulse(0));
         Kbc = new Kbc8042(Pic, config.Bus == PcBus.Pci430TX && Environment.GetEnvironmentVariable("X86_NOMOUSE") == null);   // (X86_NOMOUSE: a diagnostic)   // the Windows 98 board has the PS/2 mouse
         Cmos = new Cmos(() => PitNow, MemKb);
-        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video == PcVideo.GeForce256);
+        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video == PcVideo.GeForce256, video == PcVideo.GeForce4Mx);
         S3 = Vga.S3;
         Nv = Vga.Nv;
         _vramNs = Cpu.Model.Legacy ? 0 : S3 != null || Nv != null ? 150 : Cpu.Model.Gen <= 3 ? 650 : 450;
@@ -543,7 +543,7 @@ public sealed partial class PcMachine : IX86Bus
                 var ss = new MemoryStream();
                 using (var sw = new BinaryWriter(ss)) Nv.Save(sw);
                 var blob = ss.ToArray();
-                w.Write(0x41475653); w.Write(NvGeForce.Id); w.Write(blob.Length); w.Write(blob);   // "SVGA"
+                w.Write(0x41475653); w.Write(Nv.CardId); w.Write(blob.Length); w.Write(blob);   // "SVGA"
             }
             if (S3 != null)
             {
@@ -678,7 +678,7 @@ public sealed partial class PcMachine : IX86Bus
         if (saved == null && ConfigInState) throw new InvalidDataException($"this x86 state is for the classic machine (486, BIOS disks), this machine is {Config}");
         WireAta();
         // the video card must be the one the state was saved on: a mismatch is an error, never a guess
-        string cardId = S3 != null ? S3Trio64.Id : Nv != null ? NvGeForce.Id : "VGA";
+        string cardId = S3 != null ? S3Trio64.Id : Nv != null ? Nv.CardId : "VGA";
         if ((svgaId ?? "VGA") != cardId)
             throw new InvalidDataException($"this state was saved with the {svgaId ?? "VGA"} video card, this machine has the {cardId}");
         if (Nv != null) { using var nr = new BinaryReader(new MemoryStream(svgaBlob!)); Nv.Load(nr); }
