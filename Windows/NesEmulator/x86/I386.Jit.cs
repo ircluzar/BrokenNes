@@ -301,16 +301,38 @@ public sealed partial class I386
         // so while those are unchanged the last computation (made for all six segments) still holds
         uint mode = ((Flags >> 16) & 2) | (Cr0 & 1);
         if (SegGen == _jsGen && mode == _jsMode && !NoSegMemo) return;
+        if (!NoSegMemo && !NoSegMemo2 && mode == _jsMode && _jsGen != 0xffffffffu)
+        {   // per segment (X86_NOSEGMEMO2: off): SegGen moved, but usually one or two segment registers changed; the others keep their values
+            _jsGen = SegGen;
+            int ok2 = _jsOk, rd2 = _jsRd;
+            for (int s = 0; s < 6; s++)
+            {
+                if (SegSel[s] == _jsInSel[s] && SegBase[s] == _jsInBase[s] && SegLimit[s] == _jsInLim[s] && SegFlags[s] == _jsInFlags[s]) continue;
+                JSegLoad1(s, ref ok2, ref rd2);
+            }
+            _jsOk = ok2; _jsRd = rd2;
+            return;
+        }
         if (!NoSegMemo) { mask = 63; _jsGen = SegGen; _jsMode = mode; }
         int ok = 0, rd = 0;
         for (int s = 0; s < 6; s++)
         {
             if ((mask >> s & 1) == 0) continue;
-            if (JSegOk(s)) { ok |= 1 << s; rd |= 1 << s; }
-            else if (JSegRdOk(s)) rd |= 1 << s;
-            _jsBase[s] = SegBase[s]; _jsSpan[s] = JSegSpan(s); _jsLo[s] = JSegLo(s);
+            JSegLoad1(s, ref ok, ref rd);
         }
         _jsOk = ok; _jsRd = rd;
+    }
+    private static readonly bool NoSegMemo2 = Environment.GetEnvironmentVariable("X86_NOSEGMEMO2") != null;
+    private readonly uint[] _jsInSel = new uint[6], _jsInBase = new uint[6], _jsInLim = new uint[6], _jsInFlags = new uint[6];
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void JSegLoad1(int s, ref int ok, ref int rd)
+    {
+        int bit = 1 << s;
+        ok &= ~bit; rd &= ~bit;
+        if (JSegOk(s)) { ok |= bit; rd |= bit; }
+        else if (JSegRdOk(s)) rd |= bit;
+        _jsBase[s] = SegBase[s]; _jsSpan[s] = JSegSpan(s); _jsLo[s] = JSegLo(s);
+        _jsInSel[s] = SegSel[s]; _jsInBase[s] = SegBase[s]; _jsInLim[s] = SegLimit[s]; _jsInFlags[s] = SegFlags[s];
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JSOk(int s) => (_jsOk >> s & 1) != 0;
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JSRd(int s) => (_jsRd >> s & 1) != 0;
