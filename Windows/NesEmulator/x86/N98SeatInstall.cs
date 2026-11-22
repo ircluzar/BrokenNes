@@ -11,7 +11,7 @@ public sealed partial class N98Seat
 {
     /// <summary>The install shell's seat: the seat base (or base + layers), the blank standard D: (the game is installed onto it; the warm-boot
     /// swap puts a copy-on-write drive over the same blank bytes), the disc, and the launcher command that starts C:\N98\N98INST.EXE.</summary>
-    public static N98Seat ForInstall(string machine, string sound, string? disc, string[] layers)
+    public static N98Seat ForInstall(string machine, string sound, string? disc, string[] layers, int driveMb = StandardDriveMb)
     {
         string cache = Environment.GetEnvironmentVariable("BROKENNES_N98_CACHE") is { Length: > 0 } c ? c : LocalRoot;
         var s = new N98Seat { Id = "install", Title = "Install a Windows game", V2 = true, Machine = PcMachinePreset.Find(machine).Key, Sound = sound, CacheDir = Path.Combine(cache, "install") };
@@ -21,12 +21,19 @@ public sealed partial class N98Seat
         s.ImagePath = baseImg;
         Report("reading Windows 98", 0);
         s.Image = DiskImage.ReadImageFile(baseImg);
-        s.WarmDir = WarmDirFor(baseImg, s.Image, cache, s.Machine, sound, s.EffectiveP2Cpi);
-        s.BlankDrive = MakeBlankDrive(StandardDriveMb);
-        s.GameDrive = s.BlankDrive;   // (DiskImage never writes its base: the install's writes land in the game drive's overlay)
-        string bh = Path.Combine(s.WarmDir, "blank.p256");
-        if (File.Exists(bh) && File.ReadAllText(bh).Trim() is { } bt && bt.StartsWith("p256:", StringComparison.Ordinal)) DiskImage.SeedHash(s.BlankDrive, bt);
-        s.Image2 = s.BlankDrive;
+        s.WarmDir = WarmDirFor(baseImg, s.Image, cache, s.Machine, sound, s.EffectiveP2Cpi, driveMb);
+        if (driveMb != StandardDriveMb)
+        {
+            s.DriveMb = driveMb; s.BlankDriveBig = MakeBlankDriveBig(driveMb); s.GameDriveBig = s.BlankDriveBig;   // a large game drive (its own warm state)
+        }
+        else
+        {
+            s.BlankDrive = MakeBlankDrive(StandardDriveMb);
+            s.GameDrive = s.BlankDrive;   // (DiskImage never writes its base: the install's writes land in the game drive's overlay)
+            string bh = Path.Combine(s.WarmDir, "blank.p256");
+            if (File.Exists(bh) && File.ReadAllText(bh).Trim() is { } bt && bt.StartsWith("p256:", StringComparison.Ordinal)) DiskImage.SeedHash(s.BlankDrive, bt);
+            s.Image2 = s.BlankDrive;
+        }
         s.CdPath = disc;
         s.Command = Encoding.Latin1.GetBytes("N98CMD1\r\nrun=C:\\N98\\N98INST.EXE\r\nexit=poweroff\r\n");
         s.SystemFiles.Add((@"C:\N98\N98INST.EXE", File.ReadAllBytes(InstallShell())));

@@ -101,6 +101,20 @@ public sealed class DiskImage
         return true;
     }
 
+    /// <summary>The whole disk as the machine sees it into a raw image file, without one big array (any size; zero areas of a big base are not written).</summary>
+    public void WriteFile(string path)
+    {
+        using var f = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20);
+        f.SetLength(Length);
+        if (Big != null)
+            for (int i = 0; i < Big.ChunkCount; i++) { if (Big.ChunkAt(i) is { } c) { f.Position = (long)i * DiskBigBase.ChunkBytes; f.Write(c); } }
+        else f.Write(Base);
+        foreach (var (s, sec) in _overlay.OrderBy(k => k.Key)) { f.Position = s * SectorSize; f.Write(sec); }
+    }
+
+    /// <summary>One sector of the base (what the disk held before any write).</summary>
+    public void ReadBase(long s, Span<byte> dst) => BaseSector(s).CopyTo(dst);
+
     public bool Write(long lba, int count, ReadOnlySpan<byte> src)
     {
         if (lba < 0 || count < 0 || lba + count > TotalSectors) return false;

@@ -197,11 +197,13 @@ namespace BrokenNes.Windows.DebugWindows
             TextRow(t, "v2_drop", "--drop globs (space separated)", "");
             TextRow(t, "v2_layers", "--layers ids (space separated)", "");
             TextRow(t, "v2_args", "--args (replace launch args; empty = keep)", "");
+            TextRow(t, "v2_dsize", "--d-size-mb (game drive size; empty = the standard 2000; e.g. 8000 for a big game)", "");
             CheckRow(t, "v2_embed", "--embed-base (the Base tab's .n98d inside the package: self-contained, personal copy only)");
             Row(t, "", Btn("Convert (n98.py v2)", () => Run(Py(), Script("pkg/n98.py"), new[] { "v2", Need("v2_in"), Need("v2_out"), "--work", Path.GetDirectoryName(Need("v2_out"))! }
                     .Concat(V("v2_drop").Length > 0 ? new[] { "--drop" }.Concat(SplitArgs(V("v2_drop"))) : Array.Empty<string>())
                     .Concat(V("v2_layers").Length > 0 ? new[] { "--layers" }.Concat(SplitArgs(V("v2_layers"))) : Array.Empty<string>())
                     .Concat(V("v2_args").Length > 0 ? new[] { "--args", V("v2_args") } : Array.Empty<string>())
+                    .Concat(V("v2_dsize").Length > 0 ? new[] { "--d-size-mb", V("v2_dsize") } : Array.Empty<string>())
                     .Concat(C("v2_embed") ? new[] { "--embed-base", Need("base") } : Array.Empty<string>()))),
                 Btn("= Test boot package", () => Set("test_pkg", V("v2_out"))));
             Heading(t, "The warm state of this base for this app build: made by the first schema-2 package opened (Test boot), or headless:");

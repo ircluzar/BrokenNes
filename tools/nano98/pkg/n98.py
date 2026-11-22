@@ -348,8 +348,9 @@ def to_v2(a):
     z, man = load(a.pkg)
     drop = [g.upper() for g in (a.drop or [])]
     dropped = lambda p: any(fnmatch.fnmatchcase(p.upper(), g) for g in drop)
-    disk = fat32.MemDisk(STD_DRIVE_MB << 20)
-    fat32.mkfs(disk, STD_DRIVE_MB)
+    dmb = getattr(a, 'd_size_mb', None) or STD_DRIVE_MB   # the game drive size (default the standard 2000 MB; large drives past 2 GB, 2026-11-22)
+    disk = fat32.MemDisk(dmb << 20)
+    fat32.mkfs(disk, dmb)
     D = fat32.Fat32(disk, write=True)
     out = zipfile.ZipFile(a.out + '.tmp', 'w', zipfile.ZIP_DEFLATED, compresslevel=6)
     moved_dirs, c_files, nfiles, nbytes, skipped = [], [], 0, 0, []
@@ -432,7 +433,7 @@ def to_v2(a):
     v2.update({'schema': 2, 'created': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
                'tool': 'tools/nano98/pkg/n98.py v2', 'from_schema1': os.path.basename(a.pkg),
                'system': {'base': 'nano98-se', 'layers': a.layers or []},
-               'drives': {'D': {'zip': 'drives/D.n98d', 'p256': dh, 'length': STD_DRIVE_MB << 20}},
+               'drives': {'D': {'zip': 'drives/D.n98d', 'p256': dh, 'length': dmb << 20}},
                'launch': L, 'saves': [mv(x) for x in man.get('saves', [])], 'c_files': c_files, 'ini': ini, 'registry': reg,
                'presets': man.get('presets', {}),
                'stats': {'d_files': nfiles, 'd_bytes': nbytes, 'c_files': len(c_files), 'rewritten_paths': nrew[0],
@@ -525,6 +526,7 @@ def main():
     p.add_argument('--out', required=True); p.add_argument('--full', action='store_true'); p.add_argument('--saves')
     k = sp.add_parser('cmd'); k.add_argument('pkg'); k.add_argument('out'); k.add_argument('--exit', default='poweroff'); k.add_argument('--preset')
     v = sp.add_parser('v2'); v.add_argument('pkg'); v.add_argument('out'); v.add_argument('--work', default='.')
+    v.add_argument('--d-size-mb', type=int, help='game drive size in MB (default 2000; e.g. 8000 for a large game)')
     v.add_argument('--drop', nargs='*'); v.add_argument('--layers', nargs='*'); v.add_argument('--embed-base'); v.add_argument('--args', help='replace the launch arguments')
     y = sp.add_parser('layer'); y.add_argument('pkg'); y.add_argument('out'); y.add_argument('--id', required=True); y.add_argument('--title')
     y.add_argument('--keep', nargs='*'); y.add_argument('--reg', nargs='*', help='registry key globs to keep (default all)')

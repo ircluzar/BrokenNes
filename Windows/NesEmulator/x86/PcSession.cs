@@ -80,7 +80,8 @@ public sealed class PcSession : IConsoleSession
         {
             Seat = seat;
             _m.Command = seat.Command;
-            if (seat.Image2 != null && _m.Ata != null) _m.Hdd[1] = new DiskImage(seat.Image2, false);   // the package's D: (primary slave)
+            if (seat.Image2 != null && _m.Ata != null) _m.Hdd[1] = new DiskImage(seat.Image2, false);
+            else if (seat.BlankDriveBig != null && _m.Ata != null) _m.Hdd[1] = new DiskImage(seat.BlankDriveBig);   // (a large game drive's blank twin)   // the package's D: (primary slave)
             if (seat.CdPath != null && _m.Cd == null && !seat.V2) InsertCd(CdImage.Open(seat.CdPath));   // (schema 2: the disc goes in at the warm point)
             _m.StatusLine += OnSeatStatus;
             _m.UploadByte = OnSeatUpload;
@@ -211,6 +212,8 @@ public sealed class PcSession : IConsoleSession
     private string? _stateId;
     private const string WarmStateId = "n98warm";
     private HashSet<long>? _dReads;
+    private DiskImage NewGameDrive() => Seat!.GameDriveBig != null ? new DiskImage(Seat.GameDriveBig) : new DiskImage(Seat.GameDrive!, false);
+
     private void SwapGameDrive()
     {
         _swapPending = false;
@@ -219,12 +222,12 @@ public sealed class PcSession : IConsoleSession
         if (_dReads != null && blank != null)
         {
             // Windows mounted D: from the blank drive before N98 BOOT: it is only safe to swap when every sector it read (and may cache) is the same on the game drive
-            int diff = 0; var g = Seat!.GameDrive!; var b = blank.Base; var dl = new List<long>();
-            foreach (long sct in _dReads) if (!g.AsSpan((int)(sct * 512), 512).SequenceEqual(b.AsSpan((int)(sct * 512), 512))) { diff++; dl.Add(sct); }
+            int diff = 0; var gd = NewGameDrive(); var dl = new List<long>(); var g1 = new byte[512]; var b1 = new byte[512];
+            foreach (long sct in _dReads) { gd.Read(sct, 1, g1); blank.ReadBase(sct, b1); if (!g1.AsSpan().SequenceEqual(b1)) { diff++; dl.Add(sct); } }
             System.Console.WriteLine($"[nano98] warm point: Windows read {_dReads.Count} D: sectors ({string.Join(",", _dReads.OrderBy(x => x).Take(24))}{(_dReads.Count > 24 ? ",..." : "")}), {diff} differ on this game drive{(diff > 0 ? " (" + string.Join(",", dl.OrderBy(x => x)) + ")" : "")}; D: writes {blank.OverlaySectors}");
             _dReads = null;
         }
-        var d = new DiskImage(Seat!.GameDrive!, false);
+        var d = NewGameDrive();
         if (blank != null && blank.OverlaySectors > 0)
         {
             // what Windows wrote on the blank drive before the warm point (the FAT's "in use" flag in FAT sector 0 of both copies): the same sectors
@@ -233,7 +236,7 @@ public sealed class PcSession : IConsoleSession
             var keys = new List<string>(); ms.Position = 0; var br0 = new BinaryReader(ms);
             for (int n = br0.ReadInt32(); n > 0; n--)
             {
-                long k = br0.ReadInt64(); var sec = br0.ReadBytes(512); var bb = blank.Base.AsSpan((int)(k * 512), 512).ToArray();
+                long k = br0.ReadInt64(); var sec = br0.ReadBytes(512); var bb = new byte[512]; blank.ReadBase(k, bb);
                 keys.Add(k + "[" + string.Join(" ", Enumerable.Range(0, 512).Where(i => sec[i] != bb[i]).Take(8).Select(i => $"{i:x}:{bb[i]:x2}>{sec[i]:x2}")) + "]");
             }
             System.Console.WriteLine($"[nano98] warm point: D: sectors written before the swap: {string.Join(", ", keys)}");

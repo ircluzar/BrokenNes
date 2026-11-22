@@ -53,6 +53,10 @@ public sealed class DiskBigBase
         return c == null ? Zero : c.AsSpan((int)(off % ChunkBytes), DiskImage.SectorSize);
     }
 
+    public int ChunkCount => _chunks.Length;
+    /// <summary>Chunk i's bytes, or null when it is all zeros.</summary>
+    public byte[]? ChunkAt(int i) => _chunks[i];
+
     /// <summary>Bytes in use (allocated chunks): what the base really costs in memory.</summary>
     public long Allocated { get { long n = 0; foreach (var c in _chunks) if (c != null) n += c.Length; return n; } }
 

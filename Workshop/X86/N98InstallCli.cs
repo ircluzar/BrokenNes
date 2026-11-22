@@ -30,7 +30,7 @@ internal static class N98InstallCli
     {
         string? A(string k) { int i = Array.IndexOf(args, k); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
         string[] Many(string k) { int i = Array.IndexOf(args, k); if (i < 0) return Array.Empty<string>(); return args.Skip(i + 1).TakeWhile(x => !x.StartsWith("--")).ToArray(); }
-        var o = new N98Install.InstallOptions { Disc = A("--disc"), Machine = A("--machine") ?? "win98-p166-nano", Sound = A("--sound") ?? "SB16_D072", Layers = Many("--layers") };
+        var o = new N98Install.InstallOptions { Disc = A("--disc"), Machine = A("--machine") ?? "win98-p166-nano", Sound = A("--sound") ?? "SB16_D072", Layers = Many("--layers"), DriveMb = A("--drive-mb") is { } dm ? int.Parse(dm) : N98Seat.StandardDriveMb };
         if (A("--drive") is { } drv)
         {
             string iso = A("--rip-to") ?? Path.Combine(N98Seat.DiscFolder, $"disc_{DateTime.Now:yyyyMMdd_HHmmss}.iso");

@@ -56,6 +56,11 @@ Fields:
   states never mix. X86_P2CPI (dev override) wins. Set it in the packaging window's Manifest tab or with the agent API `capture {p2cpi}`.
   Machines with 256 MB: `WIN98-P166-NANO-256`, `WIN98-P2-NANO-256` (hardware.machine). `capture {drop: ["MOVIES/HQ/*", ...]}` /
   `n98.py install --drop` leaves game-drive folders out of the package (globs under D:/GAME; stats d_dropped_files/bytes).
+  Large game drives (2026-11-22): `--drive-mb N` (CLI) / `start {drive_mb: N}` (HTTP, MCP) installs onto an N MB FAT32 D:, captured with
+  `--d-size-mb N` (n98.py install / v2, packaging window field). The seat reads the size from drives/D.n98d; its blank twin and warm state are
+  per size (warm folder `-dN`). Disks past 2 GB use DiskBigBase (64 MB chunks, zero chunks free; same p256). Proven: 8000 MB AoE (cold 12 s,
+  warm 6 s), 8000 + 16000 MB install-flow packages (22 KB each), state round trip exact. Each new size: check the seat log "N differ" once and
+  add its mount-probe data sector to N98Seat.ProbeSector + fat32.mkfs (measured: 2000 -> 3598978, 8000 -> 6089731).
 - `launch`: what the seat launcher runs. Paths use `/`; `n98.py cmd` turns them into the seat COMMAND PORT text
   (format owned by `tools/nano98/seat.py` / `n98launch.c`: `N98CMD1`, `run=`, `args=`, `dir=`, `exit=`).
 - `cd`: disc images the game needs, by reference only (the user's own rips, never inside the package).

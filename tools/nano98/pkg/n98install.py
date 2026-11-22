@@ -38,8 +38,9 @@ def install(a, n98):
     z, man = n98.load(s1)
     # D: the game drive
     src = fat32.Fat32(fat32.open_ro(a.d))
-    disk = fat32.MemDisk(STD_DRIVE_MB << 20)
-    fat32.mkfs(disk, STD_DRIVE_MB)
+    dmb = getattr(a, 'd_size_mb', None) or STD_DRIVE_MB   # the game drive size (default the standard 2000 MB; large drives past 2 GB, 2026-11-22)
+    disk = fat32.MemDisk(dmb << 20)
+    fat32.mkfs(disk, dmb)
     D = fat32.Fat32(disk, write=True)
     nfiles = nbytes = 0
     moved = []
@@ -129,7 +130,7 @@ def install(a, n98):
           'created': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
           'hardware': {'machine': a.machine or 'WIN98-P166-NANO', 'video': 'S3', 'ram_mb': 64, 'min_cpu': 'P133', 'sound': a.sound or 'SB16_D072', **({'p2cpi': a.p2cpi} if a.p2cpi and a.p2cpi >= 1.0 else {})},
           'system': {'base': 'nano98-se', 'layers': layers},
-          'drives': {'D': {'zip': 'drives/D.n98d', 'p256': dh, 'length': STD_DRIVE_MB << 20}},
+          'drives': {'D': {'zip': 'drives/D.n98d', 'p256': dh, 'length': dmb << 20}},
           'launch': {'exe': exe, 'args': a.args or '', 'cwd': cwd},
           'cd': [{'label': os.path.splitext(c)[0].upper()[:11], 'ref': c, 'required': True, 'note': "the user's own disc; never shipped"} for c in (a.cd or [])],
           'presets': {'default': {}}, 'saves': [W(x) for x in (a.saves or [])],
@@ -174,5 +175,6 @@ def add_parsers(sp):
     n.add_argument('--p2cpi', type=float, help='per-game Pentium II cost (manifest hardware.p2cpi; 1.0 = faithful)')
     n.add_argument('--layers', nargs='*', help='system layers the install ran on'); n.add_argument('--layer-id', help='promote hardware changes to this layer')
     n.add_argument('--layer-out'); n.add_argument('--exclude', nargs='*'); n.add_argument('--work')
+    n.add_argument('--d-size-mb', type=int, help='game drive size in MB (default 2000; e.g. 8000 for a large game)')
     n.add_argument('--drop', nargs='*', help='game-drive globs left out of the package (relative to D:/GAME, e.g. "MOVIES/HQ/*" "*.BIK")')
     x = sp.add_parser('exes', help='list the programs on a game drive (JSON)'); x.add_argument('d')

@@ -91,7 +91,7 @@ namespace BrokenNes.Windows
                             var o = new N98Install.InstallOptions
                             {
                                 Disc = body["disc"]?.GetValue<string>(), Machine = body["machine"]?.GetValue<string>() ?? "win98-p166-nano",
-                                Sound = body["sound"]?.GetValue<string>() ?? "SB16_D072", Settle = body["settle"]?.GetValue<bool>() ?? false,
+                                Sound = body["sound"]?.GetValue<string>() ?? "SB16_D072", DriveMb = body["drive_mb"]?.GetValue<int>() ?? NesEmulator.X86.N98Seat.StandardDriveMb, Settle = body["settle"]?.GetValue<bool>() ?? false,
                                 Layers = body["layers"] is JsonArray la ? System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Select(la, x => x!.GetValue<string>())) : Array.Empty<string>(),
                             };
                             if (body["drive"]?.GetValue<string>() is { Length: > 0 } drv)
