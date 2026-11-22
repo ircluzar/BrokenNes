@@ -296,6 +296,45 @@ public sealed partial class NvGeForce
 
     // ---------------- primitive assembly ----------------
     private static readonly bool RkwRhw = Environment.GetEnvironmentVariable("X86_RKW") == "rhw";
+    /// <summary>The fixed-function transform (ENGINE without the VP bit): clip = PROJECTION x (MODELVIEW x v0), both row-major at 0x680 / 0x480;
+    /// screen = clip / w x VIEWPORT_SCALE + VIEWPORT_TRANSLATE (the same screen-space result the driver's own programs produce);
+    /// colours / fog pass through (no lighting yet); texture coordinates through TEX_MATRIX n (0x6C0 + 64 n) when TEX_MATRIX_ENABLE n.</summary>
+    private void FixedFunction(uint inst, float[] vin, float[] vout)
+    {
+        for (int i = 0; i < 64; i++) vout[i] = 0;
+        float x = vin[0], y = vin[1], z = vin[2], w = vin[3];
+        float[] mv = RMat(inst, 0x480), pj = RMat(inst, 0x680);
+        float ex = mv[0] * x + mv[1] * y + mv[2] * z + mv[3] * w, ey = mv[4] * x + mv[5] * y + mv[6] * z + mv[7] * w,
+              ez = mv[8] * x + mv[9] * y + mv[10] * z + mv[11] * w, ew = mv[12] * x + mv[13] * y + mv[14] * z + mv[15] * w;
+        float cx = pj[0] * ex + pj[1] * ey + pj[2] * ez + pj[3] * ew, cy = pj[4] * ex + pj[5] * ey + pj[6] * ez + pj[7] * ew,
+              cz = pj[8] * ex + pj[9] * ey + pj[10] * ez + pj[11] * ew, cw = pj[12] * ex + pj[13] * ey + pj[14] * ez + pj[15] * ew;
+        if (cw == 0) cw = 1e-6f;
+        float iw = 1 / cw;
+        vout[0] = cx * iw * F32(G(inst, 0xa30)) + F32(G(inst, 0xa20));
+        vout[1] = cy * iw * F32(G(inst, 0xa34)) + F32(G(inst, 0xa24));
+        vout[2] = cz * iw * F32(G(inst, 0xa38)) + F32(G(inst, 0xa28));
+        vout[3] = cw;
+        for (int c = 0; c < 4; c++) { vout[12 + c] = vin[12 + c]; vout[16 + c] = vin[16 + c]; vout[20 + c] = vin[20 + c]; }
+        for (int t = 0; t < 8; t++)
+        {
+            int si = (8 + t) * 4;
+            if (G(inst, 0x240 + t * 4) != 0)
+            {
+                float[] tm = RMat(inst, 0x6c0 + t * 64);
+                for (int r = 0; r < 4; r++) vout[si + r] = tm[r * 4] * vin[si] + tm[r * 4 + 1] * vin[si + 1] + tm[r * 4 + 2] * vin[si + 2] + tm[r * 4 + 3] * vin[si + 3];
+            }
+            else for (int c = 0; c < 4; c++) vout[si + c] = vin[si + c];
+        }
+    }
+
+    private float[] RMat(uint inst, int b)
+    {
+        var m = new float[16]; bool any = false;
+        for (int i = 0; i < 16; i++) { uint u = G(inst, b + i * 4); m[i] = F32(u); any |= u != 0; }
+        if (!any) m[0] = m[5] = m[10] = m[15] = 1;
+        return m;
+    }
+
     private sealed class RVert { public float X, Y, Z, Iw; public readonly float[] Var = new float[16 * 4]; }   // screen x, y, depth, 1/w; VP outputs
 
     private void RankineFlush(uint inst)
@@ -309,7 +348,7 @@ public sealed partial class NvGeForce
         var vout = new float[64];
         for (int i = 0; i < vin.Count; i++)
         {
-            RunVp(inst, vin[i], vout);
+            if ((G(inst, 0x1e94) & 2) != 0) RunVp(inst, vin[i], vout); else FixedFunction(inst, vin[i], vout);
             var v = new RVert();
             Array.Copy(vout, v.Var, 64);
             // Kelvin-style: the program's position is already in screen space (x, y in pixels, z in depth units); w is the clip w,
