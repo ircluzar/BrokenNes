@@ -276,7 +276,7 @@ public sealed partial class I386
     {
         if (!Fetch8(out uint imm)) return FAIL;
         if (Cond((uint)b1)) JumpRel(Sext8(imm));
-        else _seqArm = false;   // (a fall-through not taken every time: looked up, so it gets its own entry - JitSeen)
+        else if (!JitSeqJcc) _seqArm = false;   // (a fall-through not taken every time: looked up, so it gets its own entry - JitSeen)
         return OK;
     }
     [MethodImpl(MethodImplOptions.NoInlining)]

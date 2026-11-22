@@ -180,6 +180,8 @@ public sealed partial class I386
     /// or failed/pending/compiled entry looks up again. Only which code runs compiled can change, never what it does.</summary>
     private static readonly bool JitSeqSkip = Environment.GetEnvironmentVariable("X86_NOSEQSKIP") == null;
     private bool _seqArm;
+    /// <summary>X86_SEQJCC=1: a not-taken Jcc keeps the sequential skip armed (its fall-through counts as run for regions).</summary>
+    private static readonly bool JitSeqJcc = Environment.GetEnvironmentVariable("X86_SEQJCC") == "1";
 
     private static readonly uint JitWatch = Convert.ToUInt32(Environment.GetEnvironmentVariable("X86_JITWATCH") ?? "0", 16);
     private int _jwN;
@@ -716,7 +718,7 @@ public sealed partial class I386
             if (e.Kind == DK_MOVRI && e.Bits == 32 && e.Len >= 5 && JitLiveImm(end - 4)) { e.Live = true; JitLiveImms++; }   // (live immediate: read from memory)
             if (JitFoldsAt(e, end)) { e.Folds = true; e.FoldNb = (byte)U8(end); e.FoldRel = Sext8(U8(end + 1)); }
             found.Add((pa, e)); if (e.Kind != DK_INTERP) anyCompiled = true;
-            if (e.Kind is not (DK_JMP or DK_CALL or DK_RET) && !(e.Kind == DK_INTERP && e.Op == 1)) { todo.Enqueue(end); if (e.Kind != DK_JCC && !e.Folds) fall.Add(end); }   // (fall: run right after it, its lookup maybe skipped - sequential skip)
+            if (e.Kind is not (DK_JMP or DK_CALL or DK_RET) && !(e.Kind == DK_INTERP && e.Op == 1)) { todo.Enqueue(end); if (JitSeqJcc || e.Kind != DK_JCC && !e.Folds) fall.Add(end); }   // (fall: run right after it, its lookup maybe skipped - sequential skip)
             if (e.Kind is DK_JMP or DK_JCC) todo.Enqueue(end + e.Imm);
             if (e.Folds) todo.Enqueue(end + 2 + e.FoldRel);
         }
