@@ -1,0 +1,36 @@
+# Age of Empires (the user's own disc) through the nano98 install flow, headless: N98Install via Workshop --n98install --script.
+# Proves the agent path end to end; coordinates are the 640x480 setup screens ({at:x,y} = absolute pointer).
+runsetup
+wait frames 1200
+shot 01_autorun.png
+keys {at:214,156}{click}
+wait frames 1500
+shot 02_welcome.png
+keys {enter}
+wait frames 900
+shot 03_eula.png
+# I Agree (the user accepted the Age of Empires licence for our emulated PCs, 2026-11-20)
+keys {at:108,449}{click}
+wait frames 900
+shot 04_folder.png
+keys D:\GAME
+keys {at:200,362}{click}
+wait frames 900
+shot 05_type.png
+# Typical
+keys {at:103,180}{click}
+wait frames 6000
+wait frames 300
+shot 06_wants_windows_cd.png
+# Windows asks for its own CD (video support: mciavi.drv): the Windows 98 SE files disc, source E:\WIN98 (the seat's setup source)
+winfiles
+wait frames 300
+keys {enter}
+wait frames 9000
+shot 07_done.png
+keys {at:117,338}{click}
+wait frames 2000
+disc C:/BrokenNes-work/x86_cds/age_of_empires.iso
+shot 08_menu.png
+keys {at:213,280}{click}
+wait exit 3000
