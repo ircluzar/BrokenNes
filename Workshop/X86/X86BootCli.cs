@@ -288,13 +288,44 @@ internal static class X86BootCli
                 .Replace("\\u", "\x01").Replace("\\d", "\x02").Replace("\\l", "\x03").Replace("\\r", "\x04").Replace("\\w", "\x05");
             // "@N=>KEYS": graphics screens have no text to match, so wait N frames then type
             bool wait = u.StartsWith('@') && int.TryParse(u[1..], out _);
-            int ns = wait ? RunUntil(m, null, int.Parse(u[1..])) : RunUntil(m, u, stepMax, true); n += ns;   // (the screen only: the teletype log keeps earlier screens' text)
-            bool ok = wait || Screen(m).Contains(u);
+            // "#RRGGBB@X,Y[/N]=>KEYS": a graphics screen check: wait (up to N frames, else --stepmax) until pixel X,Y has that colour, then hold 60 frames
+            // "...?=>KEYS": optional: when the check fails the keys are skipped and the script goes on (e.g. a hang that only sometimes happens)
+            bool optional = u.EndsWith('?'); if (optional) u = u[..^1];
+            // "...!=>KEYS": the keys only when the check FAILED (e.g. "desktop within N frames, else {powercycle}"); the script goes on either way
+            bool unless = u.EndsWith('!'); if (unless) u = u[..^1];
+            bool pix = u.StartsWith('#') && u.Contains('@');
+            bool PixelIs()
+            {
+                var pp = u[1..].Split('@'); var xy = pp[1].Split('/')[0].Split(','); int x = int.Parse(xy[0]), y = int.Parse(xy[1]);
+                int want = Convert.ToInt32(pp[0], 16); var v = m.Vga;
+                return x < v.Width && y < v.Height && (v.Frame[y * v.Width + x] & 0xffffff) == want;
+            }
+            int ns;
+            if (pix)
+            {
+                int lim = u.Contains('/') ? int.Parse(u[(u.IndexOf('/') + 1)..]) : stepMax; ns = 0;
+                while (ns < lim)   // the colour must hold for 60 frames (a stale or passing picture does not count)
+                {
+                    if (PixelIs()) { ns += RunUntil(m, null, 60); if (PixelIs()) break; }
+                    else ns += RunUntil(m, null, 30);
+                }
+            }
+            else ns = wait ? RunUntil(m, null, int.Parse(u[1..])) : RunUntil(m, u, stepMax, true);
+            n += ns;   // (the screen only: the teletype log keeps earlier screens' text)
+            bool ok = wait || (pix ? PixelIs() : Screen(m).Contains(u));
             Console.WriteLine($"x86boot: step {si} \"{u}\" {(ok ? "found" : "NOT found")} after {ns} frames (total {n}, {sw.Elapsed.TotalSeconds:F0} s, heap {GC.GetTotalMemory(false) >> 20} MB){(m.Stopped != null ? ", STOPPED: " + m.Stopped : "")}");
             if (shot != null) X86Shots.SavePng(m.Vga, Path.ChangeExtension(shot, null) + $"_step{si}.png");
             si++;
+            if (unless)
+            {
+                if (ok) continue;
+                ok = true; Console.WriteLine("x86boot: check failed: running its keys");
+            }
+            if (!ok && optional) { Console.WriteLine($"x86boot: optional step skipped"); continue; }
             if (!ok) break;
             n += RunUntil(m, null, int.Parse(Arg(args, "--stepdelay") ?? "0"));   // let a menu settle before typing
+            // "{powercycle}": a cold boot with the disks kept (the nano98 base build: Win98 Setup's safe recovery skips the detection probe that hung)
+            if (keys.Trim() == "{powercycle}") { m.PowerOn(true); Console.WriteLine($"x86boot: power cycle at frame {n}"); continue; }
             TypeText(m, keys);
             n += RunUntil(m, null, 35);   // let the keys land before looking for the next screen
         }

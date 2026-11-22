@@ -42,6 +42,7 @@ public sealed class PcSession : IConsoleSession
         if (Environment.GetEnvironmentVariable("BROKENNES_X86_GCLAT") != "0") System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
         MachineKey = preset.Key;
         if (!preset.IsClassic) model = preset.Cpu;
+        if (seat != null && model is { Gen: 6 } && seat.EffectiveP2Cpi != model.Cpi) model = model with { Cpi = seat.EffectiveP2Cpi };   // the game's own P2 cost
         _model = model != null && !model.Legacy ? model : null;
         _m = preset.IsClassic ? new PcMachine(PcMachine.DefaultMemory, _model) : new PcMachine(preset.Config, _model, preset.Video);
         // the network card's cable: the built-in NAT (DHCP, DNS, the HTTPS bridge) only when asked for (BROKENNES_X86_NET=1); unplugged by default

@@ -122,7 +122,7 @@ namespace BrokenNes.Windows.DebugWindows
             TextRow(t, "m_title", "Title (--title)", ""); TextRow(t, "m_id", "Id (--id, optional)", "");
             Heading(t, "Hardware");
             TextRow(t, "h_machine", "machine", "WIN98-P166"); TextRow(t, "h_video", "video", "S3"); TextRow(t, "h_ram", "ram_mb", "64");
-            TextRow(t, "h_mincpu", "min_cpu", "P90"); TextRow(t, "h_sound", "sound", "SB16_D072"); TextRow(t, "h_3d", "3d (optional)", "");
+            TextRow(t, "h_mincpu", "min_cpu", "P90"); TextRow(t, "h_sound", "sound", "SB16_D072"); TextRow(t, "h_3d", "3d (optional)", ""); TextRow(t, "h_p2cpi", "p2cpi (Pentium II cost per game, empty = 1.0; e.g. 5.3)", "");
             Heading(t, "Launch program");
             TextRow(t, "l_exe", "exe (C:/...)", ""); TextRow(t, "l_args", "args", ""); TextRow(t, "l_cwd", "cwd", ""); TextRow(t, "l_display", "display", "800x600x8");
             Heading(t, "Saves globs (one per line)");
@@ -297,7 +297,7 @@ namespace BrokenNes.Windows.DebugWindows
             var p = ReadProfile();
             string S(JsonNode? n) => n?.ToString() ?? "";
             var h = p["hardware"]; var l = p["launch"];
-            Set("h_machine", S(h?["machine"])); Set("h_video", S(h?["video"])); Set("h_ram", S(h?["ram_mb"])); Set("h_mincpu", S(h?["min_cpu"])); Set("h_sound", S(h?["sound"])); Set("h_3d", S(h?["3d"]));
+            Set("h_machine", S(h?["machine"])); Set("h_video", S(h?["video"])); Set("h_ram", S(h?["ram_mb"])); Set("h_mincpu", S(h?["min_cpu"])); Set("h_sound", S(h?["sound"])); Set("h_3d", S(h?["3d"])); Set("h_p2cpi", h?["p2cpi"]?.ToJsonString() ?? "");
             Set("l_exe", S(l?["exe"])); Set("l_args", S(l?["args"])); Set("l_cwd", S(l?["cwd"])); Set("l_display", S(l?["display"]));
             Set("saves", string.Join(Environment.NewLine, (p["saves"] as JsonArray ?? new JsonArray()).Select(S)));
             Set("presets", p["presets"]?.ToJsonString() ?? "{}");
@@ -311,6 +311,7 @@ namespace BrokenNes.Windows.DebugWindows
             var h = p["hardware"] as JsonObject ?? new JsonObject();
             void Put(JsonObject o, string k, string v, bool num = false) { if (v.Length == 0) o.Remove(k); else o[k] = num && int.TryParse(v, out var n) ? n : v; }
             Put(h, "machine", V("h_machine")); Put(h, "video", V("h_video")); Put(h, "ram_mb", V("h_ram"), true); Put(h, "min_cpu", V("h_mincpu")); Put(h, "sound", V("h_sound")); Put(h, "3d", V("h_3d"));
+            if (double.TryParse(V("h_p2cpi"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var cpi) && cpi >= 1.0) h["p2cpi"] = cpi; else h.Remove("p2cpi");
             p["hardware"] = h.DeepClone();
             var l = p["launch"] as JsonObject ?? new JsonObject();
             l["exe"] = V("l_exe"); l["args"] = V("l_args"); l["cwd"] = V("l_cwd"); l["display"] = V("l_display");

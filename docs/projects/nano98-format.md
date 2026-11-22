@@ -51,6 +51,11 @@ Fields:
   Applying onto another base is allowed (that is the point: the nano98 base) and only noted.
 - `hardware`: `machine` (x86boot machine preset), `video` (S3 / VGA), `ram_mb` (64 default, 128 max), `min_cpu`
   (warn below it, never refuse), optional `sound`, `3d` (e.g. Voodoo 1), `net`.
+  Optional `p2cpi` (user 2026-11-22 "Per game"): the Pentium II cost on a gen-6 machine (1.0 = faithful default, e.g. StarCraft 5.3;
+  a machine preset may carry its own via its CPU model). Applied when the seat starts; part of the warm-state folder name (`-cpiN`), so
+  states never mix. X86_P2CPI (dev override) wins. Set it in the packaging window's Manifest tab or with the agent API `capture {p2cpi}`.
+  Machines with 256 MB: `WIN98-P166-NANO-256`, `WIN98-P2-NANO-256` (hardware.machine). `capture {drop: ["MOVIES/HQ/*", ...]}` /
+  `n98.py install --drop` leaves game-drive folders out of the package (globs under D:/GAME; stats d_dropped_files/bytes).
 - `launch`: what the seat launcher runs. Paths use `/`; `n98.py cmd` turns them into the seat COMMAND PORT text
   (format owned by `tools/nano98/seat.py` / `n98launch.c`: `N98CMD1`, `run=`, `args=`, `dir=`, `exit=`).
 - `cd`: disc images the game needs, by reference only (the user's own rips, never inside the package).

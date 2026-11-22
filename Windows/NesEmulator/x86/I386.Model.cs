@@ -82,8 +82,10 @@ public sealed record CpuModel
     /// <summary>The P2's guest clocks per instruction. 1.0 = the faithful model (400 M instructions per guest second); higher = fewer
     /// instructions per guest second (less host work), while RDTSC still counts 400 MHz, so Windows and Sandra still see a PII 400.
     /// X86_P2CPI overrides (user 2026-11-21: "try a cheaper P2 cost model first").</summary>
-    private static double P2Cpi => double.TryParse(Environment.GetEnvironmentVariable("X86_P2CPI"), System.Globalization.NumberStyles.Float,
-        System.Globalization.CultureInfo.InvariantCulture, out double v) && v >= 1.0 ? v : 1.0;
+    private static double P2Cpi => P2CpiOverride ?? 1.0;
+    /// <summary>X86_P2CPI when set (>= 1.0): the developer override, above a package's own hardware.p2cpi.</summary>
+    public static double? P2CpiOverride => double.TryParse(Environment.GetEnvironmentVariable("X86_P2CPI"), System.Globalization.NumberStyles.Float,
+        System.Globalization.CultureInfo.InvariantCulture, out double v) && v >= 1.0 ? v : null;
 
     /// <summary>Bisect switches (measurement only): X86_CPUID_SIG / X86_CPUID_EDX (hex) replace CPUID 1 EAX / EDX.</summary>
     private CpuModel EnvOverride()
