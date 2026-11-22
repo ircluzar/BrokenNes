@@ -1,0 +1,8 @@
+{
+  "chapter": "1-2", "score": 2, "slack": 30, "beam": 4, "rounds": 2, "budget": 400, "seed": 12,
+  "generators": [
+    { "kind": "delete", "from": 0, "to": 330, "step": 5, "len": [1, 20] },
+    { "kind": "hold", "from": 330, "to": 2300, "range": 3 },
+    { "kind": "shift", "from": 330, "to": 2300, "range": 2 }
+  ]
+}

@@ -25,6 +25,7 @@ internal sealed class Args
         return new Args(dict);
     }
 
+    public string? RawJson(string k) => d.TryGetValue(k, out var v) ? v.GetRawText() : null;
     public bool Has(string k) => d.TryGetValue(k, out var v) && v.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
 
     public string? Str(string k)

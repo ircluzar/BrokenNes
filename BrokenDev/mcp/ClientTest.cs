@@ -179,6 +179,10 @@ internal static class ClientTest
                 await Call("tas_session", new { action = "close", session = sid });
                 var tdf = await Call("tas_diff", new { a = scr, b = S(tsv["run"]), rom = nes, @out = Path.Combine(dir, "tas1_diff") });
                 Check("tas_diff", !tdf.IsError && L(tdf["firstInputDiff"]?["frame"]) == 60 && (tdf["firstRamDiff"] != null ? L(tdf["firstRamDiff"]) >= 60 : S(tdf["firstInputDiff"]?["note"]).Contains("lag")), tdf.ToString());
+                // T3: a local search (no goals: the score is the chapter's length, so the best candidate is the biggest delete), written back + blessed
+                var tsr = await Call("tas_search", new { path = scr, rom = nes, @out = Path.Combine(dir, "tas1_search"),
+                    spec = new { chapter = "tas1", beam = 2, rounds = 1, budget = 20, generators = new object[] { new { kind = "delete", from = 60, to = 70, step = 5, len = new[] { 1, 3 } } } } });
+                Check("tas_search", !tsr.IsError && L(tsr["gain"]) == 3 && tsr["blessed"]?.GetValue<bool>() == true && File.Exists(S(tsr["run"])), tsr.ToString());
             }
         }
 

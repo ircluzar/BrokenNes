@@ -1,0 +1,8 @@
+{
+  "schema": 1, "console": "nes", "game": "smb1", "title": "Super Mario Bros. World 1-2 (T3 search start)",
+  "rom_sha1": "ea343f4e445a9050d4b4fbac2c77d0693b1d0922", "cores": "FIX/FIX/FIX", "power_on": "fceux", "ntsc": false,
+  "chapters": [
+    { "id": "1-2", "title": "World 1-2 from the AutoTAS chapter start", "start": "state:1-2.start.state", "script": "1-2.tas",
+      "goal": [ "always: lives >= 1", "always: engine != 11", "reach: engine == 4", "reach: level == 2" ] }
+  ]
+}
