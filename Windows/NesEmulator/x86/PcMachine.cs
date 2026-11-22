@@ -101,8 +101,8 @@ public sealed partial class PcMachine : IX86Bus
         if (config.Storage == PcStorage.Ide) Ata = new AtaController(Pic);
         if (config.Bus != PcBus.Isa)
         {
-            Nic = new Rtl8029();
-            Nic.SetIrq = on => { int irq = Pci!.Isa.Cfg[0x61]; if (irq < 16) Pic.SetIrq(irq, on ? 1 : 0); };
+            if (!config.NoNic) Nic = new Rtl8029();
+            if (Nic != null) Nic.SetIrq = on => { int irq = Pci!.Isa.Cfg[0x61]; if (irq < 16) Pic.SetIrq(irq, on ? 1 : 0); };
             if (config.Voodoo) Voodoo = new Voodoo1();
             Pci = new PciBus(this);
         }

@@ -1,5 +1,6 @@
 # seat.py: nano98 seat tools (run with the pyfatfs venv: C:/BrokenNes-work/tools/pyfat_venv/Scripts/python.exe -I seat.py ...)
 #   seat.py install DISK.img          put C:\N98\N98LAUNCH.EXE on an installed Win98 disk and make it the shell (SYSTEM.INI shell=)
+#                                     (+ seat_look.py: the nano98 boot screen, black desktop)
 #   seat.py cmd OUT.txt run=PATH [args=...] [dir=...] [exit=poweroff|shell|restart]
 #                                     write the command text for the COMMAND PORT (x86boot --n98cmd OUT.txt)
 import os, struct, sys
@@ -26,6 +27,7 @@ def install(img):
         i = next(k for k, l in enumerate(out) if l.strip().lower() == '[boot]'); out.insert(i + 1, 'shell=C:\\N98\\N98LAUNCH.EXE')
     with f.openbin('/WINDOWS/SYSTEM.INI', 'w') as o: o.write('\r\n'.join(out).encode('latin1'))
     f.close(); fsinfo_unknown(img)
+    import seat_look; seat_look.apply(img)
     print(f'{img}: shell = C:\\N98\\N98LAUNCH.EXE')
 
 def cmd(out, kv):
