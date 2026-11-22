@@ -106,7 +106,7 @@ public sealed partial class PcMachine : IX86Bus
         Pit = new Pit8254(() => PitNow, () => Pic.Pulse(0));
         Kbc = new Kbc8042(Pic, config.Bus == PcBus.Pci430TX && Environment.GetEnvironmentVariable("X86_NOMOUSE") == null);   // (X86_NOMOUSE: a diagnostic)   // the Windows 98 board has the PS/2 mouse
         Cmos = new Cmos(() => PitNow, MemKb);
-        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video == PcVideo.GeForce256, video == PcVideo.VBoxVga);
+        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video == PcVideo.GeForce256, video == PcVideo.VBoxVga, config.VramMB * 1024 * 1024);
         S3 = Vga.S3;
         Nv = Vga.Nv;
         _vramNs = Cpu.Model.Legacy ? 0 : S3 != null || Nv != null ? 150 : Cpu.Model.Gen <= 3 ? 650 : 450;
@@ -299,7 +299,7 @@ public sealed partial class PcMachine : IX86Bus
     }
     // a 32-bit access to an IDE data port is two 16-bit cycles on that same port
     private bool IsAtaData(int port) => Ata != null && (port == 0x1f0 || port == 0x170);
-    public uint In32(int port) => Pci != null && Pci.In(port, 4, out uint pv) ? pv : S3 is { VBox: true } && port == 0x1cf ? (uint)S3Trio64.VramBytes : IsAtaData(port) ? (uint)(In16(port) | (In16(port) << 16)) : (uint)(In16(port) | (In16(port + 2) << 16));
+    public uint In32(int port) => Pci != null && Pci.In(port, 4, out uint pv) ? pv : S3 is { VBox: true } && port == 0x1cf ? (uint)S3.VramBytes : IsAtaData(port) ? (uint)(In16(port) | (In16(port) << 16)) : (uint)(In16(port) | (In16(port + 2) << 16));
     public void Out32(int port, uint v)
     {
         if (Pci != null && Pci.Out(port, 4, v)) return;
@@ -570,7 +570,7 @@ public sealed partial class PcMachine : IX86Bus
                 var ss = new MemoryStream();
                 using (var sw = new BinaryWriter(ss)) S3.Save(sw);
                 var blob = ss.ToArray();
-                w.Write(0x41475653); w.Write(S3.VBox ? S3Trio64.VBoxId : S3Trio64.Id); w.Write(blob.Length); w.Write(blob);   // "SVGA"
+                w.Write(0x41475653); w.Write(S3.CardId); w.Write(blob.Length); w.Write(blob);   // "SVGA"
             }
             // the machine config and its new devices, last: a classic machine's state is byte for byte what it was
             if (ConfigInState)
@@ -702,7 +702,7 @@ public sealed partial class PcMachine : IX86Bus
         if (saved == null && ConfigInState) throw new InvalidDataException($"this x86 state is for the classic machine (486, BIOS disks), this machine is {Config}");
         WireAta();
         // the video card must be the one the state was saved on: a mismatch is an error, never a guess
-        string cardId = S3 != null ? (S3.VBox ? S3Trio64.VBoxId : S3Trio64.Id) : Nv != null ? NvGeForce.Id : "VGA";
+        string cardId = S3 != null ? S3.CardId : Nv != null ? NvGeForce.Id : "VGA";
         if ((svgaId ?? "VGA") != cardId)
             throw new InvalidDataException($"this state was saved with the {svgaId ?? "VGA"} video card, this machine has the {cardId}");
         if (Nv != null) { using var nr = new BinaryReader(new MemoryStream(svgaBlob!)); Nv.Load(nr); }

@@ -21,7 +21,10 @@ namespace NesEmulator.X86;
 
 public sealed class S3Trio64
 {
-    public const int VramBytes = 4 * 1024 * 1024;
+    /// <summary>The Trio64's 4 MB (also the VBOXVGA default).</summary>
+    public const int TrioVramBytes = 4 * 1024 * 1024;
+    /// <summary>This card's video memory: 4 MB, or 8/16 MB on a VBOXVGA machine with <see cref="PcConfig.VramMB"/> (a power of two: BAR 0 is sized to it).</summary>
+    public int VramBytes => _v.Ram.Length;
     public const string Id = "S3TRIO64";
     private readonly Vga _v;
     public readonly byte[] SrExt = new byte[0x20];        // SR08-SR1F (SR00-07 stay the VGA's)
@@ -38,6 +41,8 @@ public sealed class S3Trio64
     // implementation from the public Bochs VBE register list; the VGA core and the S3 registers stay (unused by that driver).
     public readonly bool VBox;
     public const string VBoxId = "VBOXVGA";
+    /// <summary>The card id in a savestate: the Trio64, or VBOXVGA (+ "-16MB" etc. when not 4 MB, so states never load into a card of another memory size).</summary>
+    public string CardId => !VBox ? Id : VramBytes == TrioVramBytes ? VBoxId : $"{VBoxId}-{VramBytes >> 20}MB";
     public readonly ushort[] Dispi = new ushort[16];
     public int DispiIndex;
     public bool DispiOn => VBox && (Dispi[4] & 1) != 0 && !DispiDiagOff;
@@ -106,7 +111,7 @@ public sealed class S3Trio64
         switch (reg)
         {
             case 0x04: W16(0x04, (int)(v & 0x0023)); break;
-            case 0x10: LfbBase = v & (VBox ? ~(uint)(VramBytes - 1) : 0xFC000000u);   // (VBOXVGA: BAR 0 = the 4 MB video memory, like VirtualBox; boxv9x takes the devnode's largest memory range)
+            case 0x10: LfbBase = v & (VBox ? ~(uint)(VramBytes - 1) : 0xFC000000u);   // (VBOXVGA: BAR 0 = the whole video memory (4/8/16 MB), like VirtualBox; boxv9x takes the devnode's largest memory range)
                  W32(0x10, LfbBase | (VBox ? 8u : 0u)); _v.Cr[0x59] = (byte)(LfbBase >> 24); _v.Cr[0x5a] = (byte)(LfbBase >> 16); break;
             case 0x30: W32(0x30, 0); break;               // no ROM BAR: the video BIOS is the board's own
             case 0x3c: PciConfig[0x3c] = (byte)v; break;
@@ -155,7 +160,7 @@ public sealed class S3Trio64
     private bool EnhancedMap => Enhanced && (_v.Sr[4] & 0x08) != 0;
     public bool LinearOn => (_v.Cr[0x58] & 0x10) != 0 || DispiOn;
     /// <summary>CR58 bits 1-0: the linear window's size. The 64 KB one (at A0000) is still banked.</summary>
-    public int LfbSize => DispiOn ? 0x400000 : (_v.Cr[0x58] & 3) switch { 0 => 0x10000, 1 => 0x100000, 2 => 0x200000, _ => 0x400000 };
+    public int LfbSize => DispiOn ? VramBytes : (_v.Cr[0x58] & 3) switch { 0 => 0x10000, 1 => 0x100000, 2 => 0x200000, _ => VBox ? VramBytes : 0x400000 };   // (VBOXVGA: the 4 MB setting opens all 8/16 MB, for the wide VBE modes)
     private bool Window64K => !DispiOn && LinearOn && LfbSize == 0x10000;
     public long VgaMmioWrites;   // diagnostics
     public bool OldMmio => (_v.Cr[0x53] & 0x10) != 0 && (_v.Sr[4] & 0x08) != 0;   // (not in a planar VGA mode: Windows' VDD loads the text font through A0000 with CR53 still set)

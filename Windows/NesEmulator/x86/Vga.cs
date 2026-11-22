@@ -40,10 +40,10 @@ public sealed class Vga
     // 70 Hz timing: 449 lines of 800 dots at 25.175 MHz, counted in PIT ticks
     public const double FrameTicks = Pit8254.Freq * 449.0 * 800.0 / 25175000.0;
 
-    public Vga(Func<long> pitNow, bool s3 = false, bool nv = false, bool vbox = false)
+    public Vga(Func<long> pitNow, bool s3 = false, bool nv = false, bool vbox = false, int vramBytes = 0)
     {
         _pitNow = pitNow;
-        Ram = new byte[s3 || vbox ? S3Trio64.VramBytes : nv ? NvGeForce.VramBytes : RamSize];
+        Ram = new byte[s3 || vbox ? (vbox && vramBytes > 0 ? vramBytes : S3Trio64.TrioVramBytes) : nv ? NvGeForce.VramBytes : RamSize];
         if (s3 || vbox) S3 = new S3Trio64(this, vbox);
         if (nv) Nv = new NvGeForce(this);
         InitMode3Defaults();
@@ -403,11 +403,11 @@ public sealed class Vga
         if ((Ar[0x10] & 1) == 0 || (Gr[6] & 1) == 0) RenderText(); else RenderGraphics();
     }
 
-    /// <summary>Sizes <see cref="Frame"/> (clamped to 8..1600 x 8..1200; boxv9x tops out at 1600x1200).</summary>
+    /// <summary>Sizes <see cref="Frame"/> (clamped to 8..1920 x 8..1200: 1920x1080 / 1920x1200 wide modes).</summary>
     public void Ensure(int w, int h)
     {
         if (w < 8) w = 8; if (h < 8) h = 8;
-        if (w > 1600) w = 1600; if (h > 1200) h = 1200;
+        if (w > 1920) w = 1920; if (h > 1200) h = 1200;
         Width = w; Height = h;
         if (Frame.Length != w * h) Frame = new int[w * h];
     }

@@ -31,6 +31,8 @@ public sealed record PcConfig
     /// <summary>No network card on the PCI bus: the nano98 seat base is installed without one, so a card there would make Windows run the
     /// Add New Hardware wizard on every package boot. Config block version 5.</summary>
     public bool NoNic { get; init; }
+    /// <summary>VBOXVGA video memory in MB (0 = the 4 MB default; 8 or 16 for true colour at 1600x900 / 1920x1080). Ignored by other cards.</summary>
+    public int VramMB { get; init; }
 
     public static readonly PcConfig Default = new();
     public static readonly PcConfig Dos386 = new() { CpuGen = 3 };
@@ -49,7 +51,7 @@ public sealed record PcConfig
         "DEFAULT" => Default, "DOS-386" => Dos386, "DOS-486" => Dos486, "WIN98-P166" or "WIN98" => Win98, "WIN98-P166-VOODOO" => Win98Voodoo, "WIN98-P166-NANO" => Win98Nano, "WIN98-P166-VOODOO-NANO" => Win98VoodooNano,
         // the Pentium II 400 machines: the same board (the CPU model comes from PcMachinePreset), so a P166 disk boots on either
         "WIN98-P2" => Win98, "WIN98-P2-VOODOO" => Win98Voodoo, "WIN98-P2-NANO" => Win98Nano, "WIN98-P166-NANO-256" or "WIN98-P2-NANO-256" => Win98Nano256,
-        "WIN98-P166-WIDE" => Win98, "WIN98-P166-WIDE-NANO" => Win98Nano,
+        "WIN98-P166-WIDE" => Win98 with { VramMB = 16 }, "WIN98-P166-WIDE-NANO" => Win98Nano with { VramMB = 16 },
         _ => throw new ArgumentException($"no x86 machine preset '{name}' (DEFAULT, DOS-386, DOS-486, WIN98-P166)"),
     };
 
@@ -99,8 +101,8 @@ public sealed record PcMachinePreset(string Key, string Label, PcConfig Config, 
         new("dos-486", "DOS 486DX2-66, VGA, IDE", PcConfig.Dos486, CpuModel.I486DX2, PcVideo.Vga),
         new("win98-p166", "Win98 Pentium MMX 166, S3 Trio64, PCI", PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.S3Trio64),
         new("win98-p166-geforce", "Win98 Pentium MMX 166, GeForce 256 DDR 32 MB, PCI", PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.GeForce256),
-        new("win98-p166-wide", "Win98 Pentium MMX 166, VirtualBox VGA (widescreen, boxv9x), PCI", PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.VBoxVga),
-        new("win98-p166-wide-nano", "Win98 Pentium MMX 166, VirtualBox VGA (widescreen, boxv9x), PCI, no floppy", PcConfig.Win98Nano, CpuModel.PentiumMmx, PcVideo.VBoxVga),
+        new("win98-p166-wide", "Win98 Pentium MMX 166, VirtualBox VGA 16 MB (widescreen, boxv9x), PCI", PcConfig.Win98 with { VramMB = 16 }, CpuModel.PentiumMmx, PcVideo.VBoxVga),
+        new("win98-p166-wide-nano", "Win98 Pentium MMX 166, VirtualBox VGA 16 MB (widescreen, boxv9x), PCI, no floppy", PcConfig.Win98Nano with { VramMB = 16 }, CpuModel.PentiumMmx, PcVideo.VBoxVga),
         new("win98-p166-voodoo", "Win98 Pentium MMX 166, S3 Trio64 + 3dfx Voodoo, PCI", PcConfig.Win98Voodoo, CpuModel.PentiumMmx, PcVideo.S3Trio64),
         new("win98-p166-nano", "nano98 seat: Win98 Pentium MMX 166, S3 Trio64, PCI, no floppy", PcConfig.Win98Nano, CpuModel.PentiumMmx, PcVideo.S3Trio64),
         new("win98-p166-voodoo-nano", "nano98 seat: Win98 Pentium MMX 166, S3 Trio64 + 3dfx Voodoo, PCI, no floppy", PcConfig.Win98VoodooNano, CpuModel.PentiumMmx, PcVideo.S3Trio64),

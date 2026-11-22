@@ -30,6 +30,22 @@ public sealed partial class PcMachine
         new(0x116, 1024, 768, 15), new(0x117, 1024, 768, 16), new(0x118, 1024, 768, 32),
         new(0x107, 1280, 1024, 8), new(0x119, 1280, 1024, 15), new(0x11a, 1280, 1024, 16),   // (4 MB: a Trio64 offers 1280x1024 up to 16 bpp)
     };
+    /// <summary>Extra wide modes the VBOXVGA (Enhanced) card's VBE BIOS lists, OEM numbers 140h+ (the CRTC takes any size; each must fit the card's memory).</summary>
+    public static readonly VbeMode[] WideVbeModes =
+    {
+        new(0x140, 1280, 720, 8), new(0x141, 1280, 720, 16), new(0x142, 1280, 720, 32),
+        new(0x143, 1366, 768, 8), new(0x144, 1366, 768, 16), new(0x145, 1366, 768, 32),
+        new(0x146, 1600, 900, 8), new(0x147, 1600, 900, 16), new(0x148, 1600, 900, 32),
+        new(0x149, 1920, 1080, 8), new(0x14a, 1920, 1080, 16), new(0x14b, 1920, 1080, 32),
+        new(0x14c, 1280, 800, 8), new(0x14d, 1280, 800, 16), new(0x14e, 1280, 800, 32),
+        new(0x14f, 1680, 1050, 8), new(0x150, 1680, 1050, 16), new(0x151, 1680, 1050, 32),
+        new(0x152, 1280, 1024, 32),
+    };
+    /// <summary>The modes this machine's card offers: the Trio64 list, plus on VBOXVGA the wide modes that fit its memory.</summary>
+    private VbeMode[] ActiveVbeModes => _activeVbe ??= S3 is { VBox: true } s3
+        ? [.. VbeModes, .. Array.FindAll(WideVbeModes, w => (((w.W * BytesPP(w.Bpp)) + 7) & ~7) * w.H <= s3.VramBytes)]
+        : VbeModes;
+    private VbeMode[]? _activeVbe;
     private static int BytesPP(int bpp) => (bpp + 7) / 8;
 
     /// <summary>The option ROM: 55 AA, 32 KB (so DOS memory managers leave C0000-C7FFF alone), the bank-switch far routine, the strings, the mode list.</summary>
@@ -49,14 +65,14 @@ public sealed partial class PcMachine
         Str(ProductOff, Nv != null ? "GeForce 256 DDR" : "S3 Trio64");
         Str(RevOff, "1.0");
         uint o = VRom + ModeListOff;
-        foreach (var vm in VbeModes) { m[o] = (byte)vm.Number; m[o + 1] = (byte)(vm.Number >> 8); o += 2; }
+        foreach (var vm in ActiveVbeModes) { m[o] = (byte)vm.Number; m[o + 1] = (byte)(vm.Number >> 8); o += 2; }
         m[o] = 0xff; m[o + 1] = 0xff;
         // the checksum: the 32 KB sum to 0
         int sum = 0; for (int i = 0; i < 0x8000; i++) sum += m[VRom + i];
         m[VRom + 0x7fff] = (byte)(m[VRom + 0x7fff] - sum);
     }
 
-    private static VbeMode? FindVbe(int n) { foreach (var vm in VbeModes) if (vm.Number == n) return vm; return null; }
+    private VbeMode? FindVbe(int n) { foreach (var vm in ActiveVbeModes) if (vm.Number == n) return vm; return null; }
 
     private uint EsDi => SegB(I386.SEG_ES) + DI;   // a LINEAR address: under Windows 98 a DOS box (V86) is paged, so the buffers go through LinW / Lin8 (PhysW wrote into whatever page sat at ES*16+DI: Quake in a DOS box read a garbage VBE block, 2026-11-20)
     private void VbeOk() => AX = 0x004f;
@@ -77,7 +93,7 @@ public sealed partial class PcMachine
                 LinW16(b + 6, OemOff); LinW16(b + 8, (ushort)VRomSeg);
                 LinW32(b + 10, 0);                                  // capabilities: 6-bit DAC, VGA compatible
                 LinW16(b + 14, ModeListOff); LinW16(b + 16, (ushort)VRomSeg);
-                LinW16(b + 18, (ushort)(S3Trio64.VramBytes / 65536));
+                LinW16(b + 18, (ushort)(S3!.VramBytes / 65536));
                 LinW16(b + 20, 0x0100);
                 LinW16(b + 22, VendorOff); LinW16(b + 24, (ushort)VRomSeg);
                 LinW16(b + 26, ProductOff); LinW16(b + 28, (ushort)VRomSeg);
@@ -104,7 +120,7 @@ public sealed partial class PcMachine
                 LinW8(b + 0x18, 1); LinW8(b + 0x19, (byte)v.Bpp); LinW8(b + 0x1a, 1);
                 LinW8(b + 0x1b, (byte)(v.Bpp == 8 ? 4 : 6));        // packed pixel / direct colour
                 LinW8(b + 0x1c, 0);
-                LinW8(b + 0x1d, (byte)Math.Max(0, S3Trio64.VramBytes / (bpl * v.H) - 1));
+                LinW8(b + 0x1d, (byte)Math.Max(0, S3!.VramBytes / (bpl * v.H) - 1));
                 LinW8(b + 0x1e, 1);
                 (int rs, int rp, int gs, int gp, int bs, int bp, int xs, int xp) = v.Bpp switch
                 {
@@ -150,11 +166,11 @@ public sealed partial class PcMachine
                 {
                     case 0: stride = ((int)CX * bpp + 7) & ~7; break;
                     case 2: stride = ((int)CX + 7) & ~7; break;
-                    case 3: stride = Math.Min(4088 * 2, S3Trio64.VramBytes / Math.Max(1, s3.Height)) & ~7; BX = (uint)stride; CX = (uint)(stride / bpp); DX = (uint)(S3Trio64.VramBytes / stride); VbeOk(); return;
+                    case 3: stride = Math.Min(4088 * 2, S3!.VramBytes / Math.Max(1, s3.Height)) & ~7; BX = (uint)stride; CX = (uint)(stride / bpp); DX = (uint)(S3!.VramBytes / stride); VbeOk(); return;
                 }
                 if (BL is 0 or 2) SetStride(stride);
                 stride = s3.Stride;
-                BX = (uint)stride; CX = (uint)(stride / bpp); DX = (uint)(S3Trio64.VramBytes / Math.Max(1, stride));
+                BX = (uint)stride; CX = (uint)(stride / bpp); DX = (uint)(S3!.VramBytes / Math.Max(1, stride));
                 VbeOk();
                 break;
             }
