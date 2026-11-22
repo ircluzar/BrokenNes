@@ -705,6 +705,7 @@ public sealed partial class NvGeForce
                 _fin[0] = px; _fin[1] = py; _fin[2] = z; _fin[3] = a.Iw * w0 + b.Iw * w1 + c.Iw * w2;
                 Lerp(1, 3, a, b, c, q0, q1, q2); Lerp(2, 4, a, b, c, q0, q1, q2); Lerp(3, 5, a, b, c, q0, q1, q2);
                 for (int t = 0; t < 8; t++) Lerp(4 + t, 8 + t, a, b, c, q0, q1, q2);
+                if (_pixDiag < 12 && OpLog != null && ((x ^ y) & 127) == 0) { _pixDiag++; OpLog($"rankine px {x},{y} tc0 ({_fin[16]:F3},{_fin[17]:F3},{_fin[18]:F3},{_fin[19]:F3}) col0 ({_fin[4]:F2},{_fin[5]:F2},{_fin[6]:F2}) verts tc ({a.Var[32]:F2},{a.Var[33]:F2}) ({b.Var[32]:F2},{b.Var[33]:F2}) ({c.Var[32]:F2},{c.Var[33]:F2})"); }
                 if (!RunFp(inst, x, y)) continue;
                 var o = _fpHalfOut ? _fh : _fr;
                 float cr = Math.Clamp(o[0], 0, 1), cg = Math.Clamp(o[1], 0, 1), cb = Math.Clamp(o[2], 0, 1), ca = Math.Clamp(o[3], 0, 1);
@@ -728,6 +729,7 @@ public sealed partial class NvGeForce
         }
     }
     private bool _rankineMaskSeen;
+    private int _pixDiag;
 
     private void Lerp(int fin, int vo, RVert a, RVert b, RVert c, float q0, float q1, float q2)
     {
