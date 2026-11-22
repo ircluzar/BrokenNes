@@ -663,6 +663,7 @@ public sealed partial class I386
     private readonly List<(uint pa, DEntry e)> _jcFound = new();
     private readonly HashSet<uint> _jcSeen = new();
     private readonly Queue<uint> _jcTodo = new();
+    private readonly HashSet<uint> _jcFall = new();
     private void JitCompile(ref JitEntry en)
     {
         uint start = en.Start;
@@ -676,13 +677,14 @@ public sealed partial class I386
         }
         var found = _jcFound; found.Clear(); var seen = _jcSeen; seen.Clear();
         var todo = _jcTodo; todo.Clear();
+        var fall = _jcFall; fall.Clear();
         todo.Enqueue(start);
         bool anyCompiled = false;
         while (todo.Count > 0 && found.Count < JitMaxInstr)
         {
             uint pa = todo.Dequeue();
             if (!seen.Add(pa)) continue;
-            if (JitSeenOnly && pa != start && !JitSeen(pa, pg)) { if (JitStats) JitUnseenCut++; continue; }   // never run yet: leave it out (it exits there)
+            if (JitSeenOnly && pa != start && !JitSeen(pa, pg) && !(JitSeqSkip && fall.Contains(pa))) { if (JitStats) JitUnseenCut++; continue; }   // never run yet: leave it out (it exits there)
             // one 4 KB page (the compiled code never goes on into another one: see Continue)
             if ((pa & 0xfff) >= 4096 - 16 || pa + 32 >= MemSize || (pa >> 12) != (start >> 12)) continue;
             var e = new DEntry();
@@ -692,7 +694,7 @@ public sealed partial class I386
             if (e.Kind == DK_MOVRI && e.Bits == 32 && e.Len >= 5 && JitLiveImm(end - 4)) { e.Live = true; JitLiveImms++; }   // (live immediate: read from memory)
             if (JitFoldsAt(e, end)) { e.Folds = true; e.FoldNb = (byte)U8(end); e.FoldRel = Sext8(U8(end + 1)); }
             found.Add((pa, e)); if (e.Kind != DK_INTERP) anyCompiled = true;
-            if (e.Kind is not (DK_JMP or DK_CALL or DK_RET) && !(e.Kind == DK_INTERP && e.Op == 1)) todo.Enqueue(end);
+            if (e.Kind is not (DK_JMP or DK_CALL or DK_RET) && !(e.Kind == DK_INTERP && e.Op == 1)) { todo.Enqueue(end); if (e.Kind != DK_JCC && !e.Folds) fall.Add(end); }   // (fall: run right after it, its lookup maybe skipped - sequential skip)
             if (e.Kind is DK_JMP or DK_JCC) todo.Enqueue(end + e.Imm);
             if (e.Folds) todo.Enqueue(end + 2 + e.FoldRel);
         }
