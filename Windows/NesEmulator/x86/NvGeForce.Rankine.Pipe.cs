@@ -326,6 +326,8 @@ public sealed partial class NvGeForce
             case 9: for (int i = 0; i + 3 < n; i += 2) { RTri(inst, vs[i], vs[i + 1], vs[i + 3]); RTri(inst, vs[i], vs[i + 3], vs[i + 2]); } break;
             default: break;                                                                                             // points / lines: not yet
         }
+        if (RankinePrims < 12 && OpLog != null)
+            OpLog($"rankine after prim {_rPrim}: tris {RankineTris} pixels {RankinePixels} rt {G(inst, 0x210):X} fmt {G(inst, 0x208):X} pitch {G(inst, 0x20c):X} hz {G(inst, 0x200):X} vt {G(inst, 0x204):X} scis {G(inst, 0x8c0):X}/{G(inst, 0x8c4):X} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} cull {G(inst, 0x183c)}/{G(inst, 0x1830):X} fp {_fp.Length} ops {string.Join(",", Array.ConvertAll(_fp, f => ((f.W0 >> 24) & 0x3f).ToString("X")))} blend {G(inst, 0x310)} cmask {G(inst, 0x324):X} pcrtc {PcrtcStart:X}");
     }
 
     // ---------------- the rasterizer + fragment program ----------------
@@ -556,7 +558,7 @@ public sealed partial class NvGeForce
                 if (w0 < 0 || w1 < 0 || w2 < 0) continue;
                 float z = a.Z * w0 + b.Z * w1 + c.Z * w2;
                 uint za = (uint)(zbase + y * zpitch + x * (z16 ? 2 : 4)) & VramMask;
-                uint zi = (uint)Math.Clamp(z, 0, zmax);
+                uint zi = (uint)Math.Clamp(z * zmax, 0, zmax);   // (z from the program is 0..1: D3D depth)
                 if (zt && zpitch > 0)
                 {
                     uint zold = z16 ? (uint)(_v.Ram[za] | _v.Ram[(za + 1) & VramMask] << 8) : (za <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)za) >> 8 : 0);
@@ -565,7 +567,7 @@ public sealed partial class NvGeForce
                 // varyings, perspective correct
                 float q0 = w0 * a.Iw, q1 = w1 * b.Iw, q2 = w2 * c.Iw, qs = 1 / (q0 + q1 + q2);
                 q0 *= qs; q1 *= qs; q2 *= qs;
-                _fin[0] = px; _fin[1] = py; _fin[2] = z / zmax; _fin[3] = a.Iw * w0 + b.Iw * w1 + c.Iw * w2;
+                _fin[0] = px; _fin[1] = py; _fin[2] = z; _fin[3] = a.Iw * w0 + b.Iw * w1 + c.Iw * w2;
                 Lerp(1, 3, a, b, c, q0, q1, q2); Lerp(2, 4, a, b, c, q0, q1, q2); Lerp(3, 5, a, b, c, q0, q1, q2);
                 for (int t = 0; t < 8; t++) Lerp(4 + t, 8 + t, a, b, c, q0, q1, q2);
                 if (!RunFp(inst, x, y)) continue;
