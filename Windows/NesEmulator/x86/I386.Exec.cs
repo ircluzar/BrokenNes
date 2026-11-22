@@ -77,9 +77,10 @@ public sealed partial class I386
             if (((ulong)laddr ^ _ifLaddr) < 4096 - 16)
             {
                 uint paddr = _ifXaddr ^ laddr;
-                if (jit && JitOn)
+                if (jit && JitOn && !(_seqArm && paddr == _ifPaddr && JitSeqSkip))
                 {
                     // a compiled block from here (I386.Jit.cs), else interpret this instruction
+                    _seqArm = false;
                     int rc = JitTry(paddr);
                     if (JitStats && rc != JIT_DECLINE) Step1Jit++;
                     if (rc == OK) return OK;
@@ -104,6 +105,7 @@ public sealed partial class I386
                     uint paddr = _ifXaddr ^ laddr;
                     if (jit && JitOn)
                     {
+                        _seqArm = false;
                         int rc = JitTry(paddr);
                         if (rc == OK) return OK;
                         if (rc == FAIL) return FAIL;

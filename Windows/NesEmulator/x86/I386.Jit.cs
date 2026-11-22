@@ -166,12 +166,20 @@ public sealed partial class I386
             if (en.Pending && JitHotQ) en.Visits++;   // (X86_JITHOTQ: the queue compiles the most-run waiting region first)
             if (en.Failed || en.Pending) { if (PcMachine.TimeProbe) _jtWhy = en.Failed ? 2 : 3; return JIT_DECLINE; }
             if (++en.Visits >= _jitHotNow) { if (PcMachine.TimeProbe) _jtWhy = 4; JitCompile(ref en); }
-            else if (PcMachine.TimeProbe) _jtWhy = 5;
+            else { if (PcMachine.TimeProbe) _jtWhy = 5; _seqArm = true; }
             return JIT_DECLINE;
         }
         if (PcMachine.TimeProbe) _jtWhy = 6;
+        _seqArm = true;
         return JitVisit(paddr);
     }
+
+    /// <summary>Sequential skip (X86_NOSEQSKIP: off): after an interpreted instruction whose own entry is still counting toward JITHOT (or new),
+    /// the instruction right after it (fall-through, same cached page) skips the entry lookup: a region compiled from that cold start will
+    /// cover it, and the lookup is a cache miss in a 32 MB table on every cold instruction. Any jump, block exit, batch start, page change
+    /// or failed/pending/compiled entry looks up again. Only which code runs compiled can change, never what it does.</summary>
+    private static readonly bool JitSeqSkip = Environment.GetEnvironmentVariable("X86_NOSEQSKIP") == null;
+    private bool _seqArm;
 
     private static readonly uint JitWatch = Convert.ToUInt32(Environment.GetEnvironmentVariable("X86_JITWATCH") ?? "0", 16);
     private int _jwN;
