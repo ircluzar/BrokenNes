@@ -398,7 +398,11 @@ public sealed class Vga
         RenderSerial++;
         FrameCount++;
         if (S3 != null && (S3.DispiOn || S3.Enhanced && (Gr[6] & 1) != 0)) { S3.Render(); GuiSinceText = true; return; }
-        if (Nv != null && Nv.Enhanced && (Gr[6] & 1) != 0) { Nv.Render(); GuiSinceText = true; return; }
+        if (Nv != null && Nv.Enhanced && (Gr[6] & 1) != 0)
+        {
+            if (NvMessageText()) { RenderMessageText(); return; }
+            Nv.Render(); GuiSinceText = true; return;
+        }
         if (Picture != null) { Picture.Render(); return; }
         if ((Ar[0x10] & 1) == 0 || (Gr[6] & 1) == 0) RenderText(); else RenderGraphics();
     }
@@ -412,6 +416,49 @@ public sealed class Vga
         if (w > maxW) w = maxW; if (h > maxH) h = maxH;
         Width = w; Height = h;
         if (Frame.Length != w * h) Frame = new int[w * h];
+    }
+
+    /// <summary>The GeForce driver leaves CR28 / the graphics registers alone when Windows 9x switches to its blue-screen message mode:
+    /// the VMM writes an 80x25 text page (char plane 0, attr plane 1) at video memory 0 and the card keeps scanning out the 3D picture.
+    /// Detected by the page itself: 2000 cells, nearly all printable with one shared attribute that has a background colour.</summary>
+    private bool NvMessageText()
+    {
+        if (Environment.GetEnvironmentVariable("X86_NVNOMSGTEXT") == "1") return false;
+        byte at = Ram[1];
+        if (Environment.GetEnvironmentVariable("X86_NVMSGDIAG") == "1" && (FrameCount & 31) == 0) Console.WriteLine($"msgtext first {Ram[0]:X2} {at:X2}");
+        if ((at & 0x70) == 0 || at == 0xff) return false;
+        int same = 0, printable = 0;
+        for (int i = 0; i < 2000; i++)
+        {
+            if (Ram[i * 4 + 1] == at) same++;
+            byte c = Ram[i * 4]; if (c >= 0x20 && c < 0x7f) printable++;
+        }
+        if (Environment.GetEnvironmentVariable("X86_NVMSGDIAG") == "1" && (FrameCount & 31) == 0) Console.WriteLine($"msgtext attr {at:X2} same {same} printable {printable}");
+        return same >= 1500 && printable >= 1950;
+    }
+
+    /// <summary>Renders the message-mode page as VGA mode 3 (80x25, 9x16) whatever the CRTC holds.</summary>
+    private static readonly int[] Ega16 = { 0x000000, 0x0000aa, 0x00aa00, 0x00aaaa, 0xaa0000, 0xaa00aa, 0xaa5500, 0xaaaaaa,
+                                            0x555555, 0x5555ff, 0x55ff55, 0x55ffff, 0xff5555, 0xff55ff, 0xffff55, 0xffffff };
+
+    /// <summary>Renders the message-mode page as 80x25 text with the built-in 8x16 font and the standard 16 colours: the card's font plane
+    /// and DAC still hold the 3D picture's data then.</summary>
+    private void RenderMessageText()
+    {
+        Ensure(640, 400);
+        for (int row = 0; row < 25; row++)
+            for (int col = 0; col < 80; col++)
+            {
+                int cell = row * 80 + col;
+                int ch = Ram[cell * 4], at = Ram[cell * 4 + 1];
+                int fg = Ega16[at & 15] | unchecked((int)0xff000000), bg = Ega16[(at >> 4) & 7] | unchecked((int)0xff000000);
+                for (int y = 0; y < 16; y++)
+                {
+                    int bits = VgaFont.Font16[ch * 16 + y];
+                    int o = (row * 16 + y) * 640 + col * 8;
+                    for (int x = 0; x < 8; x++) Frame[o + x] = (bits & (0x80 >> x)) != 0 ? fg : bg;
+                }
+            }
     }
 
     private void RenderText()
