@@ -3,6 +3,7 @@
 // MIT, read as reference only: geforce\dl\mesa); state registers: envytools rnndb graph/nv30-40_3d.xml.
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace NesEmulator.X86;
 
@@ -244,10 +245,9 @@ public sealed partial class NvGeForce
             int tid = (int)(h0 >> 16) & 0x1f, oid = (int)(h3 >> 2) & 0x1f;
             int vtm = (int)(h3 >> 20) & 15, vom = (int)(h3 >> 12) & 15, stm = (int)(h3 >> 24) & 15, som = (int)(h3 >> 16) & 15;
             // one output index for both units: when the scalar unit takes it, the vector result goes to the position (the 45.23
-            // compiler pairs "dp4 oPos.c" with "mov oTn" this way); a scalar temp write without a temp index goes to src2's temp
-            // (the D3D "rcp r1.z, r1.z" pattern). Both inferred from the 45.23 programs (3DMark03), not documented.
+            // compiler pairs "dp4 oPos.c" with "mov oTn" this way); a scalar temp write without a temp index goes to R1. Both inferred from the 45.23 programs (3DMark03), not documented.
             int vod = scaW && som != 0 && vecW && vom != 0 ? 0 : oid;
-            int stid = tid != 0x1f ? tid : (s2 & 3) == 1 ? (int)(s2 >> 2) & 15 : 0x1f;
+            int stid = tid != 0x1f ? tid : 1;   // (no temp index: the 45.23 programs read the scalar result back from R1 - "rsq r1.w" patterns in GT1/GT2)
             for (int c = 0; c < 4; c++)
             {
                 bool cp = (h0 & (1u << 14)) == 0 || CondTest((int)(h0 >> 11) & 7, _vcc[(int)(h0 >> (9 - 2 * c)) & 3]);
@@ -470,12 +470,16 @@ public sealed partial class NvGeForce
     private readonly float[] _fin = new float[12 * 4];    // inputs: WPOS, COL0, COL1, FOGC, TC0-7
     private readonly float[] _fs = new float[12];
     private readonly float[] _fcc = new float[4];
-    private bool _fpHalfOut, _fpPacks;
+    private static readonly bool PackNative = Environment.GetEnvironmentVariable("X86_NVPKNATIVE") == "1";
+    private bool _fpHalfOut, _fpPacks; private int _pkDiag;
+    private readonly float[] _pk = new float[8 * 4];   // packed slots R0.xyzw, R1.xyzw (unpacked vec4 each)
+    private static readonly HashSet<int> PackUnsigned = new((Environment.GetEnvironmentVariable("X86_NVPKUNS") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => Convert.ToInt32(x, 16)));
+    private static readonly int[] PkMap = (Environment.GetEnvironmentVariable("X86_NVPKMAP") ?? "0,1,2,3,4,5,13,3").Split(',').Select(int.Parse).ToArray();
 
     private bool RunFp(uint inst, int px, int py)
     {
         Array.Clear(_fcc); _fpHalfOut = false;
-        Array.Clear(_fr, 0, 16); Array.Clear(_fh, 0, 32);
+        Array.Clear(_fr, 0, 16); Array.Clear(_fh, 0, 32); if (_fpPacks) Array.Clear(_pk);
         _fr[0] = _fr[1] = _fr[2] = 0; _fr[3] = 1; _fh[0] = _fh[1] = _fh[2] = 0; _fh[3] = 1;
         for (int k = 0; k < _fp.Length; k++)
         {
@@ -534,7 +538,16 @@ public sealed partial class NvGeForce
                 case 0x22: r0 = r1 = r2 = r3 = MathF.Cos(a[0]); break;
                 case 0x23: r0 = r1 = r2 = r3 = MathF.Sin(a[0]); break;
                 case 0x26: r0 = r1 = r2 = r3 = MathF.Pow(a[0], a[4]); break;
-                case 0x2e: r0 = r1 = r2 = r3 = a[0] * a[4] + a[1] * a[5] + a[8]; break;                             // DP2A
+                case 0x2e: case 0x2f: case 0x27: case 0x13:                                                         // packs (PK4B-like): 4 x 8 bits into one
+                {                                                                                                    // component; kept unpacked for the combiners
+                    int pm = (int)(f.W0 >> 9) & 15, pd = (int)(f.W0 >> 1) & 63;
+                    bool uns = op == 0x27 || (op != 0x13 && PackUnsigned.Contains(op));
+                    for (int c = 0; c < 4; c++)
+                        if ((pm & (1 << c)) != 0 && pd < 2)
+                            for (int kk = 0; kk < 4; kk++) { float v = a[kk]; _pk[(pd * 4 + c) * 4 + kk] = uns ? Math.Clamp(v, 0, 1) : Math.Clamp(v, -1, 1); }
+                    if ((f.W0 & 1) != 0) goto fpEnd;
+                    continue;
+                }
                 case 0x3a: r0 = a[0] / a[4]; r1 = a[1] / a[4]; r2 = a[2] / a[4]; r3 = a[3] / a[4]; break;           // DIV
                 case 0x15: case 0x16: r0 = r1 = r2 = r3 = 0; break;                                                  // DDX / DDY (0: per pixel only)
                 default: r0 = a[0]; r1 = a[1]; r2 = a[2]; r3 = a[3]; break;
@@ -565,6 +578,7 @@ public sealed partial class NvGeForce
             if (!half && di == 0) _fpHalfOut = false;
             if ((f.W0 & 1) != 0) break;
         }
+        fpEnd:
         return true;
     }
 
@@ -826,7 +840,12 @@ public sealed partial class NvGeForce
                 else
                 {
                     if (!RunFp(inst, x, y)) continue;
-                    if (!NoFpRc && !_fpPacks) RunRc(inst, true);   // the NV30 pipe: the FP's H0-H3 feed the register combiners as "textures" 0-3
+                    if (!NoFpRc) RunRc(inst, !(_fpPacks && PackNative));
+                    if (_pkDiag < 40 && OpLog != null && _fpPacks && ((x ^ y) & 31) == 0)
+                    {
+                        _pkDiag++;
+                        OpLog($"rankine pk {x},{y} fp {G(inst, 0x8e4):X} H0 ({_fh[0]:F2},{_fh[1]:F2},{_fh[2]:F2},{_fh[3]:F2}) H1 ({_fh[4]:F2},{_fh[5]:F2},{_fh[6]:F2}) H2 ({_fh[8]:F2},{_fh[9]:F2},{_fh[10]:F2}) H3 ({_fh[12]:F2},{_fh[13]:F2},{_fh[14]:F2}) tc4 ({_fin[32]:F2},{_fin[33]:F2},{_fin[34]:F2}) tc5 ({_fin[36]:F2},{_fin[37]:F2},{_fin[38]:F2}) pk {string.Join(" ", Enumerable.Range(0, 8).Select(i => $"[{_pk[i * 4]:F2},{_pk[i * 4 + 1]:F2},{_pk[i * 4 + 2]:F2},{_pk[i * 4 + 3]:F2}]"))} col0 ({_fin[4]:F2},{_fin[5]:F2},{_fin[6]:F2},{_fin[7]:F2}) -> ({_fr[0]:F2},{_fr[1]:F2},{_fr[2]:F2},{_fr[3]:F2})");
+                    }   // the NV30 pipe: the FP's H0-H3 feed the register combiners as "textures" 0-3
                 }
                 var o = _fpHalfOut ? _fh : _fr;
                 float cr = Math.Clamp(o[0], 0, 1), cg = Math.Clamp(o[1], 0, 1), cb = Math.Clamp(o[2], 0, 1), ca = Math.Clamp(o[3], 0, 1);
@@ -887,6 +906,16 @@ public sealed partial class NvGeForce
             reg[8 + t] = Vec4.FromArgb(RTex(inst, t, u, v, r, 0));
         }
         reg[12] = new Vec4(0, 0, 0, reg[8].W);
+        if (fromFp && _fpPacks)
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                int m = PkMap[i]; if (m < 0) continue;
+                int r = m <= 3 ? 8 + m : m;
+                reg[r] = new Vec4(_pk[i * 4], _pk[i * 4 + 1], _pk[i * 4 + 2], _pk[i * 4 + 3]);
+            }
+            reg[12] = new Vec4(0, 0, 0, reg[8].W);
+        }
         for (int s = 0; s < n; s++)
         {
             int o = 0x900 + s * 32;
