@@ -471,6 +471,8 @@ public sealed partial class NvGeForce
     private readonly float[] _fs = new float[12];
     private readonly float[] _fcc = new float[4];
     private static readonly bool PackNative = Environment.GetEnvironmentVariable("X86_NVPKNATIVE") == "1";
+    private static readonly bool ZEqLoose = Environment.GetEnvironmentVariable("X86_NVZEQ") == "1";
+    private static readonly bool PackRaw = Environment.GetEnvironmentVariable("X86_NVPKRAW") == "1";
     private bool _fpHalfOut, _fpPacks; private int _pkDiag;
     private readonly float[] _pk = new float[8 * 4];   // packed slots R0.xyzw, R1.xyzw (unpacked vec4 each)
     private static readonly HashSet<int> PackUnsigned = new((Environment.GetEnvironmentVariable("X86_NVPKUNS") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => Convert.ToInt32(x, 16)));
@@ -542,9 +544,18 @@ public sealed partial class NvGeForce
                 {                                                                                                    // component; kept unpacked for the combiners
                     int pm = (int)(f.W0 >> 9) & 15, pd = (int)(f.W0 >> 1) & 63;
                     bool uns = op == 0x27 || (op != 0x13 && PackUnsigned.Contains(op));
+                    float[] pv = a;
+                    if ((op == 0x2e || op == 0x2f) && !PackRaw)
+                    {   // texture fetch through unit (bits 17-20) - 0x2F projective - packed to 8 bits per channel for the combiners
+                        float pu = a[0], pvv = a[1], pr = a[2];
+                        if (op == 0x2f && a[3] != 0) { pu /= a[3]; pvv /= a[3]; pr /= a[3]; }
+                        uint tc = RTex(inst, (int)(f.W0 >> 17) & 15, pu, pvv, pr, 0);
+                        pv = new[] { ((tc >> 16) & 0xff) / 255f, ((tc >> 8) & 0xff) / 255f, (tc & 0xff) / 255f, (tc >> 24) / 255f };
+                        uns = true;
+                    }
                     for (int c = 0; c < 4; c++)
                         if ((pm & (1 << c)) != 0 && pd < 2)
-                            for (int kk = 0; kk < 4; kk++) { float v = a[kk]; _pk[(pd * 4 + c) * 4 + kk] = uns ? Math.Clamp(v, 0, 1) : Math.Clamp(v, -1, 1); }
+                            for (int kk = 0; kk < 4; kk++) { float v = pv[kk]; _pk[(pd * 4 + c) * 4 + kk] = uns ? Math.Clamp(v, 0, 1) : Math.Clamp(v, -1, 1); }
                     if ((f.W0 & 1) != 0) goto fpEnd;
                     continue;
                 }
@@ -789,6 +800,7 @@ public sealed partial class NvGeForce
         // state
         bool zt = G(inst, 0xa74) != 0, zw = G(inst, 0xa70) != 0;
         uint zf = G(inst, 0xa6c);
+        if (ZEqLoose && zf == 0x202) zf = 0x203;
         bool at = G(inst, 0x304) != 0; uint af = G(inst, 0x308); float aref = (G(inst, 0x30c) & 0xff) / 255f;
         bool blend = G(inst, 0x310) != 0;
         uint bs = G(inst, 0x314), bd = G(inst, 0x318), beq = G(inst, 0x320), bcol = G(inst, 0x31c);
