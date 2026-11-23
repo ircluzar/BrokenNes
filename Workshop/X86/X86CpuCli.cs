@@ -131,7 +131,8 @@ internal static class X86CpuCli
             ("MOVQ mm", new byte[] { 0x0f, 0x6f, 0xc1 }, m => m.Mmx),
             ("EMMS", new byte[] { 0x0f, 0x77 }, m => m.Mmx),
             ("PADDB mm", new byte[] { 0x0f, 0xfc, 0xc1 }, m => m.Mmx),
-            ("SSE 0F70", new byte[] { 0x0f, 0x70, 0xc1, 0x00 }, m => false),
+            ("PSHUFW", new byte[] { 0x0f, 0x70, 0xc1, 0x00 }, m => m.Sse),   // the P3's MMX extensions (MMX rules, no OSFXSR)
+            ("ADDPS", new byte[] { 0x0f, 0x58, 0xc1 }, m => false),           // SSE with CR4.OSFXSR clear: #UD on every chip
             ("CMOVZ", new byte[] { 0x0f, 0x44, 0xc1 }, m => m.Ops686),
             ("RDPMC", new byte[] { 0x0f, 0x33 }, m => m.Ops686),
             ("NOP 0F1F", new byte[] { 0x0f, 0x1f, 0xc0 }, m => m.Ops686),
