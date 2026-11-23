@@ -287,8 +287,82 @@ public static class X86Disasm
                 case 0xc7: { M(); return Reg == 1 ? "cmpxchg8b " + E(8) : $"(bad 0f c7 /{Reg})"; }
                 case 0x77: return "emms";
             }
+            if (Sse(b) is string sse) return sse;
             if (b is (>= 0x60 and <= 0x7f) or (>= 0xd0 and <= 0xff)) { M(); string e = E(0); return $"mmx 0f {b:x2} {e}"; }
             return $"db 0x0f, {H(b)}";
+        }
+
+        // ---- SSE (Pentium III) and the MMX extensions ----
+        private static string Xr(int r) => "xmm" + r;
+        private static string Mr(int r) => "mm" + r;
+        /// <summary>The r/m operand as an XMM / MMX register (mod 3) or memory of the given size.</summary>
+        private string Xe(int size) { M(); return Mod == 3 ? Xr(Rm) : E(size); }
+        private string Me(int size) { M(); return Mod == 3 ? Mr(Rm) : E(size); }
+
+        private string? Sse(byte b)
+        {
+            bool ss = rep == "rep ";
+            string sfx = ss ? "ss" : "ps";
+            string[] cmp = { "eq", "lt", "le", "unord", "neq", "nlt", "nle", "ord" };
+            string Taken() { rep = ""; return ""; }   // F3 is part of the opcode here, not a REP prefix
+            switch (b)
+            {
+                case 0x10: { Taken(); M(); string e = Xe(ss ? 4 : 16); return $"mov{(ss ? "ss" : "ups")} {Xr(Reg)}, {e}"; }
+                case 0x11: { Taken(); M(); string e = Xe(ss ? 4 : 16); return $"mov{(ss ? "ss" : "ups")} {e}, {Xr(Reg)}"; }
+                case 0x12: { M(); string e = Xe(8); return $"{(Mod == 3 ? "movhlps" : "movlps")} {Xr(Reg)}, {e}"; }
+                case 0x13: { M(); string e = Xe(8); return $"movlps {e}, {Xr(Reg)}"; }
+                case 0x14: { M(); string e = Xe(16); return $"unpcklps {Xr(Reg)}, {e}"; }
+                case 0x15: { M(); string e = Xe(16); return $"unpckhps {Xr(Reg)}, {e}"; }
+                case 0x16: { M(); string e = Xe(8); return $"{(Mod == 3 ? "movlhps" : "movhps")} {Xr(Reg)}, {e}"; }
+                case 0x17: { M(); string e = Xe(8); return $"movhps {e}, {Xr(Reg)}"; }
+                case 0x18: { M(); string[] n = { "prefetchnta", "prefetcht0", "prefetcht1", "prefetcht2" }; string e = E(0); return Reg < 4 ? $"{n[Reg]} {e}" : $"nop {e}"; }
+                case 0x28: { M(); string e = Xe(16); return $"movaps {Xr(Reg)}, {e}"; }
+                case 0x29: { M(); string e = Xe(16); return $"movaps {e}, {Xr(Reg)}"; }
+                case 0x2a: { Taken(); M(); if (ss) { string e = E(4); return $"cvtsi2ss {Xr(Reg)}, {e}"; } string m = Me(8); return $"cvtpi2ps {Xr(Reg)}, {m}"; }
+                case 0x2b: { M(); string e = E(16); return $"movntps {e}, {Xr(Reg)}"; }
+                case 0x2c: case 0x2d:
+                {
+                    Taken(); M(); string t = b == 0x2c ? "t" : "";
+                    if (ss) { string e = Xe(4); return $"cvt{t}ss2si {R32[Reg]}, {e}"; }
+                    string x = Xe(8); return $"cvt{t}ps2pi {Mr(Reg)}, {x}";
+                }
+                case 0x2e: { M(); string e = Xe(4); return $"ucomiss {Xr(Reg)}, {e}"; }
+                case 0x2f: { M(); string e = Xe(4); return $"comiss {Xr(Reg)}, {e}"; }
+                case 0x50: { M(); return $"movmskps {R32[Reg]}, {Xr(Rm)}"; }
+                case 0x51: case 0x52: case 0x53: case 0x58: case 0x59: case 0x5c: case 0x5d: case 0x5e: case 0x5f:
+                {
+                    Taken(); M();
+                    string n = b switch { 0x51 => "sqrt", 0x52 => "rsqrt", 0x53 => "rcp", 0x58 => "add", 0x59 => "mul", 0x5c => "sub", 0x5d => "min", 0x5e => "div", _ => "max" };
+                    string e = Xe(ss ? 4 : 16); return $"{n}{sfx} {Xr(Reg)}, {e}";
+                }
+                case 0x54: case 0x55: case 0x56: case 0x57:
+                {
+                    M(); string n = b switch { 0x54 => "andps", 0x55 => "andnps", 0x56 => "orps", _ => "xorps" };
+                    string e = Xe(16); return $"{n} {Xr(Reg)}, {e}";
+                }
+                case 0xc2: { Taken(); M(); string e = Xe(ss ? 4 : 16); byte i = B(); return i < 8 ? $"cmp{cmp[i]}{sfx} {Xr(Reg)}, {e}" : $"cmp{sfx} {Xr(Reg)}, {e}, {i}"; }
+                case 0xc6: { M(); string e = Xe(16); return $"shufps {Xr(Reg)}, {e}, {H(B())}"; }
+                case 0xae:
+                {
+                    M();
+                    if (Mod == 3) return Reg == 7 ? "sfence" : $"(bad 0f ae /{Reg})";
+                    string[] n = { "fxsave", "fxrstor", "ldmxcsr", "stmxcsr" };
+                    return Reg < 4 ? $"{n[Reg]} {E(Reg < 2 ? 0 : 4)}" : $"(bad 0f ae /{Reg})";
+                }
+                // the MMX extensions
+                case 0x70: { M(); string e = Me(8); return $"pshufw {Mr(Reg)}, {e}, {H(B())}"; }
+                case 0xc4: { M(); string e = Mod == 3 ? R32[Rm] : E(2); return $"pinsrw {Mr(Reg)}, {e}, {B()}"; }
+                case 0xc5: { M(); return $"pextrw {R32[Reg]}, {Mr(Rm)}, {B()}"; }
+                case 0xd7: { M(); return $"pmovmskb {R32[Reg]}, {Mr(Rm)}"; }
+                case 0xe7: { M(); string e = E(8); return $"movntq {e}, {Mr(Reg)}"; }
+                case 0xf7: { M(); return $"maskmovq {Mr(Reg)}, {Mr(Rm)}"; }
+                case 0xda: case 0xde: case 0xe0: case 0xe3: case 0xe4: case 0xea: case 0xee: case 0xf6:
+                {
+                    M(); string n = b switch { 0xda => "pminub", 0xde => "pmaxub", 0xe0 => "pavgb", 0xe3 => "pavgw", 0xe4 => "pmulhuw", 0xea => "pminsw", 0xee => "pmaxsw", _ => "psadbw" };
+                    string e = Me(8); return $"{n} {Mr(Reg)}, {e}";
+                }
+            }
+            return null;
         }
     }
 }

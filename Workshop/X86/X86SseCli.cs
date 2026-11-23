@@ -461,6 +461,21 @@ public static class X86SseCli
             Check(b.LastVec == 13, $"CR4.OSFXSR on the P2: #GP (vector {b.LastVec})");
         }
 
+        // ---- the disassembler (16-bit code) ----
+        foreach (var (bytes, want) in new (byte[], string)[]
+        {
+            (new byte[] { 0x0f, 0x58, 0xc1 }, "addps xmm0, xmm1"), (new byte[] { 0xf3, 0x0f, 0x59, 0xd3 }, "mulss xmm2, xmm3"),
+            (new byte[] { 0x0f, 0x28, 0x06, 0x00, 0x01 }, "movaps xmm0, [0x100]"), (new byte[] { 0x0f, 0xc2, 0xc1, 0x01 }, "cmpltps xmm0, xmm1"),
+            (new byte[] { 0x0f, 0xc6, 0xc1, 0x1b }, "shufps xmm0, xmm1, 0x1b"), (new byte[] { 0xf3, 0x0f, 0x2d, 0xc1 }, "cvtss2si eax, xmm1"),
+            (new byte[] { 0x0f, 0xae, 0xf8 }, "sfence"), (new byte[] { 0x0f, 0xda, 0xc1 }, "pminub mm0, mm1"), (new byte[] { 0x0f, 0x12, 0xc1 }, "movhlps xmm0, xmm1"),
+            (new byte[] { 0x0f, 0x18, 0x06, 0x00, 0x01 }, "prefetchnta [0x100]"), (new byte[] { 0x0f, 0x70, 0xc1, 0x1b }, "pshufw mm0, mm1, 0x1b"),
+        })
+        {
+            var (len, text) = X86Disasm.Decode(a => (int)a < bytes.Length ? bytes[a] : 0x90, 0, 0, false);
+            string norm = text.Replace(" ", "").ToLowerInvariant();
+            Check(len == bytes.Length && norm.Contains(want.Replace(" ", "").Replace("[0x100]", "").Replace("0x1b", "")) , $"disasm {want}: \"{text}\" ({len} bytes)");
+        }
+
         // ---- random hot loops: hashes (and the JIT / interpreter parity) ----
         int seeds = int.TryParse(Arg(args, "--seeds"), out int sn) ? sn : 40;
         if (args.Contains("--parity"))
