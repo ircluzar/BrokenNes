@@ -856,6 +856,7 @@ public sealed partial class NvGeForce
                     if (_pkDiag < 40 && OpLog != null && _fpPacks && ((x ^ y) & 31) == 0)
                     {
                         _pkDiag++;
+                        if (_pkDiag == 1) OpLog($"rankine rcregs {string.Join(" ", Enumerable.Range(0, 72).Select(i => G(inst, 0x8e0 + i * 4).ToString("X")))}");
                         OpLog($"rankine pk {x},{y} fp {G(inst, 0x8e4):X} H0 ({_fh[0]:F2},{_fh[1]:F2},{_fh[2]:F2},{_fh[3]:F2}) H1 ({_fh[4]:F2},{_fh[5]:F2},{_fh[6]:F2}) H2 ({_fh[8]:F2},{_fh[9]:F2},{_fh[10]:F2}) H3 ({_fh[12]:F2},{_fh[13]:F2},{_fh[14]:F2}) tc4 ({_fin[32]:F2},{_fin[33]:F2},{_fin[34]:F2}) tc5 ({_fin[36]:F2},{_fin[37]:F2},{_fin[38]:F2}) pk {string.Join(" ", Enumerable.Range(0, 8).Select(i => $"[{_pk[i * 4]:F2},{_pk[i * 4 + 1]:F2},{_pk[i * 4 + 2]:F2},{_pk[i * 4 + 3]:F2}]"))} col0 ({_fin[4]:F2},{_fin[5]:F2},{_fin[6]:F2},{_fin[7]:F2}) -> ({_fr[0]:F2},{_fr[1]:F2},{_fr[2]:F2},{_fr[3]:F2})");
                     }   // the NV30 pipe: the FP's H0-H3 feed the register combiners as "textures" 0-3
                 }
