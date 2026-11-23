@@ -1850,6 +1850,7 @@ public sealed partial class I386
         if (!_legacy)
         {
             if (!ModelAllows0F(b1)) return K(Throw0(EX_UD));
+            if (_hasSse && (b1 == 0xae || SseXmmOp(b1) || SseMmxOp(b1))) return SseExec(b1);   // P3: SSE, the MMX extensions, FXSAVE group
             if (_hasMmx && b1 is (>= 0x60 and <= 0x7f) or (>= 0xd0)) return MmxExec(b1);
             switch (b1)
             {
