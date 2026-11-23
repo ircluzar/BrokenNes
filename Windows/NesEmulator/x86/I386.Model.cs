@@ -28,6 +28,7 @@ public sealed record CpuModel
     public bool Ops586 { get; init; }      // RDTSC, CMPXCHG8B, RDMSR / WRMSR, CR4
     public bool Mmx { get; init; }
     public bool Ops686 { get; init; }      // P6: CMOVcc, FCMOVcc, FCOMI / FUCOMI(P), RDPMC, SYSENTER / SYSEXIT, hint NOPs 0F 18-1F, MTRR / P6 MSRs, CR4.PCE
+    public bool Sse { get; init; }         // P3: SSE, the MMX extensions, FXSAVE / FXRSTOR, CR4.OSFXSR / OSXMMEXCPT, #XM
     public uint Signature { get; init; }   // CPUID 1 EAX: family << 8 | model << 4 | stepping
     public uint FeatureEdx { get; init; }  // CPUID 1 EDX
     public string Vendor { get; init; } = "GenuineIntel";
@@ -87,6 +88,16 @@ public sealed record CpuModel
     public static double? P2CpiOverride => double.TryParse(Environment.GetEnvironmentVariable("X86_P2CPI"), System.Globalization.NumberStyles.Float,
         System.Globalization.CultureInfo.InvariantCulture, out double v) && v >= 1.0 ? v : null;
 
+    /// <summary>Pentium III 866 (Coppermine, family 6 model 8 stepping 6 (cD0), 256 KB full-speed on-die L2, 133 MHz FSB). CPUID EDX = the
+    /// P2's + FXSR + SSE (the processor serial number is not reported, as on most boards that switched it off: leaf 3 absent, max leaf 2).
+    /// Timing: the P6 core of the P2 (CPI 1.0 faithful + the P6 column) plus the SSE class costs; the gen-6 cost lever (X86_P2CPI and a
+    /// package's hardware.p2cpi) applies to it the same way, RDTSC still counting 866 MHz.</summary>
+    public static CpuModel PentiumIII => new CpuModel()
+    {
+        Id = "P3", Name = "Intel Pentium III 866 MHz", Gen = 6, Fpu = true, Ops486 = true, Cpuid = true, Ops586 = true, Mmx = true, Ops686 = true, Sse = true,
+        Signature = 0x0686, FeatureEdx = 0x1 | 0x4 | 0x10 | 0x20 | 0x80 | 0x100 | 0x800 | 0x1000 | 0x8000 | 0x800000 | 0x1000000 | 0x2000000, ClockHz = 866_000_000, Cpi = P2Cpi,
+    }.EnvOverride();
+
     /// <summary>Bisect switches (measurement only): X86_CPUID_SIG / X86_CPUID_EDX (hex) replace CPUID 1 EAX / EDX.</summary>
     private CpuModel EnvOverride()
     {
@@ -97,7 +108,7 @@ public sealed record CpuModel
         return m;
     }
 
-    public static readonly string[] Ids = { "LEGACY", "386DX", "386DX+387", "486DX", "486DX2", "486DX4", "P55C", "P2" };
+    public static readonly string[] Ids = { "LEGACY", "386DX", "386DX+387", "486DX", "486DX2", "486DX4", "P55C", "P2", "P3" };
 
     /// <summary>"P55C", "P55C@200", "486DX2@50", "386DX@40"...: a preset, optionally at another clock (MHz). Null if unknown.</summary>
     public static CpuModel? Parse(string s)
@@ -109,7 +120,8 @@ public sealed record CpuModel
         {
             "LEGACY" => LegacyModel(), "386DX" or "386" => I386DX, "386DX+387" => I386DXFpu, "486DX" or "486" => I486DX,
             "486DX2" => I486DX2, "486DX4" => I486DX4, "P55C" or "PMMX" or "P166MMX" or "PENTIUMMMX" => PentiumMmx,
-            "P2" or "PII" or "P2-400" or "DESCHUTES" or "PENTIUMII" => PentiumII, _ => null,
+            "P2" or "PII" or "P2-400" or "DESCHUTES" or "PENTIUMII" => PentiumII,
+            "P3" or "PIII" or "P3-866" or "COPPERMINE" or "PENTIUMIII" => PentiumIII, _ => null,
         };
         if (m == null) return null;
         if (mhz.Length > 0) { if (m.Legacy || !int.TryParse(mhz, out int f) || f < 1 || f > 2000) return null; m = m.WithClock(f); }
@@ -121,7 +133,7 @@ public sealed partial class I386
 {
     public readonly CpuModel Model;
     // the model's flags, read once (the interpreter and the compiled blocks test these fields only)
-    private readonly bool _legacy, _hasFpu, _has486, _hasCpuid, _has586, _hasMmx, _has686;
+    private readonly bool _legacy, _hasFpu, _has486, _hasCpuid, _has586, _hasMmx, _has686, _hasSse;
 
     /// <summary>The clock RDTSC reads, in instructions (the machine passes its own: instructions + idle time); null = <see cref="Cycle"/>.</summary>
     public Func<long>? InstructionClock;
@@ -192,6 +204,14 @@ public sealed partial class I386
         S2(U(3, 3, 4), 0xa4, 0xa5, 0xac, 0xad);               // SHLD / SHRD
         S2(U(15, 15, 15), 0xa0, 0xa1, 0xa8, 0xa9, 0xb2, 0xb4, 0xb5);   // PUSH / POP FS GS, LSS / LFS / LGS
         if (m.Ops686) S2(U(1, 1, 1, 2), 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f);   // CMOVcc: 2 uops
+        if (m.Sse)
+        {   // P3 (Katmai / Coppermine): packed single ops are 2 uops on the 64-bit SIMD units (throughput 2 clocks), scalar 1; DIVPS / SQRTPS
+            // ~36 / 56 clocks (DIVSS / SQRTSS 18 / 30: the 0F byte is shared, the packed-and-scalar mean is charged); FXSAVE / FXRSTOR ~ 60
+            S2(U(2, 2, 2, 2), 0x10, 0x11, 0x14, 0x15, 0x28, 0x29, 0x2b, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5c, 0x5d, 0x5f, 0xc2, 0xc6);
+            S2(U(3, 3, 3, 3), 0x2a, 0x2c, 0x2d, 0x2e, 0x2f);
+            S2(U(27, 27, 27, 27), 0x5e); S2(U(43, 43, 43, 43), 0x51);
+            S2(U(40, 40, 40, 40), 0xae);
+        }
         op = t; op0f = t2;
         mul = new[] { U(12, 13, 11, 4), U(22, 26, 11, 5), U(38, 42, 10, 5) };
         div = new[] { U(14, 16, 17, 17), U(22, 24, 25, 25), U(38, 40, 41, 41) };
@@ -239,8 +259,10 @@ public sealed partial class I386
             case 0x33: case 0x34: case 0x35: return _has686;   // RDPMC, SYSENTER, SYSEXIT
             case >= 0x18 and <= 0x1f: return _has686;          // hint NOPs (0F 1F /0 = the long NOP)
             case >= 0x40 and <= 0x4f: return _has686;          // CMOVcc
-            case >= 0x60 and <= 0x7f: return _hasMmx && MmxOpcode(b1);
-            case >= 0xd0 and <= 0xff: return _hasMmx && MmxOpcode(b1);
+            case >= 0x60 and <= 0x7f: return _hasMmx && MmxOpcode(b1) || _hasSse && SseMmxOp(b1);
+            case >= 0xd0 and <= 0xff: return _hasMmx && MmxOpcode(b1) || _hasSse && SseMmxOp(b1);
+            case 0xae: case 0xc2: case 0xc4: case 0xc5: case 0xc6: return _hasSse;
+            case >= 0x10 and <= 0x17: case >= 0x28 and <= 0x2f: case >= 0x50 and <= 0x5f: return _hasSse && SseXmmOp(b1);
         }
         return true;
     }
@@ -382,7 +404,7 @@ public sealed partial class I386
     /// CPUID does not report them).</summary>
     private bool WriteCr4(uint v)
     {
-        if ((v & ~(CR4_TSD | CR4_DE | CR4_MCE | (_has686 ? CR4_PCE : 0))) != 0) { MsrLog($"CR4 write {v:X} #GP"); return Throw(EX_GP, 0); }
+        if ((v & ~(CR4_TSD | CR4_DE | CR4_MCE | (_has686 ? CR4_PCE : 0) | (_hasSse ? CR4_OSFXSR | CR4_OSXMMEXCPT : 0))) != 0) { MsrLog($"CR4 write {v:X} #GP"); return Throw(EX_GP, 0); }
         if (_msrLog) MsrLog($"CR4 write {v:X}");
         Cr4 = v;
         return true;
@@ -399,10 +421,10 @@ public sealed partial class I386
                 R[3] = BitConverter.ToUInt32(v, 0); R[2] = BitConverter.ToUInt32(v, 4); R[1] = BitConverter.ToUInt32(v, 8);
                 break;
             }
-            case 1: R[0] = Model.Signature; R[3] = 0; R[1] = 0; R[2] = Model.FeatureEdx; break;
+            case 1: R[0] = Model.Signature; R[3] = _hasSse ? 2u : 0u; R[1] = 0; R[2] = Model.FeatureEdx; break;   // EBX brand index 02h = Pentium III (Coppermine tells Celeron / P3 / Xeon apart by it; Win98 SE names the CPU from it)
             // leaf 2 (P6): cache / TLB descriptors of a Deschutes with 512 KB L2: 01 ITLB 4K, 02 ITLB 4M, 03 DTLB 4K, 43 L2 512 KB, 08 L1I 16 KB,
             // 04 DTLB 4M, 0C L1D 16 KB (AL = 1: one call)
-            case 2 when _has686: R[0] = 0x03020101; R[3] = 0; R[1] = 0; R[2] = 0x0c040843; break;
+            case 2 when _has686: R[0] = 0x03020101; R[3] = 0; R[1] = 0; R[2] = _hasSse ? 0x0c040882u : 0x0c040843u; break;   // P3 Coppermine: 82 = L2 256 KB 8-way
             default: R[0] = 0; R[3] = 0; R[2] = 0; R[1] = 0; break;   // (a real P5 returns the leaf 1 data for higher leaves; harmless)
         }
     }
@@ -419,6 +441,7 @@ public sealed partial class I386
             foreach (ulong m in _mtrr) w.Write(m);
             w.Write(_pmcEvt0); w.Write(_pmcEvt1); w.Write(_pmc0); w.Write(_pmc1); w.Write(_biosSign);
         }
+        if (_hasSse) SaveSse(w);   // after the P6 block: P2 / P55C states keep their layout
     }
 
     private void LoadModelState(System.IO.BinaryReader r)
@@ -434,5 +457,6 @@ public sealed partial class I386
             for (int i = 0; i < _mtrr.Length; i++) _mtrr[i] = r.ReadUInt64();
             _pmcEvt0 = r.ReadUInt64(); _pmcEvt1 = r.ReadUInt64(); _pmc0 = r.ReadUInt64(); _pmc1 = r.ReadUInt64(); _biosSign = r.ReadUInt64();
         }
+        if (_hasSse) LoadSse(r);
     }
 }

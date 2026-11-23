@@ -121,7 +121,7 @@ public sealed partial class I386
         Model = model;
         _legacy = model.Legacy;
         _hasFpu = !_legacy && model.Fpu; _has486 = !_legacy && model.Ops486; _hasCpuid = !_legacy && model.Cpuid;
-        _has586 = !_legacy && model.Ops586; _hasMmx = !_legacy && model.Mmx; _has686 = !_legacy && model.Ops686;
+        _has586 = !_legacy && model.Ops586; _hasMmx = !_legacy && model.Mmx; _has686 = !_legacy && model.Ops686; _hasSse = !_legacy && model.Sse;
         _repCost16 = RepCosts(model);
         _memCost = MemCost(model);
         BuildOpCosts(model, out _opCost, out _opCost0F, out _mulCost, out _divCost);
@@ -887,6 +887,7 @@ public sealed partial class I386
         IdtBase = 0; IdtLimit = 0x3ff; GdtBase = 0; GdtLimit = 0;
         Cr0 = 0; Cr2 = 0; Cr3 = 0;
         if (!_legacy) { Cr4 = 0; if (_hasFpu) Cr0 = 0x10; FpuInit(); }   // ET: a 387-class FPU is there
+        if (_hasSse) SseReset();
         if (_has686) { _sysCs = _sysEsp = _sysEip = 0; Array.Clear(_mtrr); _pmcEvt0 = _pmcEvt1 = _pmc0 = _pmc1 = _biosSign = 0; }
         Array.Clear(Dr);
         _ccMask = 0; SegGen++;
