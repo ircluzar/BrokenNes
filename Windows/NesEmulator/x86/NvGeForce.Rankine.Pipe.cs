@@ -870,7 +870,7 @@ public sealed partial class NvGeForce
                 else
                 {
                     if (!RunFp(inst, x, y)) continue;
-                    if (FpRcEnv != "0") RunRc(inst, !(_fpPacks && PackNative));
+                    if (FpRcEnv == "1" || (FpRcEnv != "0" && (G(inst, 0x1e94) & 1) != 0)) RunRc(inst, !(_fpPacks && PackNative));   // (ENGINE bit 0 clear - loading-screen 2D draws, CPU test 2: FP output as is)
                     if (_pkDiag < 40 && OpLog != null && (DiagFp != 0 ? G(inst, 0x8e4) == DiagFp : _fpPacks) && ((x ^ y) & 31) == 0)
                     {
                         _pkDiag++;
