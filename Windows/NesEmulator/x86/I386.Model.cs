@@ -421,7 +421,7 @@ public sealed partial class I386
                 R[3] = BitConverter.ToUInt32(v, 0); R[2] = BitConverter.ToUInt32(v, 4); R[1] = BitConverter.ToUInt32(v, 8);
                 break;
             }
-            case 1: R[0] = Model.Signature; R[3] = 0; R[1] = 0; R[2] = Model.FeatureEdx; break;
+            case 1: R[0] = Model.Signature; R[3] = _hasSse ? 2u : 0u; R[1] = 0; R[2] = Model.FeatureEdx; break;   // EBX brand index 02h = Pentium III (Coppermine tells Celeron / P3 / Xeon apart by it; Win98 SE names the CPU from it)
             // leaf 2 (P6): cache / TLB descriptors of a Deschutes with 512 KB L2: 01 ITLB 4K, 02 ITLB 4M, 03 DTLB 4K, 43 L2 512 KB, 08 L1I 16 KB,
             // 04 DTLB 4M, 0C L1D 16 KB (AL = 1: one call)
             case 2 when _has686: R[0] = 0x03020101; R[3] = 0; R[1] = 0; R[2] = _hasSse ? 0x0c040882u : 0x0c040843u; break;   // P3 Coppermine: 82 = L2 256 KB 8-way
