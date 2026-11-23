@@ -456,6 +456,8 @@ public sealed partial class NvGeForce
         // programs that hand the combiners packed values (pack opcodes into R0/R1: the PS 1.x path) are not modelled: their FP output is
         // used directly; the others feed H0-H3 to the combiners
         _fpPacks = Array.Exists(_fp, f => ((f.W0 >> 24) & 0x3f) is 0x13 or 0x24 or 0x27 or 0x29 or 0x2e or 0x2f);
+        _fpFetchOnly = _fpPacks && !Array.Exists(_fp, f => ((f.W0 >> 24) & 0x3f) is 0x13 or 0x24 or 0x27 or 0x29 or 0x2f)
+                       && Array.FindAll(_fp, f => ((f.W0 >> 24) & 0x3f) == 0x2e && ((f.W0 >> 17) & 15) >= 4).Length > 0;   // (fetches from units 4+: GT4 terrain; GT3's stay on 0-3)
         if (RankinePrims < 3 && OpLog != null)
         {
             uint o2 = p & ~3u; var sb = new System.Text.StringBuilder();
@@ -473,7 +475,12 @@ public sealed partial class NvGeForce
     private static readonly bool PackNative = Environment.GetEnvironmentVariable("X86_NVPKNATIVE") == "1";
     private static readonly bool ZEqLoose = Environment.GetEnvironmentVariable("X86_NVZEQ") == "1";
     private static readonly bool PackRaw = Environment.GetEnvironmentVariable("X86_NVPKRAW") == "1";
-    private static readonly bool PkMode2 = Environment.GetEnvironmentVariable("X86_NVPKMODE") == "2";
+    private static readonly string? PkModeEnv = Environment.GetEnvironmentVariable("X86_NVPKMODE");
+    // routing of the pack/fetch results into the combiners: mode 2 (fetch -> texture n of its unit field) for programs made only of
+    // 0x2E fetches (GT4 terrain), the slot map (X86_NVPKMAP) for programs with raw packs / projective fetches (GT2's PS 1.x lighting);
+    // X86_NVPKMODE=1 / 2 forces one
+    private bool PkMode2 => PkModeEnv == "2" || (PkModeEnv != "1" && _fpFetchOnly);
+    private bool _fpFetchOnly;
     private readonly float[] _pkReg = new float[16 * 4]; private int _pkSet;
     private readonly System.Text.StringBuilder _rcTrace = new();
     private bool _fpHalfOut, _fpPacks; private int _pkDiag;
@@ -870,7 +877,7 @@ public sealed partial class NvGeForce
                 else
                 {
                     if (!RunFp(inst, x, y)) continue;
-                    if (FpRcEnv == "1" || (FpRcEnv != "0" && (G(inst, 0x1e94) & 1) != 0)) RunRc(inst, !(_fpPacks && PackNative));   // (ENGINE bit 0 clear - loading-screen 2D draws, CPU test 2: FP output as is)
+                    if (FpRcEnv == "1" || (FpRcEnv != "0" && (G(inst, 0x1e94) & 3) != 0)) RunRc(inst, !(_fpPacks && PackNative));   // (ENGINE bit 0 clear - loading-screen 2D draws, CPU test 2: FP output as is)
                     if (_pkDiag < 40 && OpLog != null && (DiagFp != 0 ? G(inst, 0x8e4) == DiagFp : _fpPacks) && ((x ^ y) & 31) == 0)
                     {
                         _pkDiag++;
