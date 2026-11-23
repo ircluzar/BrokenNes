@@ -868,7 +868,7 @@ public sealed partial class NvGeForce
                 else
                 {
                     if (!RunFp(inst, x, y)) continue;
-                    if (FpRcEnv == "1" || (FpRcEnv != "0" && _fpPacks)) RunRc(inst, !(_fpPacks && PackNative));
+                    if (FpRcEnv != "0") RunRc(inst, !(_fpPacks && PackNative));
                     if (_pkDiag < 40 && OpLog != null && (DiagFp != 0 ? G(inst, 0x8e4) == DiagFp : _fpPacks) && ((x ^ y) & 31) == 0)
                     {
                         _pkDiag++;
@@ -911,7 +911,7 @@ public sealed partial class NvGeForce
     private static readonly bool FpRcUns = Environment.GetEnvironmentVariable("X86_NVFPRCUNS") == "1";
     private static readonly uint DiagFp = Convert.ToUInt32(Environment.GetEnvironmentVariable("X86_NVDIAGFP") ?? "0", 16);
     private static readonly uint CubeAlign = Convert.ToUInt32(Environment.GetEnvironmentVariable("X86_NVCUBEALIGN") ?? "256");
-    private static readonly string? FpRcEnv = Environment.GetEnvironmentVariable("X86_NVFPRC");   // 1 = every program, 0 = none, unset = PS 1.x (packing) programs only   // experiment, off by default: GT1 gains lighting but GT2's PS 1.x passes go wrong
+    private static readonly string? FpRcEnv = Environment.GetEnvironmentVariable("X86_NVFPRC");   // default: every FP feeds the combiners (the NV30 pipe); 0 = FP output only   // experiment, off by default: GT1 gains lighting but GT2's PS 1.x passes go wrong
 
     private void RunRc(uint inst, bool fromFp)
     {
