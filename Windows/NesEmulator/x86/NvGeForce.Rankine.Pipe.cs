@@ -776,7 +776,14 @@ public sealed partial class NvGeForce
         float zmax = z16 ? 65535f : 16777215f;
         for (int u = 0; u < 16; u++) { _rtex[u] = RTexUnit(inst, u); _rcube[u] = (G(inst, 0x1a04 + u * 32) & 4) != 0; }
         if (TexDumpDir != null) for (int u = 0; u < 4; u++) if (_rtex[u].Ok) DumpTex(_rtex[u]);
-        bool useRc = (G(inst, 0x1e94) & 1) == 0 && !RcOff;   // ENGINE bit 0 clear: the NV20-style register combiners shade, not the FP
+        // stencil (Z24S8 only: the low byte of the zeta word); two-sided when STENCIL_ENABLE(1) is set
+        bool frontFace = (area < 0) == (G(inst, 0x1834) != 0x900);
+        int sb = (!frontFace && G(inst, 0x348) != 0) ? 0x348 : 0x328;
+        bool st = !z16 && zpitch > 0 && G(inst, sb) != 0 && !NoStencil;
+        uint sWm = G(inst, sb + 4) & 0xff, sFn = G(inst, sb + 8), sRef = G(inst, sb + 12) & 0xff, sMsk = G(inst, sb + 16) & 0xff;
+        uint sOpF = G(inst, sb + 20), sOpZf = G(inst, sb + 24), sOpZp = G(inst, sb + 28);
+        bool useRc = RcOn && (G(inst, 0x1e94) & 1) == 0;   // (experiment X86_NVRC=1: register combiners when ENGINE bit 0 is clear - the 45.23 driver
+                                                            //  draws with the FP then too, so off by default)
         float inv = 1 / area;
         for (int y = y0; y <= y1; y++)
         {
@@ -791,11 +798,14 @@ public sealed partial class NvGeForce
                 float z = a.Z * w0 + b.Z * w1 + c.Z * w2;
                 uint za = (uint)(zbase + y * zpitch + x * (z16 ? 2 : 4)) & VramMask;
                 uint zi = (uint)Math.Clamp(z * zmax, 0, zmax);   // (z from the program is 0..1: D3D depth)
+                uint sOld = st ? (uint)_v.Ram[za] : 0u;
+                if (st && !Cmp(sFn, sRef & sMsk, sOld & sMsk)) { StencilOp(za, sOld, sOpF, sRef, sWm); continue; }
                 if (zt && zpitch > 0)
                 {
                     uint zold = z16 ? (uint)(_v.Ram[za] | _v.Ram[(za + 1) & VramMask] << 8) : (za <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)za) >> 8 : 0);
-                    if (!Cmp(zf, zi, zold)) { if (_zDiag < 16 && OpLog != null && ((x ^ y) & 63) == 0) { _zDiag++; OpLog($"rankine zfail {x},{y} z {z} zi {zi:X} zold {zold:X} za {za:X} zf {zf:X}"); } continue; }
+                    if (!Cmp(zf, zi, zold)) { if (st) StencilOp(za, sOld, sOpZf, sRef, sWm); continue; }
                 }
+                if (st) StencilOp(za, sOld, sOpZp, sRef, sWm);
                 // varyings, perspective correct
                 float q0 = w0 * a.Iw, q1 = w1 * b.Iw, q2 = w2 * c.Iw, qs = 1 / (q0 + q1 + q2);
                 if (!float.IsFinite(qs)) continue;
@@ -830,7 +840,7 @@ public sealed partial class NvGeForce
     private bool _rankineMaskSeen;
     private int _pixDiag;
 
-    private static readonly bool RcOff = Environment.GetEnvironmentVariable("X86_NVNORC") == "1";
+    private static readonly bool RcOn = Environment.GetEnvironmentVariable("X86_NVRC") == "1";
 
     /// <summary>The register combiner path (ENGINE without the FP bit; envytools nv30-40_3d RC_*): textures 0-3 sampled at their
     /// (projected) coordinates, up to 8 general stages (RC_IN/OUT at 0x900 + 32 n, per-stage constants when RC_ENABLE says so), then
@@ -882,6 +892,18 @@ public sealed partial class NvGeForce
         _fr[0] = fa.X * fb.X + (1 - fa.X) * fc.X + fd.X; _fr[1] = fa.Y * fb.Y + (1 - fa.Y) * fc.Y + fd.Y;
         _fr[2] = fa.Z * fb.Z + (1 - fa.Z) * fc.Z + fd.Z; _fr[3] = InA(reg, f1 >> 8, true);
         _fpHalfOut = false;
+    }
+
+    private static readonly bool NoStencil = Environment.GetEnvironmentVariable("X86_NVNOSTENCIL") == "1";
+
+    private void StencilOp(uint za, uint old, uint op, uint sref, uint wm)
+    {
+        uint n = op switch
+        {
+            0 => 0, 0x150a => ~old & 0xff, 0x1e01 => sref, 0x1e02 => Math.Min(old + 1, 255), 0x1e03 => old == 0 ? 0 : old - 1,
+            0x8507 => (old + 1) & 0xff, 0x8508 => (old - 1) & 0xff, _ => old,
+        };
+        _v.Ram[za] = (byte)((old & ~wm) | (n & wm));
     }
 
     private void Lerp(int fin, int vo, RVert a, RVert b, RVert c, float q0, float q1, float q2)
