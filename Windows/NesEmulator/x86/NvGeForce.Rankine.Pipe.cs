@@ -396,7 +396,7 @@ public sealed partial class NvGeForce
                 for (int ai = 0; ai < 16; ai++) { uint vf = G(inst, 0x1740 + ai * 4); if ((vf & 0xf0) != 0) sb.Append($" a{ai}=({i0[ai * 4]:G4},{i0[ai * 4 + 1]:G4},{i0[ai * 4 + 2]:G4},{i0[ai * 4 + 3]:G4})"); }
                 sb.Append(" ->");
                 for (int oi = 0; oi < 16; oi++) if (o0.Var[oi * 4] != 0 || o0.Var[oi * 4 + 1] != 0 || o0.Var[oi * 4 + 2] != 0) sb.Append($" o{oi}=({o0.Var[oi * 4]:G4},{o0.Var[oi * 4 + 1]:G4},{o0.Var[oi * 4 + 2]:G4},{o0.Var[oi * 4 + 3]:G4})");
-                OpLog($"rankine draw eng {eng:X} rc {G(inst, 0x8fc):X}/{G(inst, 0x900):X}/{G(inst, 0x904):X}/{G(inst, 0x910):X}/{G(inst, 0x914):X} s1 {G(inst, 0x920):X}/{G(inst, 0x924):X}/{G(inst, 0x930):X}/{G(inst, 0x934):X} fin {G(inst, 0x8f4):X}/{G(inst, 0x8f8):X} fpc {G(inst, 0x1d60):X} vp {vps} fp {fpa:X} prim {_rPrim} n {vin.Count} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} blend {G(inst, 0x310)} {G(inst, 0x314):X}/{G(inst, 0x318):X} at {G(inst, 0x304)} cull {G(inst, 0x183c)} tex0 {RTexInfo(inst, 0)} tex1 {RTexInfo(inst, 1)}{sb}");
+                OpLog($"rankine draw eng {eng:X} rc {G(inst, 0x8fc):X}/{G(inst, 0x900):X}/{G(inst, 0x904):X}/{G(inst, 0x910):X}/{G(inst, 0x914):X} s1 {G(inst, 0x920):X}/{G(inst, 0x924):X}/{G(inst, 0x930):X}/{G(inst, 0x934):X} fin {G(inst, 0x8f4):X}/{G(inst, 0x8f8):X} fpc {G(inst, 0x1d60):X} vp {vps} fp {fpa:X} prim {_rPrim} n {vin.Count} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} blend {G(inst, 0x310)} {G(inst, 0x314):X}/{G(inst, 0x318):X} at {G(inst, 0x304)} cull {G(inst, 0x183c)} tex0 {RTexInfo(inst, 0)} tex1 {RTexInfo(inst, 1)} tex2 {RTexInfo(inst, 2)} cube2 {(G(inst, 0x1a44) & 4) != 0} tex3 {RTexInfo(inst, 3)}{sb}");
             }
         }
         if (RankinePrims < 4 && OpLog != null)
@@ -642,9 +642,11 @@ public sealed partial class NvGeForce
         uint flt = G(inst, 0x1a14 + u * 32);
         t.MagF = (int)(flt >> 24) & 15; t.MinF = (int)(flt >> 16) & 15;
         t.Lin = t.MagF == 2;
-        t.Mip = !t.Rect && (f & (1u << 19)) != 0 && t.MinF >= 3;
-        t.Levels = 1;
-        if (t.Mip) { int m = Math.Max(t.W, t.H); while (m > 1) { m >>= 1; t.Levels++; } }
+        // TEX_FORMAT bits 16-19 = the mipmap level count (the 45.23 driver: 6 for a 32x32 chain); the levels are packed in memory whether
+        // or not the min filter uses them (cube faces follow one another by the whole chain)
+        int cnt = (int)(f >> 16) & 15;
+        t.Levels = !t.Rect && cnt > 1 ? cnt : 1;
+        t.Mip = t.Levels > 1 && t.MinF >= 3;
         t.Ok = t.W > 0 && t.H > 0 && t.Dma != 0;
         return t;
     }
