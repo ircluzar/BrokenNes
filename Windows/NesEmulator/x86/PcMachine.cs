@@ -136,7 +136,7 @@ public sealed partial class PcMachine : IX86Bus
                     bool noReads = Environment.GetEnvironmentVariable("X86_NVLOGNOREADS") != null;
                     bool noRegs = Environment.GetEnvironmentVariable("X86_NVLOGNOREGS") != null;   // methods + ops only   // leave register reads out (the driver's polling)
                     Nv.OpLog = t => { if (nlog++ < nmax) lw.WriteLine($"{Vga.FrameCount} OP {t}"); };
-                    Nv.MethodLog = (ch, sc, cl, mt, d) => { if (nlog++ < nmax) lw.WriteLine($"{Vga.FrameCount} M ch{ch} s{sc} c{cl:X3} {mt:X4} {d:X8}"); };
+                    if (Environment.GetEnvironmentVariable("X86_NVLOGNOMETHODS") == null) Nv.MethodLog = (ch, sc, cl, mt, d) => { if (nlog++ < nmax) lw.WriteLine($"{Vga.FrameCount} M ch{ch} s{sc} c{cl:X3} {mt:X4} {d:X8}"); };
                     Nv.Log = (o, v, sz, wr) => { if (noRegs) return; if (noRamin && o is >= 0x700000 and < 0x800000) return; if (noReads && !wr) return; if (nlog++ < nmax) lw.WriteLine($"{Vga.FrameCount} {(wr ? 'W' : 'R')}{sz} {o:X6} {v:X8} {Cpu.SegSel[1]:X4}:{Cpu.Ip:X8}"); };
                 }
                 // a DMA object can point at the card's own BARs (the 45.23 FX driver flips by an M2MF copy into PCRTC_START at BAR0 + 0x600800)

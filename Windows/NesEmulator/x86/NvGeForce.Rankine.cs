@@ -25,6 +25,12 @@ public sealed partial class NvGeForce
         switch (mthd)
         {
             case 0x1d94: RankineClear(inst, data); return;
+            case 0x1438 when (data & 1) != 0 && !NoZClear1438:                              // (undocumented: the 45.23 D3D depth clear) - CLEAR_DEPTH_VALUE
+            {                                                                               // over the CLEAR rect 0x1D98 / 0x1D9C (first | last << 16)
+                uint ch = G(inst, 0x1d98), cv = G(inst, 0x1d9c);
+                RankineClear(inst, 3, (int)(ch & 0xffff), (int)(cv & 0xffff), (int)(ch >> 16) - (int)(ch & 0xffff) + 1, (int)(cv >> 16) - (int)(cv & 0xffff) + 1);
+                return;
+            }
             case 0x1e9c: _vpUpInst = (int)data; _vpUpWord = 0; return;                 // VP_UPLOAD_FROM_ID
             case >= 0xb80 and <= 0xb8c:                                                 // VP_UPLOAD_INST[4]
                 if (_vpUpInst < 544) _vpInst[_vpUpInst * 4 + ((mthd - 0xb80) >> 2)] = data;
@@ -83,11 +89,18 @@ public sealed partial class NvGeForce
 
     /// <summary>CLEAR_BUFFERS: fill the colour target (CLEAR_COLOR_VALUE, A8R8G8B8, with the R/G/B/A mask) and the zeta target
     /// (CLEAR_DEPTH_VALUE, stencil in the low byte for Z24S8) over the render target rectangle (RT_HORIZ / RT_VERT).</summary>
+    private static readonly bool NoZClear1438 = Environment.GetEnvironmentVariable("X86_NVNO1438") == "1";
+
     private void RankineClear(uint inst, uint what)
     {
+        uint hz = G(inst, 0x200), vt = G(inst, 0x204);
+        RankineClear(inst, what, (int)(hz & 0xffff), (int)(vt & 0xffff), (int)(hz >> 16), (int)(vt >> 16));
+    }
+
+    private void RankineClear(uint inst, uint what, int x0, int y0, int w, int h)
+    {
         RankineClears++;
-        uint rtf = G(inst, 0x208), pitches = G(inst, 0x20c), hz = G(inst, 0x200), vt = G(inst, 0x204);
-        int x0 = (int)(hz & 0xffff), w = (int)(hz >> 16), y0 = (int)(vt & 0xffff), h = (int)(vt >> 16);
+        uint rtf = G(inst, 0x208), pitches = G(inst, 0x20c);
         if (w <= 0 || h <= 0 || (long)w * h > 4 << 20) return;
         int cfmt = (int)(rtf & 0x1f), zfmt = (int)(rtf >> 5) & 7;
         OpLog?.Invoke($"rankine clear {what:X} rect {x0},{y0} {w}x{h} fmt {rtf:X} col {G(inst, 0x210):X} z {G(inst, 0x214):X} pitch {pitches:X} value {G(inst, 0x1d90):X8}/{G(inst, 0x1d8c):X8}");

@@ -220,7 +220,7 @@ public sealed partial class NvGeForce
             float x = a[8]; float sr = 0; bool scaW = sop != 0;
             switch (sop)
             {
-                case 0x01: sr = x; break;
+                case 0x01: sr = x; break;                                                                         // (MOV: the whole swizzled src2, below)
                 case 0x02: sr = 1 / x; break;
                 case 0x03: sr = Math.Clamp(1 / x, -1.884467e19f, 1.884467e19f); if (MathF.Abs(sr) < 5.42101e-20f) sr = MathF.CopySign(5.42101e-20f, sr); break;
                 case 0x04: sr = 1 / MathF.Sqrt(MathF.Abs(x)); break;
@@ -237,11 +237,17 @@ public sealed partial class NvGeForce
                 default: scaW = false; break;
             }
             if (sop != 0x07) { _vsr[0] = _vsr[1] = _vsr[2] = _vsr[3] = sr; }
+            if (sop == 0x01) { _vsr[0] = a[8]; _vsr[1] = a[9]; _vsr[2] = a[10]; _vsr[3] = a[11]; }
             if (sop == 0x05) { _vsr[0] = MathF.Pow(2, MathF.Floor(x)); _vsr[1] = x - MathF.Floor(x); _vsr[2] = MathF.Pow(2, x); _vsr[3] = 1; }
             if (sop == 0x06) { float ax = MathF.Abs(x); float e = ax == 0 ? -float.MaxValue : MathF.Floor(MathF.Log2(ax)); _vsr[0] = e; _vsr[1] = ax == 0 ? 1 : ax / MathF.Pow(2, e); _vsr[2] = ax == 0 ? -float.MaxValue : MathF.Log2(ax); _vsr[3] = 1; }
             // writes
             int tid = (int)(h0 >> 16) & 0x1f, oid = (int)(h3 >> 2) & 0x1f;
             int vtm = (int)(h3 >> 20) & 15, vom = (int)(h3 >> 12) & 15, stm = (int)(h3 >> 24) & 15, som = (int)(h3 >> 16) & 15;
+            // one output index for both units: when the scalar unit takes it, the vector result goes to the position (the 45.23
+            // compiler pairs "dp4 oPos.c" with "mov oTn" this way); a scalar temp write without a temp index goes to src2's temp
+            // (the D3D "rcp r1.z, r1.z" pattern). Both inferred from the 45.23 programs (3DMark03), not documented.
+            int vod = scaW && som != 0 && vecW && vom != 0 ? 0 : oid;
+            int stid = tid != 0x1f ? tid : (s2 & 3) == 1 ? (int)(s2 >> 2) & 15 : 0x1f;
             for (int c = 0; c < 4; c++)
             {
                 bool cp = (h0 & (1u << 14)) == 0 || CondTest((int)(h0 >> 11) & 7, _vcc[(int)(h0 >> (9 - 2 * c)) & 3]);
@@ -250,12 +256,12 @@ public sealed partial class NvGeForce
                 if (vecW)
                 {
                     if ((vtm & bit) != 0 && tid != 0x1f) _vt[(tid & 31) * 4 + c] = _vr[c];
-                    if ((vom & bit) != 0 && oid < 16) vout[oid * 4 + c] = _vr[c];
+                    if ((vom & bit) != 0 && vod < 16) vout[vod * 4 + c] = _vr[c];
                     if ((h0 & (1u << 15)) != 0) _vcc[c] = _vr[c];
                 }
                 if (scaW)
                 {
-                    if ((stm & bit) != 0 && tid != 0x1f) _vt[(tid & 31) * 4 + c] = _vsr[c];
+                    if ((stm & bit) != 0 && stid != 0x1f) _vt[(stid & 31) * 4 + c] = _vsr[c];
                     if ((som & bit) != 0 && oid < 16) vout[oid * 4 + c] = _vsr[c];
                     if ((h0 & (1u << 15)) != 0 && !vecW) _vcc[c] = _vsr[c];
                 }
@@ -279,7 +285,7 @@ public sealed partial class NvGeForce
                 for (int c = 0; c < 4; c++) _cbuf[c] = F32(_vpConst[ci * 4 + c]);
                 src = _cbuf; bo = 0; break;
             }
-            default: src = vin; bo = (input & 15) * 4; break;
+            default: src = vin; bo = 0; break;                                    // (type 0: v0 - the 45.23 programs read the position this way beside another input)
         }
         int sx = (int)(sr >> 12) & 3, sy = (int)(sr >> 10) & 3, sz = (int)(sr >> 8) & 3, sw = (int)(sr >> 6) & 3;
         float x = src[bo + sx], y = src[bo + sy], z = src[bo + sz], w = src[bo + sw];
@@ -337,6 +343,12 @@ public sealed partial class NvGeForce
 
     private sealed class RVert { public float X, Y, Z, Iw; public readonly float[] Var = new float[16 * 4]; }   // screen x, y, depth, 1/w; VP outputs
 
+    private static readonly bool ScreenVp = Environment.GetEnvironmentVariable("X86_NVSCREENVP") == "1";   // old behaviour: VP positions always screen space
+    private static readonly bool ProgDump = Environment.GetEnvironmentVariable("X86_NVPROGDUMP") == "1";
+    private readonly HashSet<int> _seenVp = new();
+    private readonly HashSet<uint> _seenFp = new();
+    private readonly HashSet<string> _seenDraw = new();
+
     private void RankineFlush(uint inst)
     {
         if (_rPrim == 0) return;
@@ -345,6 +357,8 @@ public sealed partial class NvGeForce
         float tx = F32(G(inst, 0xa20)), ty = F32(G(inst, 0xa24)), tz = F32(G(inst, 0xa28));
         float sx = F32(G(inst, 0xa30)), sy = F32(G(inst, 0xa34)), sz = F32(G(inst, 0xa38));
         var vs = new RVert[vin.Count];
+        bool clipSpace = (G(inst, 0x1e94) & 0x102) == 2 && !ScreenVp;
+        _clipZ = clipSpace; _clipZ0 = F32(G(inst, 0xa28));
         var vout = new float[64];
         for (int i = 0; i < vin.Count; i++)
         {
@@ -354,8 +368,36 @@ public sealed partial class NvGeForce
             // Kelvin-style: the program's position is already in screen space (x, y in pixels, z in depth units); w is the clip w,
             // used for perspective-correct varyings only (X86_RKW=rhw: read it as 1/w instead)
             float w = vout[3]; if (w == 0 || float.IsNaN(w)) w = 1;
-            v.X = vout[0]; v.Y = vout[1]; v.Z = vout[2]; v.Iw = RkwRhw ? w : 1 / w;
+            if (clipSpace)
+            {   // ENGINE bit 8 clear: the program's position is in clip space; the hardware divides by w and applies VIEWPORT_SCALE/TRANSLATE
+                float iw = 1 / w;
+                v.X = vout[0] * iw * sx + tx; v.Y = vout[1] * iw * sy + ty; v.Z = vout[2] * iw * sz + tz; v.Iw = iw;
+            }
+            else { v.X = vout[0]; v.Y = vout[1]; v.Z = vout[2]; v.Iw = RkwRhw ? w : 1 / w; }
             vs[i] = v;
+        }
+        if (OpLog != null && ProgDump)
+        {
+            uint eng = G(inst, 0x1e94);
+            int vps = (int)G(inst, 0x1ea0);
+            if ((eng & 2) != 0 && _seenVp.Add(vps))
+            {
+                var sb = new System.Text.StringBuilder();
+                for (int pc = vps; pc < 544; pc++) { for (int k = 0; k < 4; k++) sb.Append(_vpInst[pc * 4 + k].ToString("X8")).Append(' '); if ((_vpInst[pc * 4 + 3] & 1) != 0) break; }
+                OpLog($"rankine vpdump {vps}: {sb}");
+            }
+            uint fpa = G(inst, 0x8e4);
+            if ((eng & 1) != 0 && _seenFp.Add(fpa))
+                OpLog($"rankine fpdump {fpa:X}: {string.Join(" ", Array.ConvertAll(_fp, f => $"{f.W0:X8} {f.W1:X8} {f.W2:X8} {f.W3:X8}" + (f.HasConst ? $" [{f.C0} {f.C1} {f.C2} {f.C3}]" : "")))}");
+            if (_seenDraw.Add($"{eng:X}_{vps}_{fpa:X}"))
+            {
+                var i0 = vin[0]; var o0 = vs[0];
+                var sb = new System.Text.StringBuilder();
+                for (int ai = 0; ai < 16; ai++) { uint vf = G(inst, 0x1740 + ai * 4); if ((vf & 0xf0) != 0) sb.Append($" a{ai}=({i0[ai * 4]:G4},{i0[ai * 4 + 1]:G4},{i0[ai * 4 + 2]:G4},{i0[ai * 4 + 3]:G4})"); }
+                sb.Append(" ->");
+                for (int oi = 0; oi < 16; oi++) if (o0.Var[oi * 4] != 0 || o0.Var[oi * 4 + 1] != 0 || o0.Var[oi * 4 + 2] != 0) sb.Append($" o{oi}=({o0.Var[oi * 4]:G4},{o0.Var[oi * 4 + 1]:G4},{o0.Var[oi * 4 + 2]:G4},{o0.Var[oi * 4 + 3]:G4})");
+                OpLog($"rankine draw eng {eng:X} vp {vps} fp {fpa:X} prim {_rPrim} n {vin.Count} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} blend {G(inst, 0x310)} {G(inst, 0x314):X}/{G(inst, 0x318):X} at {G(inst, 0x304)} cull {G(inst, 0x183c)} tex0 {RTexInfo(inst, 0)} tex1 {RTexInfo(inst, 1)}{sb}");
+            }
         }
         if (RankinePrims < 4 && OpLog != null)
         {
@@ -656,30 +698,42 @@ public sealed partial class NvGeForce
     /// screen positions are the projected ones), varyings linear in clip space, and the pieces drawn.</summary>
     private void RTri(uint inst, RVert a, RVert b, RVert c)
     {
-        if (a.Iw > 0 && b.Iw > 0 && c.Iw > 0) { RTriIn(inst, a, b, c); return; }
+        bool inW = a.Iw > 0 && b.Iw > 0 && c.Iw > 0;
+        if (inW && (!_clipZ || (a.Z >= _clipZ0 && b.Z >= _clipZ0 && c.Z >= _clipZ0))) { RTriIn(inst, a, b, c); return; }
+        // homogeneous clipping (screen x, y, z times w are linear in clip space): w >= eps, and for clip-space programs the D3D near
+        // plane (depth >= the viewport's z translate); varyings linear in clip space
         const float eps = 1e-5f;
-        float W(RVert v) => v.Iw == 0 ? -1 : 1 / v.Iw;
+        static float W(RVert v) => v.Iw == 0 ? -1 : 1 / v.Iw;
         var poly = new List<RVert> { a, b, c };
-        var outp = new List<RVert>();
-        for (int i = 0; i < poly.Count; i++)
+        for (int plane = 0; plane < (_clipZ ? 2 : 1); plane++)
         {
-            RVert p = poly[i], q = poly[(i + 1) % poly.Count];
-            float wp = W(p), wq = W(q);
-            bool pin = wp >= eps, qin = wq >= eps;
-            if (pin) outp.Add(p);
-            if (pin != qin)
+            float D(RVert v) { float w = W(v); return plane == 0 ? w - eps : (v.Z - _clipZ0) * w; }
+            var outp = new List<RVert>();
+            for (int i = 0; i < poly.Count; i++)
             {
-                float t = (eps - wp) / (wq - wp);
-                var r = new RVert();
-                float cxp = p.X * wp, cyp = p.Y * wp, czp = p.Z * wp, cxq = q.X * wq, cyq = q.Y * wq, czq = q.Z * wq;
-                float w = wp + (wq - wp) * t;
-                r.X = (cxp + (cxq - cxp) * t) / w; r.Y = (cyp + (cyq - cyp) * t) / w; r.Z = (czp + (czq - czp) * t) / w; r.Iw = 1 / w;
-                for (int k = 0; k < 64; k++) r.Var[k] = p.Var[k] + (q.Var[k] - p.Var[k]) * t;
-                outp.Add(r);
+                RVert p = poly[i], q = poly[(i + 1) % poly.Count];
+                float dp = D(p), dq = D(q);
+                bool pin = dp >= 0, qin = dq >= 0;
+                if (pin) outp.Add(p);
+                if (pin != qin)
+                {
+                    float t = dp / (dp - dq);
+                    float wp = W(p), wq = W(q);
+                    var r = new RVert();
+                    float cxp = p.X * wp, cyp = p.Y * wp, czp = p.Z * wp, cxq = q.X * wq, cyq = q.Y * wq, czq = q.Z * wq;
+                    float w = wp + (wq - wp) * t;
+                    if (w <= 0) w = eps;
+                    r.X = (cxp + (cxq - cxp) * t) / w; r.Y = (cyp + (cyq - cyp) * t) / w; r.Z = (czp + (czq - czp) * t) / w; r.Iw = 1 / w;
+                    for (int k = 0; k < 64; k++) r.Var[k] = p.Var[k] + (q.Var[k] - p.Var[k]) * t;
+                    outp.Add(r);
+                }
             }
+            poly = outp;
+            if (poly.Count < 3) return;
         }
-        for (int i = 1; i + 1 < outp.Count; i++) RTriIn(inst, outp[0], outp[i], outp[i + 1]);
+        for (int i = 1; i + 1 < poly.Count; i++) RTriIn(inst, poly[0], poly[i], poly[i + 1]);
     }
+    private bool _clipZ; private float _clipZ0; private int _zDiag;
 
     private void RTriIn(uint inst, RVert a, RVert b, RVert c)
     {
@@ -722,6 +776,7 @@ public sealed partial class NvGeForce
         float zmax = z16 ? 65535f : 16777215f;
         for (int u = 0; u < 16; u++) { _rtex[u] = RTexUnit(inst, u); _rcube[u] = (G(inst, 0x1a04 + u * 32) & 4) != 0; }
         if (TexDumpDir != null) for (int u = 0; u < 4; u++) if (_rtex[u].Ok) DumpTex(_rtex[u]);
+        bool useRc = (G(inst, 0x1e94) & 1) == 0 && !RcOff;   // ENGINE bit 0 clear: the NV20-style register combiners shade, not the FP
         float inv = 1 / area;
         for (int y = y0; y <= y1; y++)
         {
@@ -739,16 +794,18 @@ public sealed partial class NvGeForce
                 if (zt && zpitch > 0)
                 {
                     uint zold = z16 ? (uint)(_v.Ram[za] | _v.Ram[(za + 1) & VramMask] << 8) : (za <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)za) >> 8 : 0);
-                    if (!Cmp(zf, zi, zold)) continue;
+                    if (!Cmp(zf, zi, zold)) { if (_zDiag < 16 && OpLog != null && ((x ^ y) & 63) == 0) { _zDiag++; OpLog($"rankine zfail {x},{y} z {z} zi {zi:X} zold {zold:X} za {za:X} zf {zf:X}"); } continue; }
                 }
                 // varyings, perspective correct
                 float q0 = w0 * a.Iw, q1 = w1 * b.Iw, q2 = w2 * c.Iw, qs = 1 / (q0 + q1 + q2);
+                if (!float.IsFinite(qs)) continue;
                 q0 *= qs; q1 *= qs; q2 *= qs;
                 _fin[0] = px; _fin[1] = py; _fin[2] = z; _fin[3] = a.Iw * w0 + b.Iw * w1 + c.Iw * w2;
                 Lerp(1, 3, a, b, c, q0, q1, q2); Lerp(2, 4, a, b, c, q0, q1, q2); Lerp(3, 5, a, b, c, q0, q1, q2);
                 for (int t = 0; t < 8; t++) Lerp(4 + t, 8 + t, a, b, c, q0, q1, q2);
                 if (_pixDiag < 12 && OpLog != null && ((x ^ y) & 127) == 0) { _pixDiag++; OpLog($"rankine px {x},{y} tc0 ({_fin[16]:F3},{_fin[17]:F3},{_fin[18]:F3},{_fin[19]:F3}) col0 ({_fin[4]:F2},{_fin[5]:F2},{_fin[6]:F2}) verts tc ({a.Var[32]:F2},{a.Var[33]:F2}) ({b.Var[32]:F2},{b.Var[33]:F2}) ({c.Var[32]:F2},{c.Var[33]:F2})"); }
-                if (!RunFp(inst, x, y)) continue;
+                if (useRc) RunRc(inst);
+                else if (!RunFp(inst, x, y)) continue;
                 var o = _fpHalfOut ? _fh : _fr;
                 float cr = Math.Clamp(o[0], 0, 1), cg = Math.Clamp(o[1], 0, 1), cb = Math.Clamp(o[2], 0, 1), ca = Math.Clamp(o[3], 0, 1);
                 if (at && !Cmp(af, (uint)(ca * 255 + 0.5f), (uint)(aref * 255 + 0.5f))) continue;
@@ -772,6 +829,60 @@ public sealed partial class NvGeForce
     }
     private bool _rankineMaskSeen;
     private int _pixDiag;
+
+    private static readonly bool RcOff = Environment.GetEnvironmentVariable("X86_NVNORC") == "1";
+
+    /// <summary>The register combiner path (ENGINE without the FP bit; envytools nv30-40_3d RC_*): textures 0-3 sampled at their
+    /// (projected) coordinates, up to 8 general stages (RC_IN/OUT at 0x900 + 32 n, per-stage constants when RC_ENABLE says so), then
+    /// the final combiner (0x8F4 / 0x8F8). Same register encoding as Celsius / Kelvin. Result in R0.</summary>
+    private void RunRc(uint inst)
+    {
+        var reg = new Vec4[16];
+        uint en = G(inst, 0x8fc);
+        int n = Math.Clamp((int)(en & 15), 1, 8);
+        reg[1] = Vec4.FromArgb(G(inst, 0x8ec)); reg[2] = Vec4.FromArgb(G(inst, 0x8f0));
+        uint fogc = G(inst, 0x370);
+        float fogf = G(inst, 0x36c) != 0 ? Math.Clamp(_fin[12], 0, 1) : 1;
+        reg[3] = new Vec4((fogc & 0xff) / 255f, ((fogc >> 8) & 0xff) / 255f, ((fogc >> 16) & 0xff) / 255f, fogf);   // (FOG_COLOR is R in the low byte)
+        reg[4] = new Vec4(Math.Clamp(_fin[4], 0, 1), Math.Clamp(_fin[5], 0, 1), Math.Clamp(_fin[6], 0, 1), Math.Clamp(_fin[7], 0, 1));
+        reg[5] = new Vec4(Math.Clamp(_fin[8], 0, 1), Math.Clamp(_fin[9], 0, 1), Math.Clamp(_fin[10], 0, 1), Math.Clamp(_fin[11], 0, 1));
+        for (int t = 0; t < 4; t++)
+        {
+            if (!_rtex[t].Ok) { reg[8 + t] = new Vec4(0, 0, 0, 1); continue; }
+            int b = (4 + t) * 4;
+            float q = _fin[b + 3]; float u = _fin[b], v = _fin[b + 1], r = _fin[b + 2];
+            if (q != 0 && q != 1) { u /= q; v /= q; r /= q; }
+            reg[8 + t] = Vec4.FromArgb(RTex(inst, t, u, v, r, 0));
+        }
+        reg[12] = new Vec4(0, 0, 0, reg[8].W);
+        for (int s = 0; s < n; s++)
+        {
+            int o = 0x900 + s * 32;
+            uint inA = G(inst, o), inC = G(inst, o + 4), outA = G(inst, o + 0x10), outC = G(inst, o + 0x14);
+            if ((en & 0x1000) != 0) reg[1] = Vec4.FromArgb(G(inst, o + 8));
+            if ((en & 0x10000) != 0) reg[2] = Vec4.FromArgb(G(inst, o + 12));
+            Vec4 A = In(reg, inC >> 24, false), B = In(reg, inC >> 16, false), C = In(reg, inC >> 8, false), D = In(reg, inC, false);
+            Vec4 ab = (outC & 0x2000) != 0 ? Dot(A, B) : new Vec4(A.X * B.X, A.Y * B.Y, A.Z * B.Z, 0);
+            Vec4 cd = (outC & 0x1000) != 0 ? Dot(C, D) : new Vec4(C.X * D.X, C.Y * D.Y, C.Z * D.Z, 0);
+            Vec4 sum = (outC & 0x4000) != 0 ? (reg[12].W >= 0.5f ? cd : ab) : new Vec4(ab.X + cd.X, ab.Y + cd.Y, ab.Z + cd.Z, 0);
+            float aA = InA(reg, inA >> 24), aB = InA(reg, inA >> 16), aC = InA(reg, inA >> 8), aD = InA(reg, inA);
+            float aab = aA * aB, acd = aC * aD, asum = (outA & 0x4000) != 0 ? (reg[12].W >= 0.5f ? acd : aab) : aab + acd;
+            var nr = (Vec4[])reg.Clone();
+            WriteOut(nr, (int)(outC >> 4) & 15, Scale(ab, outC), true); WriteOut(nr, (int)outC & 15, Scale(cd, outC), true); WriteOut(nr, (int)(outC >> 8) & 15, Scale(sum, outC), true);
+            WriteOutA(nr, (int)(outA >> 4) & 15, ScaleA(aab, outA)); WriteOutA(nr, (int)outA & 15, ScaleA(acd, outA)); WriteOutA(nr, (int)(outA >> 8) & 15, ScaleA(asum, outA));
+            reg = nr;
+        }
+        reg[1] = Vec4.FromArgb(G(inst, 0x8ec)); reg[2] = Vec4.FromArgb(G(inst, 0x8f0));
+        uint f0 = G(inst, 0x8f4), f1 = G(inst, 0x8f8);
+        var E = In(reg, f1 >> 24, true); var Fv = In(reg, f1 >> 16, true);
+        reg[15] = new Vec4(E.X * Fv.X, E.Y * Fv.Y, E.Z * Fv.Z, 0);
+        reg[14] = new Vec4(reg[12].X + reg[5].X, reg[12].Y + reg[5].Y, reg[12].Z + reg[5].Z, 0);
+        if ((f1 & 0x80) != 0) reg[14] = new Vec4(Math.Min(reg[14].X, 1), Math.Min(reg[14].Y, 1), Math.Min(reg[14].Z, 1), 0);
+        Vec4 fa = In(reg, f0 >> 24, true), fb = In(reg, f0 >> 16, true), fc = In(reg, f0 >> 8, true), fd = In(reg, f0, true);
+        _fr[0] = fa.X * fb.X + (1 - fa.X) * fc.X + fd.X; _fr[1] = fa.Y * fb.Y + (1 - fa.Y) * fc.Y + fd.Y;
+        _fr[2] = fa.Z * fb.Z + (1 - fa.Z) * fc.Z + fd.Z; _fr[3] = InA(reg, f1 >> 8, true);
+        _fpHalfOut = false;
+    }
 
     private void Lerp(int fin, int vo, RVert a, RVert b, RVert c, float q0, float q1, float q2)
     {
