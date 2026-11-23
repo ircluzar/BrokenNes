@@ -475,10 +475,11 @@ public sealed partial class NvGeForce
     private static readonly bool PackRaw = Environment.GetEnvironmentVariable("X86_NVPKRAW") == "1";
     private static readonly bool PkMode2 = Environment.GetEnvironmentVariable("X86_NVPKMODE") == "2";
     private readonly float[] _pkReg = new float[16 * 4]; private int _pkSet;
+    private readonly System.Text.StringBuilder _rcTrace = new();
     private bool _fpHalfOut, _fpPacks; private int _pkDiag;
     private readonly float[] _pk = new float[8 * 4];   // packed slots R0.xyzw, R1.xyzw (unpacked vec4 each)
     private static readonly HashSet<int> PackUnsigned = new((Environment.GetEnvironmentVariable("X86_NVPKUNS") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => Convert.ToInt32(x, 16)));
-    private static readonly int[] PkMap = (Environment.GetEnvironmentVariable("X86_NVPKMAP") ?? "0,1,2,3,4,5,13,3").Split(',').Select(int.Parse).ToArray();
+    private static readonly int[] PkMap = (Environment.GetEnvironmentVariable("X86_NVPKMAP") ?? "1,3,2,-1,0,4,13,-1").Split(',').Select(int.Parse).ToArray();
 
     private bool RunFp(uint inst, int px, int py)
     {
@@ -696,7 +697,7 @@ public sealed partial class NvGeForce
         float fu = (sc / ma + 1) * 0.5f, fv = (tc / ma + 1) * 0.5f;
         uint faceBytes = 0; int w = t.W, h = t.H;
         for (int l = 0; l < t.Levels; l++) { faceBytes += LevelBytes(t.Fmt, w, h); w = Math.Max(1, w >> 1); h = Math.Max(1, h >> 1); }
-        faceBytes = (faceBytes + 127) & ~127u;   // (faces 128-byte aligned: a guess)
+        faceBytes = (faceBytes + CubeAlign - 1) & ~(CubeAlign - 1);   // (faces 256-byte aligned: GT1 32x32 X8R8G8B8 faces 0x1600 apart)
         var tf = t; tf.Base = t.Base + (uint)face * faceBytes; tf.WrapS = tf.WrapT = 3;
         return SampleLevel(tf, 0, fu, fv, tf.Lin);
     }
@@ -867,12 +868,12 @@ public sealed partial class NvGeForce
                 else
                 {
                     if (!RunFp(inst, x, y)) continue;
-                    if (!NoFpRc) RunRc(inst, !(_fpPacks && PackNative));
-                    if (_pkDiag < 40 && OpLog != null && _fpPacks && ((x ^ y) & 31) == 0)
+                    if (FpRcEnv == "1" || (FpRcEnv != "0" && _fpPacks)) RunRc(inst, !(_fpPacks && PackNative));
+                    if (_pkDiag < 40 && OpLog != null && (DiagFp != 0 ? G(inst, 0x8e4) == DiagFp : _fpPacks) && ((x ^ y) & 31) == 0)
                     {
                         _pkDiag++;
                         if (_pkDiag == 1) OpLog($"rankine rcregs {string.Join(" ", Enumerable.Range(0, 72).Select(i => G(inst, 0x8e0 + i * 4).ToString("X")))}");
-                        OpLog($"rankine pk {x},{y} fp {G(inst, 0x8e4):X} H0 ({_fh[0]:F2},{_fh[1]:F2},{_fh[2]:F2},{_fh[3]:F2}) H1 ({_fh[4]:F2},{_fh[5]:F2},{_fh[6]:F2}) H2 ({_fh[8]:F2},{_fh[9]:F2},{_fh[10]:F2}) H3 ({_fh[12]:F2},{_fh[13]:F2},{_fh[14]:F2}) tc4 ({_fin[32]:F2},{_fin[33]:F2},{_fin[34]:F2}) tc5 ({_fin[36]:F2},{_fin[37]:F2},{_fin[38]:F2}) pk {string.Join(" ", Enumerable.Range(0, 8).Select(i => $"[{_pk[i * 4]:F2},{_pk[i * 4 + 1]:F2},{_pk[i * 4 + 2]:F2},{_pk[i * 4 + 3]:F2}]"))} col0 ({_fin[4]:F2},{_fin[5]:F2},{_fin[6]:F2},{_fin[7]:F2}) -> ({_fr[0]:F2},{_fr[1]:F2},{_fr[2]:F2},{_fr[3]:F2})");
+                        OpLog($"rankine pk {x},{y} fp {G(inst, 0x8e4):X} H0 ({_fh[0]:F2},{_fh[1]:F2},{_fh[2]:F2},{_fh[3]:F2}) H1 ({_fh[4]:F2},{_fh[5]:F2},{_fh[6]:F2}) H2 ({_fh[8]:F2},{_fh[9]:F2},{_fh[10]:F2}) H3 ({_fh[12]:F2},{_fh[13]:F2},{_fh[14]:F2}) tc4 ({_fin[32]:F2},{_fin[33]:F2},{_fin[34]:F2}) tc5 ({_fin[36]:F2},{_fin[37]:F2},{_fin[38]:F2}) pk {string.Join(" ", Enumerable.Range(0, 8).Select(i => $"[{_pk[i * 4]:F2},{_pk[i * 4 + 1]:F2},{_pk[i * 4 + 2]:F2},{_pk[i * 4 + 3]:F2}]"))} col0 ({_fin[4]:F2},{_fin[5]:F2},{_fin[6]:F2},{_fin[7]:F2}) -> ({_fr[0]:F2},{_fr[1]:F2},{_fr[2]:F2},{_fr[3]:F2}){_rcTrace}");
                     }   // the NV30 pipe: the FP's H0-H3 feed the register combiners as "textures" 0-3
                 }
                 var o = _fpHalfOut ? _fh : _fr;
@@ -904,7 +905,13 @@ public sealed partial class NvGeForce
     /// <summary>The register combiner path (ENGINE without the FP bit; envytools nv30-40_3d RC_*): textures 0-3 sampled at their
     /// (projected) coordinates, up to 8 general stages (RC_IN/OUT at 0x900 + 32 n, per-stage constants when RC_ENABLE says so), then
     /// the final combiner (0x8F4 / 0x8F8). Same register encoding as Celsius / Kelvin. Result in R0.</summary>
-    private static readonly bool NoFpRc = Environment.GetEnvironmentVariable("X86_NVFPRC") != "1";   // experiment, off by default: GT1 gains lighting but GT2's PS 1.x passes go wrong
+    private static readonly uint RcStageMask0 = Convert.ToUInt32(Environment.GetEnvironmentVariable("X86_NVRCSTAGE0") ?? "1000F000", 16);
+    private static readonly uint RcStageMask1 = Convert.ToUInt32(Environment.GetEnvironmentVariable("X86_NVRCSTAGE1") ?? "100F0000", 16);
+    private static readonly bool Sp0Zero = Environment.GetEnvironmentVariable("X86_NVSP0ZERO") != "0";   // (spare0 alpha starts at 0 for the FP-fed combiners: GT2 lights)
+    private static readonly bool FpRcUns = Environment.GetEnvironmentVariable("X86_NVFPRCUNS") == "1";
+    private static readonly uint DiagFp = Convert.ToUInt32(Environment.GetEnvironmentVariable("X86_NVDIAGFP") ?? "0", 16);
+    private static readonly uint CubeAlign = Convert.ToUInt32(Environment.GetEnvironmentVariable("X86_NVCUBEALIGN") ?? "256");
+    private static readonly string? FpRcEnv = Environment.GetEnvironmentVariable("X86_NVFPRC");   // 1 = every program, 0 = none, unset = PS 1.x (packing) programs only   // experiment, off by default: GT1 gains lighting but GT2's PS 1.x passes go wrong
 
     private void RunRc(uint inst, bool fromFp)
     {
@@ -923,7 +930,7 @@ public sealed partial class NvGeForce
             {
                 var h = _fpHalfOut || t > 0 ? _fh : _fr;
                 if (t == 0 && !_fpHalfOut) h = _fr;
-                static float C1(float v) => float.IsNaN(v) ? 0 : Math.Clamp(v, -1, 1);
+                static float C1(float v) => float.IsNaN(v) ? 0 : Math.Clamp(v, FpRcUns ? 0 : -1, 1);
                 reg[8 + t] = new Vec4(C1(h[t * 4]), C1(h[t * 4 + 1]), C1(h[t * 4 + 2]), C1(h[t * 4 + 3]));
                 continue;
             }
@@ -937,7 +944,7 @@ public sealed partial class NvGeForce
         if (fromFp && _fpPacks && PkMode2)
         {
             for (int r = 0; r < 16; r++) if ((_pkSet & (1 << r)) != 0) reg[r] = new Vec4(_pkReg[r * 4], _pkReg[r * 4 + 1], _pkReg[r * 4 + 2], _pkReg[r * 4 + 3]);
-            reg[12] = new Vec4(0, 0, 0, reg[8].W);
+            reg[12] = new Vec4(0, 0, 0, Sp0Zero ? 0 : reg[8].W);
         }
         else if (fromFp && _fpPacks)
         {
@@ -947,14 +954,15 @@ public sealed partial class NvGeForce
                 int r = m <= 3 ? 8 + m : m;
                 reg[r] = new Vec4(_pk[i * 4], _pk[i * 4 + 1], _pk[i * 4 + 2], _pk[i * 4 + 3]);
             }
-            reg[12] = new Vec4(0, 0, 0, reg[8].W);
+            reg[12] = new Vec4(0, 0, 0, Sp0Zero ? 0 : reg[8].W);
         }
+        _rcTrace.Clear();
         for (int s = 0; s < n; s++)
         {
             int o = 0x900 + s * 32;
             uint inA = G(inst, o), inC = G(inst, o + 4), outA = G(inst, o + 0x10), outC = G(inst, o + 0x14);
-            if ((en & 0x1000) != 0) reg[1] = Vec4.FromArgb(G(inst, o + 8));
-            if ((en & 0x10000) != 0) reg[2] = Vec4.FromArgb(G(inst, o + 12));
+            if ((en & RcStageMask0) != 0) reg[1] = Vec4.FromArgb(G(inst, o + 8));   // per-stage constants (envytools: bits 12-15 / 16-19, "maybe";
+            if ((en & RcStageMask1) != 0) reg[2] = Vec4.FromArgb(G(inst, o + 12));  //  the 45.23 driver's PS 1.x passes set bit 28)
             Vec4 A = In(reg, inC >> 24, false), B = In(reg, inC >> 16, false), C = In(reg, inC >> 8, false), D = In(reg, inC, false);
             Vec4 ab = (outC & 0x2000) != 0 ? Dot(A, B) : new Vec4(A.X * B.X, A.Y * B.Y, A.Z * B.Z, 0);
             Vec4 cd = (outC & 0x1000) != 0 ? Dot(C, D) : new Vec4(C.X * D.X, C.Y * D.Y, C.Z * D.Z, 0);
@@ -965,6 +973,7 @@ public sealed partial class NvGeForce
             WriteOut(nr, (int)(outC >> 4) & 15, Scale(ab, outC), true); WriteOut(nr, (int)outC & 15, Scale(cd, outC), true); WriteOut(nr, (int)(outC >> 8) & 15, Scale(sum, outC), true);
             WriteOutA(nr, (int)(outA >> 4) & 15, ScaleA(aab, outA)); WriteOutA(nr, (int)outA & 15, ScaleA(acd, outA)); WriteOutA(nr, (int)(outA >> 8) & 15, ScaleA(asum, outA));
             reg = nr;
+            if (_pkDiag < 40 && OpLog != null && fromFp) _rcTrace.Append($" s{s}[t0 {reg[8].X:F2},{reg[8].Y:F2},{reg[8].Z:F2},{reg[8].W:F2} t1 {reg[9].X:F2},{reg[9].W:F2} t3 {reg[11].X:F2} p {reg[4].X:F2} sp0 {reg[12].X:F2},{reg[12].W:F2} c0 {reg[1].Z:F2}]");
         }
         reg[1] = Vec4.FromArgb(G(inst, 0x8ec)); reg[2] = Vec4.FromArgb(G(inst, 0x8f0));
         uint f0 = G(inst, 0x8f4), f1 = G(inst, 0x8f8);
