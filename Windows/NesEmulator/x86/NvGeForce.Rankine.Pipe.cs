@@ -394,7 +394,7 @@ public sealed partial class NvGeForce
                 OpLog($"rankine vpdump {vps}: {sb}");
             }
             uint fpa = G(inst, 0x8e4);
-            if ((eng & 1) != 0 && _seenFp.Add(fpa))
+            if (_seenFp.Add(fpa))
                 OpLog($"rankine fpdump {fpa:X}: {string.Join(" ", Array.ConvertAll(_fp, f => $"{f.W0:X8} {f.W1:X8} {f.W2:X8} {f.W3:X8}" + (f.HasConst ? $" [{f.C0} {f.C1} {f.C2} {f.C3}]" : "")))}");
             if (_seenDraw.Add($"{eng:X}_{vps}_{fpa:X}_{G(inst, 0x8fc):X}_{G(inst, 0x904):X}"))
             {
@@ -552,7 +552,17 @@ public sealed partial class NvGeForce
                     float u = a[0], v = a[1];
                     if (op == 0x18 && a[3] != 0) { u /= a[3]; v /= a[3]; }
                     float rr = a[2]; if (op == 0x18 && a[3] != 0) rr /= a[3];
-                    uint c = RTex(inst, (int)(f.W0 >> 17) & 15, u, v, rr, op == 0x31 ? a[3] : 0);
+                    int tu = (int)(f.W0 >> 17) & 15;
+                    uint c = RTex(inst, tu, u, v, rr, op == 0x31 ? a[3] : 0);
+                    if (_rtex[tu].Fmt == 0x28) { r0 = (sbyte)(c & 0xff) / 127f; r1 = (sbyte)((c >> 8) & 0xff) / 127f; r2 = 0; r3 = 1; break; }   // DSDT8: signed du, dv
+                    r0 = ((c >> 16) & 0xff) / 255f; r1 = ((c >> 8) & 0xff) / 255f; r2 = (c & 0xff) / 255f; r3 = (c >> 24) / 255f;
+                    break;
+                }
+                case 0x33:                                                                                           // (the 45.23 FF BUMPENVMAP): sample the unit at
+                {                                                                                                    // src0.xy + 2x2 matrix (src2 = m00 m01 m10 m11) x src1.xy
+                    float du = a[4], dv = a[5];
+                    float bu = a[0] + a[8] * du + a[10] * dv, bv = a[1] + a[9] * du + a[11] * dv;
+                    uint c = RTex(inst, (int)(f.W0 >> 17) & 15, bu, bv, 0, 0);
                     r0 = ((c >> 16) & 0xff) / 255f; r1 = ((c >> 8) & 0xff) / 255f; r2 = (c & 0xff) / 255f; r3 = (c >> 24) / 255f;
                     break;
                 }
