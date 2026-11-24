@@ -310,8 +310,11 @@ public sealed partial class NvGeForce
         for (int i = 0; i < 64; i++) vout[i] = 0;
         float x = vin[0], y = vin[1], z = vin[2], w = vin[3];
         float[] mv = RMat(inst, 0x480), pj = RMat(inst, 0x680);
-        float ex = mv[0] * x + mv[1] * y + mv[2] * z + mv[3] * w, ey = mv[4] * x + mv[5] * y + mv[6] * z + mv[7] * w,
-              ez = mv[8] * x + mv[9] * y + mv[10] * z + mv[11] * w, ew = mv[12] * x + mv[13] * y + mv[14] * z + mv[15] * w;
+        // the 45.23 driver loads the composite world-view-projection into PROJECTION (MODELVIEW is the lighting/eye matrix): clip = P x v
+        // (DotProduct3 SDK sample: MV z' = 2 - z, P w = 2 - z; P x MV x v put the quad behind the eye). X86_NVFFMV=1: clip = P x MV x v
+        float ex = x, ey = y, ez = z, ew = w;
+        if (FfUseMv) { ex = mv[0] * x + mv[1] * y + mv[2] * z + mv[3] * w; ey = mv[4] * x + mv[5] * y + mv[6] * z + mv[7] * w;
+              ez = mv[8] * x + mv[9] * y + mv[10] * z + mv[11] * w; ew = mv[12] * x + mv[13] * y + mv[14] * z + mv[15] * w; }
         float cx = pj[0] * ex + pj[1] * ey + pj[2] * ez + pj[3] * ew, cy = pj[4] * ex + pj[5] * ey + pj[6] * ez + pj[7] * ew,
               cz = pj[8] * ex + pj[9] * ey + pj[10] * ez + pj[11] * ew, cw = pj[12] * ex + pj[13] * ey + pj[14] * ez + pj[15] * ew;
         if (cw == 0) cw = 1e-6f;
@@ -336,7 +339,7 @@ public sealed partial class NvGeForce
     private float[] RMat(uint inst, int b)
     {
         var m = new float[16]; bool any = false;
-        for (int i = 0; i < 16; i++) { uint u = G(inst, b + i * 4); m[i] = F32(u); any |= u != 0; }
+        for (int i = 0; i < 16; i++) { uint u = G(inst, b + i * 4); m[FfTranspose ? (i & 3) * 4 + (i >> 2) : i] = F32(u); any |= u != 0; }
         if (!any) m[0] = m[5] = m[10] = m[15] = 1;
         return m;
     }
@@ -346,6 +349,8 @@ public sealed partial class NvGeForce
     private static readonly bool ScreenVp = Environment.GetEnvironmentVariable("X86_NVSCREENVP") == "1";   // old behaviour: VP positions always screen space
     private static readonly bool DrawTrace = Environment.GetEnvironmentVariable("X86_NVDRAWTRACE") == "1";
     private long _dtLastPix;
+    private static readonly bool FfTranspose = Environment.GetEnvironmentVariable("X86_NVFFT") == "1";
+    private static readonly bool FfUseMv = Environment.GetEnvironmentVariable("X86_NVFFMV") == "1";
     private static readonly bool ProgDump = Environment.GetEnvironmentVariable("X86_NVPROGDUMP") == "1";
     private readonly HashSet<int> _seenVp = new();
     private readonly HashSet<uint> _seenFp = new();
@@ -398,6 +403,7 @@ public sealed partial class NvGeForce
                 for (int ai = 0; ai < 16; ai++) { uint vf = G(inst, 0x1740 + ai * 4); if ((vf & 0xf0) != 0) sb.Append($" a{ai}=({i0[ai * 4]:G4},{i0[ai * 4 + 1]:G4},{i0[ai * 4 + 2]:G4},{i0[ai * 4 + 3]:G4})"); }
                 sb.Append(" ->");
                 for (int oi = 0; oi < 16; oi++) if (o0.Var[oi * 4] != 0 || o0.Var[oi * 4 + 1] != 0 || o0.Var[oi * 4 + 2] != 0) sb.Append($" o{oi}=({o0.Var[oi * 4]:G4},{o0.Var[oi * 4 + 1]:G4},{o0.Var[oi * 4 + 2]:G4},{o0.Var[oi * 4 + 3]:G4})");
+                if ((eng & 2) == 0) OpLog($"rankine ffmat mv {string.Join(",", RMat(inst, 0x480).Select(v => v.ToString("G4")))} pj {string.Join(",", RMat(inst, 0x680).Select(v => v.ToString("G4")))} vp {F32(G(inst, 0xa30))},{F32(G(inst, 0xa34))},{F32(G(inst, 0xa38))} / {F32(G(inst, 0xa20))},{F32(G(inst, 0xa24))},{F32(G(inst, 0xa28))}");
                 OpLog($"rankine draw eng {eng:X} rc {G(inst, 0x8fc):X}/{G(inst, 0x900):X}/{G(inst, 0x904):X}/{G(inst, 0x910):X}/{G(inst, 0x914):X} s1 {G(inst, 0x920):X}/{G(inst, 0x924):X}/{G(inst, 0x930):X}/{G(inst, 0x934):X} fin {G(inst, 0x8f4):X}/{G(inst, 0x8f8):X} fpc {G(inst, 0x1d60):X} vp {vps} fp {fpa:X} prim {_rPrim} n {vin.Count} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} blend {G(inst, 0x310)} {G(inst, 0x314):X}/{G(inst, 0x318):X} at {G(inst, 0x304)} cull {G(inst, 0x183c)} tex0 {RTexInfo(inst, 0)} tex1 {RTexInfo(inst, 1)} tex2 {RTexInfo(inst, 2)} cube2 {(G(inst, 0x1a44) & 4) != 0} tex3 {RTexInfo(inst, 3)}{sb}");
             }
         }
@@ -884,11 +890,19 @@ public sealed partial class NvGeForce
                 Lerp(1, 3, a, b, c, q0, q1, q2); Lerp(2, 4, a, b, c, q0, q1, q2); Lerp(3, 5, a, b, c, q0, q1, q2);
                 for (int t = 0; t < 8; t++) Lerp(4 + t, 8 + t, a, b, c, q0, q1, q2);
                 if (_pixDiag < 12 && OpLog != null && ((x ^ y) & 127) == 0) { _pixDiag++; OpLog($"rankine px {x},{y} tc0 ({_fin[16]:F3},{_fin[17]:F3},{_fin[18]:F3},{_fin[19]:F3}) col0 ({_fin[4]:F2},{_fin[5]:F2},{_fin[6]:F2}) verts tc ({a.Var[32]:F2},{a.Var[33]:F2}) ({b.Var[32]:F2},{b.Var[33]:F2}) ({c.Var[32]:F2},{c.Var[33]:F2})"); }
-                if (useRc) RunRc(inst, false);
+                if (useRc)
+                {
+                    RunRc(inst, false);
+                    if (_pkDiag < 40 && OpLog != null && DiagFp != 0 && G(inst, 0x8e4) == DiagFp && ((x ^ y) & 31) == 0)
+                    {
+                        _pkDiag++;
+                        OpLog($"rankine rcn {x},{y} tc1 ({_fin[20]:F3},{_fin[21]:F3},{_fin[22]:F3},{_fin[23]:F3}) tex1 {RTexInfo(inst, 1).Split(' ')[1]} col0 ({_fin[4]:F2},{_fin[5]:F2},{_fin[6]:F2}) -> ({_fr[0]:F2},{_fr[1]:F2},{_fr[2]:F2},{_fr[3]:F2}){_rcTrace}");
+                    }
+                }
                 else
                 {
                     if (!RunFp(inst, x, y)) continue;
-                    if (FpRcEnv == "1" || (FpRcEnv != "0" && (G(inst, 0x1e94) & 3) != 0)) RunRc(inst, !(_fpPacks && PackNative));   // (ENGINE bit 0 clear - loading-screen 2D draws, CPU test 2: FP output as is)
+                    if (FpRcEnv != "0") RunRc(inst, !(_fpPacks && PackNative));   // (ENGINE bit 0 clear - loading-screen 2D draws, CPU test 2: FP output as is)
                     if (_pkDiag < 40 && OpLog != null && (DiagFp != 0 ? G(inst, 0x8e4) == DiagFp : _fpPacks) && ((x ^ y) & 31) == 0)
                     {
                         _pkDiag++;
@@ -994,7 +1008,7 @@ public sealed partial class NvGeForce
             WriteOut(nr, (int)(outC >> 4) & 15, Scale(ab, outC), true); WriteOut(nr, (int)outC & 15, Scale(cd, outC), true); WriteOut(nr, (int)(outC >> 8) & 15, Scale(sum, outC), true);
             WriteOutA(nr, (int)(outA >> 4) & 15, ScaleA(aab, outA)); WriteOutA(nr, (int)outA & 15, ScaleA(acd, outA)); WriteOutA(nr, (int)(outA >> 8) & 15, ScaleA(asum, outA));
             reg = nr;
-            if (_pkDiag < 40 && OpLog != null && fromFp) _rcTrace.Append($" s{s}[t0 {reg[8].X:F2},{reg[8].Y:F2},{reg[8].Z:F2},{reg[8].W:F2} t1 {reg[9].X:F2},{reg[9].W:F2} t3 {reg[11].X:F2} p {reg[4].X:F2} sp0 {reg[12].X:F2},{reg[12].W:F2} c0 {reg[1].Z:F2}]");
+            if (_pkDiag < 40 && OpLog != null) _rcTrace.Append($" s{s}[t0 {reg[8].X:F2},{reg[8].Y:F2},{reg[8].Z:F2},{reg[8].W:F2} t1 {reg[9].X:F2},{reg[9].W:F2} t3 {reg[11].X:F2} p {reg[4].X:F2} sp0 {reg[12].X:F2},{reg[12].W:F2} c0 {reg[1].Z:F2}]");
         }
         reg[1] = Vec4.FromArgb(G(inst, 0x8ec)); reg[2] = Vec4.FromArgb(G(inst, 0x8f0));
         uint f0 = G(inst, 0x8f4), f1 = G(inst, 0x8f8);
