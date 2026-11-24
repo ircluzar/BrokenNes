@@ -16,7 +16,7 @@ public sealed partial class NvGeForce
     private int _rPrim;
     public long RankineTris, RankinePixels;                           // diagnostics
 
-    private static float[] InitAttrs() { var a = new float[64]; for (int i = 0; i < 16; i++) a[i * 4 + 3] = 1; return a; }
+    private static float[] InitAttrs() { var a = new float[64]; for (int i = 0; i < 16; i++) a[i * 4 + 3] = 1; if (Environment.GetEnvironmentVariable("X86_NVCOLWHITE") == "1") { a[12] = a[13] = a[14] = 1; } return a; }
 
     private static float F32(uint u) => BitConverter.Int32BitsToSingle((int)u);
 
@@ -344,6 +344,8 @@ public sealed partial class NvGeForce
     private sealed class RVert { public float X, Y, Z, Iw; public readonly float[] Var = new float[16 * 4]; }   // screen x, y, depth, 1/w; VP outputs
 
     private static readonly bool ScreenVp = Environment.GetEnvironmentVariable("X86_NVSCREENVP") == "1";   // old behaviour: VP positions always screen space
+    private static readonly bool DrawTrace = Environment.GetEnvironmentVariable("X86_NVDRAWTRACE") == "1";
+    private long _dtLastPix;
     private static readonly bool ProgDump = Environment.GetEnvironmentVariable("X86_NVPROGDUMP") == "1";
     private readonly HashSet<int> _seenVp = new();
     private readonly HashSet<uint> _seenFp = new();
@@ -422,6 +424,15 @@ public sealed partial class NvGeForce
             case 3: for (int i = 0; i < n; i++) RLine(inst, vs[i], vs[(i + 1) % n]); break;                             // LINE_LOOP
             case 4: for (int i = 0; i + 1 < n; i++) RLine(inst, vs[i], vs[i + 1]); break;                               // LINE_STRIP
             default: break;
+        }
+        if (DrawTrace && OpLog != null)
+        {   // X86_NVDRAWTRACE=1: every draw in order, with the pixels it wrote and the colour at the screen centre after it
+            uint cdma = G(inst, 0x194 | 0x8000);
+            uint cb = (cdma != 0 ? DmaAddr(cdma, G(inst, 0x210)).addr : G(inst, 0x210)) & VramMask;
+            int cp = (int)(G(inst, 0x20c) & 0xffff);
+            uint probe = (uint)(cb + 240 * cp + 320 * 4) & VramMask;
+            OpLog($"rankine dt eng {G(inst, 0x1e94):X} fp {G(inst, 0x8e4):X} rt {G(inst, 0x210):X} prim {_rPrim} n {vin.Count} pix {RankinePixels - _dtLastPix} blend {G(inst, 0x310)} {G(inst, 0x314):X}/{G(inst, 0x318):X} eq {G(inst, 0x320):X} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} st {G(inst, 0x328)} cmask {G(inst, 0x324):X} centre {BitConverter.ToUInt32(_v.Ram, (int)probe):X8}");
+            _dtLastPix = RankinePixels;
         }
         if (RankinePrims < 12 && OpLog != null)
             OpLog($"rankine after prim {_rPrim}: tris {RankineTris} pixels {RankinePixels} rt {G(inst, 0x210):X} fmt {G(inst, 0x208):X} pitch {G(inst, 0x20c):X} hz {G(inst, 0x200):X} vt {G(inst, 0x204):X} scis {G(inst, 0x8c0):X}/{G(inst, 0x8c4):X} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} cull {G(inst, 0x183c)}/{G(inst, 0x1830):X} fp {_fp.Length} ops {string.Join(",", Array.ConvertAll(_fp, f => ((f.W0 >> 24) & 0x3f).ToString("X")))} blend {G(inst, 0x310)} cmask {G(inst, 0x324):X} pcrtc {PcrtcStart:X} | tex0 {RTexInfo(inst, 0)}");
@@ -841,7 +852,7 @@ public sealed partial class NvGeForce
         bool st = !z16 && zpitch > 0 && G(inst, sb) != 0 && !NoStencil;
         uint sWm = G(inst, sb + 4) & 0xff, sFn = G(inst, sb + 8), sRef = G(inst, sb + 12) & 0xff, sMsk = G(inst, sb + 16) & 0xff;
         uint sOpF = G(inst, sb + 20), sOpZf = G(inst, sb + 24), sOpZp = G(inst, sb + 28);
-        bool useRc = RcOn && (G(inst, 0x1e94) & 1) == 0;   // (experiment X86_NVRC=1: register combiners when ENGINE bit 0 is clear - the 45.23 driver
+        bool useRc = RcOn ? (G(inst, 0x1e94) & 1) == 0 : !RcOffNoFp && (G(inst, 0x1e94) & 3) == 2;   // VP on, FP off (ENGINE 0x106: CPU test 2): the combiners read the units directly, projective   // (experiment X86_NVRC=1: register combiners when ENGINE bit 0 is clear - the 45.23 driver
                                                             //  draws with the FP then too, so off by default)
         float inv = 1 / area;
         for (int y = y0; y <= y1; y++)
@@ -882,7 +893,7 @@ public sealed partial class NvGeForce
                     {
                         _pkDiag++;
                         if (_pkDiag == 1) OpLog($"rankine rcregs {string.Join(" ", Enumerable.Range(0, 72).Select(i => G(inst, 0x8e0 + i * 4).ToString("X")))}");
-                        OpLog($"rankine pk {x},{y} fp {G(inst, 0x8e4):X} H0 ({_fh[0]:F2},{_fh[1]:F2},{_fh[2]:F2},{_fh[3]:F2}) H1 ({_fh[4]:F2},{_fh[5]:F2},{_fh[6]:F2}) H2 ({_fh[8]:F2},{_fh[9]:F2},{_fh[10]:F2}) H3 ({_fh[12]:F2},{_fh[13]:F2},{_fh[14]:F2}) tc4 ({_fin[32]:F2},{_fin[33]:F2},{_fin[34]:F2}) tc5 ({_fin[36]:F2},{_fin[37]:F2},{_fin[38]:F2}) pk {string.Join(" ", Enumerable.Range(0, 8).Select(i => $"[{_pk[i * 4]:F2},{_pk[i * 4 + 1]:F2},{_pk[i * 4 + 2]:F2},{_pk[i * 4 + 3]:F2}]"))} col0 ({_fin[4]:F2},{_fin[5]:F2},{_fin[6]:F2},{_fin[7]:F2}) -> ({_fr[0]:F2},{_fr[1]:F2},{_fr[2]:F2},{_fr[3]:F2}){_rcTrace}");
+                        OpLog($"rankine pk {x},{y} fp {G(inst, 0x8e4):X} H0 ({_fh[0]:F2},{_fh[1]:F2},{_fh[2]:F2},{_fh[3]:F2}) H1 ({_fh[4]:F2},{_fh[5]:F2},{_fh[6]:F2}) H2 ({_fh[8]:F2},{_fh[9]:F2},{_fh[10]:F2}) H3 ({_fh[12]:F2},{_fh[13]:F2},{_fh[14]:F2}) tc1 ({_fin[20]:F3},{_fin[21]:F3},{_fin[22]:F3},{_fin[23]:F3}) c58 ({F32(_vpConst[232]):G4},{F32(_vpConst[233]):G4},{F32(_vpConst[234]):G4}) tc4 ({_fin[32]:F2},{_fin[33]:F2},{_fin[34]:F2}) tc5 ({_fin[36]:F2},{_fin[37]:F2},{_fin[38]:F2}) pk {string.Join(" ", Enumerable.Range(0, 8).Select(i => $"[{_pk[i * 4]:F2},{_pk[i * 4 + 1]:F2},{_pk[i * 4 + 2]:F2},{_pk[i * 4 + 3]:F2}]"))} col0 ({_fin[4]:F2},{_fin[5]:F2},{_fin[6]:F2},{_fin[7]:F2}) -> ({_fr[0]:F2},{_fr[1]:F2},{_fr[2]:F2},{_fr[3]:F2}){_rcTrace}");
                     }   // the NV30 pipe: the FP's H0-H3 feed the register combiners as "textures" 0-3
                 }
                 var o = _fpHalfOut ? _fh : _fr;
@@ -910,6 +921,7 @@ public sealed partial class NvGeForce
     private int _pixDiag;
 
     private static readonly bool RcOn = Environment.GetEnvironmentVariable("X86_NVRC") == "1";
+    private static readonly bool RcOffNoFp = Environment.GetEnvironmentVariable("X86_NVRC") == "0";
 
     /// <summary>The register combiner path (ENGINE without the FP bit; envytools nv30-40_3d RC_*): textures 0-3 sampled at their
     /// (projected) coordinates, up to 8 general stages (RC_IN/OUT at 0x900 + 32 n, per-stage constants when RC_ENABLE says so), then

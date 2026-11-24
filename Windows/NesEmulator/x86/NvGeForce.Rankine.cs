@@ -155,6 +155,9 @@ public sealed partial class NvGeForce
         foreach (var x in _vpInst) w.Write(x);
         foreach (var x in _vpConst) w.Write(x);
         w.Write(_vpUpInst); w.Write(_vpUpConst);
+        w.Write(0x31525441);   // "ATR1": the current vertex attributes (VTX_ATTR_4F) - the driver sets the constant diffuse colour once
+        foreach (var x in _attrCur) w.Write(x);
+        w.Write(_rankineMaskSeen);
     }
 
     private void LoadRankine(BinaryReader r)
@@ -162,5 +165,12 @@ public sealed partial class NvGeForce
         for (int i = 0; i < _vpInst.Length; i++) _vpInst[i] = r.ReadUInt32();
         for (int i = 0; i < _vpConst.Length; i++) _vpConst[i] = r.ReadUInt32();
         _vpUpInst = r.ReadInt32(); _vpUpConst = r.ReadInt32();
+        if (r.BaseStream.Position + 4 <= r.BaseStream.Length && r.ReadInt32() == 0x31525441)
+        {
+            for (int i = 0; i < _attrCur.Length; i++) _attrCur[i] = r.ReadSingle();
+            _rankineMaskSeen = r.ReadBoolean();
+        }
+        else if (StateAttrWhite) { _attrCur[12] = _attrCur[13] = _attrCur[14] = 1; }   // (older states: assume the D3D default white diffuse)
     }
+    private static readonly bool StateAttrWhite = Environment.GetEnvironmentVariable("X86_NVOLDSTATECOL") != "0";
 }
