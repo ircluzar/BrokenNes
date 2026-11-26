@@ -737,6 +737,7 @@ public sealed partial class NvGeForce
         int cnt = (int)(f >> 16) & 15;
         t.Levels = !t.Rect && cnt > 1 ? cnt : 1;
         t.Mip = t.Levels > 1 && t.MinF >= 3;
+        if (t.Fmt == 0xb) { uint p = G(inst, 0x1840 + u * 4); t.Pal = p & ~0x3fu; t.PalDma = G(inst, ((p & 2) != 0 ? 0x188 : 0x184) | 0x8000); }   // TEX_PALETTE_OFFSET (A8R8G8B8 entries)
         t.Ok = t.W > 0 && t.H > 0 && t.Dma != 0;
         return t;
     }
