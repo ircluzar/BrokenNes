@@ -26,7 +26,7 @@ public sealed partial class NvGeForce
         switch (mthd)
         {
             case 0x1808:
-                if (data != 0) { _rPrim = (int)data; _inline.Clear(); _elems.Clear(); }
+                if (data != 0) { _rPrim = (int)data; _inline.Clear(); _elems.Clear(); _imm.Clear(); }
                 else { RankineFlush(inst); _rPrim = 0; }
                 return true;
             case 0x1818: _inline.Add(data); return true;
@@ -58,7 +58,47 @@ public sealed partial class NvGeForce
                 return true;
             }
         }
-        if (mthd is >= 0x1c00 and < 0x1d00) { _attrCur[(mthd - 0x1c00) >> 2] = F32(data); return true; }   // VTX_ATTR_4F[16]
+        if (mthd is >= 0x1c00 and < 0x1d00) { int i = (mthd - 0x1c00) >> 2; _attrCur[i] = F32(data); if (i == 3) ImmEmit(); return true; }   // VTX_ATTR_4F[16]
+        // immediate mode (the OpenGL ICD's glVertex/glTexCoord/...): writing attribute 0's last component emits a vertex
+        if (mthd is >= 0x1500 and < 0x1600)
+        {   // VTX_ATTR_3F[16] (stride 16)
+            int a = (mthd - 0x1500) >> 4, c = ((mthd - 0x1500) >> 2) & 3; if (c > 2) return true;
+            _attrCur[a * 4 + c] = F32(data); if (c == 2) { _attrCur[a * 4 + 3] = 1; if (a == 0) ImmEmit(); }
+            return true;
+        }
+        if (mthd is >= 0x1880 and < 0x1900)
+        {   // VTX_ATTR_2F[16] (stride 8)
+            int a = (mthd - 0x1880) >> 3, c = ((mthd - 0x1880) >> 2) & 1;
+            _attrCur[a * 4 + c] = F32(data); if (c == 1) { _attrCur[a * 4 + 2] = 0; _attrCur[a * 4 + 3] = 1; if (a == 0) ImmEmit(); }
+            return true;
+        }
+        if (mthd is >= 0x1e40 and < 0x1e80)
+        {   // VTX_ATTR_1F[16]
+            int a = (mthd - 0x1e40) >> 2; _attrCur[a * 4] = F32(data); _attrCur[a * 4 + 1] = 0; _attrCur[a * 4 + 2] = 0; _attrCur[a * 4 + 3] = 1;
+            if (a == 0) ImmEmit();
+            return true;
+        }
+        if (mthd is >= 0x1940 and < 0x1980)
+        {   // VTX_ATTR_4UB[16]: R in the low byte
+            int a = (mthd - 0x1940) >> 2;
+            for (int c = 0; c < 4; c++) _attrCur[a * 4 + c] = ((data >> (8 * c)) & 0xff) / 255f;
+            if (a == 0) ImmEmit();
+            return true;
+        }
+        if (mthd is >= 0x1900 and < 0x1940)
+        {   // VTX_ATTR_2I[16]: two shorts
+            int a = (mthd - 0x1900) >> 2;
+            _attrCur[a * 4] = (short)(data & 0xffff); _attrCur[a * 4 + 1] = (short)(data >> 16); _attrCur[a * 4 + 2] = 0; _attrCur[a * 4 + 3] = 1;
+            if (a == 0) ImmEmit();
+            return true;
+        }
+        if (mthd is >= 0x1980 and < 0x1a00)
+        {   // VTX_ATTR_4I[16]: four shorts, stride 8
+            int a = (mthd - 0x1980) >> 3, h = ((mthd - 0x1980) >> 2) & 1;
+            _attrCur[a * 4 + h * 2] = (short)(data & 0xffff); _attrCur[a * 4 + h * 2 + 1] = (short)(data >> 16);
+            if (h == 1 && a == 0) ImmEmit();
+            return true;
+        }
         return false;
     }
 
@@ -85,8 +125,12 @@ public sealed partial class NvGeForce
     }
 
     /// <summary>The attributes (16 x vec4) of each vertex of the open BEGIN_END.</summary>
+    private readonly List<float[]> _imm = new();                       // immediate-mode vertices of the open BEGIN_END
+    private void ImmEmit() { if (_rPrim != 0 && _imm.Count < 1 << 20) _imm.Add((float[])_attrCur.Clone()); }
+
     private List<float[]> RankineVertices(uint inst)
     {
+        if (_imm.Count > 0) return new List<float[]>(_imm);
         var res = new List<float[]>();
         var fmt = new (int type, int size, int stride)[16];
         int perVtx = 0;
@@ -349,6 +393,8 @@ public sealed partial class NvGeForce
     private static readonly bool ScreenVp = Environment.GetEnvironmentVariable("X86_NVSCREENVP") == "1";   // old behaviour: VP positions always screen space
     private static readonly bool DrawTrace = Environment.GetEnvironmentVariable("X86_NVDRAWTRACE") == "1";
     private long _dtLastPix;
+    private readonly bool[] _passTc = new bool[4];
+    private static readonly bool NoPassTc = Environment.GetEnvironmentVariable("X86_NVNOPASSTC") == "1";
     private readonly long[] _dc = new long[10];   // draw-trace reject counters: tri, clipAll, area, cull, bbox, st, z, fp, at, w
     private static readonly int[] DtProbe = ParseProbe(Environment.GetEnvironmentVariable("X86_NVPROBE"));   // X86_NVPROBE=x,y (default 320,240)
     private static int[] ParseProbe(string? s) { try { var a = s!.Split(','); return new[] { int.Parse(a[0]), int.Parse(a[1]) }; } catch { return new[] { 320, 240 }; } }
@@ -421,6 +467,12 @@ public sealed partial class NvGeForce
             OpLog($"rankine in v0 ({i0[0]},{i0[1]},{i0[2]},{i0[3]}) v3 ({i0[12]:F2},{i0[13]:F2},{i0[14]:F2},{i0[15]:F2}) inline {_inline.Count} elems {_elems.Count} fmt0 {G(inst, 0x1740):X} c118 ({F32(_vpConst[472])},{F32(_vpConst[473])},{F32(_vpConst[474])},{F32(_vpConst[475])}) c119 ({F32(_vpConst[476])},{F32(_vpConst[477])},{F32(_vpConst[478])},{F32(_vpConst[479])})");
             OpLog($"rankine prim {_rPrim} verts {vs.Length} v0 scr ({v0.X:F1},{v0.Y:F1},{v0.Z:F1}) iw {v0.Iw:G3} col0 ({v0.Var[12]:F2},{v0.Var[13]:F2},{v0.Var[14]:F2},{v0.Var[15]:F2}) tc0 ({v0.Var[32]:F2},{v0.Var[33]:F2}) vp {G(inst, 0x1ea0)} vt {tx},{ty},{tz} vsc {sx},{sy},{sz}");
         }
+        Array.Clear(_passTc);
+        foreach (var f in _fp)
+        {   // MOV H<t>, f[tc<t>]: unit t passes its coordinate through instead of sampling
+            uint op = (f.W0 >> 24) & 0x3f; int dst = (int)((f.W0 >> 1) & 63), inp = (int)((f.W0 >> 13) & 15);
+            if (op == 1 && (f.W0 & 0x80) != 0 && dst < 4 && (f.W1 & 3) == 1 && inp == 4 + dst) _passTc[dst] = true;
+        }
         int n = vs.Length;
         switch (_rPrim)
         {
@@ -441,7 +493,7 @@ public sealed partial class NvGeForce
             uint cb = (cdma != 0 ? DmaAddr(cdma, G(inst, 0x210)).addr : G(inst, 0x210)) & VramMask;
             int cp = (int)(G(inst, 0x20c) & 0xffff);
             uint probe = (uint)(cb + DtProbe[1] * cp + DtProbe[0] * 4) & VramMask;
-            OpLog($"rankine dt eng {G(inst, 0x1e94):X} fp {G(inst, 0x8e4):X} rt {G(inst, 0x210):X} prim {_rPrim} n {vin.Count} pix {RankinePixels - _dtLastPix} blend {G(inst, 0x310)} {G(inst, 0x314):X}/{G(inst, 0x318):X} eq {G(inst, 0x320):X} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} st {G(inst, 0x328)} cmask {G(inst, 0x324):X} centre {BitConverter.ToUInt32(_v.Ram, (int)probe):X8} rej {string.Join("/", _dc)} vp {G(inst, 0x1ea0)} v0 ({vs[0].X:F0},{vs[0].Y:F0},{vs[0].Z:G3},{vs[0].Iw:G3})");
+            OpLog($"rankine dt eng {G(inst, 0x1e94):X} fp {G(inst, 0x8e4):X} rt {G(inst, 0x210):X} prim {_rPrim} n {vin.Count} pix {RankinePixels - _dtLastPix} blend {G(inst, 0x310)} {G(inst, 0x314):X}/{G(inst, 0x318):X} eq {G(inst, 0x320):X} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} st {G(inst, 0x328)} cmask {G(inst, 0x324):X} centre {BitConverter.ToUInt32(_v.Ram, (int)probe):X8} cb {cb:X} rej {string.Join("/", _dc)} vp {G(inst, 0x1ea0)} v0 ({vs[0].X:F0},{vs[0].Y:F0},{vs[0].Z:G3},{vs[0].Iw:G3})");
             _dtLastPix = RankinePixels; Array.Clear(_dc);
         }
         if (RankinePrims < 12 && OpLog != null)
@@ -502,6 +554,7 @@ public sealed partial class NvGeForce
     // X86_NVPKMODE=1 / 2 forces one
     private bool PkMode2 => PkModeEnv == "2" || (PkModeEnv != "1" && _fpFetchOnly);
     private bool _fpFetchOnly;
+    private static readonly bool Pk45Old = Environment.GetEnvironmentVariable("X86_NVPK45") == "old";   // old: units 4/5 -> primary/secondary
     private readonly float[] _pkReg = new float[16 * 4]; private int _pkSet;
     private readonly System.Text.StringBuilder _rcTrace = new();
     private bool _fpHalfOut, _fpPacks; private int _pkDiag;
@@ -601,7 +654,7 @@ public sealed partial class NvGeForce
                     {   // mode 2: a fetch (0x2E/0x2F) lands in combiner register = its unit field (0-3 texture n, 4 primary, 5 secondary);
                         // a plain pack (0x27) lands by its slot (R0.y tex1, R0.z tex2, R0.w / R1.z tex3, R1.x primary, R1.y secondary)
                         int tgt;
-                        if (op is 0x2e or 0x2f) { int un = (int)(f.W0 >> 17) & 15; tgt = un <= 3 ? 8 + un : un == 4 ? 4 : un == 5 ? 5 : -1; }
+                        if (op is 0x2e or 0x2f) { int un = (int)(f.W0 >> 17) & 15; tgt = un <= 3 ? 8 + un : un == 4 ? (Pk45Old ? 4 : 12) : un == 5 ? (Pk45Old ? 5 : 13) : -1; }   // PS 1.4 r0-r5 = tex0-3, spare0, spare1
                         else
                         {
                             int c0 = pm switch { 1 => 0, 2 => 1, 4 => 2, 8 => 3, _ => 0 }, sl = pd * 4 + c0;
@@ -685,6 +738,7 @@ public sealed partial class NvGeForce
         int cnt = (int)(f >> 16) & 15;
         t.Levels = !t.Rect && cnt > 1 ? cnt : 1;
         t.Mip = t.Levels > 1 && t.MinF >= 3;
+        if (t.Fmt == 0xb) { uint p = G(inst, 0x1840 + u * 4); t.Pal = p & ~0x3fu; t.PalDma = G(inst, ((p & 2) != 0 ? 0x188 : 0x184) | 0x8000); }   // TEX_PALETTE_OFFSET (A8R8G8B8 entries)
         t.Ok = t.W > 0 && t.H > 0 && t.Dma != 0;
         return t;
     }
@@ -995,8 +1049,13 @@ public sealed partial class NvGeForce
                 reg[8 + t] = new Vec4(C1(h[t * 4]), C1(h[t * 4 + 1]), C1(h[t * 4 + 2]), C1(h[t * 4 + 3]));
                 continue;
             }
-            if (!_rtex[t].Ok) { reg[8 + t] = new Vec4(0, 0, 0, 1); continue; }
             int b = (4 + t) * 4;
+            if (_passTc[t] && !NoPassTc)
+            {   // the FP copies the texture coordinate itself into H<t> (PS 1.x texcoord / D3D TEXCOORDINDEX pass-through: CPU test 2 light falloff)
+                reg[8 + t] = new Vec4(Math.Clamp(_fin[b], 0, 1), Math.Clamp(_fin[b + 1], 0, 1), Math.Clamp(_fin[b + 2], 0, 1), Math.Clamp(_fin[b + 3], 0, 1));
+                continue;
+            }
+            if (!_rtex[t].Ok) { reg[8 + t] = new Vec4(0, 0, 0, 1); continue; }
             float q = _fin[b + 3]; float u = _fin[b], v = _fin[b + 1], r = _fin[b + 2];
             if (q != 0 && q != 1) { u /= q; v /= q; r /= q; }
             reg[8 + t] = Vec4.FromArgb(RTex(inst, t, u, v, r, 0));
@@ -1005,7 +1064,7 @@ public sealed partial class NvGeForce
         if (fromFp && _fpPacks && PkMode2)
         {
             for (int r = 0; r < 16; r++) if ((_pkSet & (1 << r)) != 0) reg[r] = new Vec4(_pkReg[r * 4], _pkReg[r * 4 + 1], _pkReg[r * 4 + 2], _pkReg[r * 4 + 3]);
-            reg[12] = new Vec4(0, 0, 0, Sp0Zero ? 0 : reg[8].W);
+            if ((_pkSet & (1 << 12)) == 0) reg[12] = new Vec4(0, 0, 0, Sp0Zero ? 0 : reg[8].W);
         }
         else if (fromFp && _fpPacks)
         {

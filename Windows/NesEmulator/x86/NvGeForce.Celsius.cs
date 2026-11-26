@@ -334,7 +334,7 @@ public sealed partial class NvGeForce
         return t;
     }
 
-    private static int TexBpp(int fmt) => fmt switch { 0 or 1 or 0xb or 0x13 => 1, 6 or 7 or 0x12 => 4, _ => 2 };
+    private static int TexBpp(int fmt) => fmt switch { 0 or 1 or 0xb or 0x13 or 0x1b => 1, 6 or 7 or 0x12 or 0x1e or 0x2a or 0x2b => 4, _ => 2 };   // (NV30: 0x1E R8G8B8_RECT = X8R8G8B8, 0x2A/2B Z24)
     private static bool IsDxt(int fmt) => fmt is 0xc or 0xe or 0xf;
 
     /// <summary>Byte size of one level of a swizzled / compressed texture.</summary>
@@ -429,7 +429,10 @@ public sealed partial class NvGeForce
             case 2: case 0x10: case 3: { uint r = (raw >> 10) & 31, g = (raw >> 5) & 31, b = raw & 31; return ((raw & 0x8000) != 0 || t.Fmt == 3 ? 0xff000000 : 0) | (r << 3 | r >> 2) << 16 | (g << 3 | g >> 2) << 8 | (b << 3 | b >> 2); }
             case 4: { uint a4 = raw >> 12, r = (raw >> 8) & 15, g = (raw >> 4) & 15, b = raw & 15; return a4 * 0x11 << 24 | r * 0x11 << 16 | g * 0x11 << 8 | b * 0x11; }
             case 5: case 0x11: return 0xff000000 | (uint)Raster3D.Rgb565To888((int)raw);
-            case 7: return raw | 0xff000000;
+            case 7: case 0x1e: return raw | 0xff000000;
+            case 0x1d: { uint a4 = raw >> 12, r = (raw >> 8) & 15, g = (raw >> 4) & 15, b = raw & 15; return a4 * 0x11 << 24 | r * 0x11 << 16 | g * 0x11 << 8 | b * 0x11; }   // A4R4G4B4_RECT
+            case 0x1b: return raw * 0x01010101;                                              // I8_RECT
+            case 0x1a: case 0x20: return (raw >> 8) << 24 | (raw & 0xff) * 0x010101;          // A8L8
             default: return raw;                                                              // A8R8G8B8
         }
     }
