@@ -376,7 +376,7 @@ public sealed partial class NvGeForce
             float fc = src == 0 ? vin[20] : MathF.Abs(cw);
             float ff = mode switch
             {
-                0x2601 or 0x2602 => k0 + k1 * fc + k2 * fc * fc - 1,
+                0x2601 or 0x804 => k0 + k1 * fc + k2 * fc * fc - 1,                       // LINEAR, LINEAR_ABS (Kelvin enums: 0x802 EXP_ABS, 0x803 EXP2_ABS)
                 0x0801 or 0x0803 => MathF.Exp(-MathF.Pow(k1 / -0.21f * fc, 2)),
                 _ => MathF.Exp(k1 / 0.09f * MathF.Abs(fc)),
             };
