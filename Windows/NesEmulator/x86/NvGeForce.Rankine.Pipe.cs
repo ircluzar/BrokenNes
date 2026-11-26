@@ -98,7 +98,7 @@ public sealed partial class NvGeForce
         }
         if (_inline.Count > 0 && perVtx > 0)
         {
-            for (int b = 0; b + perVtx <= _inline.Count && res.Count < 1 << 16; b += perVtx)
+            for (int b = 0; b + perVtx <= _inline.Count && res.Count < 1 << 20; b += perVtx)
             {
                 var v = (float[])_attrCur.Clone(); int o = b;
                 for (int i = 0; i < 16; i++)
@@ -123,7 +123,7 @@ public sealed partial class NvGeForce
                 DecodeAttr(fmt[i].type, fmt[i].size, k => DmaReadU32(dma, aa + (uint)k * 4), v, i * 4);
             }
             res.Add(v);
-            if (res.Count >= 1 << 16) break;
+            if (res.Count >= 1 << 20) break;
         }
         return res;
     }
@@ -788,15 +788,20 @@ public sealed partial class NvGeForce
     {
         _dc[0]++;
         bool inW = a.Iw > 0 && b.Iw > 0 && c.Iw > 0;
-        if (inW && (!_clipZ || (a.Z >= _clipZ0 && b.Z >= _clipZ0 && c.Z >= _clipZ0))) { RTriIn(inst, a, b, c); return; }
+        const float Gb = 8192;   // guard band: screen x/y beyond it (tiny positive w near the eye) overflow the int bbox and the edge maths
+        static bool InGb(RVert v) => v.X >= -Gb && v.X <= Gb && v.Y >= -Gb && v.Y <= Gb;
+        bool gbOk = NoGuardClip || (InGb(a) && InGb(b) && InGb(c));
+        if (inW && gbOk && (!_clipZ || (a.Z >= _clipZ0 && b.Z >= _clipZ0 && c.Z >= _clipZ0))) { RTriIn(inst, a, b, c); return; }
         // homogeneous clipping (screen x, y, z times w are linear in clip space): w >= eps, and for clip-space programs the D3D near
         // plane (depth >= the viewport's z translate); varyings linear in clip space
         const float eps = 1e-5f;
         static float W(RVert v) => v.Iw == 0 ? -1 : 1 / v.Iw;
         var poly = new List<RVert> { a, b, c };
-        for (int plane = 0; plane < (_clipZ ? 2 : 1); plane++)
+        for (int plane = 0; plane < 6; plane++)
         {
-            float D(RVert v) { float w = W(v); return plane == 0 ? w - eps : (v.Z - _clipZ0) * w; }
+            if (plane == 1 && !_clipZ) continue;
+            if (plane >= 2 && gbOk) break;
+            float D(RVert v) { float w = W(v); return plane switch { 0 => w - eps, 1 => (v.Z - _clipZ0) * w, 2 => (v.X + Gb) * w, 3 => (Gb - v.X) * w, 4 => (v.Y + Gb) * w, _ => (Gb - v.Y) * w }; }
             var outp = new List<RVert>();
             for (int i = 0; i < poly.Count; i++)
             {
@@ -823,6 +828,7 @@ public sealed partial class NvGeForce
         for (int i = 1; i + 1 < poly.Count; i++) RTriIn(inst, poly[0], poly[i], poly[i + 1]);
     }
     private bool _clipZ; private float _clipZ0; private int _zDiag;
+    private static readonly bool NoGuardClip = Environment.GetEnvironmentVariable("X86_NVNOGB") == "1";   // old: no guard-band clipping
 
     private void RTriIn(uint inst, RVert a, RVert b, RVert c)
     {
