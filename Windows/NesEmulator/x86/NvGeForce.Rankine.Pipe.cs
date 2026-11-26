@@ -361,6 +361,7 @@ public sealed partial class NvGeForce
         if (_rPrim == 0) return;
         var vin = RankineVertices(inst);
         if (vin.Count == 0) return;
+        if (NoRaster) { RankineTris += vin.Count / 3; return; }   // (X86_NVNORASTER: no vertex work either)
         float tx = F32(G(inst, 0xa20)), ty = F32(G(inst, 0xa24)), tz = F32(G(inst, 0xa28));
         float sx = F32(G(inst, 0xa30)), sy = F32(G(inst, 0xa34)), sz = F32(G(inst, 0xa38));
         var vs = new RVert[vin.Count];
@@ -820,6 +821,10 @@ public sealed partial class NvGeForce
     }
     private bool _clipZ; private float _clipZ0; private int _zDiag;
 
+    /// <summary>X86_NVNORASTER=1: count 3D triangles but draw no pixels. Guest timing does not depend on host speed, so a long benchmark
+    /// (3DMark2000/2001 SE) reaches its score many times faster; the 2D/GDI score screens still draw. Pictures of 3D scenes are blank.</summary>
+    internal static readonly bool NoRaster = Environment.GetEnvironmentVariable("X86_NVNORASTER") == "1";
+
     private void RTriIn(uint inst, RVert a, RVert b, RVert c)
     {
         float area = (b.X - a.X) * (c.Y - a.Y) - (c.X - a.X) * (b.Y - a.Y);
@@ -832,6 +837,7 @@ public sealed partial class NvGeForce
             if (cf == 0x408 || (cf == 0x405 && !front) || (cf == 0x404 && front)) return;
         }
         RankineTris++;
+        if (NoRaster) return;
         // the target
         uint rtf = G(inst, 0x208), pitches = G(inst, 0x20c);
         int cfmt = (int)(rtf & 0x1f), cbpp = cfmt == 3 ? 2 : cfmt == 9 ? 1 : 4;
