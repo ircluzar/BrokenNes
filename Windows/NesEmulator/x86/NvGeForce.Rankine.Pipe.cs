@@ -509,6 +509,7 @@ public sealed partial class NvGeForce
     // X86_NVPKMODE=1 / 2 forces one
     private bool PkMode2 => PkModeEnv == "2" || (PkModeEnv != "1" && _fpFetchOnly);
     private bool _fpFetchOnly;
+    private static readonly bool Pk45Old = Environment.GetEnvironmentVariable("X86_NVPK45") == "old";   // old: units 4/5 -> primary/secondary
     private readonly float[] _pkReg = new float[16 * 4]; private int _pkSet;
     private readonly System.Text.StringBuilder _rcTrace = new();
     private bool _fpHalfOut, _fpPacks; private int _pkDiag;
@@ -608,7 +609,7 @@ public sealed partial class NvGeForce
                     {   // mode 2: a fetch (0x2E/0x2F) lands in combiner register = its unit field (0-3 texture n, 4 primary, 5 secondary);
                         // a plain pack (0x27) lands by its slot (R0.y tex1, R0.z tex2, R0.w / R1.z tex3, R1.x primary, R1.y secondary)
                         int tgt;
-                        if (op is 0x2e or 0x2f) { int un = (int)(f.W0 >> 17) & 15; tgt = un <= 3 ? 8 + un : un == 4 ? 4 : un == 5 ? 5 : -1; }
+                        if (op is 0x2e or 0x2f) { int un = (int)(f.W0 >> 17) & 15; tgt = un <= 3 ? 8 + un : un == 4 ? (Pk45Old ? 4 : 12) : un == 5 ? (Pk45Old ? 5 : 13) : -1; }   // PS 1.4 r0-r5 = tex0-3, spare0, spare1
                         else
                         {
                             int c0 = pm switch { 1 => 0, 2 => 1, 4 => 2, 8 => 3, _ => 0 }, sl = pd * 4 + c0;
@@ -1012,7 +1013,7 @@ public sealed partial class NvGeForce
         if (fromFp && _fpPacks && PkMode2)
         {
             for (int r = 0; r < 16; r++) if ((_pkSet & (1 << r)) != 0) reg[r] = new Vec4(_pkReg[r * 4], _pkReg[r * 4 + 1], _pkReg[r * 4 + 2], _pkReg[r * 4 + 3]);
-            reg[12] = new Vec4(0, 0, 0, Sp0Zero ? 0 : reg[8].W);
+            if ((_pkSet & (1 << 12)) == 0) reg[12] = new Vec4(0, 0, 0, Sp0Zero ? 0 : reg[8].W);
         }
         else if (fromFp && _fpPacks)
         {
