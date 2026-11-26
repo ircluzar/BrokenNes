@@ -349,6 +349,8 @@ public sealed partial class NvGeForce
     private static readonly bool ScreenVp = Environment.GetEnvironmentVariable("X86_NVSCREENVP") == "1";   // old behaviour: VP positions always screen space
     private static readonly bool DrawTrace = Environment.GetEnvironmentVariable("X86_NVDRAWTRACE") == "1";
     private long _dtLastPix;
+    private readonly bool[] _passTc = new bool[4];
+    private static readonly bool NoPassTc = Environment.GetEnvironmentVariable("X86_NVNOPASSTC") == "1";
     private readonly long[] _dc = new long[10];   // draw-trace reject counters: tri, clipAll, area, cull, bbox, st, z, fp, at, w
     private static readonly int[] DtProbe = ParseProbe(Environment.GetEnvironmentVariable("X86_NVPROBE"));   // X86_NVPROBE=x,y (default 320,240)
     private static int[] ParseProbe(string? s) { try { var a = s!.Split(','); return new[] { int.Parse(a[0]), int.Parse(a[1]) }; } catch { return new[] { 320, 240 }; } }
@@ -419,6 +421,12 @@ public sealed partial class NvGeForce
             OpLog($"rankine attrs{sb2} vpstart {G(inst, 0x1ea0)} vpinst@start {_vpInst[G(inst, 0x1ea0) * 4]:X8} {_vpInst[G(inst, 0x1ea0) * 4 + 1]:X8} {_vpInst[G(inst, 0x1ea0) * 4 + 2]:X8} {_vpInst[G(inst, 0x1ea0) * 4 + 3]:X8}");
             OpLog($"rankine in v0 ({i0[0]},{i0[1]},{i0[2]},{i0[3]}) v3 ({i0[12]:F2},{i0[13]:F2},{i0[14]:F2},{i0[15]:F2}) inline {_inline.Count} elems {_elems.Count} fmt0 {G(inst, 0x1740):X} c118 ({F32(_vpConst[472])},{F32(_vpConst[473])},{F32(_vpConst[474])},{F32(_vpConst[475])}) c119 ({F32(_vpConst[476])},{F32(_vpConst[477])},{F32(_vpConst[478])},{F32(_vpConst[479])})");
             OpLog($"rankine prim {_rPrim} verts {vs.Length} v0 scr ({v0.X:F1},{v0.Y:F1},{v0.Z:F1}) iw {v0.Iw:G3} col0 ({v0.Var[12]:F2},{v0.Var[13]:F2},{v0.Var[14]:F2},{v0.Var[15]:F2}) tc0 ({v0.Var[32]:F2},{v0.Var[33]:F2}) vp {G(inst, 0x1ea0)} vt {tx},{ty},{tz} vsc {sx},{sy},{sz}");
+        }
+        Array.Clear(_passTc);
+        foreach (var f in _fp)
+        {   // MOV H<t>, f[tc<t>]: unit t passes its coordinate through instead of sampling
+            uint op = (f.W0 >> 24) & 0x3f; int dst = (int)((f.W0 >> 1) & 63), inp = (int)((f.W0 >> 13) & 15);
+            if (op == 1 && (f.W0 & 0x80) != 0 && dst < 4 && (f.W1 & 3) == 1 && inp == 4 + dst) _passTc[dst] = true;
         }
         int n = vs.Length;
         switch (_rPrim)
@@ -989,8 +997,13 @@ public sealed partial class NvGeForce
                 reg[8 + t] = new Vec4(C1(h[t * 4]), C1(h[t * 4 + 1]), C1(h[t * 4 + 2]), C1(h[t * 4 + 3]));
                 continue;
             }
-            if (!_rtex[t].Ok) { reg[8 + t] = new Vec4(0, 0, 0, 1); continue; }
             int b = (4 + t) * 4;
+            if (_passTc[t] && !NoPassTc)
+            {   // the FP copies the texture coordinate itself into H<t> (PS 1.x texcoord / D3D TEXCOORDINDEX pass-through: CPU test 2 light falloff)
+                reg[8 + t] = new Vec4(Math.Clamp(_fin[b], 0, 1), Math.Clamp(_fin[b + 1], 0, 1), Math.Clamp(_fin[b + 2], 0, 1), Math.Clamp(_fin[b + 3], 0, 1));
+                continue;
+            }
+            if (!_rtex[t].Ok) { reg[8 + t] = new Vec4(0, 0, 0, 1); continue; }
             float q = _fin[b + 3]; float u = _fin[b], v = _fin[b + 1], r = _fin[b + 2];
             if (q != 0 && q != 1) { u /= q; v /= q; r /= q; }
             reg[8 + t] = Vec4.FromArgb(RTex(inst, t, u, v, r, 0));
