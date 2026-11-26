@@ -368,6 +368,21 @@ public sealed partial class NvGeForce
         vout[2] = cz * iw * F32(G(inst, 0xa38)) + F32(G(inst, 0xa28));
         vout[3] = cw;
         for (int c = 0; c < 4; c++) { vout[12 + c] = vin[12 + c]; vout[16 + c] = vin[16 + c]; vout[20 + c] = vin[20 + c]; }
+        if (G(inst, 0x36c) != 0 && !FfNoFog)
+        {   // fixed-function fog: source (FOG_COORD_DIST 0x8C8: 0 = the vertex fog attribute, else eye distance ~ clip w), then the
+            // NV10-style equation k0 + k1 f + k2 f^2 (FOG_EQUATION_* 0x8D0-0x8D8) by FOG_MODE 0x8CC (GL enums) -> the factor in FOGC.x
+            uint src = G(inst, 0x8c8), mode = G(inst, 0x8cc);
+            float k0 = F32(G(inst, 0x8d0)), k1 = F32(G(inst, 0x8d4)), k2 = F32(G(inst, 0x8d8));
+            float fc = src == 0 ? vin[20] : MathF.Abs(cw);
+            float ff = mode switch
+            {
+                0x2601 or 0x2602 => k0 + k1 * fc + k2 * fc * fc - 1,
+                0x0801 or 0x0803 => MathF.Exp(-MathF.Pow(k1 / -0.21f * fc, 2)),
+                _ => MathF.Exp(k1 / 0.09f * MathF.Abs(fc)),
+            };
+            vout[20] = Math.Clamp(ff, 0, 1);
+            if (!_ffFogLogged && OpLog != null) { _ffFogLogged = true; OpLog($"rankine fffog src {src:X} mode {mode:X} k {k0} {k1} {k2} fc {fc} -> {vout[20]}"); }
+        }
         for (int t = 0; t < 8; t++)
         {
             int si = (8 + t) * 4;
@@ -379,6 +394,9 @@ public sealed partial class NvGeForce
             else for (int c = 0; c < 4; c++) vout[si + c] = vin[si + c];
         }
     }
+
+    private bool _ffFogLogged;
+    private static readonly bool FfNoFog = Environment.GetEnvironmentVariable("X86_NVFFNOFOG") == "1";   // old: no fixed-function fog factor
 
     private float[] RMat(uint inst, int b)
     {
