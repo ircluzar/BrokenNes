@@ -448,7 +448,7 @@ public sealed partial class NvGeForce
             uint cb = (cdma != 0 ? DmaAddr(cdma, G(inst, 0x210)).addr : G(inst, 0x210)) & VramMask;
             int cp = (int)(G(inst, 0x20c) & 0xffff);
             uint probe = (uint)(cb + DtProbe[1] * cp + DtProbe[0] * 4) & VramMask;
-            OpLog($"rankine dt eng {G(inst, 0x1e94):X} fp {G(inst, 0x8e4):X} rt {G(inst, 0x210):X} prim {_rPrim} n {vin.Count} pix {RankinePixels - _dtLastPix} blend {G(inst, 0x310)} {G(inst, 0x314):X}/{G(inst, 0x318):X} eq {G(inst, 0x320):X} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} st {G(inst, 0x328)} cmask {G(inst, 0x324):X} centre {BitConverter.ToUInt32(_v.Ram, (int)probe):X8} rej {string.Join("/", _dc)} vp {G(inst, 0x1ea0)} v0 ({vs[0].X:F0},{vs[0].Y:F0},{vs[0].Z:G3},{vs[0].Iw:G3})");
+            OpLog($"rankine dt eng {G(inst, 0x1e94):X} fp {G(inst, 0x8e4):X} rt {G(inst, 0x210):X} prim {_rPrim} n {vin.Count} pix {RankinePixels - _dtLastPix} blend {G(inst, 0x310)} {G(inst, 0x314):X}/{G(inst, 0x318):X} eq {G(inst, 0x320):X} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} st {G(inst, 0x328)} cmask {G(inst, 0x324):X} centre {BitConverter.ToUInt32(_v.Ram, (int)probe):X8} cb {cb:X} rej {string.Join("/", _dc)} vp {G(inst, 0x1ea0)} v0 ({vs[0].X:F0},{vs[0].Y:F0},{vs[0].Z:G3},{vs[0].Iw:G3})");
             _dtLastPix = RankinePixels; Array.Clear(_dc);
         }
         if (RankinePrims < 12 && OpLog != null)
