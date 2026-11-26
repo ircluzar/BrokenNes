@@ -349,6 +349,7 @@ public sealed partial class NvGeForce
     private static readonly bool ScreenVp = Environment.GetEnvironmentVariable("X86_NVSCREENVP") == "1";   // old behaviour: VP positions always screen space
     private static readonly bool DrawTrace = Environment.GetEnvironmentVariable("X86_NVDRAWTRACE") == "1";
     private long _dtLastPix;
+    private readonly long[] _dc = new long[10];   // draw-trace reject counters: tri, clipAll, area, cull, bbox, st, z, fp, at, w
     private static readonly int[] DtProbe = ParseProbe(Environment.GetEnvironmentVariable("X86_NVPROBE"));   // X86_NVPROBE=x,y (default 320,240)
     private static int[] ParseProbe(string? s) { try { var a = s!.Split(','); return new[] { int.Parse(a[0]), int.Parse(a[1]) }; } catch { return new[] { 320, 240 }; } }
     private static readonly bool FfTranspose = Environment.GetEnvironmentVariable("X86_NVFFT") == "1";
@@ -439,8 +440,8 @@ public sealed partial class NvGeForce
             uint cb = (cdma != 0 ? DmaAddr(cdma, G(inst, 0x210)).addr : G(inst, 0x210)) & VramMask;
             int cp = (int)(G(inst, 0x20c) & 0xffff);
             uint probe = (uint)(cb + DtProbe[1] * cp + DtProbe[0] * 4) & VramMask;
-            OpLog($"rankine dt eng {G(inst, 0x1e94):X} fp {G(inst, 0x8e4):X} rt {G(inst, 0x210):X} prim {_rPrim} n {vin.Count} pix {RankinePixels - _dtLastPix} blend {G(inst, 0x310)} {G(inst, 0x314):X}/{G(inst, 0x318):X} eq {G(inst, 0x320):X} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} st {G(inst, 0x328)} cmask {G(inst, 0x324):X} centre {BitConverter.ToUInt32(_v.Ram, (int)probe):X8}");
-            _dtLastPix = RankinePixels;
+            OpLog($"rankine dt eng {G(inst, 0x1e94):X} fp {G(inst, 0x8e4):X} rt {G(inst, 0x210):X} prim {_rPrim} n {vin.Count} pix {RankinePixels - _dtLastPix} blend {G(inst, 0x310)} {G(inst, 0x314):X}/{G(inst, 0x318):X} eq {G(inst, 0x320):X} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} st {G(inst, 0x328)} cmask {G(inst, 0x324):X} centre {BitConverter.ToUInt32(_v.Ram, (int)probe):X8} rej {string.Join("/", _dc)} vp {G(inst, 0x1ea0)} v0 ({vs[0].X:F0},{vs[0].Y:F0},{vs[0].Z:G3},{vs[0].Iw:G3})");
+            _dtLastPix = RankinePixels; Array.Clear(_dc);
         }
         if (RankinePrims < 12 && OpLog != null)
             OpLog($"rankine after prim {_rPrim}: tris {RankineTris} pixels {RankinePixels} rt {G(inst, 0x210):X} fmt {G(inst, 0x208):X} pitch {G(inst, 0x20c):X} hz {G(inst, 0x200):X} vt {G(inst, 0x204):X} scis {G(inst, 0x8c0):X}/{G(inst, 0x8c4):X} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} cull {G(inst, 0x183c)}/{G(inst, 0x1830):X} fp {_fp.Length} ops {string.Join(",", Array.ConvertAll(_fp, f => ((f.W0 >> 24) & 0x3f).ToString("X")))} blend {G(inst, 0x310)} cmask {G(inst, 0x324):X} pcrtc {PcrtcStart:X} | tex0 {RTexInfo(inst, 0)}");
@@ -785,6 +786,7 @@ public sealed partial class NvGeForce
     /// screen positions are the projected ones), varyings linear in clip space, and the pieces drawn.</summary>
     private void RTri(uint inst, RVert a, RVert b, RVert c)
     {
+        _dc[0]++;
         bool inW = a.Iw > 0 && b.Iw > 0 && c.Iw > 0;
         if (inW && (!_clipZ || (a.Z >= _clipZ0 && b.Z >= _clipZ0 && c.Z >= _clipZ0))) { RTriIn(inst, a, b, c); return; }
         // homogeneous clipping (screen x, y, z times w are linear in clip space): w >= eps, and for clip-space programs the D3D near
@@ -816,7 +818,7 @@ public sealed partial class NvGeForce
                 }
             }
             poly = outp;
-            if (poly.Count < 3) return;
+            if (poly.Count < 3) { _dc[1]++; return; }
         }
         for (int i = 1; i + 1 < poly.Count; i++) RTriIn(inst, poly[0], poly[i], poly[i + 1]);
     }
@@ -825,13 +827,13 @@ public sealed partial class NvGeForce
     private void RTriIn(uint inst, RVert a, RVert b, RVert c)
     {
         float area = (b.X - a.X) * (c.Y - a.Y) - (c.X - a.X) * (b.Y - a.Y);
-        if (area == 0 || float.IsNaN(area)) return;
+        if (area == 0 || float.IsNaN(area)) { _dc[2]++; return; }
         if (G(inst, 0x183c) != 0 && !_noCullR)
         {
             bool ccw = area < 0;                                       // (y grows downward on the screen)
             bool front = G(inst, 0x1834) == 0x900 ? !ccw : ccw;
             uint cf = G(inst, 0x1830);
-            if (cf == 0x408 || (cf == 0x405 && !front) || (cf == 0x404 && front)) return;
+            if (cf == 0x408 || (cf == 0x405 && !front) || (cf == 0x404 && front)) { _dc[3]++; return; }
         }
         RankineTris++;
         // the target
@@ -850,7 +852,7 @@ public sealed partial class NvGeForce
         if (sh == 0 && sv == 0) { cx0 = rx0; cx1 = rx0 + rw; cy0 = ry0; cy1 = ry0 + rh; }
         int x0 = Math.Max(cx0, (int)MathF.Floor(MathF.Min(a.X, MathF.Min(b.X, c.X)))), x1 = Math.Min(cx1 - 1, (int)MathF.Ceiling(MathF.Max(a.X, MathF.Max(b.X, c.X))));
         int y0 = Math.Max(cy0, (int)MathF.Floor(MathF.Min(a.Y, MathF.Min(b.Y, c.Y)))), y1 = Math.Min(cy1 - 1, (int)MathF.Ceiling(MathF.Max(a.Y, MathF.Max(b.Y, c.Y))));
-        if (x1 < x0 || y1 < y0 || (long)(x1 - x0 + 1) * (y1 - y0 + 1) > 4 << 20) return;
+        if (x1 < x0 || y1 < y0 || (long)(x1 - x0 + 1) * (y1 - y0 + 1) > 4 << 20) { _dc[4]++; return; }
         // state
         bool zt = G(inst, 0xa74) != 0, zw = G(inst, 0xa70) != 0;
         uint zf = G(inst, 0xa6c);
@@ -887,16 +889,16 @@ public sealed partial class NvGeForce
                 uint za = (uint)(zbase + y * zpitch + x * (z16 ? 2 : 4)) & VramMask;
                 uint zi = (uint)Math.Clamp(z * zmax, 0, zmax);   // (z from the program is 0..1: D3D depth)
                 uint sOld = st ? (uint)_v.Ram[za] : 0u;
-                if (st && !Cmp(sFn, sRef & sMsk, sOld & sMsk)) { StencilOp(za, sOld, sOpF, sRef, sWm); continue; }
+                if (st && !Cmp(sFn, sRef & sMsk, sOld & sMsk)) { _dc[5]++; StencilOp(za, sOld, sOpF, sRef, sWm); continue; }
                 if (zt && zpitch > 0)
                 {
                     uint zold = z16 ? (uint)(_v.Ram[za] | _v.Ram[(za + 1) & VramMask] << 8) : (za <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)za) >> 8 : 0);
-                    if (!Cmp(zf, zi, zold)) { if (st) StencilOp(za, sOld, sOpZf, sRef, sWm); continue; }
+                    if (!Cmp(zf, zi, zold)) { _dc[6]++; if (st) StencilOp(za, sOld, sOpZf, sRef, sWm); continue; }
                 }
                 if (st) StencilOp(za, sOld, sOpZp, sRef, sWm);
                 // varyings, perspective correct
                 float q0 = w0 * a.Iw, q1 = w1 * b.Iw, q2 = w2 * c.Iw, qs = 1 / (q0 + q1 + q2);
-                if (!float.IsFinite(qs)) continue;
+                if (!float.IsFinite(qs)) { _dc[9]++; continue; }
                 q0 *= qs; q1 *= qs; q2 *= qs;
                 _fin[0] = px; _fin[1] = py; _fin[2] = z; _fin[3] = a.Iw * w0 + b.Iw * w1 + c.Iw * w2;
                 Lerp(1, 3, a, b, c, q0, q1, q2); Lerp(2, 4, a, b, c, q0, q1, q2); Lerp(3, 5, a, b, c, q0, q1, q2);
@@ -913,7 +915,7 @@ public sealed partial class NvGeForce
                 }
                 else
                 {
-                    if (!RunFp(inst, x, y)) continue;
+                    if (!RunFp(inst, x, y)) { _dc[7]++; continue; }
                     if (FpRcEnv != "0") RunRc(inst, !(_fpPacks && PackNative));   // (ENGINE bit 0 clear - loading-screen 2D draws, CPU test 2: FP output as is)
                     if (_pkDiag < 40 && OpLog != null && (DiagFp != 0 ? G(inst, 0x8e4) == DiagFp : _fpPacks) && ((x ^ y) & 31) == 0)
                     {
@@ -924,7 +926,7 @@ public sealed partial class NvGeForce
                 }
                 var o = _fpHalfOut ? _fh : _fr;
                 float cr = Math.Clamp(o[0], 0, 1), cg = Math.Clamp(o[1], 0, 1), cb = Math.Clamp(o[2], 0, 1), ca = Math.Clamp(o[3], 0, 1);
-                if (at && !Cmp(af, (uint)(ca * 255 + 0.5f), (uint)(aref * 255 + 0.5f))) continue;
+                if (at && !Cmp(af, (uint)(ca * 255 + 0.5f), (uint)(aref * 255 + 0.5f))) { _dc[8]++; continue; }
                 uint ca8 = (uint)(ca * 255 + 0.5f) << 24 | (uint)(cr * 255 + 0.5f) << 16 | (uint)(cg * 255 + 0.5f) << 8 | (uint)(cb * 255 + 0.5f);
                 uint caddr = (uint)(cbase + y * cpitch + x * cbpp) & VramMask;
                 uint dst = cbpp == 4 ? (caddr <= VramBytes - 4 ? BitConverter.ToUInt32(_v.Ram, (int)caddr) : 0)
