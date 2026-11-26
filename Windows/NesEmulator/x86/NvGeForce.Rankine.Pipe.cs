@@ -26,7 +26,7 @@ public sealed partial class NvGeForce
         switch (mthd)
         {
             case 0x1808:
-                if (data != 0) { _rPrim = (int)data; _inline.Clear(); _elems.Clear(); }
+                if (data != 0) { _rPrim = (int)data; _inline.Clear(); _elems.Clear(); _imm.Clear(); }
                 else { RankineFlush(inst); _rPrim = 0; }
                 return true;
             case 0x1818: _inline.Add(data); return true;
@@ -58,7 +58,47 @@ public sealed partial class NvGeForce
                 return true;
             }
         }
-        if (mthd is >= 0x1c00 and < 0x1d00) { _attrCur[(mthd - 0x1c00) >> 2] = F32(data); return true; }   // VTX_ATTR_4F[16]
+        if (mthd is >= 0x1c00 and < 0x1d00) { int i = (mthd - 0x1c00) >> 2; _attrCur[i] = F32(data); if (i == 3) ImmEmit(); return true; }   // VTX_ATTR_4F[16]
+        // immediate mode (the OpenGL ICD's glVertex/glTexCoord/...): writing attribute 0's last component emits a vertex
+        if (mthd is >= 0x1500 and < 0x1600)
+        {   // VTX_ATTR_3F[16] (stride 16)
+            int a = (mthd - 0x1500) >> 4, c = ((mthd - 0x1500) >> 2) & 3; if (c > 2) return true;
+            _attrCur[a * 4 + c] = F32(data); if (c == 2) { _attrCur[a * 4 + 3] = 1; if (a == 0) ImmEmit(); }
+            return true;
+        }
+        if (mthd is >= 0x1880 and < 0x1900)
+        {   // VTX_ATTR_2F[16] (stride 8)
+            int a = (mthd - 0x1880) >> 3, c = ((mthd - 0x1880) >> 2) & 1;
+            _attrCur[a * 4 + c] = F32(data); if (c == 1) { _attrCur[a * 4 + 2] = 0; _attrCur[a * 4 + 3] = 1; if (a == 0) ImmEmit(); }
+            return true;
+        }
+        if (mthd is >= 0x1e40 and < 0x1e80)
+        {   // VTX_ATTR_1F[16]
+            int a = (mthd - 0x1e40) >> 2; _attrCur[a * 4] = F32(data); _attrCur[a * 4 + 1] = 0; _attrCur[a * 4 + 2] = 0; _attrCur[a * 4 + 3] = 1;
+            if (a == 0) ImmEmit();
+            return true;
+        }
+        if (mthd is >= 0x1940 and < 0x1980)
+        {   // VTX_ATTR_4UB[16]: R in the low byte
+            int a = (mthd - 0x1940) >> 2;
+            for (int c = 0; c < 4; c++) _attrCur[a * 4 + c] = ((data >> (8 * c)) & 0xff) / 255f;
+            if (a == 0) ImmEmit();
+            return true;
+        }
+        if (mthd is >= 0x1900 and < 0x1940)
+        {   // VTX_ATTR_2I[16]: two shorts
+            int a = (mthd - 0x1900) >> 2;
+            _attrCur[a * 4] = (short)(data & 0xffff); _attrCur[a * 4 + 1] = (short)(data >> 16); _attrCur[a * 4 + 2] = 0; _attrCur[a * 4 + 3] = 1;
+            if (a == 0) ImmEmit();
+            return true;
+        }
+        if (mthd is >= 0x1980 and < 0x1a00)
+        {   // VTX_ATTR_4I[16]: four shorts, stride 8
+            int a = (mthd - 0x1980) >> 3, h = ((mthd - 0x1980) >> 2) & 1;
+            _attrCur[a * 4 + h * 2] = (short)(data & 0xffff); _attrCur[a * 4 + h * 2 + 1] = (short)(data >> 16);
+            if (h == 1 && a == 0) ImmEmit();
+            return true;
+        }
         return false;
     }
 
@@ -85,8 +125,12 @@ public sealed partial class NvGeForce
     }
 
     /// <summary>The attributes (16 x vec4) of each vertex of the open BEGIN_END.</summary>
+    private readonly List<float[]> _imm = new();                       // immediate-mode vertices of the open BEGIN_END
+    private void ImmEmit() { if (_rPrim != 0 && _imm.Count < 1 << 20) _imm.Add((float[])_attrCur.Clone()); }
+
     private List<float[]> RankineVertices(uint inst)
     {
+        if (_imm.Count > 0) return new List<float[]>(_imm);
         var res = new List<float[]>();
         var fmt = new (int type, int size, int stride)[16];
         int perVtx = 0;
