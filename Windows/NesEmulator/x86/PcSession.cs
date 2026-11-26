@@ -324,7 +324,14 @@ public sealed class PcSession : IConsoleSession
         if (!_stateHookUsed && Environment.GetEnvironmentVariable("BROKENNES_X86_MACHINESTATE") is { Length: > 0 } ms && File.Exists(ms))
         {
             _stateHookUsed = true;
-            _m.LoadState(File.ReadAllBytes(ms));
+            try { _m.LoadState(File.ReadAllBytes(ms)); }
+            catch (Exception e)
+            {
+                // no silent fallback: a machine state that does not fit (other disks, memory, devices) must not leave a half-loaded machine cold-booting as if nothing happened
+                _m.Stopped = "the machine state " + Path.GetFileName(ms) + " could not be loaded: " + e.Message;
+                System.Console.Error.WriteLine("[x86] " + _m.Stopped);
+                return;
+            }
             // the disc was put in at creation (InsertCd: UNIT ATTENTION) but the state was saved with it already in: without this Win98 saw a new disc, AutoPlay opened the
             // disc's autorun window over the running game and a 256-colour game (Age of Empires) lost its palette to the desktop's (the scrambled-colours bug)
             _m.Ata?.Secondary.ClearMediaChanged(0);

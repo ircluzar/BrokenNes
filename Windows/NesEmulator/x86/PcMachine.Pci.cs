@@ -125,11 +125,7 @@ public sealed class PciBus
             ide.Cfg[0x41] = 0x80; ide.Cfg[0x43] = 0x80;           // IDETIM: both channels' decode enabled
         }
         if (_m.Nic != null && Environment.GetEnvironmentVariable("X86_NONIC") is null or "" or "0")   // (X86_NONIC: the card left off the bus, a diagnostic)
-        {
-            var nic = NicFn = Functions[NicDevFn] = new PciFunction("RTL8029 Ethernet", Rtl8029.Vendor, Rtl8029.Device, 0x020000, 0x00) { IoBarSize = Rtl8029.IoSize };
-            nic.Cfg[0x10] = 1; nic.Cfg[0x3d] = 1;                 // I/O BAR, INTA#
-            nic.W16(0x2c, Rtl8029.Vendor); nic.W16(0x2e, Rtl8029.Device);
-        }
+            AddNicFunction();
         if (_m.Voodoo != null)
         {
             var vf = Functions[Voodoo1DevFn] = new PciFunction("3dfx Voodoo Graphics", Voodoo1.Vendor, Voodoo1.Device, 0x040000, 0x02) { MemBarSize = Voodoo1.MemSize, Mmio = _m.Voodoo };
@@ -225,10 +221,20 @@ public sealed class PciBus
         foreach (var (df, f) in Functions) { w.Write(df); w.Write(f.Cfg); }
     }
 
+    private void AddNicFunction()
+    {
+        var nic = NicFn = Functions[NicDevFn] = new PciFunction("RTL8029 Ethernet", Rtl8029.Vendor, Rtl8029.Device, 0x020000, 0x00) { IoBarSize = Rtl8029.IoSize };
+        nic.Cfg[0x10] = 1; nic.Cfg[0x3d] = 1;                 // I/O BAR, INTA#
+        nic.W16(0x2c, Rtl8029.Vendor); nic.W16(0x2e, Rtl8029.Device);
+    }
+
     public void Load(BinaryReader r)
     {
         Address = r.ReadUInt32(); Elcr1 = r.ReadByte(); Elcr2 = r.ReadByte(); ResetControl = r.ReadByte();
         int n = r.ReadInt32();
+        // a state saved with the network card on the bus, loaded into a machine whose card is off the bus (X86_NONIC=1): load it as it was
+        // saved (the card back on the bus) instead of refusing (the app used to cold-boot silently on that refusal)
+        if (_m.Nic != null && !Functions.ContainsKey(NicDevFn) && n == Functions.Count + 1) AddNicFunction();
         // a state saved before the network card: the card stays as a cold boot left it (unconfigured), everything else must match
         bool oldNoNic = Functions.ContainsKey(NicDevFn) && n == Functions.Count - 1;
         if (n != Functions.Count && !oldNoNic) throw new InvalidDataException($"this x86 state's PCI bus has {n} functions, this machine has {Functions.Count}");
