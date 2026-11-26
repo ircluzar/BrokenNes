@@ -443,9 +443,9 @@ public sealed partial class NvGeForce
     private void RankineFlush(uint inst)
     {
         if (_rPrim == 0) return;
+        if (NoRaster) return;   // (X86_NVNORASTER: no vertex fetch either - it only reads memory)
         var vin = RankineVertices(inst);
         if (vin.Count == 0) return;
-        if (NoRaster) { RankineTris += vin.Count / 3; return; }   // (X86_NVNORASTER: no vertex work either)
         float tx = F32(G(inst, 0xa20)), ty = F32(G(inst, 0xa24)), tz = F32(G(inst, 0xa28));
         float sx = F32(G(inst, 0xa30)), sy = F32(G(inst, 0xa34)), sz = F32(G(inst, 0xa38));
         var vs = new RVert[vin.Count];

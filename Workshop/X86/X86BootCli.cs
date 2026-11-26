@@ -360,7 +360,7 @@ internal static class X86BootCli
             {
                 while (!m.Cpu.Debug.Stop && fr++ < bf) Frame(m);
                 if (!m.Cpu.Debug.Stop || bh >= bph) break;
-                if (args.Contains("--bplog")) Console.WriteLine($"bphit {bh} frame {m.Vga.FrameCount} EAX {m.Cpu.R[0]:X8}");
+                if (args.Contains("--bplog")) { uint esp = m.Cpu.SegBase[2] + m.Cpu.R[4]; Console.WriteLine($"bphit {bh} frame {m.Vga.FrameCount} EAX {m.Cpu.R[0]:X8} ESP {esp:X8} stk {LinBytes(m, esp, 32)}"); foreach (var bd in Args(args, "--bpderef")) { int k = int.Parse(bd); uint pv = 0; for (int q = 0; q < 4; q++) { uint pp = LinPhys(m, esp + (uint)k * 4 + (uint)q); if (pp != 0xffffffff) pv |= (uint)m.Phys8(pp) << (8 * q); } Console.WriteLine($"   [esp+{k * 4:X}] -> {pv:X8}: {LinBytes(m, pv, 48)}"); } }
                 m.Cpu.Debug.Stop = false; var saved = m.Cpu.Debug.Exec.ToArray(); m.Cpu.Debug.Exec.Clear(); m.Cpu.Step(1); m.Cpu.Debug.Stop = false; foreach (var sv in saved) m.Cpu.Debug.Exec.Add(sv);
             }
             Console.WriteLine($"bp: {(m.Cpu.Debug.Stop ? "hit " + m.Cpu.Debug.Reason : "not hit")} after {fr} frames");
