@@ -349,6 +349,8 @@ public sealed partial class NvGeForce
     private static readonly bool ScreenVp = Environment.GetEnvironmentVariable("X86_NVSCREENVP") == "1";   // old behaviour: VP positions always screen space
     private static readonly bool DrawTrace = Environment.GetEnvironmentVariable("X86_NVDRAWTRACE") == "1";
     private long _dtLastPix;
+    private static readonly int[] DtProbe = ParseProbe(Environment.GetEnvironmentVariable("X86_NVPROBE"));   // X86_NVPROBE=x,y (default 320,240)
+    private static int[] ParseProbe(string? s) { try { var a = s!.Split(','); return new[] { int.Parse(a[0]), int.Parse(a[1]) }; } catch { return new[] { 320, 240 }; } }
     private static readonly bool FfTranspose = Environment.GetEnvironmentVariable("X86_NVFFT") == "1";
     private static readonly bool FfUseMv = Environment.GetEnvironmentVariable("X86_NVFFMV") == "1";
     private static readonly bool ProgDump = Environment.GetEnvironmentVariable("X86_NVPROGDUMP") == "1";
@@ -436,7 +438,7 @@ public sealed partial class NvGeForce
             uint cdma = G(inst, 0x194 | 0x8000);
             uint cb = (cdma != 0 ? DmaAddr(cdma, G(inst, 0x210)).addr : G(inst, 0x210)) & VramMask;
             int cp = (int)(G(inst, 0x20c) & 0xffff);
-            uint probe = (uint)(cb + 240 * cp + 320 * 4) & VramMask;
+            uint probe = (uint)(cb + DtProbe[1] * cp + DtProbe[0] * 4) & VramMask;
             OpLog($"rankine dt eng {G(inst, 0x1e94):X} fp {G(inst, 0x8e4):X} rt {G(inst, 0x210):X} prim {_rPrim} n {vin.Count} pix {RankinePixels - _dtLastPix} blend {G(inst, 0x310)} {G(inst, 0x314):X}/{G(inst, 0x318):X} eq {G(inst, 0x320):X} zt {G(inst, 0xa74)} zf {G(inst, 0xa6c):X} st {G(inst, 0x328)} cmask {G(inst, 0x324):X} centre {BitConverter.ToUInt32(_v.Ram, (int)probe):X8}");
             _dtLastPix = RankinePixels;
         }
