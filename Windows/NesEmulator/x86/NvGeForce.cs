@@ -352,7 +352,7 @@ public sealed partial class NvGeForce : IPciMmio
             case 0x000200: PmcEnable = v; return;
             case 0x600100: PcrtcIntr &= ~v; UpdateIrq(); return;   // write 1 to clear
             case 0x600140: PcrtcIntrEn = v & 1; UpdateIrq(); return;
-            case 0x600800: PcrtcStart = v & (VramMask) & ~3u; return;
+            case 0x600800: { uint ns = v & (VramMask) & ~3u; if (ns != PcrtcStart) OpLog?.Invoke($"pcrtc start {PcrtcStart:X} -> {ns:X}"); PcrtcStart = ns; return; }
             case 0x009400: case 0x009410:
             {
                 long now = TimeNs(_timerReads);
