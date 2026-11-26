@@ -66,7 +66,7 @@ public sealed partial class NvGeForce
             WriteNotify(subc, inst, 0);
             if (data != 0 && !NoNotifyIrq)   // NOTIFY style 1 = write then awaken: PGRAPH raises NOTIFY (INTR bit 0, NSOURCE NOTIFICATION); the
             {                                // RM's ISR finds the object from TRAPPED_ADDR / DATA and the subchannel's class cache (as nouveau nv20_gr_intr)
-                _reg[0x400100] = Reg(0x400100) | 1; _reg[0x400108] = 1; _reg[0x400718] = 0x00100000u | ((data & 0xf) << 16);   // NOTIFY: pending + style
+                if (NstatMode == "b16") { _reg[0x400100] = Reg(0x400100) | 0x10000; } else { _reg[0x400100] = Reg(0x400100) | 1; _reg[0x400108] = 1; } _reg[0x400718] = NstatMode == "nopend" ? ((data & 0xf) << 16) : NstatMode == "pendonly" ? 0x00100000u : 0x00100000u | ((data & 0xf) << 16);   // NOTIFY: pending + style
                 _reg[0x400704] = ((uint)ActiveChid << 20) | ((uint)subc << 16) | 0x104; _reg[0x400708] = data;
                 // CTX_SWITCH1-4 = the object's RAMIN words 0-2 and its instance (>> 4), as nouveau nv04/nv10 load them on a subchannel switch
                 _reg[0x40014c] = Ramin32(inst); _reg[0x400150] = Ramin32(inst + 4); _reg[0x400154] = Ramin32(inst + 8); _reg[0x400158] = inst >> 4;

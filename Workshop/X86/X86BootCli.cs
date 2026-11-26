@@ -434,6 +434,15 @@ internal static class X86BootCli
             for (; k < 200000; k++) { uint lin = m.Cpu.SegBase[1] + m.Cpu.Ip; if (lin >= lo && lin < hi) break; m.RunClock(97); }
             Console.WriteLine($"ipsync: {k} slices, EIP lin {m.Cpu.SegBase[1] + m.Cpu.Ip:X8}");
         }
+        foreach (var ds in Args(args, "--disasm"))   // --disasm HEXLIN:N: N instructions of 32-bit code at a linear address (through the page tables)
+        {
+            var dp = ds.Split(':'); uint a = Convert.ToUInt32(dp[0], 16);
+            for (int k = 0; k < int.Parse(dp[1]); k++)
+            {
+                var (len, text) = X86Disasm.Decode(x => { uint p = LinPhys(m, x); return p == 0xffffffff ? 0 : m.Phys8(p); }, a, a, true);
+                Console.WriteLine($"dis {a:X8}: {LinBytes(m, a, Math.Max(1, len))} {text}"); a += (uint)Math.Max(1, len);
+            }
+        }
         foreach (var da in Args(args, "--dump"))   // --dump HEXLIN:LEN: bytes at a linear address (through the page tables)
         {
             var parts = da.Split(':'); uint a0 = Convert.ToUInt32(parts[0], 16); int len = parts.Length > 1 ? int.Parse(parts[1]) : 64;

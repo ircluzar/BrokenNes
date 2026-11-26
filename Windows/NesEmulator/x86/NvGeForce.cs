@@ -343,6 +343,7 @@ public sealed partial class NvGeForce : IPciMmio
         return Reg(a);
     }
 
+    internal static readonly string? NstatMode = Environment.GetEnvironmentVariable("X86_NVNSTAT");
     private void Write32(uint a, uint v)
     {
         switch (a)
@@ -364,6 +365,7 @@ public sealed partial class NvGeForce : IPciMmio
         }
         if (a is >= 0x001800 and < 0x001900) { if (Pci != null) for (int i = 0; i < 4; i++) Pci.WriteByte((int)(a - 0x001800) + i, (byte)(v >> (8 * i))); return; }
         if (a is >= 0x800000 and < 0x1000000) { UserWrite(a, v); return; }
+        if (a == 0x400718 && NstatMode == "w1c") { _reg[a] = Reg(a) & ~v; return; }   // experiment X86_NVNSTAT=w1c
         if (a is 0x001100 or 0x002100 or 0x009100 or 0x400100)   // interrupt status: write 1 to clear
         {
             _reg[a] = Reg(a) & ~v; UpdateIrq();
