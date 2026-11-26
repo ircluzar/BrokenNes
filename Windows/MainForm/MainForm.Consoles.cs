@@ -428,12 +428,36 @@ namespace BrokenNes.Windows
                 string k = p.Key;
                 pcMachineMenu.DropDownItems.Add(new ToolStripMenuItem(p.Label, null, (s, e) => SetPcMachine(k)) { Tag = k });
             }
+            pcMachineMenu.DropDownItems.Add(new ToolStripSeparator());
+            pcMachineMenu.DropDownItems.Add(new ToolStripMenuItem("Open the ready-made Win98 desktop on the FX 5200 (NVIDIA 45.23 driver installed)...", null, (s, e) => OpenFx5200Desktop())
+            {
+                ToolTipText = "Picks the GeForce FX 5200 machine and boots a Windows 98 disk that already has the NVIDIA 45.23 driver (your own Win98 copy: put Win98_FX5200.img in " + Fx5200DesktopFolder + ")"
+            });
             pcMachineMenu.DropDownOpening += (s, e) =>
             {
                 string cur = NesEmulator.X86.PcMachinePreset.Find(config.PcMachine).Key;
                 foreach (var it in pcMachineMenu.DropDownItems.OfType<ToolStripMenuItem>()) it.Checked = (string?)it.Tag == cur;
             };
             return pcMachineMenu;
+        }
+
+        /// <summary>Where the ready-made FX 5200 Windows 98 disk lives: BROKENNES_X86_DISKS, else Documents\BrokenNes\Windows 98 disks (a personal Win98 copy, never shipped).</summary>
+        private static string Fx5200DesktopFolder => Environment.GetEnvironmentVariable("BROKENNES_X86_DISKS") is { Length: > 0 } f ? f
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "BrokenNes", "Windows 98 disks");
+        private const string Fx5200DesktopFile = "Win98_FX5200.img";
+
+        /// <summary>Console > x86 machine > the ready-made desktop: select the FX 5200 preset and boot the disk with the NVIDIA 45.23 driver installed (a file dialog when the disk is not in the folder).</summary>
+        private void OpenFx5200Desktop()
+        {
+            string path = Path.Combine(Fx5200DesktopFolder, Fx5200DesktopFile);
+            if (!File.Exists(path))
+            {
+                using var d = new OpenFileDialog { Filter = "Windows 98 disk images (*.img)|*.img|All files (*.*)|*.*", Title = $"Find {Fx5200DesktopFile} (a Windows 98 disk with the NVIDIA 45.23 driver installed)", InitialDirectory = Directory.Exists(Fx5200DesktopFolder) ? Fx5200DesktopFolder : "" };
+                if (d.ShowDialog() != DialogResult.OK) return;
+                path = d.FileName;
+            }
+            SetPcMachine("win98-p166-fx5200");
+            LoadRomFile(path);
         }
 
         /// <summary>Choose the x86 machine preset (an unknown key is refused: false). A running x86 game restarts on it.</summary>
