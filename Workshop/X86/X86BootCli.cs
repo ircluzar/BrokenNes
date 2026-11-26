@@ -350,6 +350,22 @@ internal static class X86BootCli
             Console.WriteLine($"tracewhen: {(hit ? "hit" : "not hit")} after {slices} slices");
         }
         // --traceat HEXLO-HEXHI (with --trace N): run on in 1-instruction clock slices until the linear CS:EIP is inside the range, then trace
+        if (Arg(args, "--bp") is string bpx)   // --bp HEXLIN[,HEXLIN]: run (up to --bpframes, default 3000) until execution reaches one of these linear addresses; then --trace N steps from there
+        {
+            m.Cpu.Debug ??= new X86Debug(4096);
+            foreach (var b in bpx.Split(',')) m.Cpu.Debug.Exec.Add(Convert.ToUInt32(b, 16));
+            int bf = int.Parse(Arg(args, "--bpframes") ?? "3000"), fr = 0;
+            int bph = int.Parse(Arg(args, "--bphit") ?? "1");
+            for (int bh = 1; ; bh++)
+            {
+                while (!m.Cpu.Debug.Stop && fr++ < bf) Frame(m);
+                if (!m.Cpu.Debug.Stop || bh >= bph) break;
+                if (args.Contains("--bplog")) Console.WriteLine($"bphit {bh} frame {m.Vga.FrameCount} EAX {m.Cpu.R[0]:X8}");
+                m.Cpu.Debug.Stop = false; var saved = m.Cpu.Debug.Exec.ToArray(); m.Cpu.Debug.Exec.Clear(); m.Cpu.Step(1); m.Cpu.Debug.Stop = false; foreach (var sv in saved) m.Cpu.Debug.Exec.Add(sv);
+            }
+            Console.WriteLine($"bp: {(m.Cpu.Debug.Stop ? "hit " + m.Cpu.Debug.Reason : "not hit")} after {fr} frames");
+            m.Cpu.Debug.Exec.Clear(); m.Cpu.Debug.Stop = false;
+        }
         if (Arg(args, "--traceat") is string ta)
         {
             var tp = ta.Split('-'); uint lo = Convert.ToUInt32(tp[0], 16), hi = Convert.ToUInt32(tp[1], 16); long sl = 0; int tslice = int.Parse(Arg(args, "--traceslice") ?? "1");

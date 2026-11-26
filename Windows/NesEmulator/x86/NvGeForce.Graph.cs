@@ -66,8 +66,8 @@ public sealed partial class NvGeForce
             WriteNotify(subc, inst, 0);
             if (data != 0 && !NoNotifyIrq)   // NOTIFY style 1 = write then awaken: PGRAPH raises NOTIFY (INTR bit 0, NSOURCE NOTIFICATION); the
             {                                // RM's ISR finds the object from TRAPPED_ADDR / DATA and the subchannel's class cache (as nouveau nv20_gr_intr)
-                if (NstatMode == "b16") { _reg[0x400100] = Reg(0x400100) | 0x10000; } else { _reg[0x400100] = Reg(0x400100) | 1; _reg[0x400108] = 1; } _reg[0x400718] = NstatMode == "nopend" ? ((data & 0xf) << 16) : NstatMode == "pendonly" ? 0x00100000u : 0x00100000u | ((data & 0xf) << 16);   // NOTIFY: pending + style
-                _reg[0x400704] = ((uint)ActiveChid << 20) | ((uint)subc << 16) | 0x104; _reg[0x400708] = data;
+                if (NstatMode is "b16" or "b16m") { _reg[0x400100] = Reg(0x400100) | 0x10000; } else if (NstatMode == "ill") { _reg[0x400100] = Reg(0x400100) | 0x100000; _reg[0x400108] = 0x40; } else if (NstatMode == "ns0") { _reg[0x400100] = Reg(0x400100) | 1; _reg[0x400108] = 0; } else if (NstatMode == "ill0") { _reg[0x400100] = Reg(0x400100) | 1; _reg[0x400108] = 0x40; } else { _reg[0x400100] = Reg(0x400100) | 1; _reg[0x400108] = 1; } _reg[0x400718] = NstatMode == "nopend" ? ((data & 0xf) << 16) : NstatMode == "pendonly" ? 0x00100000u : 0x00100000u | ((data & 0xf) << 16);   // NOTIFY: pending + style
+                _reg[0x400704] = ((uint)ActiveChid << 20) | ((uint)subc << 16) | (NstatMode == "b16m" ? 0x200u : 0x104u); _reg[0x400708] = data;
                 // CTX_SWITCH1-4 = the object's RAMIN words 0-2 and its instance (>> 4), as nouveau nv04/nv10 load them on a subchannel switch
                 _reg[0x40014c] = Ramin32(inst); _reg[0x400150] = Ramin32(inst + 4); _reg[0x400154] = Ramin32(inst + 8); _reg[0x400158] = inst >> 4;
                 _reg[0x400160 + (uint)subc * 4] = (Reg(0x400160 + (uint)subc * 4) & ~0xfffu) | (uint)cls;
@@ -78,7 +78,7 @@ public sealed partial class NvGeForce
         if (mthd == 0x100) return;
         switch (cls)
         {
-            case 0x39: if (mthd == 0x328) { M2mf(inst); WriteNotify(subc, inst, 1); } break;
+            case 0x39: if (mthd == 0x328) { M2mf(inst); WriteNotify(subc, inst, NstatMode == "m2mf0" ? 0 : 1); } break;
             case 0x4a or 0x4b: Gdi(inst, mthd, data); break;
             case 0x5f or 0x9f: if (mthd == 0x308) Blit(inst); break;
             case 0x61 or 0x65 or 0x21: Ifc(inst, mthd, data); break;
