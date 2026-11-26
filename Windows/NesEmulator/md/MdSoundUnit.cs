@@ -285,11 +285,18 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
             // GrantLatencyTicks, which is a place between two micro-steps of the instruction, as the hardware's grant is between two cycles of it.
             granted = false;
             int guard = 0;
-            while (!z80.AtInstructionBoundary && guard++ < GrantLatencyTicks)
+            // the Z80's bus accesses in these ticks can reach the VDP (bank window), whose sync calls RunTo: held off as in RunTo, or the Z80 would be ticked again in the middle of its own micro-step (fuzz seed 330123)
+            bool wasRunning = running;
+            running = true;
+            try
             {
-                if (stallTicks > 0) stallTicks--; else z80.Tick();
-                z80Master += machine.Timeline.Z80.Divider;
+                while (!z80.AtInstructionBoundary && guard++ < GrantLatencyTicks)
+                {
+                    if (stallTicks > 0) stallTicks--; else z80.Tick();
+                    z80Master += machine.Timeline.Z80.Divider;
+                }
             }
+            finally { running = wasRunning; }
             granted = true; grantTime = Math.Max(z80Master, masterClock);
             if (z80Master > lastMaster) lastMaster = Math.Max(lastMaster, masterClock);
         }

@@ -55,23 +55,40 @@ public sealed partial class NvGeForce
         DmaWrite32(n, o + 8, 0); DmaWrite32(n, o + 12, 0);   // return value 0, status 0 = done
     }
 
+    /// <summary>X86_NVNOTIFYOLD=1: NOTIFY-awaken raises its interrupt at once (TRAPPED_ADDR 0x104, NSOURCE 1), the pre-2026-11-26 behaviour.</summary>
+    public static readonly bool NotifyOld = Environment.GetEnvironmentVariable("X86_NVNOTIFYOLD") == "1";
+    private bool _notifyPend;
+
+    /// <summary>PGRAPH NOTIFY interrupt: INTR bit 0, NSOURCE, TRAPPED_ADDR/DATA and the CTX_SWITCH words of the object (as nouveau nv04/nv10 load them).</summary>
+    private void RaiseNotify(int subc, uint inst, int cls, int mthd, uint data, uint nsource = 0x41)
+    {
+        _reg[0x400100] = Reg(0x400100) | 1; _reg[0x400108] = nsource;
+        _reg[0x400704] = ((uint)ActiveChid << 20) | ((uint)subc << 16) | (uint)(mthd & 0x1ffc); _reg[0x400708] = data;
+        _reg[0x40014c] = Ramin32(inst); _reg[0x400150] = Ramin32(inst + 4); _reg[0x400154] = Ramin32(inst + 8); _reg[0x400158] = inst >> 4;
+        _reg[0x400160 + (uint)subc * 4] = (Reg(0x400160 + (uint)subc * 4) & ~0xfffu) | (uint)cls;
+        NotifyIrqs++; UpdateIrq();
+    }
+
     private void Graph(int subc, uint inst, int cls, int mthd, uint data)
     {
         GraphOps++;
         GSet(inst, mthd, data);
         if (cls is 0x44 or 0x18 && mthd is >= 0x400 and < 0x800) GSet(inst, 0x7ffc, (uint)(mthd & 0x700));   // which colour pattern block was loaded
         if (mthd is >= 0x180 and <= 0x1a0 || (IsRankine(cls) && mthd is > 0x1a0 and <= 0x1b0)) { uint ci = RamhtLookup(data, ActiveChid); GSet(inst, mthd | 0x8000, ci); if (mthd == 0x180) _notifyObj[subc] = ci; return; }
+        if (_notifyPend && mthd != 0x104 && !NotifyOld) { _notifyPend = false; RaiseNotify(subc, inst, cls, mthd, data); }   // the awaken fires on the next method
         if (mthd == 0x104)
         {
             WriteNotify(subc, inst, 0);
-            if (data != 0 && !NoNotifyIrq)   // NOTIFY style 1 = write then awaken: PGRAPH raises NOTIFY (INTR bit 0, NSOURCE NOTIFICATION); the
-            {                                // RM's ISR finds the object from TRAPPED_ADDR / DATA and the subchannel's class cache (as nouveau nv20_gr_intr)
-                _reg[0x400100] = Reg(0x400100) | 1; _reg[0x400108] = 1; _reg[0x400718] = 0x00100000u | ((data & 0xf) << 16);   // NOTIFY: pending + style
-                _reg[0x400704] = ((uint)ActiveChid << 20) | ((uint)subc << 16) | 0x104; _reg[0x400708] = data;
-                // CTX_SWITCH1-4 = the object's RAMIN words 0-2 and its instance (>> 4), as nouveau nv04/nv10 load them on a subchannel switch
-                _reg[0x40014c] = Ramin32(inst); _reg[0x400150] = Ramin32(inst + 4); _reg[0x400154] = Ramin32(inst + 8); _reg[0x400158] = inst >> 4;
-                _reg[0x400160 + (uint)subc * 4] = (Reg(0x400160 + (uint)subc * 4) & ~0xfffu) | (uint)cls;
-                NotifyIrqs++; UpdateIrq();
+            if (data != 0 && !NoNotifyIrq)
+            {
+                // NOTIFY style 1 = write then awaken. PGRAPH latches it in NOTIFY (400718: bit 16 pending, bit 20 awaken) and raises the NOTIFY
+                // interrupt at the NEXT method (the drivers follow 0x104 with a 0x100 NOP): TRAPPED_ADDR = that method, NSOURCE = NOTIFICATION |
+                // ILLEGAL_MTHD. The 45.23 RM ISR reads 400718 into the object's awaken state, emulates the trapped method in software and then
+                // delivers the notification (C1510CBE skips methods 0x104/0x180) by signalling the object's Win32 event - the D3D/DDraw driver
+                // waits on that event with a 30 s timeout (HL, 3DMark2001 SE, AoE slept 30 s per notify before). X86_NVNOTIFYOLD=1 = the old
+                // immediate interrupt with TRAPPED_ADDR 0x104 (the RM ignored it).
+                _reg[0x400718] = 0x00100000u | ((data & 0xf) << 16);
+                if (NotifyOld) RaiseNotify(subc, inst, cls, 0x104, data, 1); else _notifyPend = true;
             }
             return;
         }
