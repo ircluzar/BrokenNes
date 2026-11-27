@@ -102,7 +102,7 @@ internal static class MdRunCli
             }
             if (M68kTestCli.Flag(args, "--trace-reads")) board.ReadTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
             if (cartOnly || M68kTestCli.Flag(args, "--trace-cart")) board.CartTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
-            if (tracePc) board.InstructionHook = pc => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} pc {pc:X6}"); };
+            if (tracePc) board.InstructionHook = pc => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} pc {pc:X6} t{board.MasterClock} lo{board.Vdp.LineOffset}"); };
             if (board.Sound is MdSoundUnit unit)
             {
                 unit.YmWriteHook = (reg, v, part) => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line}   ym{part} {reg:X2}={v:X2}"); };
