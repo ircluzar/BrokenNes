@@ -289,6 +289,8 @@ and into the bug capture (bug.json's `debugPort`, the movie's markers). The port
 | POST | `/api/input/clear` | Release everything for both players |
 | POST | `/api/input/pointer` | Hold the WideMess pointer port at console pixels {x, y, present, left, right, device}; {clear: true} gives it back to the mouse |
 | GET | `/api/input/pointer` | The pointer the last frame was handed, and what a test holds |
+| POST | `/api/x86/input` | Behind `enableDebuggerControl` (403 otherwise): queue a keyboard / PS/2 mouse script for the running x86 PC, frame-paced like Workshop x86boot `--type`: text is typed, `{m:dx,dy[,buttons]}` moves the mouse (buttons held until the next `{m:}`; a held click = `{m:0,0,1}{wait:10}{m:0,0,0}`), `{wait:N}`, `{enter}` / `{alt+f4}` / `{f10}` / `{down}`..., `{down:KEY}` / `{up:KEY}`; scripts run one after another; `{clear: true}` drops the queue. 400 on a bad token (nothing queued) or when the console is not the x86 PC |
+| GET | `/api/x86/input` | Steps still queued (`pending`, 0 = done) and whether control is allowed |
 | GET | `/api/input/state` | The held buttons: `held` is what the running game was handed last frame (a console session reports its own pad: the keyboard, a gamepad and the injected buttons together), `injected` what this API latches, `emulationActive` whether the game is running |
 
 ### Console - `WebApiServer.Endpoints.Console.cs` (BrokenNes 2: the NES, SNES, Game Boy / Color, Master System, Game Gear and Genesis)

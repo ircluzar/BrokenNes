@@ -106,6 +106,19 @@ internal static class X86SessionCli
             Check(c == d, $"save state cold reload: a new session on the same image runs the same 100 frames ({c[..12]})");
             Check(((PcSession)s2).Machine.SaveState().AsSpan().SequenceEqual(((PcSession)s).Machine.SaveState()), "save state cold reload: then the same machine state, byte for byte");
         }
+        if (s is PcSession pin)   // the app's POST /api/x86/input script runner: keys reach the PC, frame-paced like x86boot --type (FreeDOS's menu moves its highlight)
+        {
+            for (int f = 0; f < 4000 && !X86BootCli.Screen(pin.Machine).Contains("turkish"); f++) s.RunFrame();   // (FreeDOS 1.4 Lite: its language menu)
+            for (int f = 0; f < 60; f++) s.RunFrame();
+            var pic0 = pin.Machine.Vga.Frame.ToArray();
+            var sc = PcInputScript.Parse("{down}{down}{wait:30}");
+            for (int f = 0; f < 400 && sc.Pending > 0; f++) { sc.BeforeFrame(pin); s.RunFrame(); }
+            for (int f = 0; f < 60; f++) s.RunFrame();
+            var after = pin.Machine.Vga.Frame.ToArray();
+            Check(sc.Pending == 0 && !after.AsSpan().SequenceEqual(pic0), "input script: two Down keys ran and changed the PC's screen");
+            bool threw = false; try { PcInputScript.Parse("{nosuchkey}"); } catch (ArgumentException) { threw = true; }
+            Check(threw, "input script: an unknown token is refused before anything runs");
+        }
         var save1 = s.ExportSave();
         Check(ReferenceEquals(save1, s.ExportSave()), "an unchanged disk exports the same array (no copy)");
         Console.WriteLine($"  disk changed since power-on: {!save0.AsSpan().SequenceEqual(save1)}");
