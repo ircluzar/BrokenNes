@@ -26,6 +26,13 @@ public interface IX86Bus
     int AckIrq();
 }
 
+/// <summary>Optional bus extra (x86 lane D, 2026-11-20): direct access to a linear device memory range (the S3 linear frame buffer) for REP string
+/// chunks, charging the bus wait of <paramref name="accesses"/> single accesses as the element loop would. Empty span: not one such range.</summary>
+public interface IX86BulkBus
+{
+    System.Span<byte> BulkSpan(uint a, int bytes, int accesses);
+}
+
 /// <summary>A CPU fault tiny386 handles with abort() (TRY1 / cpu_abort): a state the core cannot continue from.</summary>
 public sealed class I386AbortException : Exception
 {
@@ -72,6 +79,9 @@ public sealed partial class I386
     public readonly byte[] Mem;                      // physical RAM (16 spare bytes at the end so a word access at the last byte stays in the array)
     public readonly uint MemSize;
     private readonly IX86Bus _bus;
+    private readonly IX86BulkBus? _bulk;
+    /// <summary>X86_NOBULK: REP MOVS / STOS into the linear frame buffer element by element again (A/B).</summary>
+    private static readonly bool NoBulk = Environment.GetEnvironmentVariable("X86_NOBULK") != null;
     private readonly bool _ioMem;
 
     // instruction fetch cache
@@ -138,6 +148,7 @@ public sealed partial class I386
         _codeMark = new byte[(memSize >> 6) + 2];
         _pgGen = new uint[(memSize >> 12) + 2];
         _bus = bus;
+        _bulk = NoBulk ? null : bus as IX86BulkBus;
         _ioMem = bus.MapsIoMem;
         Reset();
     }

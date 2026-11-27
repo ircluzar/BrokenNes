@@ -11,7 +11,7 @@ using System.IO;
 
 namespace NesEmulator.X86;
 
-public sealed partial class PcMachine : IX86Bus
+public sealed partial class PcMachine : IX86Bus, IX86BulkBus
 {
     /// <summary>X86_NVSYSPAGES=1: system-memory pages the NV card's DMA wrote (page -> dword writes), a stray-DMA hunt.</summary>
     public Dictionary<uint, int>? NvSysPages;
@@ -182,6 +182,14 @@ public sealed partial class PcMachine : IX86Bus
     public uint MemRead32(uint a) { VramWait(); return RawRead32(a); }
     public void MemWrite32(uint a, uint v) { VramWait(); RawWrite32(a, v); }
     private readonly int _vramNs;
+    /// <summary>IX86BulkBus: the S3 linear frame buffer bytes [a, a + bytes) when all of it is there, the bus wait of `accesses` single accesses charged.</summary>
+    public Span<byte> BulkSpan(uint a, int bytes, int accesses)
+    {
+        if (S3 == null || bytes <= 0 || !S3.InLfb(a) || !S3.InLfb(a + (uint)bytes - 1)) return default;
+        if (Mmio(a) != null || Mmio(a + (uint)bytes - 1) != null) return default;   // a PCI MMIO window over the range (chunks stay inside one page): element by element
+        if (_vramNs != 0) _idle += accesses * Math.Max(1, _vramNs * InstructionsPerSecond / 1_000_000_000);
+        return S3.LfbSpan(a, bytes);
+    }
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     // An ISA bus cycle to the timer (8254 behind the PIIX4 on the Windows 98 board): about 1 us, as on a real 430TX. Without it a PIT read cost one
     // instruction, so Windows 98's VMM delay loop (latch + read counter 0 until ECX ticks pass, C00528C9) spun ~2 million times a second of
