@@ -80,7 +80,7 @@ internal static class X86BootCli
         var m = cfg == PcConfig.Default ? new PcMachine(PcMachine.DefaultMemory, model, video) : new PcMachine(cfg, model, video);
         if (Arg(args, "--ips") is string ips) m.InstructionsPerSecond = long.Parse(ips);
         if (Arg(args, "--wav") != null) _wav = new System.IO.MemoryStream();
-        if (Arg(args, "--mp4") is string mp4p) { var sz = (Arg(args, "--mp4size") ?? "640x480").Split('x'); _mp4 = new BrokenNes.Workshop.Movies.Mp4Writer(mp4p, int.Parse(sz[0]), int.Parse(sz[1]), 25175000, 449 * 800, videoKbps: int.Parse(Arg(args, "--mp4kbps") ?? "4000")); }
+        if (Arg(args, "--mp4") is string mp4p) { var sz = (Arg(args, "--mp4size") ?? "640x480").Split('x'); _mp4 = new BrokenNes.Workshop.Movies.Mp4Writer(mp4p, int.Parse(sz[0]), int.Parse(sz[1]), 25175000, 449 * 800, audioRate: _mp4Rate = int.Parse(Arg(args, "--mp4rate") ?? "44100"), videoKbps: int.Parse(Arg(args, "--mp4kbps") ?? "4000")); }   // --mp4rate 48000: the 44.1 kHz card sound resampled (linear) for the AAC track
         if (Arg(args, "--cdwav") != null) _cdWav = new System.IO.MemoryStream();
         if (Arg(args, "--apu") is string apu && !PcSound.Apply(m, apu)) { Console.WriteLine($"x86boot: no sound card {apu}"); return 1; }
         if (Arg(args, "--hdd") is string h) m.Hdd[0] = new DiskImage(DiskImage.ReadImageFile(h), false);
@@ -337,6 +337,7 @@ internal static class X86BootCli
             TypeText(m, keys);
             n += RunUntil(m, null, 35);   // let the keys land before looking for the next screen
         }
+        foreach (var dl in Args(args, "--dumplin")) { int eq = dl.IndexOf('='); var rg = dl[..eq].Split('-'); uint dlo = Convert.ToUInt32(rg[0], 16), dhi = Convert.ToUInt32(rg[1], 16); var buf = new byte[dhi - dlo]; for (uint q = 0; q < buf.Length; q++) { uint pp = LinPhys(m, dlo + q); buf[q] = pp == 0xffffffff ? (byte)0 : m.Phys8(pp); } File.WriteAllBytes(dl[(eq + 1)..], buf); Console.WriteLine($"x86boot: dumplin {dlo:X8}-{dhi:X8} -> {dl[(eq + 1)..]}"); }   // --dumplin HEXLO-HEXHI=FILE: guest linear memory after the steps (unmapped = 0)
         if (Arg(args, "--after") is string aft) { n += RunUntil(m, null, int.Parse(aft)); }
         // --tracewhen "VEC:SEL" (with --trace N): run on in small clock slices until exception VEC is raised with CS = SEL, then trace from the handler
         if (Arg(args, "--tracewhen") is string tw)
@@ -682,12 +683,12 @@ internal static class X86BootCli
             {
                 Array.Clear(_wavBuf, 0, n); int got = c.MixInto(_wavBuf, n);
                 if (_wav != null) for (int i = 0; i < got; i++) { _wav.WriteByte((byte)_wavBuf[i]); _wav.WriteByte((byte)(_wavBuf[i] >> 8)); }
-                _mp4?.AddAudio(System.Runtime.InteropServices.MemoryMarshal.AsBytes(_wavBuf.AsSpan(0, got & ~1)));
+                if (_mp4 != null) Mp4Audio(_wavBuf, got & ~1);
             }
         }
         if (_mp4 != null)
         {
-            if (m.Card == null) { long want = (long)Math.Round((_mp4.Frames + 1) * 44100 * Vga.FrameTicks / Pit8254.Freq); _mp4.AddAudio(new byte[(int)(want - _mp4Silence) * 4]); _mp4Silence = want; }   // (no sound card: a silent track)
+            if (m.Card == null) { long want = (long)Math.Round((_mp4.Frames + 1) * _mp4Rate * Vga.FrameTicks / Pit8254.Freq); _mp4.AddAudio(new byte[(int)(want - _mp4Silence) * 4]); _mp4Silence = want; }   // (no sound card: a silent track)
             _mp4.AddFrame(m.Vga.Frame, m.Vga.Width, m.Vga.Height);
             if (_mp4.Frames % 4200 == 0) Console.WriteLine($"x86boot: mp4 {_mp4.Frames} frames ({_mp4.Seconds:F0} s of video)");
         }
@@ -764,6 +765,8 @@ internal static class X86BootCli
                 if (tok.StartsWith("save:")) { File.WriteAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5), m.SaveState()); _wavMark = _wav?.Length ?? 0; continue; }   // {save:PATH}: a savestate right here (the run goes on; --wav also writes the sound from here on as FILE.after.wav)
                 if (tok.StartsWith("cd:")) { var cd = CdImage.Open(text.Substring(ci - tok.Length + 3, tok.Length - 3)); m.Cd = cd; if (m.Ata != null) { m.Ata.Secondary.Cd[0] = cd; m.Ata.Secondary.MediaChanged(0); } continue; }   // {cd:PATH}: change the disc (the drive reports the media change)
                 if (tok.StartsWith("load:")) { var lw = System.Diagnostics.Stopwatch.StartNew(); m.LoadState(File.ReadAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5))); Console.WriteLine($"x86boot: {{load}} (warm, same process) {lw.Elapsed.TotalMilliseconds:F0} ms"); continue; }   // {load:PATH}: load a savestate right here, in this process (the run goes on from it)
+                if (tok.StartsWith("until:")) { var ua = tok[6..].Split(','); var uc = ua[0].Split(">="); uint uad = Convert.ToUInt32(uc[0], 16); long uv = long.Parse(uc[1]); int umax = ua.Length > 1 ? int.Parse(ua[1]) : 100000, uw = 0; while (uw < umax && LinDword(m, uad) is long cur && (cur < 0 || cur < uv)) { Frame(m); uw++; } Console.WriteLine($"x86boot: {{until}} {uad:X8}>={uv} after {uw} frames (value {LinDword(m, uad)})"); continue; }   // {until:HEXLIN>=N[,MAX]}: run frames until the guest dword (current page tables) reaches N (scripted bots: wait for minerals)
+                if (tok.StartsWith("peek:")) { foreach (var pa in tok[5..].Split(',')) { uint pad = Convert.ToUInt32(pa, 16); Console.WriteLine($"x86boot: peek {pad:X8} = {LinDword(m, pad)}"); } continue; }   // {peek:HEXLIN[,HEXLIN...]}: print guest dwords
                 if (tok.StartsWith("wait:")) { int wn = int.Parse(tok[5..]); for (int q = 0; q < wn; q++) Frame(m); continue; }
                 if (tok.StartsWith("typefile:")) { TypeText(m, File.ReadAllText(tok[9..]).Trim()); continue; }   // {typefile:PATH}: type a file's text (a key kept out of command lines and logs)
                 var parts = tok.Split('+'); var mods = new List<byte[]>();
@@ -838,6 +841,21 @@ internal static class X86BootCli
     }
 
     /// <summary>A linear address through the page tables (when paging is on), for the tools: 0xffffffff when not present.</summary>
+    static int _mp4Rate = 44100; static double _rsPos; static short _rsL, _rsR;
+    /// <summary>Card sound (stereo 44.1 kHz) into the MP4, resampled linearly to --mp4rate (state carries across calls).</summary>
+    static void Mp4Audio(short[] src, int count)
+    {
+        if (_mp4Rate == 44100) { _mp4!.AddAudio(System.Runtime.InteropServices.MemoryMarshal.AsBytes(src.AsSpan(0, count))); return; }
+        int frames = count / 2; double step = 44100.0 / _mp4Rate; var o = new List<short>(frames * 2 * _mp4Rate / 44100 + 4);
+        while (_rsPos < frames)
+        {
+            int i = (int)Math.Floor(_rsPos); double f = _rsPos - i;
+            short l0 = i - 1 < 0 ? _rsL : src[(i - 1) * 2], r0 = i - 1 < 0 ? _rsR : src[(i - 1) * 2 + 1], l1 = src[i * 2], r1 = src[i * 2 + 1];
+            o.Add((short)(l0 + (l1 - l0) * f)); o.Add((short)(r0 + (r1 - r0) * f)); _rsPos += step;
+        }
+        _rsPos -= frames; if (frames > 0) { _rsL = src[(frames - 1) * 2]; _rsR = src[(frames - 1) * 2 + 1]; }
+        _mp4!.AddAudio(System.Runtime.InteropServices.MemoryMarshal.AsBytes(o.ToArray().AsSpan()));
+    }
     public static uint LinPhys(PcMachine m, uint la)
     {
         if ((m.Cpu.Cr0 & 0x80000000) == 0) return la;
@@ -845,6 +863,8 @@ internal static class X86BootCli
         if ((pde & 0x80) != 0 && (m.Cpu.Cr4 & 0x10) != 0) return (pde & 0xffc00000) | (la & 0x3fffff);
         uint pte = m.Phys32((pde & ~0xfffu) + ((la >> 12) & 0x3ff) * 4); return (pte & 1) == 0 ? 0xffffffff : (pte & ~0xfffu) | (la & 0xfff);
     }
+    /// <summary>A guest dword at a linear address (current page tables), -1 when not mapped.</summary>
+    public static long LinDword(PcMachine m, uint la) { long v = 0; for (int i = 3; i >= 0; i--) { uint p = LinPhys(m, la + (uint)i); if (p == 0xffffffff) return -1; v = (v << 8) | m.Phys8(p); } return v; }
     public static string LinBytes(PcMachine m, uint la, int n) => string.Join(" ", Enumerable.Range(0, n).Select(i => { uint p = LinPhys(m, la + (uint)i); return p == 0xffffffff ? "??" : m.Phys8(p).ToString("X2"); }));
 
     private static string? Arg(string[] a, string k) { int i = Array.FindIndex(a, x => x.Equals(k, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
