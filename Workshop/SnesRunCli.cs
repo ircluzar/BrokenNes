@@ -154,6 +154,9 @@ internal static class SnesRunCli
             int exit = 0;
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
+            var nvTrig = Environment.GetEnvironmentVariable("NV_TRACE") is { Length: > 0 } nvt ? nvt.Split(',').Select(x => Convert.ToUInt32(x, 16)).ToHashSet() : null;
+            var nvRing = new string[int.Parse(Environment.GetEnvironmentVariable("NV_TRACE_N") ?? "200000")];
+            long nvPos = 0; bool nvDone = false; string nvOut = Environment.GetEnvironmentVariable("NV_TRACE_OUT") ?? "nvtrace.txt";
             for (int frame = 1; frame <= frames; frame++)
             {
                 if (script.TryGetValue(frame, out var b)) held = b;
@@ -163,6 +166,24 @@ internal static class SnesRunCli
                 board.InstructionHook = frame > sampleFrom
                     ? cpu => { uint pc = (uint)cpu.PBR << 16 | cpu.PC; pcHits[pc] = pcHits.GetValueOrDefault(pc) + 1; }
                     : null;
+                if (nvTrig != null)
+                {
+                    int fr = frame;
+                    board.InstructionHook = cpu =>
+                    {
+                        if (nvDone) return;
+                        uint pc = (uint)cpu.PBR << 16 | cpu.PC;
+                        nvRing[nvPos % nvRing.Length] = $"{pc:X6} A:{cpu.A:X4} X:{cpu.X:X4} Y:{cpu.Y:X4} S:{cpu.S:X4} D:{cpu.D:X4} DB:{cpu.DBR:X2} P:{cpu.P:X2} F:{fr} b85:{board.Wram[0xA85]:X2} ba5:{board.Wram[0xAA5]:X2} bc5:{board.Wram[0xAC5]:X2} sel:{board.Wram[0x1020]:X2}";
+                        nvPos++;
+                        if (nvTrig.Contains(pc))
+                        {
+                            nvDone = true;
+                            using var tw = new StreamWriter(nvOut);
+                            for (long k = Math.Max(0, nvPos - nvRing.Length); k < nvPos; k++) tw.WriteLine(nvRing[k % nvRing.Length]);
+                            File.WriteAllBytes(nvOut + ".wram", board.Wram);
+                        }
+                    };
+                }
                 board.RunFrame();
                 int got;
                 while ((got = board.Apu.ReadSamples(audioBuf)) > 0)
