@@ -1,0 +1,3 @@
+exec(open('C:/BrokenNes-work/scspeed/py/mmx.py').read().split("ed('I386.Mmx.cs'")[0])
+ed('I386.Cache.cs',"            case 0xc3: kind = DK_RET; break;","            case 0x68: kind = DK_PUSH; op = 8; immBits = v; break;                       // PUSH imm16/32 (Op 8: the immediate, not a register)\n            case 0x6a: kind = DK_PUSH; op = 8; immBits = 8; immSext8 = true; break;     // PUSH imm8 (sign-extended)\n            case 0xc3: kind = DK_RET; break;")
+ed('I386.Jit.cs',"                    LdReg(pb, op); Stl(t);\n                    LdReg(32, 4); I4(pb / 8); Op(OpCodes.Sub); Stl(A);","                    if (op == 8) U4(e.Imm); else LdReg(pb, op); Stl(t);   // (Op 8: PUSH imm)\n                    LdReg(32, 4); I4(pb / 8); Op(OpCodes.Sub); Stl(A);")

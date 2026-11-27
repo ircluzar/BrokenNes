@@ -1,0 +1,6 @@
+exec(open('C:/BrokenNes-work/scspeed/py/mmx.py').read().split("ed('I386.Mmx.cs'")[0])
+ed('I386.Mmx.cs',"if (!Fetch8(out uint imm)) return FAIL;","uint imm; if (_jMmxImm >= 0) imm = (uint)_jMmxImm; else if (!Fetch8(out imm)) return FAIL;   // (compiled: the decoder's imm8)")
+ed('I386.Mmx.cs',"    private bool JMmx(int b1)\n    {","    private int _jMmxImm = -1;\n    private bool JMmx(int b1, int imm)\n    {")
+ed('I386.Mmx.cs',"        return MmxBody((uint)b1) != FAIL;","        _jMmxImm = imm; int rc = MmxBody((uint)b1); _jMmxImm = -1;\n        return rc != FAIL;")
+ed('I386.Cache.cs',"{ kind = DK_MMX; op = (int)b; modrm = true; break; }","{ kind = DK_MMX; op = (int)b; modrm = true; if (b is >= 0x71 and <= 0x73) immBits = 8; break; }")
+ed('I386.Jit.cs','Ld0(); I4(op); Call("JMmx");','Ld0(); I4(op); I4(op is >= 0x71 and <= 0x73 ? (int)e.Imm : -1); Call("JMmx");')
