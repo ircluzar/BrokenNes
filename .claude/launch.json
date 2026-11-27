@@ -18,6 +18,7 @@
       "runtimeExecutable": "dotnet",
       "runtimeArgs": ["run", "--project", "WebLite/BrokenNes.Lite.csproj", "--urls", "http://localhost:5013"],
       "port": 5013
-    }
+    },
+{ "name": "snes-wasm-bench", "runtimeExecutable": "dotnet", "runtimeArgs": ["run", "--project", "SubProjects/SnesWasmBench", "-c", "Release", "--urls", "http://localhost:5021"], "port": 5021 }
   ]
 }
