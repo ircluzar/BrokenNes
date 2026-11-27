@@ -110,7 +110,7 @@ public sealed partial class PcMachine : IX86Bus
         Pit = new Pit8254(() => PitNow, () => Pic.Pulse(0));
         Kbc = new Kbc8042(Pic, config.Bus == PcBus.Pci430TX && Environment.GetEnvironmentVariable("X86_NOMOUSE") == null);   // (X86_NOMOUSE: a diagnostic)   // the Windows 98 board has the PS/2 mouse
         Cmos = new Cmos(() => PitNow, MemKb);
-        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video switch { PcVideo.GeForce256 => NvChip.NV10, PcVideo.GeForce4Mx => NvChip.NV17, PcVideo.GeForceFx5200 => NvChip.NV34, _ => null }, video == PcVideo.VBoxVga, config.VramMB * 1024 * 1024);
+        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video switch { PcVideo.GeForce256 => NvChip.NV10, PcVideo.GeForce4Mx => NvChip.NV17, PcVideo.GeForceFx5200 => NvChip.NV34, _ => null }, video == PcVideo.VBoxVga, config.VramMB * 1024 * 1024, video == PcVideo.S3Virge);
         S3 = Vga.S3;
         Nv = Vga.Nv;
         _vramNs = Cpu.Model.Legacy ? 0 : S3 != null || Nv != null ? 150 : Cpu.Model.Gen <= 3 ? 650 : 450;
@@ -212,7 +212,7 @@ public sealed partial class PcMachine : IX86Bus
         }
         RawWrite16(a, (ushort)v); RawWrite16(a + 2, (ushort)(v >> 16));
     }
-    private bool WriteLfb16(uint a, ushort v) { S3!.LfbWrite8(a, (byte)v); S3.LfbWrite8(a + 1, (byte)(v >> 8)); return true; }
+    private bool WriteLfb16(uint a, ushort v) { S3!.LfbWrite16(a, v); return true; }
 
     /// <summary>How many times each vector was taken as a hardware interrupt (diagnostics).</summary>
     public readonly long[] IrqCount = new long[256];

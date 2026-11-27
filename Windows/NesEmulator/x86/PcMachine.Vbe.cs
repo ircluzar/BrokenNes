@@ -8,7 +8,7 @@ using System.Text;
 namespace NesEmulator.X86;
 
 /// <summary>The video card on the board.</summary>
-public enum PcVideo { Vga, S3Trio64, GeForce256, VBoxVga, GeForceFx5200, GeForce4Mx }   // (append only: the numbers are stored; FX = 4 as in the FX states)
+public enum PcVideo { Vga, S3Trio64, GeForce256, VBoxVga, GeForceFx5200, GeForce4Mx, S3Virge }   // (append only: the numbers are stored; FX = 4 as in the FX states)
 
 public sealed partial class PcMachine
 {

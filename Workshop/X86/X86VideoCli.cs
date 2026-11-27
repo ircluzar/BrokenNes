@@ -70,6 +70,14 @@ internal static class X86VideoCli
             checks += chk.Total; failed += chk.Failed;
             Console.WriteLine($"  {(chk.Failed == 0 ? "PASS" : "FAIL")} {"states",-16} {chk.Total - chk.Failed}/{chk.Total}");
         }
+        // the ViRGE's S3d engine, driven straight through its MMIO registers (no guest code)
+        {
+            var chk = new X86DevCli.Checker2("virge_s3d");
+            try { VirgeChecks(chk); }
+            catch (Exception e) { chk.True("ran", false, e.GetType().Name + ": " + e.Message); }
+            checks += chk.Total; failed += chk.Failed;
+            Console.WriteLine($"  {(chk.Failed == 0 ? "PASS" : "FAIL")} {"virge_s3d",-16} {chk.Total - chk.Failed}/{chk.Total}");
+        }
         try { Directory.Delete(tmp, true); } catch { }
         // the GeForce: PCI BAR sizing from C#, a state round trip, refused on the S3 machine
         if (only == null || "nv_states".Contains(only, StringComparison.OrdinalIgnoreCase))
@@ -101,6 +109,50 @@ internal static class X86VideoCli
         }
         Console.WriteLine($"x86video: {tests.Count + 1} tests, checks {checks - failed}/{checks} pass ({sw.Elapsed.TotalSeconds:F1}s)");
         return failed == 0 ? 0 : 1;
+    }
+
+    private static void VirgeChecks(X86DevCli.Checker2 chk)
+    {
+        var m = new PcMachine(PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.S3Virge);
+        var s3 = m.S3!; var g = s3.Virge!; var ram = m.Vga.Ram; Array.Clear(ram);
+        chk.Eq("PCI device 5631", 0x56315333u, s3.PciRead(0));
+        chk.Eq("CR2D/2E", 0x5631, m.Vga.Cr[0x2d] << 8 | m.Vga.Cr[0x2e]);
+        const int str = 1024 * 2;                                   // 1024 pixels at 16 bpp
+        uint Cmd(int op, int rop, bool xp = true, bool yp = true) => 1u << 2 | (uint)rop << 17 | (xp ? 1u << 25 : 0) | (yp ? 1u << 26 : 0) | (uint)op << 27;
+        ushort P(int x, int y) => (ushort)(ram[y * str + x * 2] | ram[y * str + x * 2 + 1] << 8);
+        // rectangle fill 10x4 at (5,3) with colour 1234h (ROP = PATCOPY)
+        g.Write(0xa4d8, 0, 32); g.Write(0xa4e4, (uint)(str << 16 | str), 32); g.Write(0xa4f4, 0x1234, 32);
+        g.Write(0xa504, 9u << 16 | 4, 32); g.Write(0xa50c, 5u << 16 | 3, 32);
+        g.Write(0xa500, Cmd(2, 0xf0), 32);
+        chk.True("rect fill corners", P(5, 3) == 0x1234 && P(14, 6) == 0x1234 && P(15, 3) == 0 && P(5, 7) == 0 && P(4, 3) == 0, $"{P(5, 3):X} {P(14, 6):X} {P(15, 3):X} {P(5, 7):X} {P(4, 3):X}");
+        // BitBLT (SRCCOPY) the filled block to (100,50)
+        g.Write(0xa4d4, 0, 32); g.Write(0xa508, 5u << 16 | 3, 32); g.Write(0xa50c, 100u << 16 | 50, 32);
+        g.Write(0xa500, Cmd(0, 0xcc), 32);
+        chk.True("bitblt copy", P(100, 50) == 0x1234 && P(109, 53) == 0x1234 && P(110, 50) == 0, $"{P(100, 50):X} {P(109, 53):X} {P(110, 50):X}");
+        // mono CPU data, byte aligned: 8x2, rows AAh / 0Fh, fg 7FFF bg 0001
+        g.Write(0xa4fc, 0x7fff, 32); g.Write(0xa4f8, 0x0001, 32); g.Write(0xa504, 7u << 16 | 2, 32); g.Write(0xa50c, 200u << 16 | 10, 32);
+        g.Write(0xa500, Cmd(0, 0xcc) | 1u << 6 | 1u << 7, 32);
+        g.Write(0, 0x0faa, 16);
+        chk.True("mono expansion", P(200, 10) == 0x7fff && P(201, 10) == 0x0001 && P(200, 11) == 0x0001 && P(207, 11) == 0x7fff, $"{P(200, 10):X} {P(201, 10):X} {P(200, 11):X} {P(207, 11):X}");
+        // Gouraud triangle, flat red (R=255 in 8.7), 16 bpp (555), left to right: x 300..309 on lines 40 down to 31
+        uint tc = 1u << 2 | 3u << 24;                               // 16 bpp, Z off, Gouraud
+        g.Write(0xb4d8, 0, 32); g.Write(0xb4e4, (uint)(str << 16), 32);
+        void T(uint a, int v) => g.Write(a, (uint)v, 32);
+        T(0xb550, 255 << 7); T(0xb54c, 0); T(0xb540, 0); T(0xb53c, 0); T(0xb548, 0); T(0xb544, 0);
+        T(0xb574, 300 << 20); T(0xb570, 0); T(0xb56c, 310 << 20); T(0xb568, 0); T(0xb564, 310 << 20); T(0xb560, 0); T(0xb578, 40);
+        g.Write(0xb500, tc | 1, 32);                                   // autoexec: starts on B57C
+        g.Write(0xb57c, 0x80000000u | 10u << 16, 32);
+        chk.True("gouraud triangle (555 red)", P(300, 40) == 0x7c00 && P(309, 31) == 0x7c00 && P(310, 40) == 0 && P(300, 30) == 0 && P(299, 40) == 0, $"{P(300, 40):X} {P(309, 31):X} {P(310, 40):X}");
+        chk.True("idle status", (g.Read32(0x8504) & 0x3000) == 0x3000);
+        // state round trip on the ViRGE; a ViRGE state on a Trio64 machine is refused
+        var st = m.SaveState();
+        var m2 = new PcMachine(PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.S3Virge); m2.LoadState(st);
+        // (a fresh, never-run machine's first load/save is not byte-identical on main since f69ac695-era changes, Trio64 too: compare the 2nd generation)
+        var st2 = m2.SaveState(); var m3 = new PcMachine(PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.S3Virge); m3.LoadState(st2);
+        chk.True("ViRGE state round trip", m3.SaveState().AsSpan().SequenceEqual(st2) && m3.Vga.Ram.AsSpan().SequenceEqual(m.Vga.Ram));
+        bool threw = false;
+        try { new PcMachine(PcConfig.Win98, CpuModel.PentiumMmx, PcVideo.S3Trio64).LoadState(st); } catch (InvalidDataException) { threw = true; }
+        chk.True("ViRGE state on a Trio64: an error", threw);
     }
 
     private static PcMachine Boot(string nasm, string tmp, VTest t)
