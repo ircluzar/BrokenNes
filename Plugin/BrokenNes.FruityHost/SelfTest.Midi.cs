@@ -131,7 +131,11 @@ public sealed unsafe partial class SelfTest
 
     private delegate void SongScenario(T t);
 
+    // BN_SONG_ONLY=stems,engine runs only those scenarios (and their deliberate bugs): a quick loop while debugging one
     private (string Name, SongScenario Body, int Mutant, string Why)[] SongScenarios() =>
+        Environment.GetEnvironmentVariable("BN_SONG_ONLY") is { Length: > 0 } only ? AllSongScenarios().Where(s => only.Split(',').Contains(s.Name)).ToArray() : AllSongScenarios();
+
+    private (string Name, SongScenario Body, int Mutant, string Why)[] AllSongScenarios() =>
     [
         ("flow", SongFlow, MusicMutate.PlayCallsStop, "the Play button stops"),
         ("engine", SongEngineDll, MusicMutate.PatchSkew, "square 1 patched one byte late"),
