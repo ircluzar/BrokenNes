@@ -1,3 +1,5 @@
+> 2026-11-27: Garage2 no longer available for BrokenNes; run gates/A-B on the fleet (submit.py ... --direct).
+
 # TAS workline: script TASes of any game on any console, fast
 
 Decided with the user 2026-11-21 (interview). Main goal: script TASes very quickly (proof + regression: every game played, replaying exactly). Secondary goal: chapters.
