@@ -357,7 +357,7 @@ public sealed partial class I386
             int r = Step1(false);
             if (_wsPhase == 5)
             {
-                if (_wsFail != 0 || r != OK || Halt) { WsDRollback(); if (WsDNext()) return true; continue; }
+                if (_wsFail != 0 || r != OK || Halt) { WsDWhy($"fail={_wsFail} r={r} halt={Halt} ip={Ip:X8} cs={SegSel[SEG_CS]:X4} K={_wsK}"); WsDRollback(); if (WsDNext()) return true; continue; }
                 if (--_wsLeft <= 0) { WsDRollback(); if (_wsKOk > 0) WsPark(_wsKOk); else WsFailNow(4); return true; }
             }
             else
@@ -395,7 +395,7 @@ public sealed partial class I386
                     WsDStart();
                     break;
                 case 5:
-                    if (len == _wsLen && WsAffineOk()) WsDGoodEnd(); else WsDRollback();
+                    if (len == _wsLen && WsAffineOk()) WsDGoodEnd(); else { WsDWhy($"end len={len}/{_wsLen} K={_wsK} " + WsAffWhy()); WsDRollback(); }
                     if (WsDNext()) return true;
                     break;
             }
@@ -545,5 +545,23 @@ public sealed partial class I386
     {
         foreach (var kv in RwReads.OrderByDescending(k => k.Value.N))
             Console.Error.WriteLine($"RWATCH addr {kv.Value.Addr:X8} cs {kv.Key.Item1:X4} eip {kv.Key.Item2:X8} n {kv.Value.N} inProof {kv.Value.InProof} last {kv.Value.LastVal:X8} firstCycle {kv.Value.FirstCycle} code {kv.Value.Code}");
+    }
+
+    static int _wsWhyN;
+    void WsDWhy(string s) { if (WsDiagOn && _wsWhyN++ < 40) Console.Error.WriteLine("WSD " + s); }
+    string WsAffWhy()
+    {
+        foreach (uint l in _wsLinesB) if (!_wsSetA.Contains(l)) return $"newline {l << 6:X8}";
+        for (int i = 0; i < _wsLinesA.Count; i++)
+        {
+            int b = (int)(_wsLinesA[i] << 6);
+            for (int o = 0; o < 64; o += 4)
+            {
+                uint now = BitConverter.ToUInt32(Mem, b + o), was = BitConverter.ToUInt32(_wsSnap, i * 64 + o);
+                uint want = _wsAff.TryGetValue((uint)(b + o), out uint x) ? x : 0;
+                if (now - was != want) return $"dw {b + o:X8} was {was:X8} now {now:X8} want+{want}";
+            }
+        }
+        return "ok?";
     }
 }
