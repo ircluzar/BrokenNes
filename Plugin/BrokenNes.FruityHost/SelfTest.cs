@@ -193,7 +193,8 @@ public sealed unsafe partial class SelfTest
             ("runaway-state", "A project keeps the whole machine of a ROM-mode game, corruptions included: NES, Game Boy, Game Boy Color, Master System (PSG and FM), Game Gear, Genesis come back frozen or running exactly as saved, a game with no state says so, older / damaged / oversize / foreign states are survived", RunawayState),
             ("inputs", "Inputs: the pad drives NES, Game Boy and SNES games; mappings are remembered; the modal works", InputsTest),
             ("corruption", "Corruption from a stockpile: farm a corruption the way the desktop app does, open the stockpile in the plugin's Corruption window (real mouse messages), start it on the loaded SNES / Game Boy / Color / Master System / Game Gear / Genesis game, take the corrupted instruments with Instrument Runaway (SNES instrument and Game Boy wave RAM change the sound), keep it through a saved project (replayed history or saved state), messages for everything that cannot work, no allocation on the audio thread", CorruptionTest),
-            ("dpad", "D-pad protection: Left+Right and Up+Down from the keyboard, the on-screen pad or both together send neither; the setting (off by default) is clicked, remembered and read back; a pad set from outside is not touched", DpadGuardTest),
+            ("automation", "Dynamic automation (prototype): an Instruments tab field wired to a blank parameter after the 14, named after it, moved like FL's automation, applied on the GUI thread, kept by the project", AutomationTest),
+        ("dpad","D-pad protection: Left+Right and Up+Down from the keyboard, the on-screen pad or both together send neither; the setting (off by default) is clicked, remembered and read back; a pad set from outside is not touched", DpadGuardTest),
             ("imodel", "Instrument model (round 6): the instruments of a SNES / Genesis / Master System / Game Boy / NES sound-memory snapshot as typed fields and blobs, written back into a copy the existing samplers play (read -> write unchanged = identical bytes), a seeded deterministic corruptor with locks, undo, redo and replay, saved forms that refuse damage; which fields the samplers actually play, proved on rendered PCM; every verifier shown able to fail by a deliberate bug", Imodel),
             ("imodel-ui", "Instrument model behind the real Instruments tab (round 6): a SNES and a Game Boy game frozen with Instrument Runaway, the tab lists their instruments, real clicks and keys on steppers, the hex field, locks, Randomise, Nudge, Undo and Redo change the sound memory FL's notes play (read back through the plugin, undo bit-exact, pitch measured); a change made outside the tab shows on it; three deliberate bugs in the model's glue are each caught", ImodelUi),
             ("extract", "Instrument extraction (2026-11-10): a note captured from a game's channel (the key-on snapshot and the level / period / duty of every frame until the key-off) by the shared capture core, made a preset, loaded into the DLL and played by FL's note: its pitch, envelope and spectrum against the game's channel alone (the synthetic NES driver's pulse 1 and triangle, a synthetic Game Boy square 1; since 2026-11-12 a synthetic S-DSP voice, PSG tone, YM2413 and YM2612 channel and Genesis DAC, and real SNES / Genesis / Master System games when the ROMs are there); a flattened envelope (a doubled DAC rate) is caught", ExtractTest),
@@ -263,7 +264,7 @@ public sealed unsafe partial class SelfTest
         t.Expect((p.Flags & Fpf.Generator) != 0, "FPF_Generator not set");
         t.Expect((p.Flags & Fpf.NewVoiceParams) != 0, "FPF_NewVoiceParams not set (the host would use the old voice struct)");
         t.Expect((p.Flags & Fpf.WantNewTick) != 0, "FPF_WantNewTick not set");
-        t.Expect(p.NumParams == ParamNames.Length, $"NumParams {p.NumParams}, expected {ParamNames.Length}");
+        t.Expect(p.NumParams == ParamNames.Length + 64, $"NumParams {p.NumParams}, expected {ParamNames.Length} + the 64 dynamic automation slots");
         t.Expect(p.EditorHandle == 0, "EditorHandle non-zero before the editor was shown");
         t.Note($"{p.LongName}, flags 0x{p.Flags:X}, {p.NumParams} params");
     }
@@ -989,7 +990,7 @@ public sealed unsafe partial class SelfTest
     private static byte[] StateWithRom(byte[] defaultState, string path)
     {
         // a state is [magic, version, count] + count int parameters + the ROM-path trailer: keep the parameters, replace the trailer
-        var b = defaultState[..(12 + 4 * ParamNames.Length)].ToList();
+        var b = defaultState[..(12 + 4 * BitConverter.ToInt32(defaultState, 8))].ToList();   // the count the state says (14 fixed parameters + the dynamic automation slots)
         var utf8 = System.Text.Encoding.UTF8.GetBytes(path);
         b.AddRange(BitConverter.GetBytes(utf8.Length));
         b.AddRange(utf8);
