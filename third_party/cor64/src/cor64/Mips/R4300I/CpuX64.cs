@@ -316,6 +316,8 @@ namespace cor64.Mips.R4300I
         // from that op (ticks of the op and the later steps taken back) instead of leaving through the slow exit
         internal static readonly bool s_SpdSrAlt = Environment.GetEnvironmentVariable("COR64_SPD_SRALT") != "0";
         internal static readonly bool s_Cat17Seg = Environment.GetEnvironmentVariable("COR64_SPDCAT17_SEG") != "0";
+        // [n64c ptderive] COR64_X64_PTDERIVE=1: no per-step Pt increment in native blocks; Pt is derived from Pcn at the exit (exact)
+        internal static readonly bool s_PtDerive = Environment.GetEnvironmentVariable("COR64_X64_PTDERIVE") == "1";
         internal static readonly bool s_Cat16Chk = Environment.GetEnvironmentVariable("COR64_SPDCAT16_CHK") != "0";
         internal static readonly bool s_Cat13Brk = Environment.GetEnvironmentVariable("COR64_SPDCAT13_BRK") != "0";
         private static bool X64Br(in DecodedInstruction d) => IsCpuBranch(d) && !(s_Cat13Eret && d.Op.Op == "eret ");
@@ -443,6 +445,7 @@ namespace cor64.Mips.R4300I
             int n = b.Insts.Length;
             long hiA = (long)State.GetHiRef();
             var a = new X64Asm();
+            bool ptd = s_PtDerive;
             const R CTX = R.Rbx, G = R.Rsi, RAM = R.Rdi, OBJ = R.R12, CAD = R.R13, PT = R.R14, PCN = R.R15;
             M C(int off) => new M(CTX, off);
             M Gm(int r) => new M(G, r * 8);
@@ -537,8 +540,11 @@ namespace cor64.Mips.R4300I
             foreach (var r in new[] { R.Rbx, R.Rbp, R.Rsi, R.Rdi, R.R12, R.R13, R.R14, R.R15 }) a.Push(r);
             a.MovRR(CTX, R.Rcx);
             a.MovRM(G, C(CGpr)); a.MovRM(RAM, C(CRam)); a.MovRM(OBJ, C(CObj)); a.MovRM(R.Rbp, C(CSr));
-            a.MovRM(CAD, C(CCad), false); a.MovRM(PT, C(CPt), false); a.MovRM(PCN, C(CPcn), false);
+            a.MovRM(CAD, C(CCad), false); if (!ptd) a.MovRM(PT, C(CPt), false); a.MovRM(PCN, C(CPcn), false);
             a.MovRM(R.Rax, C(CMode), false);
+            if (ptd) { // [n64c ptderive] a resume entry (Mode n..2n-1) starts past its step's Pt tick: Pt = Pcn - 1 at the resume point
+                var pk = a.NewLabel(); a.AluRI(X64Asm.Alu8.Cmp, R.Rax, n, false); a.Jcc(Cc.L, pk); a.AluRI(X64Asm.Alu8.Cmp, R.Rax, 2 * n, false); a.Jcc(Cc.GE, pk);
+                a.AluMI(X64Asm.Alu8.Sub, C(CPt), 1, false); a.Bind(pk); }
             a.LeaRip(R.Rcx, entryTab);
             a.JmpM(new M(R.Rcx, R.Rax, 8, 0));
 
@@ -696,7 +702,7 @@ namespace cor64.Mips.R4300I
                         // per-step copy from step srJ (dual-FR code per op), exactly as if the segment had taken its cold path there
                         altL = a.NewLabel(); int r = srEnd - srJ + 1, every = s_IntCheckEvery; var tgt = srJ == srHead ? srHeadL : step[srJ];
                         cold.Add(() => { a.Bind(altL);
-                            a.AluRI(X64Asm.Alu8.Sub, PT, r, false); a.AluRI(X64Asm.Alu8.Sub, PCN, r, false); a.AluRI(X64Asm.Alu8.Sub, CAD, r, false);
+                            if (!ptd) a.AluRI(X64Asm.Alu8.Sub, PT, r, false); a.AluRI(X64Asm.Alu8.Sub, PCN, r, false); a.AluRI(X64Asm.Alu8.Sub, CAD, r, false);
                             if ((every & (every - 1)) == 0) a.AluRI(X64Asm.Alu8.And, CAD, every - 1, false);
                             a.Jmp(tgt); });
                     }
@@ -1203,7 +1209,7 @@ namespace cor64.Mips.R4300I
                 int lb = lazyBr >= 0 && lazyBr == i - 1 ? lazyBr : -1; // [n64_speed] lever 2: the delay slot of a lazy branch
                 if (lb < 0) { a.AluMI(X64Asm.Alu8.Cmp, C(CEnd), i, false); a.Jcc(Cc.E, budgetStub); }
                 else { var bl = a.NewLabel(); cold.Add(() => { a.Bind(bl); MatBranch(lb); a.Jmp(budgetStub); }); a.AluMI(X64Asm.Alu8.Cmp, C(CEnd), i, false); a.Jcc(Cc.E, bl); }
-                a.Inc(PT); a.Inc(CAD);
+                if (!ptd) a.Inc(PT); a.Inc(CAD);
                 a.AluRI(X64Asm.Alu8.Cmp, CAD, s_IntCheckEvery, false);
                 { var t = a.NewLabel(); int kk = i; cold.Add(() => { a.Bind(t);
                     // [climb4 speed_cat16] COR64_SPDCAT16_CHK (default on; =0 off): the quiet-window skip is tested at this site and
@@ -1223,7 +1229,7 @@ namespace cor64.Mips.R4300I
                     cold.Add(() => {
                         a.Bind(l);
                         if (r > 0) {
-                            a.AluRI(X64Asm.Alu8.Sub, PT, r, false); a.AluRI(X64Asm.Alu8.Sub, PCN, r, false); a.AluRI(X64Asm.Alu8.Sub, CAD, r, false);
+                            if (!ptd) a.AluRI(X64Asm.Alu8.Sub, PT, r, false); a.AluRI(X64Asm.Alu8.Sub, PCN, r, false); a.AluRI(X64Asm.Alu8.Sub, CAD, r, false);
                             if ((every & (every - 1)) == 0) a.AluRI(X64Asm.Alu8.And, CAD, every - 1, false); // the segment's cad may have wrapped
                         }
                         ExitCode(XSlow, jj);
@@ -1336,7 +1342,7 @@ namespace cor64.Mips.R4300I
                     var l = a.NewLabel(); int r = segEnd - j, jj = j; bool mask = curSegBr || s_Cat17CadFix;
                     cold.Add(() => {
                         a.Bind(l);
-                        if (r > 0) { a.AluRI(X64Asm.Alu8.Sub, PT, r, false); a.AluRI(X64Asm.Alu8.Sub, CAD, r, false); a.AluRI(X64Asm.Alu8.Sub, PCN, r, false);
+                        if (r > 0) { if (!ptd) a.AluRI(X64Asm.Alu8.Sub, PT, r, false); a.AluRI(X64Asm.Alu8.Sub, CAD, r, false); a.AluRI(X64Asm.Alu8.Sub, PCN, r, false);
                             // [speed_cat17] a segment closed by a branch has more steps after a load / store: its cad may have wrapped
                             if (mask && (s_IntCheckEvery & (s_IntCheckEvery - 1)) == 0) a.AluRI(X64Asm.Alu8.And, CAD, s_IntCheckEvery - 1, false); }
                         ExitCode(XSlow, jj);
@@ -1415,7 +1421,7 @@ namespace cor64.Mips.R4300I
                     // the segment added the delay slot's tick: take it back (cad modulo the cadence, as the per-step path holds it),
                     // then leave as EmitBranch's not-taken likely path
                     a.Bind(ntL);
-                    a.AluRI(X64Asm.Alu8.Sub, PT, 1, false); a.AluRI(X64Asm.Alu8.Sub, PCN, 1, false); a.AluRI(X64Asm.Alu8.Sub, CAD, 1, false);
+                    if (!ptd) a.AluRI(X64Asm.Alu8.Sub, PT, 1, false); a.AluRI(X64Asm.Alu8.Sub, PCN, 1, false); a.AluRI(X64Asm.Alu8.Sub, CAD, 1, false);
                     if ((s_IntCheckEvery & (s_IntCheckEvery - 1)) == 0) a.AluRI(X64Asm.Alu8.And, CAD, s_IntCheckEvery - 1, false);
                     SetPc(pc + 8); LinkOrDone(pc, i + 1, pc + 8, false);
                 }
@@ -1438,7 +1444,7 @@ namespace cor64.Mips.R4300I
                     a.AluRI(X64Asm.Alu8.And, R.Rax, every - 1, false);
                 }
                 else { a.Jcc(Cc.GE, slowL); a.Bind(ok); }
-                a.MovRR(CAD, R.Rax, false); a.AluRI(X64Asm.Alu8.Add, PT, m, false); a.AluRI(X64Asm.Alu8.Add, PCN, m, false);
+                a.MovRR(CAD, R.Rax, false); if (!ptd) a.AluRI(X64Asm.Alu8.Add, PT, m, false); a.AluRI(X64Asm.Alu8.Add, PCN, m, false);
                 int segEnd = i0 + m - 1;
                 fwdReg = -1;
                 bool br = segHasBr[i0]; curSegBr = br;
@@ -1521,6 +1527,7 @@ namespace cor64.Mips.R4300I
               a.AluRM(X64Asm.Alu8.Cmp, PCN, C(CQuiet), false); a.Jcc(Cc.GE, real);
               a.LeaRip(R.Rcx, resumeTab); a.JmpM(new M(R.Rcx, R.Rax, 8, 0));
               a.Bind(real);
+              if (ptd) a.AluMI(X64Asm.Alu8.Add, C(CPt), 1, false); // [n64c ptderive] this step's Pt tick is in, its Pcn tick is not
               a.MovMR(C(CK), R.Rax, false); a.MovRI(R.Rax, XCheck); a.Jmp(exitCommon); }
             var chainEntry = a.NewLabel(); var midEntry = a.NewLabel(); var midTab = a.NewLabel(); XLabel[] midVal = null;
             if (link) {
@@ -1563,7 +1570,9 @@ namespace cor64.Mips.R4300I
             }
             for (int ci = 0; ci < cold.Count; ci++) cold[ci](); // cold pieces may add more (MappedCold in a dual-FR copy)
             a.Bind(exitCommon);
-            a.MovMR(C(CCad), CAD, false); a.MovMR(C(CPt), PT, false); a.MovMR(C(CPcn), PCN, false);
+            a.MovMR(C(CCad), CAD, false);
+            // [n64c ptderive] Pt - Pcn is constant inside a native run: Pt += (PCN out - Pcn in), PT (r14) as scratch (rax = exit code)
+            if (ptd) { a.MovRR(PT, PCN, false); a.AluRM(X64Asm.Alu8.Sub, PT, C(CPcn), false); a.AluMR(X64Asm.Alu8.Add, C(CPt), PT, false); } else a.MovMR(C(CPt), PT, false); a.MovMR(C(CPcn), PCN, false);
             foreach (var r in new[] { R.R15, R.R14, R.R13, R.R12, R.Rdi, R.Rsi, R.Rbp, R.Rbx }) a.Pop(r);
             a.Ret();
             a.Bind(trap); a.Int3();

@@ -109,6 +109,7 @@ public sealed partial class NvGeForce : IPciMmio
         if (i == 0x1f) { if (v == 0x57) Unlocked = true; else if (v == 0x99) Unlocked = false; return; }
         if (!Unlocked) return;
         _v.Cr[i] = v;
+        if (i == 0x28) SyncDac8();
     }
 
     // ================= the picture =================
@@ -120,6 +121,9 @@ public sealed partial class NvGeForce : IPciMmio
     public int Width => ((_v.Cr[1] + 1) | ((_v.Cr[0x2d] & 2) << 7)) * 8;
     public int Height => ((_v.Cr[0x12] | ((_v.Cr[7] & 2) << 7) | ((_v.Cr[7] & 0x40) << 3) | ((_v.Cr[0x25] & 2) << 9)) + 1) >> ((_v.Cr[9] & 0x80) != 0 ? 1 : 0);   // (CR09 bit 7: double scan, the 320x240 / 400x300 modes)
     public int Stride => (_v.Cr[0x13] | ((_v.Cr[0x19] >> 5) << 8) | (((_v.Cr[0x42] >> 6) & 1) << 11)) * 8;
+    private static readonly bool NoDac8 = Environment.GetEnvironmentVariable("X86_NVNODAC8") == "1";
+    /// <summary>8-bit DAC: PRAMDAC_GENERAL_CONTROL bit 20 in the extended (CR28 != 0) modes; VGA modes keep the 6-bit DAC (AoE 8bpp DirectDraw palette).</summary>
+    private void SyncDac8() => _v.Dac8 = !NoDac8 && (Reg(0x680600) & 0x100000) != 0 && (_v.Cr[0x28] & 3) != 0;
     public int StartByte => (int)(PcrtcStart & (VramMask));
 
     private readonly int[] _pal = new int[256];
@@ -352,6 +356,7 @@ public sealed partial class NvGeForce : IPciMmio
             case 0x000200: PmcEnable = v; return;
             case 0x600100: PcrtcIntr &= ~v; UpdateIrq(); return;   // write 1 to clear
             case 0x600140: PcrtcIntrEn = v & 1; UpdateIrq(); return;
+            case 0x680600: _reg[0x680600] = v; SyncDac8(); return;   // PRAMDAC_GENERAL_CONTROL bit 20: 8 bits per DAC channel
             case 0x600800: { uint ns = v & (VramMask) & ~3u; if (ns != PcrtcStart) OpLog?.Invoke($"pcrtc start {PcrtcStart:X} -> {ns:X} mid {BitConverter.ToUInt32(_v.Ram, (int)((ns + (uint)(Height / 2 * Stride + Width * 2)) & VramMask & ~3u)):X8} w {Width} h {Height} st {Stride} d {Depth}"); PcrtcStart = ns; return; }
             case 0x009400: case 0x009410:
             {
@@ -426,6 +431,7 @@ public sealed partial class NvGeForce : IPciMmio
         _reg.Clear();
         int n = r.ReadInt32();
         for (int i = 0; i < n; i++) { uint k = r.ReadUInt32(); _reg[k] = r.ReadUInt32(); }
+        SyncDac8();
         if (ver >= 4) LoadFifo(r, ver); else ResetFifo();
         if (TwoHeads && r.BaseStream.Position < r.BaseStream.Length) { _cr2Idx = r.ReadByte(); r.Read(_cr2, 0, 256); }
         if (Nv34 && r.BaseStream.Position + 4 <= r.BaseStream.Length && r.ReadInt32() == 0x4e563334) LoadRankine(r);

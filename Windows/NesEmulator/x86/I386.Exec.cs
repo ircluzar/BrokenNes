@@ -11,6 +11,7 @@ public sealed partial class I386
     // per-instruction decode state (tiny386 cpu_exec1 locals)
     private bool _opsz16, _adsz16, _c16;
     private int _rep, _curSeg, _steps;
+    private static readonly bool IPageLink = Environment.GetEnvironmentVariable("X86_IPAGE") == "1";
     private uint _spm;
     private int _mod, _reg, _rm;
     private uint _addr;
@@ -54,7 +55,9 @@ public sealed partial class I386
         for (; _steps > 0; _steps--)
         {
             if (JitStats) Step1Calls++;
-            int r = PcMachine.TimeProbe ? Step1Timed() : Step1(true);
+            int r;
+            if (IdleProf) { uint la0 = SegBase[SEG_CS] + NextIp; long c0 = Cycle; _profPa = 0; r = Step1(true); ProfStep(la0, c0); }
+            else r = PcMachine.TimeProbe ? Step1Timed() : Step1(true);
             if (r == OK) continue;
             if (r == FAIL) return false;
             return true;
@@ -74,9 +77,11 @@ public sealed partial class I386
             Ip = NextIp;
             uint b1;
             uint laddr = SegBase[SEG_CS] + Ip;
+            if (IPageLink && ((ulong)laddr ^ _ifLaddr) >= 4096 - 16) LinkPage(laddr, Ip);   // X86_IPAGE=1: a TLB hit caches the fetch page without the full translation
             if (((ulong)laddr ^ _ifLaddr) < 4096 - 16)
             {
                 uint paddr = _ifXaddr ^ laddr;
+                if (IdleProf) _profPa = paddr;
                 if (jit && JitOn && !(_seqArm && paddr == _ifPaddr && JitSeqSkip))
                 {
                     // a compiled block from here (I386.Jit.cs), else interpret this instruction
@@ -103,6 +108,7 @@ public sealed partial class I386
                 if (!NoPageMissJit && ((ulong)laddr ^ _ifLaddr) < 4096 - 16)
                 {
                     uint paddr = _ifXaddr ^ laddr;
+                    if (IdleProf) _profPa = paddr;
                     if (jit && JitOn)
                     {
                         _seqArm = false;
@@ -276,7 +282,7 @@ public sealed partial class I386
     {
         if (!Fetch8(out uint imm)) return FAIL;
         if (Cond((uint)b1)) JumpRel(Sext8(imm));
-        else _seqArm = false;   // (a fall-through not taken every time: looked up, so it gets its own entry - JitSeen)
+        else if (!JitSeqJcc) _seqArm = false;   // (a fall-through not taken every time: looked up, so it gets its own entry - JitSeen)
         return OK;
     }
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -461,7 +467,7 @@ public sealed partial class I386
             // A spin: CMP / TEST + JZ / JNZ back to itself, reading only registers or plain RAM. Nothing but an interrupt can change what
             // it reads, and interrupts and the devices only run between batches, so the rest of this batch would repeat this very step:
             // count those steps at once (the same instruction clock, the same state, step for step).
-            if (NextIp == Ip && pure && _steps > 1) { Cycle += _steps - 1; _steps = 1; }
+            if (NextIp == Ip && pure && _steps > 1) { if (IdleProf) { ProfSpin += _steps - 1; ProfSpinHits++; } Cycle += _steps - 1; _steps = 1; }
         }
     }
 
@@ -1222,13 +1228,22 @@ public sealed partial class I386
     // last compare, the iteration count for the timing). Anything else (a fault, I/O memory, a page edge, DF = 1) takes the element loop.
 
     /// <summary>Elements of <paramref name="n"/> bytes from offset <paramref name="off"/> (physical <paramref name="pa"/>) before a page edge, the
-    /// 16-bit offset wrap or the segment limit (expand-down segments: 0, the element loop).</summary>
+    /// 16-bit offset wrap or the segment limit (expand-down: up to FFFFh / FFFFFFFFh; 0 = the element loop).</summary>
+    private static readonly bool NoExpDnChunk = Environment.GetEnvironmentVariable("X86_NOEXPDNCHUNK") != null;
     private uint RepSpan(int seg, uint off, uint pa, int n)
     {
         uint e = (4096 - (pa & 4095)) / (uint)n;
         if (_adsz16) e = Math.Min(e, (0x10000 - (off & 0xffff)) / (uint)n);
-        if ((SegFlags[seg] & 0xc) == 0x4) return 0;
-        ulong room = ((ulong)SegLimit[seg] + 1 - off) / (uint)n;
+        ulong room;
+        if ((SegFlags[seg] & 0xc) == 0x4)
+        {   // expand-down data (Win98 hands Win32 code an expand-down flat ES/DS, limit EE60h, B set): offsets above the limit, up to the top (as LimitOk);
+            // X86_NOEXPDNCHUNK: element by element again (AoE's REP STOSD: 6.5M one-element chunks in 300 frames)
+            if (NoExpDnChunk || off <= SegLimit[seg]) return 0;
+            ulong top = (SegFlags[seg] & SEG_B_BIT) != 0 ? 0xffffffffu : 0xffffu;
+            if (off > top) return 0;
+            room = (top + 1 - off) / (uint)n;
+        }
+        else room = ((ulong)SegLimit[seg] + 1 - off) / (uint)n;
         return (uint)Math.Min(e, room);
     }
 
@@ -1238,11 +1253,21 @@ public sealed partial class I386
         if (cx < 2) return false;
         var ms = new OptAddr(); var md = new OptAddr();
         if (!Translate(ref ms, 1, _curSeg, si, n) || !Translate(ref md, 2, SEG_ES, di, n)) return false;   // (the element loop raises the fault)
-        if (ms.Two || md.Two || !IsRam(ms.A1) || !IsRam(md.A1)) return false;
+        if (ms.Two || md.Two) return false;
+        bool sRam = IsRam(ms.A1), dRam = IsRam(md.A1);
+        if ((!sRam || !dRam) && (_bulk == null || !_ioMem || (!sRam && !InIoMem(ms.A1)) || (!dRam && !InIoMem(md.A1)))) return false;
         uint k = Math.Min(cx, Math.Min(RepSpan(_curSeg, si, ms.A1, n), RepSpan(SEG_ES, di, md.A1, n)));
         if (k < 2) return false;
         uint bytes = k * (uint)n, s0 = ms.A1, d0 = md.A1;
-        if (d0 > s0 && d0 < s0 + bytes)
+        if (!sRam || !dRam)
+        {   // to / from the linear frame buffer: a span copy; each element is one bus access on each device side (as Load / Store)
+            if (!sRam && !dRam) return false;   // (frame buffer to frame buffer: element by element, overlap rules)
+            var dev = _bulk!.BulkSpan(sRam ? d0 : s0, (int)bytes, (int)k);
+            if (dev.IsEmpty) return false;
+            if (sRam) Mem.AsSpan((int)s0, (int)bytes).CopyTo(dev);
+            else { dev.CopyTo(Mem.AsSpan((int)d0, (int)bytes)); CodeWrRange(d0, bytes); }
+        }
+        else if (d0 > s0 && d0 < s0 + bytes)
         {   // the destination runs ahead inside the source: element by element, as the CPU does
             for (uint i = 0; i < bytes; i += (uint)n)
             {
@@ -1261,11 +1286,21 @@ public sealed partial class I386
         if (cx < 2) return false;
         var md = new OptAddr();
         if (!Translate(ref md, 2, SEG_ES, di, n)) return false;
-        if (md.Two || !IsRam(md.A1)) return false;
+        if (md.Two) return false;
+        bool dRam = IsRam(md.A1);
+        if (!dRam && (_bulk == null || !_ioMem || !InIoMem(md.A1))) return false;
         uint k = Math.Min(cx, RepSpan(SEG_ES, di, md.A1, n));
         if (k < 2) return false;
         uint bytes = k * (uint)n, d0 = md.A1;
-        if (n == 1) { Mem.AsSpan((int)d0, (int)bytes).Fill((byte)ax); CodeWrRange(d0, bytes); }
+        if (!dRam)
+        {   // the linear frame buffer (the device's own store: no code lines there)
+            var span = _bulk!.BulkSpan(d0, (int)bytes, (int)k);
+            if (span.IsEmpty) return false;
+            if (n == 1) span.Fill((byte)ax);
+            else if (n == 2) System.Runtime.InteropServices.MemoryMarshal.Cast<byte, ushort>(span).Fill((ushort)ax);
+            else System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(span).Fill(ax);
+        }
+        else if (n == 1) { Mem.AsSpan((int)d0, (int)bytes).Fill((byte)ax); CodeWrRange(d0, bytes); }
         else if (n == 2) for (uint i = 0; i < bytes; i += 2) US16(d0 + i, ax);
         else for (uint i = 0; i < bytes; i += 4) US32(d0 + i, ax);
         SReg(A, 7, di + bytes); SReg(A, 1, cx - k);

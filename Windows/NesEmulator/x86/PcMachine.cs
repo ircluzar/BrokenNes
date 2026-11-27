@@ -11,7 +11,7 @@ using System.IO;
 
 namespace NesEmulator.X86;
 
-public sealed partial class PcMachine : IX86Bus
+public sealed partial class PcMachine : IX86Bus, IX86BulkBus
 {
     /// <summary>X86_NVSYSPAGES=1: system-memory pages the NV card's DMA wrote (page -> dword writes), a stray-DMA hunt.</summary>
     public Dictionary<uint, int>? NvSysPages;
@@ -110,7 +110,7 @@ public sealed partial class PcMachine : IX86Bus
         Pit = new Pit8254(() => PitNow, () => Pic.Pulse(0));
         Kbc = new Kbc8042(Pic, config.Bus == PcBus.Pci430TX && Environment.GetEnvironmentVariable("X86_NOMOUSE") == null);   // (X86_NOMOUSE: a diagnostic)   // the Windows 98 board has the PS/2 mouse
         Cmos = new Cmos(() => PitNow, MemKb);
-        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video switch { PcVideo.GeForce256 => NvChip.NV10, PcVideo.GeForce4Mx => NvChip.NV17, PcVideo.GeForceFx5200 => NvChip.NV34, _ => null }, video == PcVideo.VBoxVga, config.VramMB * 1024 * 1024);
+        Vga = new Vga(() => PitNow, video == PcVideo.S3Trio64, video switch { PcVideo.GeForce256 => NvChip.NV10, PcVideo.GeForce4Mx => NvChip.NV17, PcVideo.GeForceFx5200 => NvChip.NV34, _ => null }, video == PcVideo.VBoxVga, config.VramMB * 1024 * 1024, video == PcVideo.S3Virge);
         S3 = Vga.S3;
         Nv = Vga.Nv;
         _vramNs = Cpu.Model.Legacy ? 0 : S3 != null || Nv != null ? 150 : Cpu.Model.Gen <= 3 ? 650 : 450;
@@ -182,6 +182,14 @@ public sealed partial class PcMachine : IX86Bus
     public uint MemRead32(uint a) { VramWait(); return RawRead32(a); }
     public void MemWrite32(uint a, uint v) { VramWait(); RawWrite32(a, v); }
     private readonly int _vramNs;
+    /// <summary>IX86BulkBus: the S3 linear frame buffer bytes [a, a + bytes) when all of it is there, the bus wait of `accesses` single accesses charged.</summary>
+    public Span<byte> BulkSpan(uint a, int bytes, int accesses)
+    {
+        if (S3 == null || bytes <= 0 || !S3.InLfbRam(a) || !S3.InLfbRam(a + (uint)bytes - 1)) return default;
+        if (Mmio(a) != null || Mmio(a + (uint)bytes - 1) != null) return default;   // a PCI MMIO window over the range (chunks stay inside one page): element by element
+        if (_vramNs != 0) _idle += accesses * Math.Max(1, _vramNs * InstructionsPerSecond / 1_000_000_000);
+        return S3.LfbSpan(a, bytes);
+    }
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     // An ISA bus cycle to the timer (8254 behind the PIIX4 on the Windows 98 board): about 1 us, as on a real 430TX. Without it a PIT read cost one
     // instruction, so Windows 98's VMM delay loop (latch + read counter 0 until ECX ticks pass, C00528C9) spun ~2 million times a second of
@@ -212,7 +220,7 @@ public sealed partial class PcMachine : IX86Bus
         }
         RawWrite16(a, (ushort)v); RawWrite16(a + 2, (ushort)(v >> 16));
     }
-    private bool WriteLfb16(uint a, ushort v) { S3!.LfbWrite8(a, (byte)v); S3.LfbWrite8(a + 1, (byte)(v >> 8)); return true; }
+    private bool WriteLfb16(uint a, ushort v) { S3!.LfbWrite16(a, v); return true; }
 
     /// <summary>How many times each vector was taken as a hardware interrupt (diagnostics).</summary>
     public readonly long[] IrqCount = new long[256];
@@ -488,9 +496,11 @@ public sealed partial class PcMachine : IX86Bus
                 long sleepPit = nextPit == long.MaxValue ? 1000 : Math.Max(1, nextPit - nowPit);
                 long sleepInstr = Math.Max(1, (long)((Int128)sleepPit * InstructionsPerSecond / Pit8254.Freq));
                 _idle += Math.Min(sleepInstr, Batch * 16);
+                if (I386.IdleProf) I386.ProfHaltIdle += Math.Min(sleepInstr, Batch * 16);
                 if ((Cpu.Flags & I386.IF) == 0 && nextPit == long.MaxValue && !Kbc.HasPendingKeys) { }
                 return true;
             }
+            if (I386.IdleProf && I386.ProfIdleNow == null) { I386.ProfOtherIdle0 = _idle; I386.ProfIdleNow = () => _idle; }
             Cpu.Step(Batch);
         }
         catch (I386AbortException e) { Stopped = "CPU stopped: " + e.Message; return false; }

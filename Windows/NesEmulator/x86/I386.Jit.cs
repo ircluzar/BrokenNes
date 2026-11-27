@@ -165,7 +165,7 @@ public sealed partial class I386
             }
             if (en.Pending && JitHotQ) en.Visits++;   // (X86_JITHOTQ: the queue compiles the most-run waiting region first)
             if (en.Failed || en.Pending) { if (PcMachine.TimeProbe) _jtWhy = en.Failed ? 2 : 3; return JIT_DECLINE; }
-            if (++en.Visits >= _jitHotNow) { if (PcMachine.TimeProbe) _jtWhy = 4; JitCompile(ref en); }
+            if (++en.Visits >= (JitHotPg > 0 && _jitPgCode != null && (paddr >> 12) < (uint)_jitPgCode.Length && _jitPgCode[paddr >> 12] ? Math.Min(JitHotPg, _jitHotNow) : _jitHotNow)) { if (PcMachine.TimeProbe) _jtWhy = 4; JitCompile(ref en); }
             else { if (PcMachine.TimeProbe) _jtWhy = 5; _seqArm = true; }
             return JIT_DECLINE;
         }
@@ -180,6 +180,8 @@ public sealed partial class I386
     /// or failed/pending/compiled entry looks up again. Only which code runs compiled can change, never what it does.</summary>
     private static readonly bool JitSeqSkip = Environment.GetEnvironmentVariable("X86_NOSEQSKIP") == null;
     private bool _seqArm;
+    /// <summary>X86_SEQJCC=1: a not-taken Jcc keeps the sequential skip armed (its fall-through counts as run for regions).</summary>
+    private static readonly bool JitSeqJcc = Environment.GetEnvironmentVariable("X86_SEQJCC") == "1";
 
     private static readonly uint JitWatch = Convert.ToUInt32(Environment.GetEnvironmentVariable("X86_JITWATCH") ?? "0", 16);
     private int _jwN;
@@ -716,7 +718,7 @@ public sealed partial class I386
             if (e.Kind == DK_MOVRI && e.Bits == 32 && e.Len >= 5 && JitLiveImm(end - 4)) { e.Live = true; JitLiveImms++; }   // (live immediate: read from memory)
             if (JitFoldsAt(e, end)) { e.Folds = true; e.FoldNb = (byte)U8(end); e.FoldRel = Sext8(U8(end + 1)); }
             found.Add((pa, e)); if (e.Kind != DK_INTERP) anyCompiled = true;
-            if (e.Kind is not (DK_JMP or DK_CALL or DK_RET) && !(e.Kind == DK_INTERP && e.Op == 1)) { todo.Enqueue(end); if (e.Kind != DK_JCC && !e.Folds) fall.Add(end); }   // (fall: run right after it, its lookup maybe skipped - sequential skip)
+            if (e.Kind is not (DK_JMP or DK_CALL or DK_RET) && !(e.Kind == DK_INTERP && e.Op == 1)) { todo.Enqueue(end); if (JitSeqJcc || e.Kind != DK_JCC && !e.Folds) fall.Add(end); }   // (fall: run right after it, its lookup maybe skipped - sequential skip)
             if (e.Kind is DK_JMP or DK_JCC) todo.Enqueue(end + e.Imm);
             if (e.Folds) todo.Enqueue(end + 2 + e.FoldRel);
         }
@@ -899,8 +901,13 @@ public sealed partial class I386
     }
 
     /// <summary>Every instruction of a region is an entry point (a batch may end anywhere in it).</summary>
+    /// <summary>X86_JITHOTPG=N (warm-up, opt-in): addresses on a physical page that already holds installed compiled code get hot after N visits
+    /// instead of JitHot (code next to hot code is likely hot too). Only changes when a region is asked for, never what it does.</summary>
+    private static readonly int JitHotPg = int.TryParse(Environment.GetEnvironmentVariable("X86_JITHOTPG"), out int jhp) ? jhp : 0;
+    private bool[]? _jitPgCode;
     private void JitRegister(JitCode code)
     {
+        if (JitHotPg > 0) { _jitPgCode ??= new bool[(MemSize >> 12) + 1]; if ((code.Start >> 12) < (uint)_jitPgCode.Length) _jitPgCode[code.Start >> 12] = true; }
         for (int k = 0; k < code.Addrs.Length; k++)
         {
             uint pa = code.Addrs[k];
@@ -1352,8 +1359,10 @@ public sealed partial class I386
             il.MarkLabel(done);
         }
 
+        int ilK0 = il.ILOffset; System.Threading.Interlocked.Add(ref JitIlKind[63], ilK0); System.Threading.Interlocked.Increment(ref JitIlKindN[63]);
         for (int k = 0; k < n; k++)
         {
+            if (k > 0) { int o = il.ILOffset; System.Threading.Interlocked.Add(ref JitIlKind[ins[k - 1].Kind], o - ilK0); System.Threading.Interlocked.Increment(ref JitIlKindN[ins[k - 1].Kind]); ilK0 = o; }
             var e = ins[k];
             uint pa = pas[k], pe = pa + e.Len;
             int bits = e.Bits;
@@ -1978,6 +1987,7 @@ public sealed partial class I386
             il.MarkLabel(sharedLeave);
             Ld0(); Ld(ip0); Ld(xOff); Op(OpCodes.Add); Ld(ip0); Ld(xNext!); Op(OpCodes.Add); Ld(cyc); Ld(st); Call("JExitLink"); il.Emit(OpCodes.Ret);
         }
+        if (n > 0) { System.Threading.Interlocked.Add(ref JitIlKind[62], il.ILOffset - ilK0); System.Threading.Interlocked.Increment(ref JitIlKindN[62]); }
         System.Threading.Interlocked.Add(ref JitIlBytes, il.ILOffset);
         if (into != null) { tb!.CreateType(); return null!; }
         if (tb != null) return (JitFn)tb.CreateType()!.GetMethod("x86blk")!.CreateDelegate(typeof(JitFn));
@@ -2005,6 +2015,9 @@ public sealed partial class I386
         }
     }
     public static long JitIlBytes, JitBuildTicks;
+    /// <summary>--jitstat: IL bytes per instruction kind (62 = the last instruction + shared tail, 63 = prologue).</summary>
+    public static readonly long[] JitIlKind = new long[64], JitIlKindN = new long[64];
+    public static string JitIlKindStat() => "jitil: " + string.Join(" ", Enumerable.Range(0, 64).Where(i => JitIlKindN[i] > 0).OrderByDescending(i => JitIlKind[i]).Select(i => $"k{i}:{JitIlKind[i] / 1024}KB/{JitIlKindN[i]}={JitIlKind[i] / JitIlKindN[i]}"));
 
     /// <summary>The segments a compiled instruction reads or writes through (bit per segment).</summary>
     private static int InsSegs(DEntry e)

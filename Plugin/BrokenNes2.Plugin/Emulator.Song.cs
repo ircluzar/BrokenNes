@@ -374,18 +374,21 @@ public sealed partial class Emulator
         int rate = game?.HostSampleRate ?? EmulatorHub.HostRate;
         var g = new NesGame(held.Rom, chip, rate) { IsSongTest = true, ChipIndex = chipIdx };
         var scratchBuf = new float[4096];
+        var nes = g.Nes!;
+        nes.CaptureApuWrites = true;                                           // (its write tap is made here, once: the audio thread then only switches it, allocating nothing)
+        // the stems are made at power-on and replay the boot frames' writes too: a stem made after the boot starts its channel's sequencer
+        // (square duty step, triangle step) at 0 while the game's is wherever the boot left it, so the stems' waveforms were out of phase with
+        // the mix (the sum vs mix correlation fell from 0.95 to 0.41 once template v3's boot started sounding its channels before the decode)
+        var made = new ApuStem?[Ch.ToneCount];
+        var noLatch = new byte[0x18];
+        for (int c = 0; c < Ch.ToneCount; c++) made[c] = new ApuStem(chip.Id, c, rate, nes.ApuClock, noLatch, 0);
         for (int i = 0; i < MusicTemplate.Preroll; i++)
         {
             g.SetPad(0);
             g.RunFrame();
             while (g.ReadAvailable(scratchBuf) > 0) { }                        // the boot frames' sound is not heard: the song starts with the frame after them
+            foreach (var s in made) { s!.Replay(nes.ApuLog, nes.ApuClock); while (s.ReadAvailable(scratchBuf) > 0) { } }
         }
-        var nes = g.Nes!;
-        nes.CaptureApuWrites = true;                                           // (its write tap is made here, once: the audio thread then only switches it, allocating nothing)
-        var latchNow = new byte[0x18];
-        uint written = nes.CopyApuLatch(latchNow);
-        var made = new ApuStem?[Ch.ToneCount];
-        for (int c = 0; c < Ch.ToneCount; c++) made[c] = new ApuStem(chip.Id, c, rate, nes.ApuClock, latchNow, written);
         var sb = new Standby { Game = g, Stems = made, Chip = chipIdx, Rate = rate, Generation = held.Generation };
         if (held.Generation != Volatile.Read(ref songGeneration)) return;    // another song arrived meanwhile: it asks for its own
         Interlocked.Exchange(ref standby, sb);

@@ -1,0 +1,29 @@
+diff --git a/Windows/NesEmulator/x86/I386.Jit.cs b/Windows/NesEmulator/x86/I386.Jit.cs
+index 4e510163..b7af5c92 100644
+--- a/Windows/NesEmulator/x86/I386.Jit.cs
++++ b/Windows/NesEmulator/x86/I386.Jit.cs
+@@ -205,10 +205,12 @@ public sealed partial class I386
+         return rc;
+     }
+ 
++    public static Dictionary<uint, int>? InvalHist = Environment.GetEnvironmentVariable("X86_INVALHIST") == "1" ? new() : null;
+     [MethodImpl(MethodImplOptions.NoInlining)]
+     private int JitInvalidated(JitEntry en)
+     {   // the block's bytes changed: a version compiled earlier from these very bytes runs at once; else interpret, and compile again once hot again
+         JitInvalid++;
++        if (InvalHist != null) { InvalHist.TryGetValue(en.Start, out int ih); InvalHist[en.Start] = ih + 1; }
+         ulong key = en.Start | (en.C16 ? 1UL << 32 : 0) | (en.Pg ? 1UL << 33 : 0);
+         if (JitVariants > 1 && JitFindVariant(key) is JitCode v && v.Start == en.Start)
+         {
+diff --git a/Workshop/X86/X86BootCli.cs b/Workshop/X86/X86BootCli.cs
+index 787acd31..ed8be01f 100644
+--- a/Workshop/X86/X86BootCli.cs
++++ b/Workshop/X86/X86BootCli.cs
+@@ -366,6 +366,7 @@ internal static class X86BootCli
+             Console.WriteLine($"linmap {a0:X8}: " + string.Join(" ", Enumerable.Range(0, np).Select(k => { uint p = LinPhys(m, a0 + (uint)k * 4096); return p == 0xffffffff ? "--" : (p >> 12).ToString("X"); })) + $" | {LinBytes(m, a0, 16)}");
+         }
+         CaptureReport();
++        if (NesEmulator.X86.I386.InvalHist is { } ih) foreach (var kv in ih.OrderByDescending(k => k.Value).Take(25)) Console.WriteLine($"inval {kv.Key:X8} {kv.Value}");
+         if (args.Contains("--frametimes")) Console.WriteLine(FrameTimeReport());
+         if (args.Contains("--dacdump")) for (int r = 0; r < 256; r += 16) Console.WriteLine($"dac {r:X2}: " + string.Join(" ", Enumerable.Range(r, 16).Select(i => $"{m.Vga.Palette[i * 3]:X2}{m.Vga.Palette[i * 3 + 1]:X2}{m.Vga.Palette[i * 3 + 2]:X2}")));
+         Console.WriteLine($"vga: DAC writes {m.Vga.DacWrites}, above 3Fh {m.Vga.DacWritesOver63}; S3 CR55 {(m.S3 != null ? m.Vga.Cr[0x55] : 0):X2} CR67 {(m.S3 != null ? m.Vga.Cr[0x67] : 0):X2} SR18 {(m.S3 != null ? m.S3.SrRead(0x18) : 0):X2}; VGA-by-MMIO writes {m.S3?.VgaMmioWrites}, CR53 {(m.S3 != null ? m.Vga.Cr[0x53] : 0):X2}");
