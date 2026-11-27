@@ -137,7 +137,7 @@ public sealed unsafe partial class Bn2Plugin
         }
     }
 
-    protected override void OnUserChange(int index, int value) => MarkConfigured($"you set {Params[index].Name} to {value} in its editor", keepHandLink: true);
+    protected override void OnUserChange(int index, int value) { if (index < P.Count) MarkConfigured($"you set {Params[index].Name} to {value} in its editor", keepHandLink: true); }
 
     public override int ProcessParam(int index, int value, int recFlags)
     {
@@ -147,7 +147,7 @@ public sealed unsafe partial class Bn2Plugin
         {
             if (HostLog.On && paramLogged < HostLog.PerInstance) { paramLogged++; HostLog.Add(HostLog.KindParam, InstanceNo, index, Get(index), recFlags); }
             int now = Get(index);
-            if (now != before && now != Params[index].Default)
+            if (now != before && now != Params[index].Default && index < P.Count)
             {
                 // FL set a value that is neither the default nor the one it had: logged (above), and the instance is no longer pristine; it stays in the recording if it joined it (relink: FL's
                 // Replace may push the old channel's values; the old rule took that for the user's own configuration and the counter never moved). No text here: this can be the audio thread.
@@ -171,7 +171,7 @@ public sealed unsafe partial class Bn2Plugin
     private bool RestoredPristine()
     {
         if (!RestoredCleanly) return true;
-        for (int i = 0; i < Params.Length; i++) if (!P.IsEmulatorLevel(i) && Get(i) != Params[i].Default) return false;
+        for (int i = 0; i < P.Count; i++) if (!P.IsEmulatorLevel(i) && Get(i) != Params[i].Default) return false;
         return true;
     }
 

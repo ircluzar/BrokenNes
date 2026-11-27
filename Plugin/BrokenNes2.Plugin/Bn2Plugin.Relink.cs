@@ -149,7 +149,7 @@ public sealed unsafe partial class Bn2Plugin
 
     // ---- the channel's name, as FL says it ----
 
-    public override void Idle() => PollChannelName("idle", fromEvent: false);
+    public override void Idle() { PollChannelName("idle", fromEvent: false); PumpAutomation(); }
 
     /// <summary>Asks FL for the channel's name (FHD_GetContextInfo with CI_TrackName; the GUI thread) and logs the answer; when the instance is linked and waiting and the name is exactly one
     /// offered track's, it takes that track at once, before any note. <paramref name="fromEvent"/>: FL just said something changed (always asked and logged); else at most once a second, and only

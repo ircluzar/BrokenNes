@@ -1542,6 +1542,12 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 if (openId != 0) { CloseList(); return; }
                 var h = HitAt(x, y);
                 if (h is { } hit && ParamOf(hit.Id) >= 0) ParamMenu(ParamOf(hit.Id));
+                else if (h is { } th && tab == 1 && Inst().AutomationTarget(th.Id) is { } t)
+                {
+                    // a knob that is not one of the fixed parameters: wire it to a dynamic automation slot, then FL's own menu for that slot (Bn2Plugin.Automation.cs)
+                    int slot = plugin.BindAutomation(t.Instrument, t.FieldId, t.Name, t.Min, t.Max, t.Value);
+                    if (slot >= 0) ParamMenu(slot);
+                }
                 break;
             }
             case Win32.WM_MOUSEWHEEL:
@@ -1693,7 +1699,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                     case Win32.WM_PAINT: ed.Paint(wParam); return 0;
                     case Win32.WM_PRINTCLIENT: ed.Paint(wParam); return 0;
                     case Win32.WM_ERASEBKGND: return 1;
-                    case Win32.WM_TIMER: ed.Tick(); return 0;
+                    case Win32.WM_TIMER: ed.plugin.PumpAutomation(); ed.Tick(); return 0;   // dynamic automation slots FL moved (Bn2Plugin.Automation.cs)
                     case Win32.WM_MOUSEMOVE:
                     case Win32.WM_LBUTTONDOWN:
                     case Win32.WM_LBUTTONDBLCLK:

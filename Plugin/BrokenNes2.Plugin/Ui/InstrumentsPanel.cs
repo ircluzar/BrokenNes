@@ -421,6 +421,23 @@ internal sealed class InstrumentsPanel
     {
         if (value == f.Value) return;
         Act(provider!.SetField(list.Selected, f.Id, value));
+        KnobEdited?.Invoke(list.Selected, f.Id, value);
+    }
+
+    /// <summary>A field the user changed (instrument, field id, value): the editor tells the plugin, which tells FL when the knob is wired to an automation slot.</summary>
+    public Action<int, string, int>? KnobEdited;
+
+    /// <summary>The knob a right-click on control <paramref name="id"/> means, for dynamic automation: a Range or Signed field of the selected instrument (null for anything else).</summary>
+    public (int Instrument, string FieldId, string Name, int Min, int Max, int Value)? AutomationTarget(int id)
+    {
+        if (provider == null || id < UiIds.FieldBase || id >= UiIds.FieldBase + UiIds.MaxFieldRows * UiIds.FieldStride) return null;
+        int r = (id - UiIds.FieldBase) / UiIds.FieldStride, idx = fieldBar.Pos + r;
+        if (idx >= fields.Count) return null;
+        var f = fields[idx];
+        if (f.Kind is not (FieldKind.Range or FieldKind.Signed) || f.Max <= f.Min) return null;
+        string inst = list.Selected < summaries.Count ? summaries[list.Selected].Name : $"instrument {list.Selected + 1}";
+        if (inst.Length > 24) inst = inst[..24];
+        return (list.Selected, f.Id, $"{inst}: {f.Name}", f.Min, f.Max, f.Value);
     }
 
     private void SliderTo(int r, InstrumentField f, int x)
