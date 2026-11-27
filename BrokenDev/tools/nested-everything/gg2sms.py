@@ -98,7 +98,14 @@ class Analysis:
         pages0 = {p.split(',')[0] for p in self.slot_pages}
         self.fixed0 = pages0 <= {'0'}
         self.fixed1 = pages1 <= {'1'} if self.slot_pages else (rom.n <= 0x8000)
+        targets0 = set(self.targets)
         self.descend()
+        # The traces only saw slot 1 on page 1, but proven code stores to the slot-1 register ($FFFE): a later part of the game
+        # (attract mode, a level) pages slot 1, and a runtime placed there would vanish (Sonic & Tails: black after the SEGA logo).
+        if self.fixed1 and rom.n > 0x8000 and any(rom.b[o:o + 3] == b'\x32\xfe\xff' for o in self.code):
+            self.fixed1 = False
+            self.code, self.targets = dict(self.dyn_code), targets0
+            self.descend()
 
     def descend(self):
         b = self.rom.b
