@@ -11,6 +11,7 @@ public sealed partial class I386
     // per-instruction decode state (tiny386 cpu_exec1 locals)
     private bool _opsz16, _adsz16, _c16;
     private int _rep, _curSeg, _steps;
+    private static readonly bool IPageLink = Environment.GetEnvironmentVariable("X86_IPAGE") == "1";
     private uint _spm;
     private int _mod, _reg, _rm;
     private uint _addr;
@@ -54,7 +55,9 @@ public sealed partial class I386
         for (; _steps > 0; _steps--)
         {
             if (JitStats) Step1Calls++;
-            int r = PcMachine.TimeProbe ? Step1Timed() : Step1(true);
+            int r;
+            if (IdleProf) { uint la0 = SegBase[SEG_CS] + NextIp; long c0 = Cycle; _profPa = 0; r = Step1(true); ProfStep(la0, c0); }
+            else r = PcMachine.TimeProbe ? Step1Timed() : Step1(true);
             if (r == OK) continue;
             if (r == FAIL) return false;
             return true;
@@ -74,9 +77,11 @@ public sealed partial class I386
             Ip = NextIp;
             uint b1;
             uint laddr = SegBase[SEG_CS] + Ip;
+            if (IPageLink && ((ulong)laddr ^ _ifLaddr) >= 4096 - 16) LinkPage(laddr, Ip);   // X86_IPAGE=1: a TLB hit caches the fetch page without the full translation
             if (((ulong)laddr ^ _ifLaddr) < 4096 - 16)
             {
                 uint paddr = _ifXaddr ^ laddr;
+                if (IdleProf) _profPa = paddr;
                 if (jit && JitOn && !(_seqArm && paddr == _ifPaddr && JitSeqSkip))
                 {
                     // a compiled block from here (I386.Jit.cs), else interpret this instruction
@@ -103,6 +108,7 @@ public sealed partial class I386
                 if (!NoPageMissJit && ((ulong)laddr ^ _ifLaddr) < 4096 - 16)
                 {
                     uint paddr = _ifXaddr ^ laddr;
+                    if (IdleProf) _profPa = paddr;
                     if (jit && JitOn)
                     {
                         _seqArm = false;
@@ -276,7 +282,7 @@ public sealed partial class I386
     {
         if (!Fetch8(out uint imm)) return FAIL;
         if (Cond((uint)b1)) JumpRel(Sext8(imm));
-        else _seqArm = false;   // (a fall-through not taken every time: looked up, so it gets its own entry - JitSeen)
+        else if (!JitSeqJcc) _seqArm = false;   // (a fall-through not taken every time: looked up, so it gets its own entry - JitSeen)
         return OK;
     }
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -461,7 +467,7 @@ public sealed partial class I386
             // A spin: CMP / TEST + JZ / JNZ back to itself, reading only registers or plain RAM. Nothing but an interrupt can change what
             // it reads, and interrupts and the devices only run between batches, so the rest of this batch would repeat this very step:
             // count those steps at once (the same instruction clock, the same state, step for step).
-            if (NextIp == Ip && pure && _steps > 1) { Cycle += _steps - 1; _steps = 1; }
+            if (NextIp == Ip && pure && _steps > 1) { if (IdleProf) { ProfSpin += _steps - 1; ProfSpinHits++; } Cycle += _steps - 1; _steps = 1; }
         }
     }
 
