@@ -1212,6 +1212,21 @@ only when asked; coverage yes). It answers open question 5: the command is **`br
 - **Not built:** chaos bots (above: draft only, run only when the user asks); branches never taken; the dashboard reading `checkup.json`;
   a timed `checkup all` with compat (its 15 to 30 minute estimate is not measured yet).
 
+## Status (2026-11-27): the track is complete except two deliberate items
+
+- **Built and merged:** D1 to D8 and D9's checkup and coverage map (see the "as built" sections above). Their code and tests are
+  committed and pushed (36e03ed is an ancestor of main).
+- **Deliberately not built:** the chaos bots (`brokendev.ps1 chaos`). The draft in `Workshop/Bugs/ChaosCli.cs` is not wired and has no
+  test. It runs only when the user asks for it, so the track is not waiting on it. Also not built: branches never taken, and the
+  dashboard reading `checkup.json`.
+- **Waiting on the user: the MCP reinstall.** The `brokennes` MCP server registered on 2026-10-24 points at a `P:\BrokenDev\env\...`
+  exe. P: was the old NAS and is gone, so the BrokenDev environment has to be rebuilt locally before the registration can be redone.
+  Steps for the user: stop the BrokenNes and Claude sessions that lock the exe, then run `BrokenDev\brokendev.ps1 mcp install` and
+  rebuild the app. The 2026-11-22 attempt failed because Workshop processes were running. This is best done together with the FX 5200
+  merge convergence, as planned. Until then the installed server stays a stale D3-era build, and the `brokennes` connection can fail.
+- **Optional leftovers (not blocking):** the `web-debugger.ps1` render checks fail where headless Edge renders nothing; a stray debug
+  PNG under `%APPDATA%\BrokenNes\ContinueStates\`. Nothing here needs keeping beyond what is already in git.
+
 ## Open questions (to settle at the start of the track)
 
 1. The debug port's registers on each console, checked against mapper 30, the SNES coprocessors' ranges and the Game Boy Color's
