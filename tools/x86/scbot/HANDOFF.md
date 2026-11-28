@@ -1,3 +1,5 @@
+> 2026-11-27: Garage2 no longer available for BrokenNes; run gates/A-B on the fleet (submit.py ... --direct).
+
 # scbot hand-off (StarCraft 1v1 scripted win)
 
 Goal: scripted Terran beats Computer Zerg on Bottleneck, deterministic replay x2, save .rep, render --mp4.

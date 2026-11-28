@@ -88,7 +88,7 @@ def main():
     ap.add_argument("--pack", default="", help="an existing pack dir (skip step 1)")
     a = ap.parse_args()
     a.ws = os.path.abspath(a.ws)
-    a.scratch = os.path.abspath(a.scratch or os.path.join(r"T:\BrokenDev\scratch\tas3", a.name))
+    a.scratch = os.path.abspath(a.scratch or os.path.join(r"C:\BrokenNes-work\tas3", a.name))
     os.makedirs(a.scratch, exist_ok=True)
     spec = json.load(open(a.spec)); rounds = int(spec.get("rounds", 1))
     exe = f"/c/brokennes/x86/bin/{a.bin}/BrokenNes.Workshop.exe"

@@ -1,0 +1,189 @@
+id	title	class_v1	class_v2	script	clue
+007_The_World_is_Not_Enough	TWINE	TITLE	INGAME	smoke2.txt	FPS level | rc=0 fps=144.5 shots=11
+1080_Snowboarding	1080 SNOWBOARDIN	TITLE	INGAME	smoke2.txt	race; slow 28% (deadline) | rc=3 fps=27.7 shots=5 err=too slow: deadline 225 s reached after 3689 frames (16.36 frames/s)
+64_Oozumou	64 OHZUMOU	TITLE	INGAME	smoke2.txt	sumo bout | rc=3 fps=52.6 shots=9 err=too slow: deadline 225 s reached after 6982 frames (30.97 frames/s)
+64_Oozumou_2	64 µµ½ÞÓ³ 2	TITLE	TITLE	smoke2.txt	career/stat menu (JP menu needs specific choice) | rc=3 fps=52 shots=9 err=too slow: deadline 225 s reached after 6845 frames (30.35 frames/s)
+64_de_Hakken_Tamagotchi_Minna_de_Tamagotchi_Worl	ÐÝÅÃÞÀÏºÞ¯ÁÜ°ÙÄÞ	TITLE	INGAME	smoke2.txt	board game | rc=0 fps=110.6 shots=11
+AI_Shougi_3	AI¼®³·Þ3	TITLE	INGAME	smoke2.txt	shogi board | rc=0 fps=239.6 shots=11
+AeroFighters_Assault	AERO FIGHTERS AS	TITLE	INGAME	smoke2.txt	flight | rc=3 fps=54.4 shots=9 err=too slow: deadline 225 s reached after 7252 frames (32.22 frames/s)
+Aidyn_Chronicles_The_First_Mage	AIDYN_CHRONICLES	TITLE	INGAME	smoke2.txt	forest, walking | rc=3 fps=47.2 shots=8 err=too slow: deadline 225 s reached after 6284 frames (27.90 frames/s)
+Airboarder_64	AIR BOARDER 64	TITLE	INGAME	smoke2.txt	race then menus | rc=0 fps=188 shots=11
+All_Star_Baseball_2000	All-Star Basebal	TITLE	INGAME	smoke2.txt	batting; slow ~35% | rc=3 fps=35.2 shots=7 err=too slow: deadline 225 s reached after 4679 frames (20.77 frames/s)
+All_Star_Baseball_99	All Star Basebal	TITLE	INGAME	smoke2.txt	batting; slow ~40% | rc=3 fps=39.6 shots=7 err=too slow: deadline 225 s reached after 5250 frames (23.32 frames/s)
+All_Star_Tennis_99	ALL STAR TENNIS	TITLE	INGAME	smoke2.txt	match | rc=0 fps=267.3 shots=11
+Armorines_Project_S_W_A_R_M	Armorines Projec	TITLE	INGAME	smoke2.txt	FPS | rc=0 fps=99.5 shots=11
+Army_Men_Sarge_s_Heroes	Army Men Sarge	TITLE	INGAME	smoke2.txt	level, then back to menu | rc=0 fps=116.8 shots=11
+Army_Men_Sarge_s_Heroes_2	ARMYMEN SARGE 2	TITLE	INGAME	smoke2.txt	level | rc=3 fps=54.2 shots=9 err=too slow: deadline 225 s reached after 7228 frames (32.11 frames/s)
+Asteroids_Hyper_64	Asteroids Hyper	TITLE	TITLE	smoke2.txt	game reached briefly then pause/quit menu (Start toggles pause) | rc=0 fps=368.2 shots=11
+Bakushou_Jinsei_64_Mezase_Resort_Ou	ÊÞ¸¼®³¼ÞÝ¾²64	TITLE	INGAME	smoke2.txt	board game | rc=0 fps=189.7 shots=11
+Banjo_Kazooie	Banjo-Kazooie	TITLE	INGAME	smoke2.txt	Spiral Mountain | rc=0 fps=112.8 shots=11
+Bass_Tsuri_No_1_Shigesato_Itoi_s_Bass_Fishing	BassFishingNo.1	TITLE	TITLE	smoke2.txt	long JP intro dialogue in clubhouse | rc=0 fps=297.3 shots=11
+Bassmasters_2000	BASSMASTERS2000	TITLE	INGAME	smoke2.txt	fishing | rc=0 fps=74.9 shots=11
+Bio_F_R_E_A_K_S	BIOFREAKS	TITLE	INGAME	smoke2.txt	fight | rc=0 fps=122.7 shots=11
+Bomberman_64_The_Second_Attack	BOMBERMAN64U2	TITLE	INGAME	smoke2.txt	ship rooms, story | rc=0 fps=248.7 shots=11
+Bomberman_Hero	BOMBERMAN HERO	TITLE	INGAME	smoke2.txt	level | rc=0 fps=117.8 shots=11
+Bottom_of_the_9th	Bottom of the 9t	TITLE	INGAME	smoke2.txt	batting | rc=0 fps=173.2 shots=11
+Bust_A_Move_99	Bust A Move '99	TITLE	INGAME	smoke2.txt	puzzle | rc=0 fps=206.8 shots=11
+California_Speed	CAL SPEED	TITLE	INGAME	smoke2.txt	race | rc=0 fps=145.7 shots=11
+Castlevania	CASTLEVANIA	TITLE	INGAME	smoke2.txt	level, pause menu at end | rc=0 fps=224.9 shots=11
+Castlevania_Legacy_of_Darkness	CASTLEVANIA2	TITLE	INGAME	smoke2.txt	level | rc=0 fps=148.9 shots=11
+Chameleon_Twist_2	Chameleon Twist2	TITLE	INGAME	smoke2.txt	level | rc=0 fps=165.5 shots=11
+Choro_Q_64_II	Á®ÛQ64 2	TITLE	TITLE	smoke2.txt	1P select / yes-no confirm loop (A bounces back) | rc=0 fps=85.5 shots=11
+Clay_Fighter_63_1_3	CLAYFIGHTER 63	TITLE	INGAME	smoke2.txt	fight; slow ~38% | rc=3 fps=37.8 shots=7 err=too slow: deadline 225 s reached after 5043 frames (22.40 frames/s)
+Command_Conquer	Command&Conquer	TITLE	INGAME	smoke2.txt	map shown, then view on unrevealed terrain (black) | rc=0 fps=112 shots=11
+Cruis_n_Exotica	CruisnExotica	TITLE	TITLE	smoke2.txt	name entry on player select | rc=0 fps=336.4 shots=11
+Custom_Robo_V2	CUSTOMROBOV2	TITLE	INGAME	smoke2.txt	story room, dialogue | rc=0 fps=177.9 shots=11
+Dance_Dance_Revolution_Disney_Dancing_Museum	DDR DISNEY D MUS	TITLE	INGAME	smoke2.txt	dance stage | rc=0 fps=232 shots=11
+Deadly_Arts	DeadlyArts	TITLE	TITLE	smoke2.txt	Controller Pak menu after player select (B -> quit prompt loop) | rc=0 fps=121.4 shots=11
+Densha_de_Go_64	ÃÞÝ¼¬ÃÞGO!64	TITLE	INGAME	smoke2.txt	train driving | rc=0 fps=198.3 shots=11
+Derby_Stallion_64	DERBYSTALLION 64	TITLE	INGAME	smoke2.txt	horse management screens | rc=3 fps=51.2 shots=9 err=too slow: deadline 225 s reached after 6807 frames (30.23 frames/s)
+Dezaemon_3D	DEZAEMON3D	TITLE	TITLE	smoke2.txt	game select loop | rc=0 fps=76.8 shots=11
+Disney_s_Donald_Duck_Goin_Quackers	Donald Duck Goin	TITLE	INGAME	smoke2.txt	hub room | rc=0 fps=62.2 shots=11
+Disney_s_Tarzan	TARZAN	TITLE	INGAME	smoke2.txt	level | rc=0 fps=206 shots=11
+Doom_64	Doom64	TITLE	TITLE	smoke2.txt	stuck in options/control pad menu | rc=3 fps=49.2 shots=9 err=too slow: deadline 225 s reached after 6556 frames (29.12 frames/s)
+Doraemon_Mittsu_no_Seireiseki	ÄÞ×´ÓÝ Ð¯ÂÉ¾²Ú²¾	TITLE	INGAME	smoke2.txt	level, then options | rc=0 fps=213.9 shots=11
+Dual_Heroes	Dual heroes USA	TITLE	INGAME	smoke2.txt	fight | rc=0 fps=177.8 shots=11
+Duck_Dodgers_Starring_Daffy_Duck	LT DUCK DODGERS	TITLE	INGAME	smoke2.txt	hub | rc=0 fps=161.4 shots=11
+Duke_Nukem_64	DUKE NUKEM	TITLE	INGAME	smoke2.txt	level, then load-game menu | rc=3 fps=48.9 shots=9 err=too slow: deadline 225 s reached after 6531 frames (29.01 frames/s)
+Duke_Nukem_ZER0_H0UR	DUKE NUKEM ZERO	TITLE	INGAME	smoke2.txt	level | rc=3 fps=54.8 shots=9 err=too slow: deadline 225 s reached after 7262 frames (32.26 frames/s)
+ECW_Hardcore_Revolution	ECW Hardcore Rev	TITLE	INGAME	smoke2.txt	match | rc=0 fps=189.7 shots=11
+Eikou_no_Saint_Andrews	´²º³É¾ÝÄ±ÝÄÞØ­°½	TITLE	INGAME	smoke2.txt	golf | rc=0 fps=114.9 shots=11
+Extreme_G_XG2	Extreme G 2	TITLE	INGAME	smoke2.txt	race | rc=0 fps=105 shots=11
+FIFA_99	FIFA 99	TITLE	INGAME	smoke2.txt	match; slow ~38% | rc=3 fps=37.6 shots=7 err=too slow: deadline 225 s reached after 5003 frames (22.21 frames/s)
+FIFA_Road_to_World_Cup_98	FIFA: RTWC 98	TITLE	INGAME	smoke2.txt	match | rc=3 fps=51 shots=9 err=too slow: deadline 225 s reached after 6788 frames (30.16 frames/s)
+FIFA_Soccer_64	FIFA Soccer 64	TITLE	TITLE	smoke2.txt	stuck on empty stadium flyover after team select | rc=3 fps=53.1 shots=9 err=too slow: deadline 225 s reached after 7081 frames (31.45 frames/s)
+Famista_64	Ì§Ð½À 64	TITLE	INGAME	smoke2.txt	batting after name entry | rc=0 fps=250.9 shots=11
+Fighting_Force_64	Fighting Force	TITLE	INGAME	smoke2.txt	level | rc=3 fps=52 shots=9 err=too slow: deadline 225 s reached after 6917 frames (30.72 frames/s)
+Flying_Dragon	FLYING DRAGON	TITLE	INGAME	smoke2.txt	fights (demo/attract mixed) | rc=0 fps=155 shots=11
+Fushigi_no_Dungeon_Fuurai_no_Shiren_2	F3 Ì³×²É¼ÚÝ2	TITLE	INGAME	smoke2.txt	dungeon | rc=0 fps=154.4 shots=11
+Ganbare_Goemon_Mononoke_Sugoroku	ºÞ´ÓÝÓÉÉ¹½ºÞÛ¸	TITLE	INGAME	smoke2_name.txt	pass2: board game after name entry | pass1: stage select after name entry | rc=0 fps=165.9 shots=11
+Getter_Love_Cho_Renai_Party_Game	Getter Love!!	TITLE	TITLE	smoke2.txt	name entry | rc=0 fps=150.8 shots=11
+Gex_64_Enter_the_Gecko	GEX: ENTER THE G	TITLE	INGAME	smoke2.txt	hub | rc=0 fps=153.1 shots=11
+Gex_64_Enter_the_Gecko_U	GEX: ENTER THE G	TITLE	INGAME	smoke2.txt	hub | rc=0 fps=131.1 shots=11
+Glover	Glover	TITLE	INGAME	smoke2.txt	level | rc=0 fps=171.6 shots=11
+Golden_Nugget_64	GOLDEN NUGGET 64	TITLE	INGAME	smoke2.txt	blackjack | rc=0 fps=67.3 shots=11
+Hamster_Monogatari_64	ÊÑ½À°ÓÉ¶ÞÀØ64	TITLE	INGAME	smoke2.txt	story after name entry | rc=0 fps=171.2 shots=11
+Harvest_Moon_64	HARVESTMOON64	TITLE	TITLE	smoke2.txt	name entry (farm/dog names) | rc=0 fps=90.8 shots=11
+Hexen	HEXEN	TITLE	INGAME	smoke2.txt	level | rc=0 fps=187 shots=11
+Hey_You_Pikachu	hey you, pikachu	TITLE	INGAME	smoke2.txt	field, voice prompt (mic not emulated: "Press the Z button") | rc=0 fps=97.3 shots=11
+Hybrid_Heaven	HYBRID HEAVEN US	TITLE	INGAME	smoke2.txt	level; slow ~40% | rc=3 fps=40 shots=7 err=too slow: deadline 225 s reached after 5328 frames (23.67 frames/s)
+Hydro_Thunder	HYDRO THUNDER	TITLE	INGAME	smoke2.txt	race | rc=0 fps=125.7 shots=11
+Ide_Yosuke_no_Mahjong_Juku	À  ²ÃÞÖ³½¹ÉÏ°¼Þ¬Ý¼Þ	TITLE	INGAME	smoke2.txt	mahjong table | rc=0 fps=190.1 shots=11
+Iggy_s_Reckin_Balls	Iggy's Reckin' B	TITLE	INGAME	smoke2.txt	race | rc=3 fps=50.7 shots=9 err=too slow: deadline 225 s reached after 6745 frames (29.96 frames/s)
+In_Fisherman_Bass_Hunter_64	BASS HUNTER 64	TITLE	INGAME	smoke2.txt	fishing after name entry | rc=0 fps=103.7 shots=11
+International_Superstar_Soccer_2000	I.S.S.2000	TITLE	INGAME	smoke2_start.txt	pass2: match | pass1: team select loop | rc=0 fps=193.7 shots=11
+International_Superstar_Soccer_64	I S S 64	TITLE	INGAME	smoke2.txt	match | rc=0 fps=152.6 shots=11
+International_Superstar_Soccer_98	I.S.S.98	TITLE	INGAME	smoke2.txt	match | rc=0 fps=147.5 shots=11
+J_League_Eleven_Beat_1997	J_league 1997	TITLE	INGAME	smoke2.txt	match | rc=0 fps=164.5 shots=11
+J_League_Live_64	J LEAGUE LIVE 64	TITLE	INGAME	smoke2.txt	match | rc=3 fps=49 shots=9 err=too slow: deadline 225 s reached after 6521 frames (28.97 frames/s)
+J_League_Tactics_Soccer	TACTICS SOCCER	TITLE	TITLE	smoke2.txt	kanji name entry | rc=0 fps=342.3 shots=11
+Jangou_Simulation_Mahjong_Do_64	Ï°¼Þ¬ÝÄÞ³64	TITLE	INGAME	smoke2.txt	mahjong | rc=0 fps=139 shots=11
+Jeopardy	JEOPARDY!	TITLE	TITLE	smoke2.txt	options/settings menu loop | rc=0 fps=65.5 shots=11
+Jikkyou_G1_Stable	G1STABLE	TITLE	INGAME	smoke2.txt	stable management | rc=0 fps=181.4 shots=11
+Jikkyou_J_League_Perfect_Striker	PERFECT STRIKER	TITLE	TITLE	smoke2.txt	team select loop | rc=0 fps=159.4 shots=11
+Jikkyou_Powerful_Pro_Yakyuu_2000	PAWAPURO 2000	TITLE	INGAME	smoke2.txt	batting | rc=0 fps=141.9 shots=11
+Jikkyou_Powerful_Pro_Yakyuu_5	PAWAFURU PUROYAK	TITLE	INGAME	smoke2.txt	batting | rc=0 fps=129.9 shots=11
+Jikkyou_Powerful_Pro_Yakyuu_6	PAWAFURU PUROYAK	TITLE	INGAME	smoke2.txt	batting | rc=0 fps=149.7 shots=11
+Jikkyou_Powerful_Pro_Yakyuu_Basic_Han_2001	PAWAPURO 2001B	TITLE	INGAME	smoke2.txt	batting | rc=0 fps=116.6 shots=11
+Jinsei_Game_64	JINSEI-GAME64	TITLE	TITLE	smoke2.txt	player profile setup (JP) | rc=0 fps=141.2 shots=11
+Ken_Griffey_Jr_s_Slugfest	KEN GRIFFEY SLUG	TITLE	INGAME	smoke2.txt	batting | rc=3 fps=57.2 shots=10 err=too slow: deadline 225 s reached after 7546 frames (33.51 frames/s)
+Kira_to_Kaiketsu_64_Tanteidan	·×¯Ä¶²¹Â 64ÀÝÃ²À	TITLE	INGAME	smoke2.txt	party game | rc=0 fps=80.3 shots=11
+Kobe_Bryant_s_NBA_Courtside	NBA COURTSIDE	TITLE	INGAME	smoke2.txt	match | rc=0 fps=95.9 shots=11
+LEGO_Racers	   LEGORacers	TITLE	TITLE	smoke2.txt	build driver / license screens | rc=0 fps=134.9 shots=11
+Last_Legion_UX	LASTLEGION UX	TITLE	INGAME	smoke2.txt	mech level | rc=0 fps=100.1 shots=11
+Legend_of_Zelda_The_Majora_s_Mask	ZELDA MAJORA'S M	TITLE	INGAME	smoke2.txt	opening forest | rc=0 fps=156.5 shots=11
+Legend_of_Zelda_The_Ocarina_of_Time	THE LEGEND OF ZE	TITLE	INGAME	smoke2.txt	Navi intro | rc=0 fps=140.4 shots=11
+Lode_Runner_3_D	Lode Runner 3D	TITLE	TITLE	smoke2.txt	stage start "press START to play"; slow ~35% | rc=3 fps=34.5 shots=6 err=too slow: deadline 225 s reached after 4592 frames (20.37 frames/s)
+MRC_Multi_Racing_Championship	MULTI RACING	TITLE	INGAME	smoke2.txt	race | rc=0 fps=83 shots=11
+Madden_Football_64	MADDEN 64	TITLE	INGAME	smoke2.txt	match; slow ~29% | rc=3 fps=28.6 shots=5 err=too slow: deadline 225 s reached after 3818 frames (16.90 frames/s)
+Madden_NFL_99	MADDEN NFL 99	TITLE	INGAME	smoke2.txt	field | rc=3 fps=51.3 shots=9 err=too slow: deadline 225 s reached after 6734 frames (29.82 frames/s)
+Magical_Tetris_Challenge	MAGICAL TETRIS	TITLE	INGAME	smoke2.txt	match (paused by Start presses) | rc=0 fps=352.7 shots=11
+Mahjong_64	MAHJONG64	TITLE	TITLE	smoke2.txt	rule menu; slow ~28% | rc=3 fps=27.6 shots=5 err=too slow: deadline 225 s reached after 3665 frames (16.28 frames/s)
+Mahjong_Hourouki_Classic	Ï°¼Þ¬ÝÎ³Û³·CLASS	TITLE	INGAME	smoke2.txt	mahjong | rc=0 fps=115.3 shots=11
+Mahjong_Master	Ï°¼Þ¬Ý Ï½À°	TITLE	INGAME	smoke2_start.txt	pass2: mahjong table | pass1: opponent select | rc=0 fps=145.4 shots=11
+Major_League_Baseball_Featuring_Ken_Griffey_Jr	MLB FEATURING K	TITLE	INGAME	smoke2.txt	batting | rc=3 fps=52.9 shots=9 err=too slow: deadline 225 s reached after 7022 frames (31.16 frames/s)
+Mario_Kart_64	MARIOKART64	TITLE	INGAME	smoke2.txt	race | rc=0 fps=126.5 shots=11
+Mario_Party_2	MarioParty2	TITLE	INGAME	smoke2.txt	board intro | rc=0 fps=146.8 shots=11
+Mario_Party_3	MarioParty3	TITLE	INGAME	smoke2.txt	board (story) | rc=0 fps=194.5 shots=11
+Mia_Hamm_Soccer_64	Mia Hamm Soccer	TITLE	INGAME	smoke2.txt	match | rc=0 fps=142.6 shots=11
+Mickey_s_Speedway_USA	MICKEY USA	TITLE	INGAME	smoke2.txt	race | rc=0 fps=193.8 shots=11
+Mike_Piazza_s_Strike_Zone	PIAZZA STRIKEZON	TITLE	INGAME	smoke2.txt	pitch, then roster menu | rc=0 fps=167.9 shots=11
+Milo_s_Astro_Lanes	Milos_Astro_Lane	TITLE	TITLE	smoke2.txt	game-save / exit prompt loop | rc=0 fps=64.2 shots=11
+Mischief_Makers	MISCHIEF MAKERS	TITLE	INGAME	smoke2.txt	story opening | rc=0 fps=175.2 shots=11
+Monster_Truck_Madness_64	MTM64	TITLE	TITLE	smoke2.txt	truck select / main menu loop | rc=0 fps=131.5 shots=11
+Morita_Shougi_64	ÓØÀ¼®³·Þ64	TITLE	INGAME	smoke2.txt	board, then comment entry; slow ~42% | rc=3 fps=41.7 shots=7 err=too slow: deadline 225 s reached after 5530 frames (24.54 frames/s)
+Off_Road_Challenge	OFFROAD	TITLE	INGAME	smoke2.txt	race | rc=0 fps=65 shots=11
+Ogre_Battle_64_Person_of_Lordly_Caliber	OgreBattle64	TITLE	INGAME	smoke2.txt	story + name entry | rc=0 fps=149.2 shots=11
+Onegai_Monsters	ONEGAI MONSTER	TITLE	INGAME	smoke2.txt	story room | rc=0 fps=77.3 shots=11
+PGA_European_Tour	PGA European Tou	TITLE	INGAME	smoke2.txt	golf after name entry | rc=0 fps=93.8 shots=11
+Pachinko_365_Nichi	PACHINKO365NICHI	TITLE	INGAME	smoke2.txt	parlor | rc=0 fps=155.4 shots=11
+Paper_Mario	PAPER MARIO	TITLE	CRASH	smoke2.txt	REGRESSION-style: reaches Goomba village then game crash screen THREAD 4 TLB EXCEPTION ON LOAD (cpu:tlb-exception va=E000E000) - emulator bug | rc=0 fps=259.3 shots=11
+Penny_Racers	PENNY RACERS	TITLE	INGAME	smoke2_start.txt	pass2: race | pass1: options menu loop after car select | rc=0 fps=168.8 shots=11
+Pocket_Monsters_Stadium	POKEMON STADIUM	TITLE	TITLE	smoke2.txt	entry pokemon select | rc=0 fps=173.6 shots=11
+Pokemon_Puzzle_League	PUZZLE LEAGUE N6	TITLE	INGAME	smoke2_start.txt	pass2: tutorial puzzle play (Oak) | pass1: How to Play menu | rc=0 fps=114.2 shots=11
+Pokemon_Stadium	POKEMON STADIUM	TITLE	TITLE	smoke2.txt	rental team / battle select | rc=0 fps=212.8 shots=11
+Power_League_Baseball_64	PowerLeague64	TITLE	TITLE	smoke2.txt	team select | rc=0 fps=294.1 shots=11
+Pro_Mahjong_Kiwame_64	KIWAME 64	TITLE	INGAME	smoke2_start.txt	pass2: mahjong table | pass1: system settings / main menu | rc=0 fps=202.7 shots=11
+Public_Domain_Intros	Live suxx!	TITLE	N/A	smoke2.txt	non-game demo pack | rc=0 fps=222.3 shots=11
+Public_Domain_Tools	SRAM BACKUP	TITLE	N/A	smoke2.txt	non-game (memory manager) | rc=3 fps=46.9 shots=8 err=too slow: deadline 225 s reached after 6238 frames (27.72 frames/s)
+Quake_64	Quake	TITLE	INGAME	smoke2.txt	level; slow ~39% | rc=3 fps=38.8 shots=7 err=too slow: deadline 225 s reached after 5166 frames (22.94 frames/s)
+Quake_II	QUAKE II	TITLE	INGAME	smoke2.txt	level, very dark; slow ~38% | rc=3 fps=38 shots=7 err=too slow: deadline 225 s reached after 5052 frames (22.42 frames/s)
+RR64_Ridge_Racer_64	RIDGE RACER 64	TITLE	INGAME	smoke2.txt	race | rc=0 fps=182.3 shots=11
+Rakuga_Kids	RAKUGAKIDS	TITLE	INGAME	smoke2.txt	fight | rc=0 fps=128.5 shots=11
+Rally_Challenge_2000	RALLY CHALLENGE	TITLE	INGAME	smoke2_start.txt	pass2: race | pass1: arcade/options menu loop | rc=0 fps=234.7 shots=11
+Rayman_2_The_Great_Escape	Rayman 2	TITLE	INGAME	smoke2.txt	prison ship | rc=0 fps=60.7 shots=11
+Robot_Ponkottsu_64_Caramel_of_the_7_Seas	Robopon64	TITLE	BLACK	smoke2_start.txt	pass2 repeats: black right after boot with slow-A script; v1 reached title (emulator bug suspect) | pass1: black screen after save select (worse than v1 TITLE) - check | rc=0 fps=153.8 shots=11
+Robotech_Crystal_Dreams	Robotech - Crystal Dreams	TITLE	TITLE	smoke2.txt	frozen on opening corridor (v1 had cpu:tlb-exception) | rc=0 fps=128.7 shots=11
+Rugrats_Scavenger_Hunt	RUGRATSSCAVENGER	TITLE	INGAME	smoke2.txt	board | rc=0 fps=277.6 shots=11
+Rugrats_in_Paris_The_Movie	RUGRATS IN PARIS	TITLE	INGAME	smoke2.txt	level | rc=0 fps=70.3 shots=11
+SD_Hiryuu_no_Ken_Densetsu	SD HIRYU STADIUM	TITLE	INGAME	smoke2.txt	fight | rc=0 fps=153.5 shots=11
+S_C_A_R_S	SCARS	TITLE	INGAME	smoke2.txt	race | rc=0 fps=117.6 shots=11
+Scooby_Doo_Classic_Creep_Capers	SCOOBY-DOO	TITLE	INGAME	smoke2.txt	level | rc=0 fps=157.6 shots=11
+Shadowgate_64_Trials_of_the_Four_Towers	SHADOWGATE64	TITLE	INGAME	smoke2.txt	dungeon | rc=0 fps=156.3 shots=11
+Snowboard_Kids	SNOWBOARD KIDS	TITLE	TITLE	smoke2.txt	rumble/pak "no entry" player screen; slow ~46% | rc=3 fps=45.9 shots=8 err=too slow: deadline 225 s reached after 6112 frames (27.14 frames/s)
+Snowboard_Kids_2	SNOWBOARD KIDS2	TITLE	INGAME	smoke2.txt	race | rc=0 fps=146 shots=11
+South_Park	South Park	TITLE	INGAME	smoke2.txt	level (paused by Start) | rc=0 fps=155 shots=11
+Space_Station_Silicon_Valley	Silicon Valley	TITLE	TITLE	smoke2.txt	long intro cutscene loops back to title | rc=0 fps=263.7 shots=11
+Spider_Man	SPIDERMAN	TITLE	INGAME	smoke2.txt	level then game over | rc=0 fps=241.7 shots=11
+StarCraft_64	STARCRAFT 64	TITLE	INGAME	smoke2.txt	map + options; slow ~46% | rc=3 fps=46.3 shots=8 err=too slow: deadline 225 s reached after 6148 frames (27.29 frames/s)
+Star_Fox_64	STARFOX64	TITLE	INGAME	smoke2.txt	Corneria | rc=0 fps=174.5 shots=11
+Star_Fox_64_U_V1_0	STARFOX64	TITLE	INGAME	smoke2.txt	Corneria | rc=0 fps=131.6 shots=11
+Star_Wars_Episode_I_Racer	STAR WARS EP1 RA	TITLE	INGAME	smoke2.txt	race; slow ~21% | rc=3 fps=20.8 shots=4 err=too slow: deadline 225 s reached after 2767 frames (12.28 frames/s)
+Starshot_Space_Circus_Fever	Starshot	TITLE	INGAME	smoke2.txt	level; slow ~33% | rc=3 fps=33.1 shots=6 err=too slow: deadline 225 s reached after 4402 frames (19.55 frames/s)
+Super_B_Daman_Battle_Phoenix_64	BattlePhoenix64	TITLE	INGAME	smoke2_start.txt	pass2: B-Daman match | pass1: B-Daman item menu loop | rc=0 fps=154.7 shots=11
+Super_Bowling_64	SUPER BOWLING	TITLE	INGAME	smoke2.txt	bowling | rc=0 fps=91.2 shots=11
+Super_Robot_Spirits	SUPERROBOTSPIRIT	TITLE	INGAME	smoke2.txt	fight | rc=0 fps=110.4 shots=11
+Super_Robot_Taisen_64	½°Êß°ÛÎÞ¯ÄÀ²¾Ý64	TITLE	TITLE	smoke2.txt	kanji name entry | rc=0 fps=142.1 shots=11
+Susume_Taisen_Puzzle_Dama_Toukon_Marumata_Chou	½½Ò!À²¾ÝÊß½ÞÙÀÞÏ	TITLE	INGAME	smoke2.txt	puzzle match | rc=0 fps=145.4 shots=11
+Tetrisphere	TETRISPHERE	TITLE	INGAME	smoke2.txt	tutorial; slow ~41% | rc=3 fps=41 shots=7 err=too slow: deadline 225 s reached after 5439 frames (24.14 frames/s)
+Tom_Clancy_s_Rainbow_Six	RAINBOW SIX	TITLE	TITLE	smoke2.txt	"campaign not found" Controller Pak retry loop | rc=0 fps=95.7 shots=11
+Tony_Hawk_s_Pro_Skater	TONY HAWK PRO SK	TITLE	INGAME	smoke2.txt	skating | rc=0 fps=116.9 shots=11
+Tony_Hawk_s_Pro_Skater_2	THPS2	TITLE	INGAME	smoke2.txt	skating | rc=0 fps=107.7 shots=11
+Tony_Hawk_s_Pro_Skater_3	THPS3	TITLE	INGAME	smoke2.txt	skating | rc=0 fps=93.1 shots=11
+Top_Gear_Hyper_Bike	Top Gear Hyper B	TITLE	INGAME	smoke2.txt	race | rc=0 fps=85 shots=11
+Top_Gear_Overdrive	Top Gear Overdri	TITLE	INGAME	smoke2.txt	race | rc=0 fps=104.5 shots=11
+Top_Gear_Rally	TOP GEAR RALLY	TITLE	INGAME	smoke2.txt	race | rc=0 fps=105 shots=11
+Top_Gear_Rally_2	TOP GEAR RALLY 2	TITLE	INGAME	smoke2.txt	tutorial race; slow ~25% | rc=3 fps=25.1 shots=5 err=too slow: deadline 225 s reached after 3339 frames (14.79 frames/s)
+Toukon_Road_2_The_Next_Generation	TOUKON ROAD2	TITLE	TITLE	smoke2.txt	IWGP mode data menu loop | rc=0 fps=155.7 shots=11
+Transformers_Beast_Wars_Transmetal	BEAST WARS US	TITLE	BLACK	smoke2_start.txt	pass2 repeats: character select -> "Metal Warriors Reborn!" -> black for 2 min (emulator bug suspect) | pass1: black screen after title Start (v1 TITLE) - check | rc=0 fps=179.1 shots=11
+Turok_2_Seeds_of_Evil	Turok 2: Seeds o	TITLE	INGAME	smoke2.txt	level | rc=0 fps=69.1 shots=11
+V_Rally_Edition_99	V-RALLY	TITLE	INGAME	smoke2.txt	race | rc=3 fps=54.8 shots=9 err=too slow: deadline 225 s reached after 7260 frames (32.13 frames/s)
+Vigilante_8	VIGILANTE 8	TITLE	INGAME	smoke2.txt	arena | rc=3 fps=48.7 shots=8 err=too slow: deadline 225 s reached after 6465 frames (28.63 frames/s)
+Vigilante_8_2nd_Offense	V8: SECOND OFFEN	TITLE	INGAME	smoke2.txt	arena | rc=3 fps=43.8 shots=8 err=too slow: deadline 225 s reached after 5792 frames (25.74 frames/s)
+Virtual_Pool_64	Virtual Pool 64	TITLE	INGAME	smoke2.txt	table; slow ~23% | rc=3 fps=23.1 shots=4 err=too slow: deadline 225 s reached after 3064 frames (13.57 frames/s)
+Virtual_Pro_Wrestling_64	ÊÞ°Á¬Ù ÌßÛÚ½ØÝ¸Þ	TITLE	INGAME	smoke2.txt	match | rc=0 fps=66.8 shots=11
+WCW_Backstage_Assault	WCW BACKSTAGE	TITLE	INGAME	smoke2.txt	match | rc=0 fps=61.7 shots=11
+WCW_Mayhem	WCW MAYHEM	TITLE	INGAME	smoke2.txt	match; slow ~19% | rc=3 fps=19.3 shots=4 err=too slow: deadline 225 s reached after 2559 frames (11.35 frames/s)
+WCW_Nitro	NITRO64	TITLE	INGAME	smoke2.txt	match | rc=3 fps=40.1 shots=7 err=too slow: deadline 225 s reached after 5316 frames (23.59 frames/s)
+WCW_nWo_Revenge	WCW / nWo  REVEN	TITLE	INGAME	smoke2.txt	match | rc=3 fps=49.2 shots=9 err=too slow: deadline 225 s reached after 6509 frames (28.86 frames/s)
+WCW_vs_nWo_World_Tour	WCWvs.NWO:World	TITLE	TITLE	smoke2.txt	"no note found / insert Controller Pak" yes/no loop | rc=3 fps=56.6 shots=10 err=too slow: deadline 225 s reached after 7508 frames (33.25 frames/s)
+WWF_Attitude	WWF: Attitude	TITLE	INGAME	smoke2.txt	match | rc=0 fps=108.7 shots=11
+WWF_No_Mercy	WWF No Mercy	TITLE	TITLE	smoke2.txt	superstar select | rc=3 fps=45.3 shots=8 err=too slow: deadline 225 s reached after 5968 frames (26.51 frames/s)
+WWF_War_Zone	WWF War Zone	TITLE	INGAME	smoke2.txt	match | rc=0 fps=113.1 shots=11
+WWF_WrestleMania_2000	WRESTLEMANIA 200	TITLE	INGAME	smoke2.txt	match | rc=3 fps=47.8 shots=8 err=too slow: deadline 225 s reached after 6312 frames (28.00 frames/s)
+Waialae_Country_Club_True_Golf_Classics	Waialae Country	TITLE	INGAME	smoke2.txt	golf | rc=3 fps=40.4 shots=7 err=too slow: deadline 225 s reached after 5338 frames (23.69 frames/s)
+Wipeout_64	Wipeout 64	TITLE	INGAME	smoke2.txt	race; slow ~29% | rc=3 fps=28.6 shots=5 err=too slow: deadline 225 s reached after 3813 frames (16.89 frames/s)
+Wonder_Project_J2	WONDER PROJECT J	TITLE	INGAME	smoke2.txt	story | rc=0 fps=60.7 shots=11
+Worms_Armageddon	WORMS ARMAGEDDON	TITLE	INGAME	smoke2.txt	match (pause menu) | rc=3 fps=43.4 shots=8 err=too slow: deadline 225 s reached after 5744 frames (25.50 frames/s)
+Xena_Warrior_Princess_The_Talisman_of_Fate	XENAWARRIORPRINC	TITLE	INGAME	smoke2.txt	fight | rc=0 fps=69.7 shots=11
+Zool_Majou_Tsukai_Densetsu	½Þ°Ù Ï¼Þ­³Â¶²ÃÞÝ	TITLE	TITLE	smoke2.txt	long intro text | rc=0 fps=109.6 shots=11

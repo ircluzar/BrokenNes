@@ -1,3 +1,5 @@
+> 2026-11-27: Garage2 no longer available for BrokenNes; run gates/A-B on the fleet (submit.py ... --direct).
+
 # x86-p2 handoff (Pentium II 400 rung, HL2 ladder)
 
 Branch x86-p2, worktree C:\BrokenNes-work\wt-p2, commits d9471918 + eba357ce. Not merged, not gated, never pushed.

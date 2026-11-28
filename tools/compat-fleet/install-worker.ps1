@@ -1,11 +1,14 @@
 # install-worker.ps1 - the ONE script a worker box runs to install or update itself (Windows PowerShell 5.1 is enough).
 #
 #   From the box, in an elevated-or-not PowerShell (no admin needed unless -RegisterTask asks for "run whether logged on or not"):
-#     powershell -ExecutionPolicy Bypass -File \\STORAGE\Work\BrokenDev\CompatFleet\install-worker.ps1 -Slots 2 -RegisterTask
+#     powershell -ExecutionPolicy Bypass -File \<FleetRoot>\install-worker.ps1   (copy it to the box with the fleet's own sync, or from the new NAS share) -Slots 2 -RegisterTask
 #   Update = run it again (it takes whatever current.json pins; the old version stays one round for rollback).
-#   Simulate on the coordinator PC:  install-worker.ps1 -DryRun -InstallDir <scratch> -FleetRoot T:\BrokenDev\CompatFleet -QueueRoot <scratch queue>
+#   Simulate on the coordinator PC:  install-worker.ps1 -DryRun -InstallDir <scratch> -FleetRoot <scratch fleet> -QueueRoot <scratch queue>
 #
-# Steps: 1. map X: (ROMs, read only) and T: (fleet + queue) from the NAS if they are not mapped already
+# NAS retired 2026-11 (T:/X: gone). Defaults are now C:\BrokenNes-work\compat-fleet\{fleet,queue} (override: BROKENNES_COMPAT_HOME or
+#   -FleetRoot/-QueueRoot). A worker on ANOTHER box can only read them if they are reachable from that box (new NAS, or the fleet's own
+#   sync); this script does not create a share. NAS drive maps are now opt-in: -MapShares.
+# Steps: 1. (only with -MapShares) map X: (ROMs, read only) and T: (fleet + queue) from the NAS if they are not mapped already
 #        2. copy the pinned release + reference emulators to <InstallDir>\versions\<version> and check every sha256 in the manifest
 #        3. write <InstallDir>\worker.json (box, slots, paths) and register the box with the queue
 #        4. optional: a scheduled task "BrokenNes Compat Worker" that starts the runner at logon and restarts it if it stops
@@ -15,13 +18,14 @@ param(
     [string]$Nas = '\\STORAGE',
     [string]$RomShare = 'Software',            # mapped as X:  (job ROM paths are X:\EMULATION\...)
     [string]$WorkShare = 'Work',               # mapped as T:
-    [string]$FleetRoot = 'T:\BrokenDev\CompatFleet',
-    [string]$QueueRoot = 'T:\BrokenDev\CompatQueue',
+    [string]$FleetRoot = (Join-Path $(if ($env:BROKENNES_COMPAT_HOME) { $env:BROKENNES_COMPAT_HOME } else { 'C:\BrokenNes-work\compat-fleet' }) 'fleet'),
+    [string]$QueueRoot = (Join-Path $(if ($env:BROKENNES_COMPAT_HOME) { $env:BROKENNES_COMPAT_HOME } else { 'C:\BrokenNes-work\compat-fleet' }) 'queue'),
     [string]$InstallDir = 'C:\CompatWorker',
     [ValidateRange(1, 2)][int]$Slots = 1,
     [string]$Box = $env:COMPUTERNAME,
     [string[]]$Consoles = @(),                 # empty = every console
     [string]$Version = '',                     # empty = current.json's pin
+    [switch]$MapShares,                        # old NAS design: net use X:/T: from $Nas (needs a NAS to exist)
     [switch]$RegisterTask,
     [switch]$Start,                            # start the runner now in this window
     [switch]$DryRun                            # no drive maps, no scheduled task, box name "<name>-sim"
@@ -32,7 +36,8 @@ if ($DryRun -and $Box -notmatch '-sim$') { $Box = "$Box-sim" }
 
 # 1. shares
 Step 'shares'
-foreach ($m in @(@{ d = 'X:'; s = "$Nas\$RomShare" }, @{ d = 'T:'; s = "$Nas\$WorkShare" })) {
+if (-not $MapShares) { Write-Host 'share maps skipped (use -MapShares once a NAS exists)' }
+foreach ($m in $(if ($MapShares) { @(@{ d = 'X:'; s = "$Nas\$RomShare" }, @{ d = 'T:'; s = "$Nas\$WorkShare" }) } else { @() })) {
     $have = $null; try { $have = (Get-PSDrive -Name $m.d.TrimEnd(':') -ErrorAction Stop).DisplayRoot } catch {}
     if ($have -eq $m.s) { Write-Host "$($m.d) already $($m.s)"; continue }
     if ($DryRun) { Write-Host "dry run: would run  net use $($m.d) $($m.s) /persistent:yes  (now: '$have')"; continue }
@@ -43,6 +48,7 @@ foreach ($m in @(@{ d = 'X:'; s = "$Nas\$RomShare" }, @{ d = 'T:'; s = "$Nas\$Wo
 
 # 2. pinned release
 Step 'release'
+if (-not (Test-Path (Join-Path $FleetRoot 'current.json')) -and -not $Version) { throw "no fleet release folder at $FleetRoot (current.json missing). This box cannot see the coordinator's fleet folder: run stage-release.ps1 on the coordinator, then make that folder reachable here (the fleet's own sync, or the new NAS share, then pass -FleetRoot/-QueueRoot or set BROKENNES_COMPAT_HOME). No Windows share is created by these scripts." }
 if (-not $Version) { $Version = (Get-Content -Raw (Join-Path $FleetRoot 'current.json') | ConvertFrom-Json).version }
 $src = Join-Path $FleetRoot "releases\$Version"
 $manifest = Get-Content -Raw (Join-Path $src 'manifest.json') | ConvertFrom-Json
