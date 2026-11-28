@@ -53,6 +53,7 @@ internal sealed class X86HeadlessSession : Session
     {
         string k = (consoleKey ?? "").Trim().ToLowerInvariant();
         if (k is "win98" or "windows98") return true;
+        if (X86Library.IsLibId(path)) { try { if (X86Library.Find(path) is { } li && string.Equals(li.Console, "x86", StringComparison.OrdinalIgnoreCase)) return true; } catch (Exception) { } }   // a library item of the x86 console
         if (!string.IsNullOrWhiteSpace(machine)) return true;
         return Path.GetExtension(path).Equals(".n98", StringComparison.OrdinalIgnoreCase);
     }
@@ -60,6 +61,20 @@ internal sealed class X86HeadlessSession : Session
     /// <summary>Opens a disk image / DOS program / .n98 package on a machine preset (default WIN98-P166 for a hard disk, the classic PC otherwise).</summary>
     public static X86HeadlessSession Open(string id, string file, string? machine, string? hdd2, string? cd, string? statePath, string cpu, string ppu, string apu, bool debug)
     {
+        // the asset library (X86Library): "lib:<id>" for the disk, second disk, CD or state; a library STATE as the path opens on its own first
+        // parent disk (its other disks come from the catalogue by hash), and a library state brings the CD the catalogue names unless cd is given
+        try
+        {
+            X86Library.Install();
+            if (X86Library.IsLibId(file) && X86Library.Find(file) is { Kind: "state" } && string.IsNullOrWhiteSpace(statePath))
+            { statePath = file; file = X86Library.FirstParentDisk(file) ?? throw new ToolError($"library state '{statePath}' has no parent disk in the library"); }
+            if (string.IsNullOrWhiteSpace(cd) && !string.IsNullOrWhiteSpace(statePath) && X86Library.CdFor(statePath!) is string scd) cd = scd;
+            file = X86Library.Resolve(file);
+            if (!string.IsNullOrWhiteSpace(hdd2)) hdd2 = X86Library.Resolve(hdd2!);
+            if (!string.IsNullOrWhiteSpace(cd)) cd = X86Library.Resolve(cd!);
+            if (!string.IsNullOrWhiteSpace(statePath)) statePath = X86Library.Resolve(statePath!);
+        }
+        catch (Exception e) when (e is FileNotFoundException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { throw new ToolError(e.Message); }
         if (!File.Exists(file)) throw new ToolError($"no disk / package at '{file}'");
         byte[] img = file.EndsWith(".n98", StringComparison.OrdinalIgnoreCase) ? File.ReadAllBytes(file) : DiskImage.ReadImageFile(file);
         string mk = string.IsNullOrWhiteSpace(machine) ? (img.Length > 2949120 ? "WIN98-P166" : PcMachinePreset.ClassicKey) : machine!.Trim();

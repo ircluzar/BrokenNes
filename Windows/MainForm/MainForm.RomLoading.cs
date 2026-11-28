@@ -108,6 +108,11 @@ namespace BrokenNes.Windows
         private void LoadRomFile(string path)
         {
             HideContinueButton();
+            if (NesEmulator.X86.X86Library.IsLibId(path))   // an asset-library id ("lib:<id>", X86Library): the file it names (opened read-only, as every disk)
+            {
+                try { path = NesEmulator.X86.X86Library.Resolve(path); }
+                catch (Exception e) when (e is FileNotFoundException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { MessageBox.Show(e.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
+            }
             if (Virtual.VirtualCartManifest.IsManifestPath(path)) { StartVirtualCart(path, showDialogs: true); return; }
 
             try

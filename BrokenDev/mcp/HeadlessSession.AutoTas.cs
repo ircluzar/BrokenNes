@@ -15,6 +15,7 @@ internal sealed partial class HeadlessSession
     /// <summary>Writes the machine's state to an AutoTAS state file (<see cref="AutoTasState"/>); with a name it is also a named state in memory.</summary>
     public JsonObject SaveStateFile(string? name, string path)
     {
+        if (NesEmulator.X86.X86Library.IsInLibrary(path)) throw new ToolError($"refusing to save a state into the asset library ({NesEmulator.X86.X86Library.Root}): it is read-only; save into a run folder");
         string? note = EnsureBetweenFrames();
         var s = Take();
         if (name is { Length: > 0 }) states[name] = s;

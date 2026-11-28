@@ -93,6 +93,7 @@ public static class N98BaseBuild
         if (!File.Exists(iso)) return new JsonObject { ["ok"] = false, ["error"] = "the Windows 98 SE disc image was not found" };
         string ws = Workshop() ?? throw new FileNotFoundException("the base build needs BrokenNes.Workshop.exe (set BROKENNES_WORKSHOP)");
         outPath ??= DefaultOut;
+        if (X86Library.IsInLibrary(outPath) || (work != null && X86Library.IsInLibrary(work))) return new JsonObject { ["ok"] = false, ["error"] = $"a base build never goes into the asset library ({X86Library.Root}): its .warm folder would be written beside it" };
         work ??= Path.Combine(Path.GetDirectoryName(Path.GetFullPath(outPath))!, "base_build");
         Directory.CreateDirectory(work);
         var (py, pre) = N98Seat.PythonCmd();

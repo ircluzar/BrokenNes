@@ -132,7 +132,7 @@ public sealed partial class N98Seat
         {
             string bh = Path.Combine(s.WarmDir, "blank.p256");
             if (File.Exists(bh) && File.ReadAllText(bh).Trim() is { } bt && bt.StartsWith("p256:", StringComparison.Ordinal)) DiskImage.SeedHash(s.BlankDrive, bt);
-            else { var b = s.BlankDrive; System.Threading.Tasks.Task.Run(() => { string hh = DiskImage.HashOf(b); try { Directory.CreateDirectory(s.WarmDir); File.WriteAllText(bh, hh); } catch (IOException) { } }); }
+            else { var b = s.BlankDrive; System.Threading.Tasks.Task.Run(() => { string hh = DiskImage.HashOf(b); try { if (!X86Library.IsInLibrary(s.WarmDir)) { Directory.CreateDirectory(s.WarmDir); File.WriteAllText(bh, hh); } } catch (IOException) { } }); }
         }
         catch (IOException) { }
         s.Image2 = s.BlankDrive;
