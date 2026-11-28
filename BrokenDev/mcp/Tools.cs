@@ -303,6 +303,27 @@ internal static partial class Tools
             Schema(S(), ("action", P("string", "add, remove, clear or list", Enum("add", "remove", "clear", "list")), true), ("expr", P("string", "[player_hp], {pointer}, A + X, ..."), false), ("index", P("integer", "remove: the watch's index"), false)),
             a => On(a, s => s.Watch(a.Req("action").ToLowerInvariant(), a.Str("expr"), a.Long("index") is long i ? (int)i : null)));
 
+        Add("write_hook_add",
+            "Hooks the CPU's writes to an address range (headless; NES, SNES / WideMess 65816, Game Boy, Master System / Game Gear, Genesis 68000 and Z80; mirrors folded, CPU writes only, not DMA). " +
+            "action log (record frame, cycle, PC, old -> new value, call stack; the write lands), break (stop with the write NOT yet applied; run / step lets it land), " +
+            "rewrite (value = (value & and | or) ^ xor, or a forced value), block (drop the write), freeze (hold value like a cheat: put in place now, every write lands it). " +
+            "Optional condition (value = the byte being written, address, registers, [addr]). Hooks run in the order added, each seeing the value the ones before left; they are session state, never saved in states or movies. " +
+            "Example (SMB1, no death music): spec $00FC, action rewrite, and $FE (clears bit 0, the death music request).",
+            Schema(S(), ("spec", P("string", SpecDesc), true), ("action", P("string", "log, break, rewrite, block or freeze", Enum("log", "break", "rewrite", "block", "freeze")), true),
+                   ("condition", P("string", "e.g. value & $40, or value == 1 && frame > 120"), false),
+                   ("and", P("number|string", "rewrite: AND mask ($BF)"), false), ("or", P("number|string", "rewrite: OR mask"), false), ("xor", P("number|string", "rewrite: XOR mask"), false),
+                   ("value", P("number|string", "rewrite: the forced value; freeze: the value held"), false),
+                   ("quiet", P("boolean", "rewrite / block / freeze: keep their hits out of the hook log (counts only)"), false), C()),
+            a => On(a, s => s.WriteHookAdd(a.Req("spec"), a.Req("action"), a.Str("condition"), a.Long("and"), a.Long("or"), a.Long("xor"), a.Long("value"), a.Bool("quiet", false), a.Str("cpu") ?? "main")));
+
+        Add("write_hook_list", "The write hooks with their hit and change counts, and the hook log (the newest records; since: only those after this sequence number).",
+            Schema(S(), ("since", P("integer", "only records after this sequence number (default 0)"), false), ("limit", P("integer", "records to list (default 40)"), false)),
+            a => On(a, s => s.WriteHookList(a.LongOr("since", 0), a.Int("limit", 40))), ro: true);
+
+        Add("write_hook_remove", "Removes one write hook (id) or all, and / or clears the hook log.",
+            Schema(S(), ("id", P("integer", "the hook id"), false), ("all", P("boolean", "remove every hook"), false), ("clear_log", P("boolean", "clear the hook log"), false)),
+            a => On(a, s => s.WriteHookRemove(a.Long("id") is long i ? (int)i : null, a.Bool("all", false), a.Bool("clear_log", false))));
+
         Add("step",
             "Steps: into (one instruction; count for more), over (a call runs to its return), out (to the return of the current function), scanline, frame; or runs to an address (to), a frame (frame) or a scanline. Live: control.",
             Schema(S(), ("mode", P("string", "into (default), over, out, scanline, frame", Enum("into", "over", "out", "scanline", "frame")), false), ("count", P("integer", "into / over: how many (default 1)"), false),

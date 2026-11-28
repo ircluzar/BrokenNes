@@ -15,6 +15,7 @@ public sealed class GbDebugMachine : DebugMachine, IGbInstructionHook, IGbBusDeb
     private readonly BOARD_GB board;
     private readonly Sm83 cpu;
     private readonly DebugCpu[] cpus;
+    public override bool SupportsWriteHooks(DebugCpu c) => ReferenceEquals(c, cpu);   // the CPU's writes (the OAM / VRAM DMA bytes are not filtered)
 
     public GbDebugMachine(GbSession session)
     {
@@ -68,6 +69,7 @@ public sealed class GbDebugMachine : DebugMachine, IGbInstructionHook, IGbBusDeb
         public void Write(ushort address, byte value)
         {
             var d = m.Debugger;
+            if (d != null && !d.FilterWrite(m.cpu, address, ref value)) return;   // a write hook dropped it
             d?.OnAccess(m.cpu, address, value, true, AccessSource.Cpu, -1);
             Real.Write(address, value);
             d?.OnWriteDone(m.cpu, address, value);

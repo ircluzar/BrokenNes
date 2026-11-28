@@ -336,8 +336,9 @@ public sealed class BOARD_SMS
 
     public void WriteMemory(ushort address, byte value)
     {
-        MemWriteHook?.Invoke(address, value, Vdp.Line, lineCycle);
         var tap = DebugTap;
+        if (tap != null && !tap.FilterWrite(address, ref value)) return;   // the debugger's write hooks (null tap: no debugger)
+        MemWriteHook?.Invoke(address, value, Vdp.Line, lineCycle);
         tap?.OnWrite(address, value);
         if (address >= 0xC000 && ramEnabled) Ram[address & 0x1FFF] = value;
         Cart.Write(address, value);

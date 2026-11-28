@@ -497,6 +497,7 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
         public void Write(ushort address, byte value)
         {
             var tap = U.DebugTap;
+            if (tap != null && !tap.FilterWrite(address, ref value)) return;   // the debugger's write hooks
             tap?.OnWrite(address, value);
             U.Z80Write(address, value, U.z80Master, true);
             tap?.OnWriteDone(address, value);

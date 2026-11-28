@@ -21,6 +21,8 @@ public interface ISegaBusDebugTap
     void OnRead(uint address, byte value);
     /// <summary>A data write, before it lands.</summary>
     void OnWrite(uint address, byte value);
+    /// <summary>Before <see cref="OnWrite"/>: the debugger's write hooks may change <paramref name="value"/>, or drop the write (false). Default: it lands as it is.</summary>
+    bool FilterWrite(uint address, ref byte value) => true;
     /// <summary>The write has landed.</summary>
     void OnWriteDone(uint address, byte value);
     /// <summary>A Z80 I/O port access (the whole 16-bit port address).</summary>
