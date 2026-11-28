@@ -305,6 +305,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             long period = RefreshPeriodClocks;
             if (t >= nextRefresh)
             {
+                if (RefreshSkipVdp && vdpAccessNow) { nextRefresh = (t / period + 1) * period; return; }     // the VDP port is not DRAM: a refresh that falls in its bus cycle costs the 68000 nothing
                 t += RefreshStallClocks;
                 nextRefresh = (t / period + 1) * period;
             }
@@ -324,6 +325,10 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     private long nextRefresh = RefreshPhaseClocks;
     /// <summary>Refresh follows the master clock instead of counting the cycles the 68000 ran.</summary>
     public static bool TimeBasedRefresh = false;
+    /// <summary>(Time-based refresh) a refresh request that falls due in a bus cycle to the VDP's window ($C00000-$DFFFFF) is dropped, not charged. Experiment (--slot-set refreshskipvdp=1): with <c>timerefresh=1;vdpq=0</c> it reproduces
+    /// the oracle's lap times of loops with an HV counter read to 0.00 master clock for 0-16 nops (stallsweep.py, sega-track-b4a.md section 5, 2026-11-28).</summary>
+    public static bool RefreshSkipVdp = false;
+    private bool vdpAccessNow;
     /// <summary>Master clock the 68000 starts at when the VDP's time is 0 (negative: the 68000 has run that long before the first line starts); experiment parameter for matching the oracle from power-on.</summary>
     public static int BootOffsetClocks = 0;
     /// <summary>The master clock of the first refresh request (time-based refresh); experiment parameter.</summary>
@@ -356,6 +361,8 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public static int VdpQuantum = 4;
     /// <summary>Which of the VDP window's bus cycles the grid applies to (experiments: --slot-set vdpqr=0 / vdpqw=0).</summary>
     public static bool VdpQuantumReads = true, VdpQuantumWrites = true;
+    /// <summary>Where the grid's lines fall, in master clocks (experiment, --slot-set vdpqphase=N; 0 = multiples of the quantum).</summary>
+    public static int VdpQuantumPhase = 0;
 
     /// <summary>A VDP port access can leave the VDP busy (a full FIFO, a DMA); the 68000 resumes when it is not.</summary>
     private void AfterVdpAccess()
@@ -375,6 +382,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public void BusIdle(int cycles)
     {
         t += (long)cycles * ClocksPer68k;
+        vdpAccessNow = false;
         AddRefresh(cycles);
     }
 
@@ -391,9 +399,10 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     /// <summary>A bus cycle to the VDP port starts on the quantum's grid (floor).</summary>
     private void AlignVdpAccess(uint address, bool write)
     {
+        vdpAccessNow = address >= 0xC00000 && address < 0xE00000;
         if (VdpQuantum > 1 && (write ? VdpQuantumWrites : VdpQuantumReads) && address >= 0xC00000 && address < 0xE00000)
         {
-            long f = t - ((t % VdpQuantum) + VdpQuantum) % VdpQuantum;
+            long f = t - (((t - VdpQuantumPhase) % VdpQuantum) + VdpQuantum) % VdpQuantum;
             t = f;       // the VDP may then be up to quantum - 1 clocks ahead of the 68000: its RunTo ignores a time in its past
         }
     }

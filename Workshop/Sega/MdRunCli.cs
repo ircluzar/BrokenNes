@@ -374,6 +374,8 @@ internal static class MdRunCli
                 case "vdpq": BOARD_MD.VdpQuantum = v[0]; break;
                 case "vdpqr": BOARD_MD.VdpQuantumReads = v[0] != 0; break;
                 case "vdpqw": BOARD_MD.VdpQuantumWrites = v[0] != 0; break;
+                case "vdpqphase": BOARD_MD.VdpQuantumPhase = v[0]; break;
+                case "refreshskipvdp": BOARD_MD.RefreshSkipVdp = v[0] != 0; break;
                 case "hintackvint": MdVdp.HintAckDropsVint = v[0] != 0; break;
                 case "iplprefetch": BOARD_MD.IplAtLastPrefetch = v[0] != 0; break;
                 case "movemipl": M68k<MdBus>.MovemFreezesIpl = v[0] != 0; break;
