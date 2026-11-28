@@ -324,6 +324,7 @@ public sealed class DiskImage
         try
         {
             string path = side[..^5]; var fi = new FileInfo(path);
+            if (X86Library.IsInLibrary(path)) return;   // (the asset library is read-only: its sidecars are written by its own copy tool)
             if (!fi.Exists || fi.Length != image.LongLength) return;
             string tmp = side + ".tmp" + Environment.ProcessId;
             File.WriteAllLines(tmp, new[] { SidecarMagic, fi.Length.ToString(), fi.LastWriteTimeUtc.Ticks.ToString(), SampleHash(image), hash });
@@ -354,6 +355,8 @@ public sealed class DiskImage
     public static string HashOf(byte[] image) => HashTask(image).GetAwaiter().GetResult();
     /// <summary>Gives an array its identity hash from a trusted cache (nano98's composed seat drives: base + package layer, hash cached beside the layer).</summary>
     public static void SeedHash(byte[] image, string hash) { lock (_lock) _hashes.AddOrUpdate(image, Task.FromResult(hash)); }
+    /// <summary>Gives an array its whole-image "sha256:" identity (older states name disks by it) from a trusted catalogue (the asset library).</summary>
+    public static void SeedLegacyHash(byte[] image, string hash) { lock (_lock) _legacy.AddOrUpdate(image, Task.FromResult(hash)); }
 
     /// <summary>The image's hash in the form <paramref name="like"/> is written in ("p256:" now, "sha256:" in older states).</summary>
     private static string HashLike(byte[] image, string like) => like.StartsWith("sha256:", StringComparison.Ordinal) ? LegacyHashOf(image) : HashOf(image);

@@ -41,6 +41,7 @@ namespace BrokenNes.Windows
         {
             NesEmulator.Systems.Consoles.WideMessEnabled = true;   // the WideMess console (docs/projects/widemess-spec.md): the desktop app offers it; Lite and the plugin do from its milestone 7
             NesEmulator.Systems.Consoles.X86Enabled = true;        // the x86 console (P3, docs/projects/next-pool-plans.md): a DOS PC booting a disk image; the desktop app only
+            NesEmulator.X86.X86Library.Install();                   // an x86 state whose disks are not open finds them in the asset library by hash (BROKENNES_LIBRARY; no catalogue = no change)
             NesEmulator.N64.N64Host.Register();          // the Nintendo 64 (cor64, cer64plus)
 
             // `--install-vst`: put the FL Studio plugin where FL finds it and stop. No console, no diagnostics, no emulator.

@@ -76,9 +76,9 @@ public sealed class PcSession : IConsoleSession
         _m.Opl.Enabled = true;
         InsertDisk(image);   // the base: never written (DiskImage is copy-on-write), so no copy
         // a second hard disk (X86-02: StarCraft's 1.2 GB install does not fit next to Win98 on a 1 GB C:): BROKENNES_X86_HDD2 = an image (primary slave)
-        if (!_floppy && Environment.GetEnvironmentVariable("BROKENNES_X86_HDD2") is { Length: > 0 } hdd2 && File.Exists(hdd2) && _m.Ata != null) _m.Hdd[1] = new DiskImage(DiskImage.ReadImageFile(hdd2), false);
+        if (!_floppy && Environment.GetEnvironmentVariable("BROKENNES_X86_HDD2") is { Length: > 0 } hdd2r && LibPath(hdd2r) is string hdd2 && File.Exists(hdd2) && _m.Ata != null) _m.Hdd[1] = new DiskImage(DiskImage.ReadImageFile(hdd2), false);
         // the CD drive's disc (X86-02): BROKENNES_X86_CD = an .iso, .cue or .bin (IDE machines; read from the file, never written)
-        if (Environment.GetEnvironmentVariable("BROKENNES_X86_CD") is { Length: > 0 } cdPath && File.Exists(cdPath)) InsertCd(CdImage.Open(cdPath));
+        if (Environment.GetEnvironmentVariable("BROKENNES_X86_CD") is { Length: > 0 } cdPathR && LibPath(cdPathR) is string cdPath && File.Exists(cdPath)) InsertCd(CdImage.Open(cdPath));
         if (seat != null)
         {
             Seat = seat;
@@ -303,7 +303,9 @@ public sealed class PcSession : IConsoleSession
         _snapPending = false;
         try
         {
-            string dir = Seat!.V2 ? Seat.WarmDir : Seat.ResumeDir, n = Seat.V2 ? "warm" : "resume"; Directory.CreateDirectory(dir);
+            string dir = Seat!.V2 ? Seat.WarmDir : Seat.ResumeDir, n = Seat.V2 ? "warm" : "resume";
+            if (X86Library.IsInLibrary(dir)) { System.Console.WriteLine($"[nano98] resume snapshot not saved: {dir} is inside the asset library (read-only); set BROKENNES_N98_WARMDIR to a run folder"); _resumeKey = null; return; }
+            Directory.CreateDirectory(dir);
             string tmp = Path.Combine(dir, n + ".bin.tmp" + Environment.ProcessId);
             if (Seat.V2) _stateId = WarmStateId;
             try { File.WriteAllBytes(tmp, SaveState()); } finally { _stateId = null; }
@@ -315,13 +317,20 @@ public sealed class PcSession : IConsoleSession
         _resumeKey = null;
     }
     // BROKENNES_X86_MACHINESTATE: start from a machine state saved by the Workshop's x86boot ({save:PATH}) on the same disks (X86-02: StarCraft's menu); used once
+    /// <summary>An env-var path that may be a "lib:&lt;id&gt;" (X86Library); null (with a message) when the id does not resolve.</summary>
+    private static string? LibPath(string p)
+    {
+        try { return X86Library.Resolve(p); }
+        catch (Exception e) when (e is FileNotFoundException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { System.Console.WriteLine($"x86: {e.Message}"); return null; }
+    }
+
     private void FirstPowerOn()
     {
         _m.PowerOn(); _powered = true; _seatPicture = false; _seatBlank = 10; _seatOffSent = false; _seatFrames = 0; _seatCrashSent = false; SeatStatus = null;
         _seatFilesClean = false;
         if (Seat != null) _m.Command = Seat.CommandWith(withFiles: Disk.OverlaySectors == 0 && (_m.Hdd[1]?.OverlaySectors ?? 0) == 0);   // (a sector layer from an unclean end already holds newer saves)
         if (SeatResume()) return;
-        if (!_stateHookUsed && Environment.GetEnvironmentVariable("BROKENNES_X86_MACHINESTATE") is { Length: > 0 } ms && File.Exists(ms))
+        if (!_stateHookUsed && Environment.GetEnvironmentVariable("BROKENNES_X86_MACHINESTATE") is { Length: > 0 } msr && LibPath(msr) is string ms && File.Exists(ms))
         {
             _stateHookUsed = true;
             try { _m.LoadState(File.ReadAllBytes(ms)); }

@@ -67,6 +67,8 @@ internal static class X86BootCli
 
     public static int Boot(string[] args)
     {
+        try { args = LibraryArgs(args); }
+        catch (Exception e) when (e is FileNotFoundException or UnauthorizedAccessException or IOException or System.Text.Json.JsonException) { Console.WriteLine("x86boot: " + e.Message); return 1; }
         if (args.Contains("--allocs")) _allocs = new AllocListener();
         if (Environment.GetEnvironmentVariable("X86_GCLAT") != "0") System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
         var cfg = Arg(args, "--machine") is string mp ? PcConfig.Preset(mp) : PcConfig.Default;
@@ -762,9 +764,9 @@ internal static class X86BootCli
                 string tok = text[(ci + 1)..ce].ToLowerInvariant(); ci = ce;
                 if (tok.StartsWith("m:")) { var mv = tok[2..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), mv.Length > 2 ? int.Parse(mv[2]) : 0); Frame(m); Frame(m); continue; }   // {m:dx,dy[,buttons]}: the PS/2 mouse
                 if (tok.StartsWith("click:")) { var mv = tok[6..].Split(','); m.Kbc.MouseInput(int.Parse(mv[0]), int.Parse(mv[1]), 0); Frame(m); Frame(m); m.Kbc.MouseInput(0, 0, 1); Frame(m); Frame(m); m.Kbc.MouseInput(0, 0, 0); Frame(m); Frame(m); continue; }   // {click:dx,dy}: move then left click
-                if (tok.StartsWith("save:")) { File.WriteAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5), m.SaveState()); _wavMark = _wav?.Length ?? 0; continue; }   // {save:PATH}: a savestate right here (the run goes on; --wav also writes the sound from here on as FILE.after.wav)
-                if (tok.StartsWith("cd:")) { var cd = CdImage.Open(text.Substring(ci - tok.Length + 3, tok.Length - 3)); m.Cd = cd; if (m.Ata != null) { m.Ata.Secondary.Cd[0] = cd; m.Ata.Secondary.MediaChanged(0); } continue; }   // {cd:PATH}: change the disc (the drive reports the media change)
-                if (tok.StartsWith("load:")) { var lw = System.Diagnostics.Stopwatch.StartNew(); m.LoadState(File.ReadAllBytes(text.Substring(ci - tok.Length + 5, tok.Length - 5))); Console.WriteLine($"x86boot: {{load}} (warm, same process) {lw.Elapsed.TotalMilliseconds:F0} ms"); continue; }   // {load:PATH}: load a savestate right here, in this process (the run goes on from it)
+                if (tok.StartsWith("save:")) { string svp = text.Substring(ci - tok.Length + 5, tok.Length - 5); X86Library.GuardWrite(svp, "save a state to"); File.WriteAllBytes(svp, m.SaveState()); _wavMark = _wav?.Length ?? 0; continue; }   // {save:PATH}: a savestate right here (the run goes on; --wav also writes the sound from here on as FILE.after.wav)
+                if (tok.StartsWith("cd:")) { var cd = CdImage.Open(X86Library.Resolve(text.Substring(ci - tok.Length + 3, tok.Length - 3))); m.Cd = cd; if (m.Ata != null) { m.Ata.Secondary.Cd[0] = cd; m.Ata.Secondary.MediaChanged(0); } continue; }   // {cd:PATH}: change the disc (the drive reports the media change)
+                if (tok.StartsWith("load:")) { var lw = System.Diagnostics.Stopwatch.StartNew(); m.LoadState(File.ReadAllBytes(X86Library.Resolve(text.Substring(ci - tok.Length + 5, tok.Length - 5)))); Console.WriteLine($"x86boot: {{load}} (warm, same process) {lw.Elapsed.TotalMilliseconds:F0} ms"); continue; }   // {load:PATH}: load a savestate right here, in this process (the run goes on from it)
                 if (tok.StartsWith("until:")) { var ua = tok[6..].Split(','); var uc = ua[0].Split(">="); uint uad = Convert.ToUInt32(uc[0], 16); long uv = long.Parse(uc[1]); int umax = ua.Length > 1 ? int.Parse(ua[1]) : 100000, uw = 0; while (uw < umax && LinDword(m, uad) is long cur && (cur < 0 || cur < uv)) { Frame(m); uw++; } Console.WriteLine($"x86boot: {{until}} {uad:X8}>={uv} after {uw} frames (value {LinDword(m, uad)})"); continue; }   // {until:HEXLIN>=N[,MAX]}: run frames until the guest dword (current page tables) reaches N (scripted bots: wait for minerals)
                 if (tok.StartsWith("peek:")) { foreach (var pa in tok[5..].Split(',')) { uint pad = Convert.ToUInt32(pa, 16); Console.WriteLine($"x86boot: peek {pad:X8} = {LinDword(m, pad)}"); } continue; }   // {peek:HEXLIN[,HEXLIN...]}: print guest dwords
                 if (tok.StartsWith("wait:")) { int wn = int.Parse(tok[5..]); for (int q = 0; q < wn; q++) Frame(m); continue; }
@@ -866,6 +868,43 @@ internal static class X86BootCli
     /// <summary>A guest dword at a linear address (current page tables), -1 when not mapped.</summary>
     public static long LinDword(PcMachine m, uint la) { long v = 0; for (int i = 3; i >= 0; i--) { uint p = LinPhys(m, la + (uint)i); if (p == 0xffffffff) return -1; v = (v << 8) | m.Phys8(p); } return v; }
     public static string LinBytes(PcMachine m, uint la, int n) => string.Join(" ", Enumerable.Range(0, n).Select(i => { uint p = LinPhys(m, la + (uint)i); return p == 0xffffffff ? "??" : m.Phys8(p).ToString("X2"); }));
+
+    /// <summary>The asset library (X86Library): every disk / CD / state argument may be "lib:&lt;id&gt;" (resolved to its file; disks stay copy-on-write in
+    /// memory, the library file is only read); --loadstate lib:&lt;id&gt; without --cd mounts the CD the catalogue names for that state; a state's disks
+    /// are found by their hash in the catalogue when no --hdd gives them. Every output argument is refused when it points inside the library.</summary>
+    private static readonly string[] LibInputs = { "--hdd", "--hdd2", "--cd", "--floppy", "--loadstate", "--pair", "--pair-hdd" };
+    private static readonly string[] LibOutputs = { "--save", "--save2", "--savestate", "--pair-save", "--shot", "--pair-shot", "--wav", "--cdwav", "--mp4", "--niclog" };
+    private static string[] LibraryArgs(string[] args)
+    {
+        X86Library.Install();
+        var a = (string[])args.Clone();
+        string? stateId = null;
+        for (int i = 0; i + 1 < a.Length; i++)
+        {
+            string k = a[i];
+            if (Array.Exists(LibOutputs, o => o.Equals(k, StringComparison.OrdinalIgnoreCase))) X86Library.GuardWrite(a[i + 1], k + " to");
+            else if (k.Equals("--get", StringComparison.OrdinalIgnoreCase) && a[i + 1].IndexOf('=') is int gi and >= 0) X86Library.GuardWrite(a[i + 1][(gi + 1)..], "--get to");
+            else if (Array.Exists(LibInputs, o => o.Equals(k, StringComparison.OrdinalIgnoreCase)) && X86Library.IsLibId(a[i + 1]))
+            {
+                if (k.Equals("--loadstate", StringComparison.OrdinalIgnoreCase)) stateId ??= a[i + 1];
+                string r = X86Library.Resolve(a[i + 1]);
+                Console.WriteLine($"x86boot: {k} {a[i + 1]} -> {r}");
+                a[i + 1] = r; i++;
+            }
+        }
+        // {save:PATH} in --type / --step / --stepsfile: refused before the run starts, not after minutes of frames
+        var texts = Args(a, "--type").Concat(Args(a, "--step")).ToList();
+        if (Arg(a, "--stepsfile") is string sf && File.Exists(sf)) texts.AddRange(File.ReadAllLines(sf));
+        foreach (var t in texts)
+            foreach (System.Text.RegularExpressions.Match mt in System.Text.RegularExpressions.Regex.Matches(t, @"\{save:([^}]*)\}", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                X86Library.GuardWrite(mt.Groups[1].Value, "save a state ({save:}) to");
+        if (stateId != null && Arg(a, "--cd") == null && X86Library.CdFor(stateId) is string cd)
+        {
+            Console.WriteLine($"x86boot: --cd {cd} (the CD the library names for {stateId})");
+            a = a.Concat(new[] { "--cd", cd }).ToArray();
+        }
+        return a;
+    }
 
     private static string? Arg(string[] a, string k) { int i = Array.FindIndex(a, x => x.Equals(k, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
     private static IEnumerable<string> Args(string[] a, string k) { for (int i = 0; i + 1 < a.Length; i++) if (a[i].Equals(k, StringComparison.OrdinalIgnoreCase)) yield return a[i + 1]; }
