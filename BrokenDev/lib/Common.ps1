@@ -12,7 +12,7 @@ $script:BdRoot    = Split-Path -Parent $script:BdLibDir          # ...\BrokenDev
 $script:BdRepo    = Split-Path -Parent $script:BdRoot            # repository root
 
 # The default working folder the user chose for this machine. Override with the BROKENDEV_HOME environment variable.
-$script:BdDefaultHome = 'T:\BrokenDev\env'
+$script:BdDefaultHome = 'C:\BrokenDev\env'   # 2026-11-27: was T:\BrokenDev\env (NAS dead); move back when the new NAS is up
 
 function Get-BdRoot     { $script:BdRoot }
 function Get-BdRepoRoot { $script:BdRepo }
