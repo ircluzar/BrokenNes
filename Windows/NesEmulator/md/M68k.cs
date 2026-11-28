@@ -265,7 +265,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
     /// <summary>The instruction that is running takes its interrupt sample from the start of the instruction (the board hands over that level), not at its last bus cycle. Set by the jumps <see cref="BranchIplMask"/> names, cleared when the instruction ends.</summary>
     public bool IplFromStart;
     /// <summary>
-    /// Which jumps that are taken sample the interrupt lines where they start rather than at their last bus cycle: 1 = BRA/Bcc/DBcc/BSR, 2 = JMP/JSR, 4 = RTS/RTR/RTE (7, all of them, by default). BlastEm's histograms (the share of
+    /// Which jumps that are taken sample the interrupt lines where they start rather than at their last bus cycle: 1 = BRA/Bcc/DBcc/BSR, 2 = JMP/JSR, 4 = RTS/RTR/RTE (7, all of them, by default); 8 = also a Bcc that is not taken (experiment, off). BlastEm's histograms (the share of
     /// interrupts that come back to the instruction before a BRA.S, loops of 19 instruction kinds) put the sample of a taken branch about 6 cycles before ours: for NOP + BRA.S the oracle gives 0.789 (the old rule 0.286, this one
     /// 0.714), for JSR + RTS + BRA.S the three returns 0.434 / 0.358 / 0.208 (this rule 0.436 / 0.346 / 0.218). The distance to the oracle over the 17 loops measured fell from 4.83 to 1.75. 0 = the old rule.
     /// </summary>

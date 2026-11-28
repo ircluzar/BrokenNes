@@ -467,6 +467,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
         int displacement = op & 0xFF;
         if (!Condition((op >> 8) & 15))
         {
+            if ((BranchIplMask & 8) != 0) IplFromStart = true;     // experiment (off by default): a Bcc that is NOT taken samples at its start too (Titan Overdrive 1, sega-track-b4a.md section 5)
             Idle(4);
             if (displacement == 0) Prefetch();
         }
