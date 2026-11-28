@@ -8,7 +8,7 @@ using NesEmulator.X86;
 namespace BrokenNes.Workshop.X86;
 
 /// <summary>
-/// <c>--x86session img [--frames N] [--shot png] [--cpu I386|I386_D074] [--ppu VGA|BOCHS20|DOSBOX072|PCEM_CGA] [--swapat F] [--wav out.wav] [--opllog out.txt] [--ips N]</c>: the x86 console as the apps run it (<see cref="PcSession"/> through <see cref="ConsoleSessions.Create"/>): ROM detection of the image, the core menus, N frames,
+/// <c>--x86session img [--frames N] [--shot png] [--appshot png] [--apu ID] [--machine KEY] [--cpu I386|I386_D074] [--ppu VGA|BOCHS20|DOSBOX072|PCEM_CGA] [--swapat F] [--wav out.wav] [--opllog out.txt] [--ips N]</c>: the x86 console as the apps run it (<see cref="PcSession"/> through <see cref="ConsoleSessions.Create"/>): ROM detection of the image, the core menus, N frames,
 /// the picture, a save state round trip (the same frames after a load give the same pictures), and the disk as the battery (a write shows in <c>ExportSave</c>). Exit code 0 = all passed.
 /// </summary>
 internal static class X86SessionCli
@@ -39,7 +39,7 @@ internal static class X86SessionCli
             var o = CoreCatalog.Options(ConsoleKind.Pc, slot);
             Check(slot == CoreSlot.Apu ? o.Count >= 1 && o[0].Id == CoreCatalog.Default(ConsoleKind.Pc, slot) : o.Count == (slot == CoreSlot.Cpu ? 2 : 1 + VgaPictures.Chips.Length), $"{slot} menu: {string.Join(" | ", o.Select(x => $"{x.Id} = {x.Label} [{x.Section}]"))}");
         }
-        using var s = ConsoleSessions.Create(ConsoleKind.Pc, data, Array.IndexOf(args, "--cpu") is int ci && ci > 0 && ci + 1 < args.Length ? args[ci + 1] : CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Cpu), Arg(args, "--ppu") ?? CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Ppu), CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Apu), null, name, pcMachine: Arg(args, "--machine") ?? "classic");
+        using var s = ConsoleSessions.Create(ConsoleKind.Pc, data, Array.IndexOf(args, "--cpu") is int ci && ci > 0 && ci + 1 < args.Length ? args[ci + 1] : CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Cpu), Arg(args, "--ppu") ?? CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Ppu), Arg(args, "--apu") ?? CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Apu), null, name, pcMachine: Arg(args, "--machine") ?? "classic");
         Console.WriteLine($"  session: {s.Description}, {s.FramesPerSecond:F2} fps");
         var save0 = s.ExportSave();
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -78,6 +78,9 @@ internal static class X86SessionCli
         Check(s.Frame.Take(s.FrameWidth * s.FrameHeight).Distinct().Count() > 1, "the picture is not blank");
         int si = Array.IndexOf(args, "--shot");
         if (si > 0 && si + 1 < args.Length && s is PcSession ps) { X86Shots.SavePng(ps.Machine.Vga, args[si + 1]); Console.WriteLine($"  picture: {args[si + 1]}"); }
+        // --appshot PNG: the session's own frame (what the desktop app shows, before its channel swap), not the card's picture
+        if (Arg(args, "--appshot") is string aps) { var pic = new NesEmulator.Debugging.Capture.BugPicture(); pic.FromArgb(s.Frame, s.FrameWidth, s.FrameHeight); File.WriteAllBytes(aps, NesEmulator.Debugging.Capture.BugMedia.Png(pic.Pixels, pic.Width, pic.Height)); Console.WriteLine($"  app picture: {aps} ({s.FrameWidth}x{s.FrameHeight}, {s.Frame.Take(s.FrameWidth * s.FrameHeight).Distinct().Count()} colours, stopped: {(s is PcSession pz ? pz.Machine.Stopped ?? "no" : "?")})"); }
+        if (args.Contains("--shotonly")) return fail == 0 ? 0 : 1;   // (a Win98 state: skip the round trips and the FreeDOS input-script check)
         Check(Math.Abs(samples / 2.0 - frames * 44100 / s.FramesPerSecond) < 2000, $"silence at the right rate ({samples / 2} stereo samples)");
         var st = s.SaveState();
         string Run100() => RunN(s);
@@ -97,7 +100,7 @@ internal static class X86SessionCli
         Check(stA.AsSpan().SequenceEqual(stB), "save state round trip: the state after those frames is byte for byte the same");
         // copy-on-write disks: the .bnstate carries the disk's diff from the opened image, not the image; a NEW session on a fresh read of the same file reloads it exactly
         Console.WriteLine($"  state {st.Length:N0} bytes for a {data.Length:N0}-byte disk image");
-        using (var s2 = ConsoleSessions.Create(ConsoleKind.Pc, File.ReadAllBytes(img), Array.IndexOf(args, "--cpu") is int ci2 && ci2 > 0 && ci2 + 1 < args.Length ? args[ci2 + 1] : CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Cpu), Arg(args, "--ppu") ?? CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Ppu), CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Apu), null, name, pcMachine: Arg(args, "--machine") ?? "classic"))
+        using (var s2 = ConsoleSessions.Create(ConsoleKind.Pc, File.ReadAllBytes(img), Array.IndexOf(args, "--cpu") is int ci2 && ci2 > 0 && ci2 + 1 < args.Length ? args[ci2 + 1] : CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Cpu), Arg(args, "--ppu") ?? CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Ppu), Arg(args, "--apu") ?? CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Apu), null, name, pcMachine: Arg(args, "--machine") ?? "classic"))
         {
             s2.RunFrame();
             s2.LoadState(st);
