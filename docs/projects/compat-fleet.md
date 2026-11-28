@@ -1,5 +1,7 @@
 # Compat fleet: worker install, job queue, operator guide
 
+> **2026-11-27 NAS repoint.** The NAS (T:, X:) is dead. Wherever this doc says `T:\BrokenDev\CompatQueue`, `CompatFleet` or `CompatCatalog`, the scripts now default to `C:\BrokenNes-work\compat-fleet\{queue,fleet,catalog-inbox}` (override with env `BROKENNES_COMPAT_HOME` or `-QueueRoot/-FleetRoot/-CatalogInbox`; switching to the new NAS = set that one variable). `-EmulatorHome` follows `BROKENDEV_HOME` (`C:\BrokenDev\env`). `install-worker.ps1` no longer maps drives unless `-MapShares`. **Not working without a share:** a worker on another PC cannot read the fleet/queue folders on this PC; no share is created. Either use the fleet's own sync (x86sync.py style) or wait for the new NAS. A box that cannot see `FleetRoot`/`QueueRoot` now stops with a message. ROM paths `X:\EMULATION\...` (job inputs, test-dryrun.ps1) still need a ROM drive at that letter; not repointed.
+
 P0 scope item 6 of the Great Compatibility Catalog ([compat-catalog-plan.md](compat-catalog-plan.md)): one script installs or
 updates a worker box; a job queue on the shares hands the boxes games to check; results flow into the catalog.
 Code: `tools/compat-fleet/`.

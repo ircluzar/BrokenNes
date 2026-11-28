@@ -1,6 +1,6 @@
 # CompatQueue.psm1 - the Great Compatibility Catalog job queue (P0 scope item 6).
 #
-# A file-based queue on a folder this PC shares to the worker boxes (default T:\BrokenDev\CompatQueue,
+# A file-based queue on a folder this PC shares to the worker boxes (default C:\BrokenNes-work\compat-fleet\queue since the NAS died 2026-11,
 # shared as \\<this PC>\CompatQueue). Plain files over SMB on purpose: no server process to keep alive,
 # every state is visible in Explorer, and a claim is an atomic rename (two workers racing for one job:
 # exactly one Move-Item wins, the other gets "file not found" and tries the next job).

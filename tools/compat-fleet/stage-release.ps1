@@ -1,6 +1,6 @@
 # stage-release.ps1 - builds the pinned worker bundle onto the fleet share (runs on THIS PC).
 #
-#   stage-release.ps1 [-FleetRoot T:\BrokenDev\CompatFleet] [-Repo <BrokenNes checkout>] [-Version <name>] [-Pin] [-SkipEmulators]
+#   stage-release.ps1 [-FleetRoot <dir>]  (default $env:BROKENNES_COMPAT_HOMEleet, else C:\BrokenNes-work\compat-fleetleet) [-Repo <BrokenNes checkout>] [-Version <name>] [-Pin] [-SkipEmulators]
 #
 # Lays out:
 #   <FleetRoot>\releases\<version>\workshop\   BrokenNes.Workshop.exe, self-contained win-x64 (no .NET install needed on a box)
@@ -12,10 +12,10 @@
 #   <FleetRoot>\current.json                   with -Pin: the version every install/update takes
 # Version defaults to the repo's short commit (+"-dirty" when the tree has changes): a box always knows exactly what it runs.
 param(
-    [string]$FleetRoot = 'T:\BrokenDev\CompatFleet',
+    [string]$FleetRoot = (Join-Path $(if ($env:BROKENNES_COMPAT_HOME) { $env:BROKENNES_COMPAT_HOME } else { 'C:\BrokenNes-work\compat-fleet' }) 'fleet'),
     [string]$Repo = (Resolve-Path (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) '..\..')).Path,
     [string]$Version = '',
-    [string]$EmulatorHome = 'T:\BrokenDev\env\emulators',
+    [string]$EmulatorHome = $(if ($env:BROKENDEV_HOME) { Join-Path $env:BROKENDEV_HOME 'emulators' } else { 'C:\BrokenDev\env\emulators' }),
     [switch]$Pin,
     [switch]$SkipEmulators,
     [switch]$SkipBuild          # reuse an already staged build of this version (re-copies the runner + manifest only)
