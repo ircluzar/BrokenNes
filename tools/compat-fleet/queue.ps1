@@ -1,17 +1,17 @@
 # queue.ps1 - the coordinator side of the compat queue (runs on this PC).
 #
-#   queue.ps1 init     [-QueueRoot T:\BrokenDev\CompatQueue]
+#   queue.ps1 init     [-QueueRoot <dir>]   (default $env:BROKENNES_COMPAT_HOME\queue, else C:\BrokenNes-work\compat-fleet\queue)
 #   queue.ps1 enqueue  -Console nes -Tier T1 -RomDir "X:\EMULATION\Nintendo Entertainment System" [-Filter *.nes] [-Limit 50] [-Priority 5]
 #   queue.ps1 enqueue  -Console snes -Tier T1 -RomList roms.txt          (one path per line)
 #   queue.ps1 status                                                      jobs per state + every box's heartbeat age
 #   queue.ps1 reap                                                        stale leases back to pending / failed
-#   queue.ps1 ingest   [-CatalogInbox T:\BrokenDev\CompatCatalog\inbox]   validated results -> the catalog's inbox
+#   queue.ps1 ingest   [-CatalogInbox <dir>]   validated results -> the catalog's inbox
 #   queue.ps1 stop-box -Box BOX3                                          ask one box to finish its jobs and exit
 #   queue.ps1 retry-failed                                                failed jobs back to pending (attempts reset)
 #   queue.ps1 serve    [-IntervalSec 60]                                  loop: reap + ingest, for leaving running
 param(
     [Parameter(Position = 0, Mandatory)][ValidateSet('init', 'enqueue', 'status', 'reap', 'ingest', 'stop-box', 'retry-failed', 'serve')][string]$Command,
-    [string]$QueueRoot = 'T:\BrokenDev\CompatQueue',
+    [string]$QueueRoot = (Join-Path $(if ($env:BROKENNES_COMPAT_HOME) { $env:BROKENNES_COMPAT_HOME } else { 'C:\BrokenNes-work\compat-fleet' }) 'queue'),
     [string]$Console = '',
     [ValidateSet('T1', 'T2', 'T3')][string]$Tier = 'T1',
     [string]$RomDir = '',
@@ -20,12 +20,14 @@ param(
     [int]$Limit = 0,
     [int]$Priority = 5,
     [switch]$Force,
-    [string]$CatalogInbox = 'T:\BrokenDev\CompatCatalog\inbox',
+    [string]$CatalogInbox = (Join-Path $(if ($env:BROKENNES_COMPAT_HOME) { $env:BROKENNES_COMPAT_HOME } else { 'C:\BrokenNes-work\compat-fleet' }) 'catalog-inbox'),
     [string]$Box = '',
     [int]$IntervalSec = 60
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'CompatQueue.psm1') -Force -DisableNameChecking
+
+if ($Command -ne 'init' -and -not (Test-Path (Join-Path $QueueRoot 'queue.json'))) { throw "no queue at $QueueRoot. Run 'queue.ps1 init' first, or point -QueueRoot / BROKENNES_COMPAT_HOME at the real queue (the old T: NAS path is gone)." }
 
 $romExt = @{ nes = '.nes', '.unf', '.fds'; snes = '.sfc', '.smc'; gb = '.gb'; gbc = '.gbc', '.gb'; sms = '.sms', '.7z'; gg = '.gg', '.7z'; md = '.md', '.gen', '.bin', '.smd' }
 
