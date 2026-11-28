@@ -20,6 +20,9 @@ BODIES = {
     'rom': ['move.b (a6),d5', 'move.b 1(a6),d1'],
     'vdpw': ['move.w d0,(a3)', 'move.w d0,(a3)', 'move.w d0,(a3)', 'move.w d0,(a3)'],              # 16 data port word writes a lap (the blanked VRAM clear loops of games)
     'vdpwl': ['move.l d0,(a3)', 'move.l d0,(a3)', 'move.l d0,(a3)', 'move.l d0,(a3)'],            # 16 long writes (Strider's loop is move.l d1,(a1) then dbf)
+    'stat': ['btst #3,($C00005).l'],            # Titan Overdrive 1's VBlank poll (sega-track-b4a.md section 5): 16 status reads a lap
+    'lsrw': ['lsr.w ($FF10).w'],                # its countdown, a RAM read-modify-write
+    'nop': ['nop'],
     'alu': ['andi.w #$ff,d1', 'add.w d1,d1', 'ext.w d0', 'cmpi.w #9,d6', 'andi.w #$f,d1', 'andi.w #$f0,d0', 'or.b d1,d4', 'subq.w #1,d3', 'move.w d6,d7', 'move.w d1,d0'],
 }
 

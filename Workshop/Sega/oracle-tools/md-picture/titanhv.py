@@ -4,6 +4,7 @@ The patched ROM's vector 30 points to a stub appended at $3C3800 that stores (HV
 `jmp $FF0102` (the demo's own RAM vector). Both emulators run the same patched ROM, so the stub's extra cycles do not bias the comparison.
 
     python titanhv.py build ROM OUT.bin                  # write the patched ROM
+    python titanhv.py build2 PATCHED.bin OUT2.bin        # add a second ring: (HV, d5) where the main loop arrives at $399DEE (256 entries at $FF1900, index $FF1084)
     python titanhv.py cmp BLASTEM.state OURS.ram         # entries in order (aligned at the first d5 = $D4), ** where the entry line differs
 Ours: --md-run --rom OUT.bin --frames 1250 --region pal --ram-out OURS.ram. BlastEm: bl.ps1 script w24000,pause,snap (PAL, about 1150 frames).
 Entries are compared in order, not by d5: the main loop sometimes increments d5 after the frame's VINT on one emulator and before it on the other."""
@@ -20,6 +21,19 @@ def build(src, dst):
     assert len(d) <= AT
     d += bytes(AT - len(d)) + STUB + bytes(0x40 - len(STUB))
     struct.pack_into('>I', d, 30 * 4, AT)
+    open(dst, 'wb').write(d)
+
+
+STUB2_AT = 0x3C3840
+STUB2 = bytes.fromhex('48E78080' '303900FF1084' '41F900FF1900' '31B900C000080000' '31850002' '5840' '024003FC' '33C000FF1084' '4CDF0101' '0C4500D2' '6E06' '4EF900399DF6' '4EF900399DFC')
+# as STUB into the second ring, then the two instructions it replaced at $399DEE (cmpi.w #$D2,d5; bgt.w $399DFC) and back
+
+
+def build2(src, dst):
+    d = bytearray(open(src, 'rb').read())
+    assert len(d) == STUB2_AT and d[0x399DEE:0x399DF6].hex() == '0c4500d26e000008'
+    d += STUB2 + bytes(0x40 - len(STUB2))
+    d[0x399DEE:0x399DF6] = bytes.fromhex('4EF9003C3840' '4E71')       # jmp stub2; nop
     open(dst, 'wb').write(d)
 
 
@@ -43,4 +57,4 @@ def cmp(state, ours, start=0xD4):
 
 
 if __name__ == '__main__':
-    {'build': build, 'cmp': cmp}[sys.argv[1]](*sys.argv[2:])
+    {'build': build, 'build2': build2, 'cmp': cmp}[sys.argv[1]](*sys.argv[2:])
