@@ -105,8 +105,9 @@ internal sealed class DebugHost : IDisposable
         {
             var on = new System.Collections.Generic.List<int>();
             foreach (var bp in Dbg.Breakpoints) if (bp.Enabled) { on.Add(bp.Id); Dbg.SetEnabled(bp.Id, false); }
+            Dbg.HookBreaksOff = true;   // a break write hook lets its writes land for this frame too
             try { Runner.Run(1); }
-            finally { foreach (var id in on) Dbg.SetEnabled(id, true); }
+            finally { Dbg.HookBreaksOff = false; foreach (var id in on) Dbg.SetEnabled(id, true); }
         }
         if (Dbg.IsParked) throw new InvalidOperationException("the machine stays parked; run some frames first");
     }

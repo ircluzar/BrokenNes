@@ -90,6 +90,8 @@ public sealed class SmsDebugMachine : DebugMachine, ISegaInstructionHook, ISegaB
     void ISegaBusDebugTap.OnRead(uint address, byte value) => Debugger?.OnAccess(cpu, address, value, false, AccessSource.Cpu, -1);
     void ISegaBusDebugTap.OnWrite(uint address, byte value) => Debugger?.OnAccess(cpu, address, value, true, AccessSource.Cpu, -1);
     void ISegaBusDebugTap.OnWriteDone(uint address, byte value) => Debugger?.OnWriteDone(cpu, address, value);
+    bool ISegaBusDebugTap.FilterWrite(uint address, ref byte value) { var d = Debugger; return d == null || d.FilterWrite(cpu, address, ref value); }
+    public override bool SupportsWriteHooks(DebugCpu c) => ReferenceEquals(c, cpu);   // memory writes (not the I/O ports)
     void ISegaBusDebugTap.OnDmaRead(uint address, byte value) { }
 
     void ISegaBusDebugTap.OnPort(ushort port, byte value, bool write)
@@ -409,6 +411,7 @@ public sealed class MdDebugMachine : DebugMachine
     public override long Cycle => board.MasterClock;
 
     internal MdSoundUnit? Unit => board.Sound as MdSoundUnit;
+    public override bool SupportsWriteHooks(DebugCpu c) => ReferenceEquals(c, M68) || (Z != null && ReferenceEquals(c, Z));   // memory writes (not the Z80's I/O ports)
 
     public override void ApplyHooks(bool[] exec, bool[] memory)
     {
@@ -434,6 +437,7 @@ public sealed class MdDebugMachine : DebugMachine
         public void OnRead(uint address, byte value) => Access(address, value, false);
         public void OnWrite(uint address, byte value) => Access(address, value, true);
         public void OnWriteDone(uint address, byte value) => m.Debugger?.OnWriteDone(m.M68, address, value);
+        public bool FilterWrite(uint address, ref byte value) { var d = m.Debugger; return d == null || d.FilterWrite(m.M68, address, ref value); }
         public void OnPort(ushort port, byte value, bool write) { }
         public void OnDmaRead(uint address, byte value) => m.Debugger?.OnAccess(m.M68, address, value, false, AccessSource.Dma, -1);
 
@@ -456,6 +460,7 @@ public sealed class MdDebugMachine : DebugMachine
         public void OnRead(uint address, byte value) => Access(address, value, false);
         public void OnWrite(uint address, byte value) => Access(address, value, true);
         public void OnWriteDone(uint address, byte value) { if (m.Z != null) m.Debugger?.OnWriteDone(m.Z, address, value); }
+        public bool FilterWrite(uint address, ref byte value) { var d = m.Debugger; return d == null || m.Z == null || d.FilterWrite(m.Z, address, ref value); }
         public void OnDmaRead(uint address, byte value) { }
         public void OnPort(ushort port, byte value, bool write)
         {

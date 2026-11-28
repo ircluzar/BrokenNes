@@ -118,6 +118,7 @@ public sealed class SnesDebugMachine : DebugMachine, ISnesInstructionHook, ISnes
         public void Write(uint address, byte value)
         {
             var d = m.Debugger;
+            if (d != null && !d.FilterWrite(m.main, address & 0xFFFFFF, ref value)) return;   // a write hook dropped it
             d?.OnAccess(m.main, address & 0xFFFFFF, value, true, AccessSource.Cpu, -1);
             m.board.Cpu.DebugRealBus.Write(address, value);
             d?.OnWriteDone(m.main, address & 0xFFFFFF, value);
@@ -140,6 +141,8 @@ public sealed class SnesDebugMachine : DebugMachine, ISnesInstructionHook, ISnes
         list.Add(new FuncDomain("BUS", "The 65816's 24-bit address space, read without side effects (registers read as the open bus)", DomainKind.Registers, 0x1000000, a => main.Peek((uint)a), (a, v) => main.Poke((uint)a, v)));
         return list;
     }
+
+    public override bool SupportsWriteHooks(DebugCpu c) => ReferenceEquals(c, main);   // the SPC700's writes are not tapped (predicted)
 
     public override IEnumerable<string> Limitations
     {

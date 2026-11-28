@@ -497,9 +497,16 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
         public void Write(ushort address, byte value)
         {
             var tap = U.DebugTap;
-            tap?.OnWrite(address, value);
+            if (tap != null) { WriteTapped(tap, address, value); return; }   // the debugger (null: none)
             U.Z80Write(address, value, U.z80Master, true);
-            tap?.OnWriteDone(address, value);
+        }
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private void WriteTapped(NesEmulator.Sega.ISegaBusDebugTap tap, ushort address, byte value)
+        {
+            if (!tap.FilterWrite(address, ref value)) return;   // the debugger's write hooks
+            tap.OnWrite(address, value);
+            U.Z80Write(address, value, U.z80Master, true);
+            tap.OnWriteDone(address, value);
         }
         public byte In(ushort port) { U.loopImpure = true; U.DebugTap?.OnPort(port, 0xFF, false); return 0xFF; }
         public void Out(ushort port, byte value) { U.loopImpure = true; U.DebugTap?.OnPort(port, value, true); }

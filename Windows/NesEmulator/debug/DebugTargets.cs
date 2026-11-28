@@ -182,6 +182,8 @@ public abstract class DebugMachine
     public abstract IReadOnlyList<IMemoryDomain> Domains();
     /// <summary>What this machine's debugging cannot see, said up front (e.g. a NES CPU core that reads RAM without the bus).</summary>
     public virtual IEnumerable<string> Limitations => Array.Empty<string>();
+    /// <summary>Whether this CPU's writes pass the write hooks (<see cref="Debugger.AddWriteHook"/>): its machine filters them on its write path.</summary>
+    public virtual bool SupportsWriteHooks(DebugCpu cpu) => false;
     public DebugCpu? Cpu(string id) => Cpus.FirstOrDefault(c => c.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
     public DebugCpu Main => Cpus[0];
 }

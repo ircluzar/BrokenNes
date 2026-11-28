@@ -24,7 +24,7 @@ namespace NesEmulator.Debugging;
 /// debugger attached, breaking and stepping, as without it. Whoever drives the debugger reads the machine while it is parked (or between
 /// frames); <see cref="DebugRunner"/> is the headless driver, the desktop app drives it over HTTP.</para>
 /// </summary>
-public sealed class Debugger
+public sealed partial class Debugger
 {
     public Debugger(DebugMachine machine)
     {
@@ -338,6 +338,7 @@ public sealed class Debugger
                     }
             }
             armed = na;
+            RebuildWriteHooks(cpus);
         }
         var exec = new bool[cpus.Count];
         var mem = new bool[cpus.Count];
@@ -348,7 +349,7 @@ public sealed class Debugger
             var ca = na.Cpus[i];
             bool obsSteps = false, obsMem = false;
             foreach (var o in obs) { obsSteps |= o.WantsSteps(i); obsMem |= o.WantsAccesses(i); }
-            mem[i] = ca.Read.Length + ca.Write.Length > 0 || obsMem;
+            mem[i] = ca.Read.Length + ca.Write.Length > 0 || obsMem || hookArmed[i].Length > 0;   // a write hook (Debugger.WriteHooks.cs) needs the CPU's writes
             exec[i] = mem[i] || obsSteps || ca.Exec.Length > 0 || cpus[i].State.Step != StepMode.None || trackCallStack || traceRing
                       || (traceFile != null && traceFile.CpuIndex == i) || (i == 0 && global) || (keepParked && hooked[i]);
             if (exec[i] && !hooked[i]) ResetState(cpus[i]);   // the call stack is tracked from the moment the hook is armed
@@ -373,7 +374,7 @@ public sealed class Debugger
     /// <summary>Removes every breakpoint, step, trace and hook, and lets a parked emulation go: the machine runs as if no debugger existed.</summary>
     public void Detach()
     {
-        lock (sync) { bps.Clear(); observers = Array.Empty<DebugObserver>(); }
+        lock (sync) { bps.Clear(); observers = Array.Empty<DebugObserver>(); writeHooks.Clear(); }
         pauseRequested = false; gstep = GlobalStep.None; runToFrame = -1; runToScanline = -1; runToCount = -1;
         trackCallStack = false; traceRing = false;
         StopTraceFile();

@@ -10,7 +10,7 @@ using NesEmulator.Systems;
 namespace BrokenNes.Workshop.Debug;
 
 /// <summary>
-/// <c>--debug-test [--only nes,snes,gb,wms,games] [--keep &lt;dir&gt;]</c>: the debugger's conformance suite (BrokenDev milestone D1). Small
+/// <c>--debug-test [--only nes,snes,gb,wms,sega,hooks,games] [--keep &lt;dir&gt;]</c>: the debugger's conformance suite (BrokenDev milestone D1). Small
 /// test ROMs with known behaviour per console (assembled in DebugTestRoms), each check with a negative control, then the real games when
 /// they are on this machine (VRUN NES with its .mlb, Super VRUN with its .sym; a missing one is NOT RUN, never a pass). Exit 0 when every
 /// check passes.
@@ -57,7 +57,7 @@ internal static partial class DebugTestCli
             Console.WriteLine($"wrote the debugger test ROMs to {romDir}");
             return 0;
         }
-        var only = Opt("only", "nes,snes,gb,wms,sega,games").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var only = Opt("only", "nes,snes,gb,wms,sega,hooks,games").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
         string dir = Opt("keep", Path.Combine(Path.GetTempPath(), "brokennes-debug-test-" + Environment.ProcessId));
         Directory.CreateDirectory(dir);
         var sw = Stopwatch.StartNew();
@@ -76,6 +76,7 @@ internal static partial class DebugTestCli
         Group("sega", "Game Gear (Z80)", () => MasterSystem(dir, gg: true));
         Group("sega", "Genesis (68000 + Z80)", () => Genesis(dir));
         Group("sega", "Z80 and 68000 disassemblers against the cores", () => { Z80Lengths(); M68kLengths(); });
+        Group("hooks", "Write hooks (log, break, rewrite, block, freeze)", () => WriteHooks(dir));
         Group("games", "Real Sega games", () => SegaGames());
         Group("games", "Real games", () => Games(Opt("vrun", @"C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\builds\2026-10-23_poweron\vrun_game.nes"),
                                                   Opt("supervrun", @"T:\BrokenDev\env\out\supervrun\supervrun.sfc")));

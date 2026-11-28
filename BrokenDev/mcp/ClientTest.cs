@@ -77,7 +77,7 @@ internal static partial class ClientTest
             var tools = await client.ListToolsAsync();
             var names = tools.Select(t => t.Name).ToHashSet();
             string[] want = { "open_rom", "open_project", "attach_live", "list_instances", "list_sessions", "close_session", "status", "run", "run_until", "pause", "reset", "input", "pointer",
-                "read_memory", "write_memory", "search_memory", "list_domains", "symbols", "breakpoint_add", "breakpoint_list", "breakpoint_remove", "watch", "step", "call_stack",
+                "read_memory", "write_memory", "search_memory", "list_domains", "symbols", "breakpoint_add", "breakpoint_list", "breakpoint_remove", "watch", "write_hook_add", "write_hook_list", "write_hook_remove", "step", "call_stack",
                 "registers", "trace", "trace_frame", "disassemble", "evaluate", "screenshot", "layers", "tiles", "sprites", "record_sound", "save_state", "load_state", "diff_states",
                 "checks", "profile", "brokendev", "step_back", "open_movie", "movie", "bisect", "bugs", "debug_port",
                 "timeflow_record", "timeflow_list", "timeflow_jump", "timeflow_resume", "timeflow_profile", "timeflow_profile_query", "timeflow_search", "timeflow_patch", "timeflow_verdict", "timeflow_compare", "timeflow_recheck" };
@@ -236,6 +236,41 @@ internal static partial class ClientTest
         await Call("breakpoint_remove", new { session = h1, all = true });
         var bl = await Call("breakpoint_list", new { session = h1 });
         Check("nes_breakpoints_cleared", (bl["breakpoints"] as JsonArray)?.Count == 0 && L(bl["totalHits"]) > 0, $"{(bl["breakpoints"] as JsonArray)?.Count} breakpoints, {L(bl["totalHits"])} hits so far");
+        // write hooks: break before the write lands, a state saved while held there, a rewrite with its log, a block, a freeze across a state load
+        static long Hx(JsonNode? n) => S(n) is { Length: > 1 } t && t[0] == '$' ? Convert.ToInt64(t[1..], 16) : -1;
+        var whb = await Call("write_hook_add", new { session = h1, spec = "mirror_target", action = "break" });
+        var whr = await Call("run", new { session = h1, frames = 5 });
+        var whm = await Call("read_memory", new { session = h1, domain = "RAM", address = 0x12, length = 1 });
+        Check("nes_write_hook_break_not_applied", S(whr["break"]?["reason"]) == "write-hook" && whr["break"]?["applied"]?.GetValue<bool>() == false && S(whr["break"]?["address"]) == "$0812"
+              && L(whr["break"]?["writeHook"]) == L(whb["hook"]?["id"]) && L(whm["value"]) != Hx(whr["break"]?["value"]), $"{S(whr["break"]?["text"])}; RAM $12 = {S(whm["hex"])}");
+        var whs = await Call("save_state", new { session = h1, name = "hooked" });
+        Check("nes_write_hook_state_while_held", !whs.IsError && S(whs["note"]).Contains("finished"), whs.ToString());
+        await Call("write_hook_remove", new { session = h1, all = true, clear_log = true });
+        await Call("write_hook_add", new { session = h1, spec = "$0012", action = "rewrite", and = "$0F" });
+        var whl0 = await Call("run", new { session = h1, frames = 4 });
+        var whl = await Call("write_hook_list", new { session = h1, limit = 5 });
+        var whlog = whl["log"] as JsonArray;
+        var whm2 = await Call("read_memory", new { session = h1, domain = "RAM", address = 0x12, length = 1 });
+        Check("nes_write_hook_rewrite_logged", L(whl0["writeHooks"]?["new"]) > 0 && whlog?.Count == 5 && whlog.All(r => Hx(r?["landed"]) == (Hx(r?["written"]) & 0x0F)) && L(whm2["value"]) <= 0x0F && S(whlog[0]?["pc"]) == H(na, "sta_mirror"),
+              $"{L(whl0["writeHooks"]?["new"])} new records; last: {S(whlog?[^1]?["text"])}");
+        await Call("write_hook_remove", new { session = h1, all = true });
+        var whc0 = await Call("read_memory", new { session = h1, spec = "counter" });
+        await Call("write_hook_add", new { session = h1, spec = "counter", action = "block", quiet = true });
+        await Call("run", new { session = h1, frames = 5 });
+        var whc1 = await Call("read_memory", new { session = h1, spec = "counter" });
+        var whls = await Call("write_hook_list", new { session = h1 });
+        Check("nes_write_hook_block", L(whc1["value"]) == L(whc0["value"]) && L(whls["hooks"]?[0]?["hits"]) > 10, $"counter {L(whc0["value"])} -> {L(whc1["value"])}, {L(whls["hooks"]?[0]?["hits"])} writes dropped");
+        var whrm = await Call("write_hook_remove", new { session = h1, id = L(whls["hooks"]?[0]?["id"]) });
+        await Call("write_hook_add", new { session = h1, spec = "counter", action = "freeze", value = 0x42 });
+        await Call("load_state", new { session = h1, name = "hooked" });
+        await Call("run", new { session = h1, frames = 3 });
+        var whf = await Call("read_memory", new { session = h1, spec = "counter" });
+        var whst = await Call("status", new { session = h1 });
+        Check("nes_write_hook_freeze_across_load", L(whf["value"]) == 0x42 && (whst["writeHooks"] as JsonArray)?.Count == 1 && L(whrm["removed"]) == 1, $"counter {L(whf["value"])}; {S(whst["writeHooks"]?[0])}");
+        var whbad = await Call("write_hook_add", new { session = h1, spec = "counter", action = "explode" });
+        var whbad2 = await Call("write_hook_add", new { session = h1, spec = "counter", action = "freeze" });
+        Check("nes_write_hook_refusals", whbad.IsError && whbad2.IsError && whbad2.Text.Contains("value"), $"{whbad.Text} / {whbad2.Text}");
+        await Call("write_hook_remove", new { session = h1, all = true });
         var ru = await Call("run_until", new { session = h1, condition = "[counter] >= 200", max_frames = 2000 });
         var m5 = await Call("read_memory", new { session = h1, spec = "counter" });
         Check("nes_run_until_condition", ru["reached"]?.GetValue<bool>() == true && L(m5["value"]) >= 200, $"reached at frame {L(ru["frame"])}, counter {L(m5["value"])}");

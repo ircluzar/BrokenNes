@@ -264,8 +264,9 @@ internal sealed partial class HeadlessSession : Session
             foreach (var id in on) D.SetEnabled(id, false);
             bool pa = port?.BreakOnAssert ?? false, pb = port?.BreakOnBreak ?? false;
             if (port != null) { port.BreakOnAssert = false; port.BreakOnBreak = false; }   // the debug port's asserts too
+            D.HookBreaksOff = true;   // a break write hook lets its writes land for this frame too
             try { R!.Run(1); }
-            finally { foreach (var id in on) D.SetEnabled(id, true); if (port != null) { port.BreakOnAssert = pa; port.BreakOnBreak = pb; } }
+            finally { D.HookBreaksOff = false; foreach (var id in on) D.SetEnabled(id, true); if (port != null) { port.BreakOnAssert = pa; port.BreakOnBreak = pb; } }
         }
         if (D.IsParked) throw new ToolError("the machine is parked and a step keeps it there; run some frames first");
         return $"the machine was stopped inside frame {f0}; that frame was finished first (breakpoints off for it)";
@@ -301,6 +302,7 @@ internal sealed partial class HeadlessSession : Session
         if (watches.Count > 0) j["watches"] = WatchValues();
         if (checks != null) j["checkFindings"] = checks.Findings.Count;
         PortNews(j);
+        HookNews(j);
         return j;
     }
 
@@ -362,7 +364,8 @@ internal sealed partial class HeadlessSession : Session
             ["frame"] = b.Frame, ["scanline"] = b.Scanline, ["dot"] = b.Dot, ["cycle"] = b.Cycle, ["text"] = b.Text,
         };
         if (b.BreakpointId is int id) j["breakpoint"] = id;
-        if (b.Reason is "watch" or "breakpoint" && b.Kind != AccessKind.Exec && b.Kind != AccessKind.None)
+        if (b.Reason == "write-hook") { j.Remove("breakpoint"); j["writeHook"] = b.BreakpointId; j["applied"] = false; }
+        if (b.Reason is "watch" or "breakpoint" or "write-hook" && b.Kind != AccessKind.Exec && b.Kind != AccessKind.None)
         {
             j["access"] = Breakpoint.KindText(b.Kind); j["address"] = c.FormatAddress(b.Address); j["value"] = Num.Hex(b.Value);
             j["source"] = b.Source.ToString(); j["accessPc"] = c.FormatAddress(b.AccessPc); j["accessPcSymbol"] = D!.SymbolAt(c, b.AccessPc);
@@ -431,6 +434,7 @@ internal sealed partial class HeadlessSession : Session
         j["framesRun"] = Interlocked.Read(ref framesStarted);
         j["parked"] = D?.IsParked ?? false;
         if (D?.IsParked == true && D.LastBreak is { } b) j["break"] = BreakJson(b);
+        if (D != null && D.WriteHooks.Count > 0) j["writeHooks"] = J.Arr(D.WriteHooks.Select(h => (JsonNode)h.ToString()));
         lock (padLock) j["held"] = J.Strs(new[] { held[0].ToString(), held[1].ToString() });
         if (watches.Count > 0) j["watches"] = WatchValues();
         if (checks != null) j["checkFindings"] = checks.Findings.Count;
@@ -523,6 +527,7 @@ internal sealed partial class HeadlessSession : Session
         string? note = EnsureBetweenFrames();
         if (nes != null) nes.Reset(); else cs!.Reset();
         FreshDebugState();
+        D?.ApplyFreezes();
         try { StartHistory(SaveRaw()); } catch (Exception e) when (e is NotSupportedException or InvalidOperationException) { history = null; historyNote = "no history after the reset: " + e.Message; }
         var j = Status(); j["reset"] = "the console's reset button (memory kept, the CPU restarted at its reset vector on the next frame); open the ROM again for a power-on";
         if (note != null) j["note"] = note;
@@ -1433,6 +1438,7 @@ internal sealed partial class HeadlessSession : Session
         }
         catch (Exception e) when (e is InvalidDataException or NotSupportedException) { throw new ToolError(e.Message); }
         FreshDebugState();
+        D?.ApplyFreezes();   // a freeze write hook holds its value across the jump
         StartHistory(s.State);
         var j = Status(); j["loaded"] = name; j["stateFrame"] = s.Frame;
         j["callStack"] = "restarted from here (the debugger's call stack and hooks start again after a jump)";
@@ -1557,6 +1563,7 @@ internal sealed partial class HeadlessSession : Session
             ["next"] = "replay it with open_movie, export it (movie export: fm2 / bk2), or promote it into a project's verify tests (brokendev.ps1 movie promote, only when the user wants it)",
         };
         if (note != null) j["note"] = note;
+        if (HooksAlter) j["writeHooksWarning"] = "write hooks that change writes (rewrite / block / freeze) are set: the movie holds the input only, so its replay without them goes its own way";
         return j;
     }
 
