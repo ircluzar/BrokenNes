@@ -124,9 +124,9 @@ public sealed partial class PcMachine
         {
             if (!_cdBoot && _cdEmu == null) { Fail(0x01); return true; }
             uint p = SegB(I386.SEG_DS) + SI;
-            for (uint i = 0; i < 0x13; i++) PhysW8(p + i, 0);
-            PhysW8(p, 0x13); PhysW8(p + 1, _cdMedia); PhysW8(p + 2, (byte)(_cdBoot ? CdDrive : 0)); PhysW8(p + 3, 0);
-            PhysW32(p + 4, _cdImageLba); PhysW16(p + 8, 0);   // device spec: secondary master
+            for (uint i = 0; i < 0x13; i++) LinW8(p + i, 0);   // (DS:SI through the page tables)
+            LinW8(p, 0x13); LinW8(p + 1, _cdMedia); LinW8(p + 2, (byte)(_cdBoot ? CdDrive : 0)); LinW8(p + 3, 0);
+            LinW32(p + 4, _cdImageLba); LinW16(p + 8, 0);   // device spec: secondary master
             if (AL == 0x00) _cdEmu = null;                    // terminate emulation: drive 00h is the real A: again
             AH = 0; Ok(); return true;
         }

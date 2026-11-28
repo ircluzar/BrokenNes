@@ -406,6 +406,7 @@ internal static class X86BootCli
                 Console.WriteLine($"  {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} SS {m.Cpu.SegSel[2]:X4} ESP {m.Cpu.R[4]:X8} EAX {m.Cpu.R[0]:X8} EBX {m.Cpu.R[3]:X8} ECX {m.Cpu.R[1]:X8} EDX {m.Cpu.R[2]:X8} ESI {m.Cpu.R[6]:X8} EDI {m.Cpu.R[7]:X8} DS {m.Cpu.SegSel[3]:X4} ES {m.Cpu.SegSel[0]:X4} FL {m.Cpu.Flags:X} | {bytes} | stk {stk}");
                 m.Cpu.Step(1);
             }
+        foreach (var dl in Args(args, "--dumplin2")) { int eq = dl.IndexOf('='); var rg = dl[..eq].Split('-'); uint dlo = Convert.ToUInt32(rg[0], 16), dhi = Convert.ToUInt32(rg[1], 16); var buf = new byte[dhi - dlo]; for (uint q = 0; q < buf.Length; q++) { uint pp = LinPhys(m, dlo + q); buf[q] = pp == 0xffffffff ? (byte)0 : m.Phys8(pp); } File.WriteAllBytes(dl[(eq + 1)..], buf); Console.WriteLine($"x86boot: dumplin2 {dlo:X8}-{dhi:X8} -> {dl[(eq + 1)..]}"); }   // --dumplin2: the same as --dumplin, after --bp/--traceat/--trace (the VM that stopped there is mapped)
         foreach (var kv in portWho.OrderByDescending(x => x.Value).Take(20)) Console.WriteLine($"portwho {kv.Key} {kv.Value}");
         if (args.Contains("--portlog"))
             Console.WriteLine("ports: " + string.Join(" ", Enumerable.Range(0, 0x20000).Where(i => portCount[i] > 0).OrderByDescending(i => portCount[i]).Take(40)

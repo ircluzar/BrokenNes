@@ -318,8 +318,8 @@ public sealed partial class PcMachine
                 byte attr = (byte)BL;
                 for (int i = 0; i < (int)CX; i++)
                 {
-                    byte ch = Phys8(s++);
-                    if ((mode & 2) != 0) attr = Phys8(s++);
+                    byte ch = Lin8(s++);   // (ES:BP through the page tables)
+                    if ((mode & 2) != 0) attr = Lin8(s++);
                     if (ch is 7 or 8 or 10 or 13) TeletypeChar(ch, attr, p);
                     else
                     {
@@ -349,8 +349,8 @@ public sealed partial class PcMachine
             case 0x02:
             {
                 uint p = SegB(I386.SEG_ES) + DX;
-                for (uint i = 0; i < 16; i++) Vga.Ar[i] = (byte)(Phys8(p + i) & 0x3f);
-                Vga.Ar[0x11] = Phys8(p + 16);
+                for (uint i = 0; i < 16; i++) Vga.Ar[i] = (byte)(Lin8(p + i) & 0x3f);
+                Vga.Ar[0x11] = Lin8(p + 16);   // (ES:DX buffers through the page tables: a DOS box under Windows is paged)
                 break;
             }
             case 0x03: Vga.Ar[0x10] = (byte)((Vga.Ar[0x10] & ~8) | (BL != 0 ? 8 : 0)); break;
@@ -362,7 +362,7 @@ public sealed partial class PcMachine
                 uint p = SegB(I386.SEG_ES) + DX;
                 int start = (int)BX, n = (int)CX;
                 for (int i = 0; i < n && start + i < 256; i++)
-                    for (int k = 0; k < 3; k++) Vga.Palette[(start + i) * 3 + k] = (byte)(Phys8(p++) & 63);
+                    for (int k = 0; k < 3; k++) Vga.Palette[(start + i) * 3 + k] = (byte)(Lin8(p++) & 63);
                 break;
             }
             case 0x15: { int i = (int)BX & 0xff; DH = Vga.Palette[i * 3]; CH = Vga.Palette[i * 3 + 1]; CL = Vga.Palette[i * 3 + 2]; break; }
@@ -371,7 +371,7 @@ public sealed partial class PcMachine
                 uint p = SegB(I386.SEG_ES) + DX;
                 int start = (int)BX, n = (int)CX;
                 for (int i = 0; i < n && start + i < 256; i++)
-                    for (int k = 0; k < 3; k++) PhysW8(p++, Vga.Palette[(start + i) * 3 + k]);
+                    for (int k = 0; k < 3; k++) LinW8(p++, Vga.Palette[(start + i) * 3 + k]);
                 break;
             }
             case 0x1a: BL = (uint)((Vga.Ar[0x10] >> 7) & 1); BH = Vga.Ar[0x14]; break;
@@ -389,7 +389,7 @@ public sealed partial class PcMachine
                 int mapOff = (block & 3) * 0x4000 + (block >> 2) * 0x2000;
                 for (int c = 0; c < count; c++)
                     for (int y = 0; y < 32; y++)
-                        Vga.Ram[(mapOff + (first + c) * 32 + y) * 4 + 2] = y < h ? Phys8(src + (uint)(c * h + y)) : (byte)0;
+                        Vga.Ram[(mapOff + (first + c) * 32 + y) * 4 + 2] = y < h ? Lin8(src + (uint)(c * h + y)) : (byte)0;
                 break;
             }
             case 0x01: case 0x02: case 0x04: case 0x11: case 0x12: case 0x14: Vga.LoadFont(); break;
