@@ -54,11 +54,17 @@ public sealed partial class PcMachine
     private void SetEs(uint v) => C.LoadSeg(I386.SEG_ES, v);
 
     private uint FrameFlags => SegB(I386.SEG_SS) + ((C.R[4] + 4) & 0xffff);
+    // The caller's FLAGS in the interrupt frame at SS:SP+4 is a LINEAR address: under Windows 98 a DOS VM's stack is paged, so writing physical
+    // SS*16+SP+4 changed some other page and the caller never saw the result. In a DOS box INT 16h AH=01 then reported a key that was not there
+    // (ZF left clear), conagent called AH=00 for it and blocked forever: no Win32 console window (ping, xcopy32, ...) ever closed.
+    // X86_FLAGSPHYS=1: the old physical write (A/B only).
+    private static readonly bool FlagsPhys = Environment.GetEnvironmentVariable("X86_FLAGSPHYS") == "1";
     private void SetFrameFlag(uint bit, bool on)
     {
         uint a = FrameFlags;
-        ushort f = Phys16(a);
-        PhysW16(a, (ushort)(on ? f | bit : f & ~bit));
+        if (FlagsPhys) { ushort pf = Phys16(a); PhysW16(a, (ushort)(on ? pf | bit : pf & ~bit)); return; }
+        ushort f = Lin16(a);
+        LinW16(a, (ushort)(on ? f | bit : f & ~bit));
     }
     private void SetCF(bool on) => SetFrameFlag(I386.CF, on);
     private void SetZF(bool on) => SetFrameFlag(I386.ZF, on);
@@ -334,7 +340,19 @@ public sealed partial class PcMachine
         return (ushort)((sc << 8) | asc);
     }
 
+    private static readonly bool I16Log = Environment.GetEnvironmentVariable("X86_I16LOG") == "1";   // every INT 16h reaching the BIOS (debug)
     private void Int16()
+    {
+        if (I16Log)
+        {
+            uint ah0 = AH, ax0 = AX;
+            Int16Body();
+            Console.WriteLine($"i16: AH {ah0:X2} AX {ax0:X4} -> AX {AX:X4} ZF {(Lin16(FrameFlags) >> 6) & 1} wait {(C.NextIp == C.Ip || C.NextIp == Int16Stub + 4 ? 1 : 0)} vm {(C.Flags >> 17) & 1} ret {Lin16(SegB(I386.SEG_SS) + (C.R[4] & 0xffff) + 2):X4}:{Lin16(SegB(I386.SEG_SS) + (C.R[4] & 0xffff)):X4} lin {Lin16(0x41a):X4}/{Lin16(0x41c):X4} phys {Phys16(0x41a):X4}/{Phys16(0x41c):X4} imr {Pic.MasterImr:X2} cyc {Cpu.Cycle}");
+            return;
+        }
+        Int16Body();
+    }
+    private void Int16Body()
     {
         switch (AH)
         {
@@ -456,8 +474,8 @@ public sealed partial class PcMachine
             case 0x87:
             {
                 uint gdt = SegB(I386.SEG_ES) + SI;
-                uint src = Phys16(gdt + 0x12) | ((uint)Phys8(gdt + 0x14) << 16) | ((uint)Phys8(gdt + 0x17) << 24);
-                uint dst = Phys16(gdt + 0x1a) | ((uint)Phys8(gdt + 0x1c) << 16) | ((uint)Phys8(gdt + 0x1f) << 24);
+                uint src = Lin16(gdt + 0x12) | ((uint)Lin8(gdt + 0x14) << 16) | ((uint)Lin8(gdt + 0x17) << 24);   // (the GDT at ES:SI is linear; the moved
+                uint dst = Lin16(gdt + 0x1a) | ((uint)Lin8(gdt + 0x1c) << 16) | ((uint)Lin8(gdt + 0x1f) << 24);   //  addresses in it are physical)
                 uint n = CX * 2;
                 for (uint i = 0; i < n; i++) PhysW8(dst + i, Phys8(src + i));
                 AH = 0; Ok(); return;
@@ -480,9 +498,9 @@ public sealed partial class PcMachine
                     uint i = C.R[3];
                     if (i >= map.Length) { Fail(0x86); return; }
                     uint p = SegB(I386.SEG_ES) + DI;
-                    PhysW32(p, (uint)map[i].b); PhysW32(p + 4, (uint)(map[i].b >> 32));
-                    PhysW32(p + 8, (uint)map[i].l); PhysW32(p + 12, (uint)(map[i].l >> 32));
-                    PhysW32(p + 16, map[i].t);
+                    LinW32(p, (uint)map[i].b); LinW32(p + 4, (uint)(map[i].b >> 32));   // (ES:DI through the page tables: a V86 caller's buffer)
+                    LinW32(p + 8, (uint)map[i].l); LinW32(p + 12, (uint)(map[i].l >> 32));
+                    LinW32(p + 16, map[i].t);
                     C.R[0] = 0x534d4150; C.R[1] = 20; C.R[3] = i + 1 < map.Length ? i + 1 : 0;
                     Ok(); return;
                 }
