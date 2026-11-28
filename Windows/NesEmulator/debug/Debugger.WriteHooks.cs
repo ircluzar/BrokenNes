@@ -277,9 +277,9 @@ public sealed partial class Debugger
             stack = sb.ToString();
         }
         string? sym = SymbolAt(cpu, address), pcs = SymbolAt(cpu, pc);
-        string what = landed < 0 ? "dropped" : landed != written ? $"-> ${landed:X2}" : "";
+        string what = landed < 0 ? "(dropped)" : landed != written ? $"(lands ${landed:X2})" : "";
         string text = string.Create(CultureInfo.InvariantCulture,
-            $"#{h.Id} {WriteHook.ActionText(h.Action)} {cpu.FormatAddress(address)}{(sym != null ? $" ({sym})" : "")} ${old:X2} <- ${written:X2}{(what.Length > 0 ? " " + what : "")} pc {cpu.FormatAddress(pc)}{(pcs != null ? $" ({pcs})" : "")} frame {Machine.Frame} line {Machine.Scanline} cycle {Machine.Cycle}{(stack.Length > 0 ? " | " + stack : "")}");
+            $"#{h.Id} {WriteHook.ActionText(h.Action)} {cpu.FormatAddress(address)}{(sym != null ? $" ({sym})" : "")} ${old:X2} -> ${written:X2}{(what.Length > 0 ? " " + what : "")} pc {cpu.FormatAddress(pc)}{(pcs != null ? $" ({pcs})" : "")} frame {Machine.Frame} line {Machine.Scanline} cycle {Machine.Cycle}{(stack.Length > 0 ? " | " + stack : "")}");
         lock (hookLog)
         {
             hookLog.Add(new WriteHookRecord
