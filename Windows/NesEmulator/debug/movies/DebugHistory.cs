@@ -214,7 +214,7 @@ public sealed class DebugHistory
     {
         var on = d?.Breakpoints.Where(b => b.Enabled).Select(b => b.Id).ToList() ?? new List<int>();
         var obs = d?.Observers.ToArray() ?? Array.Empty<DebugObserver>();
-        if (d != null) { foreach (var id in on) d.SetEnabled(id, false); foreach (var o in obs) d.RemoveObserver(o); }
+        if (d != null) { foreach (var id in on) d.SetEnabled(id, false); foreach (var o in obs) d.RemoveObserver(o); d.HookBreaksOff = true; }   // write hooks still rewrite / drop / freeze in a replay (the same run), but do not break
         try
         {
             load(s.State);
@@ -224,7 +224,7 @@ public sealed class DebugHistory
         }
         finally
         {
-            if (d != null) { foreach (var o in obs) d.AddObserver(o); foreach (var id in on) d.SetEnabled(id, true); }
+            if (d != null) { d.HookBreaksOff = false; foreach (var o in obs) d.AddObserver(o); foreach (var id in on) d.SetEnabled(id, true); }
         }
     }
 

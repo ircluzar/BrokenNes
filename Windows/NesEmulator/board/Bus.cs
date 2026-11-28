@@ -14,6 +14,9 @@ public interface IBusDebugTap
 	void OnRead(ushort address, byte value);
 	/// <summary>A CPU write that reached the slow path, after it landed.</summary>
 	void OnWrite(ushort address, byte value);
+	/// <summary>A CPU write that reached the slow path, before it lands: the debugger's write hooks may change <paramref name="value"/>, or
+	/// drop the write (false). Default: every write lands as it is.</summary>
+	bool BeforeWrite(ushort address, ref byte value) => true;
 	/// <summary>An OAM DMA from CPU page <paramref name="page"/> was just copied (256 bytes read by the DMA, written to OAM).</summary>
 	void OnOamDma(byte page);
 	/// <summary>A DMC sample fetch halted the CPU on its read of <paramref name="address"/> (the precise-DMA model; the hardware checks of D4
@@ -1114,6 +1117,8 @@ public class Bus : IBus
 	private void DebugWriteSlow(ushort address, byte value)
 	{
 		var tap = DebugTap!;
+		if (!tap.BeforeWrite(address, ref value)) return;   // the debugger's write hooks: a dropped write lands nowhere
+		lastBusValue = value;                               // (a rewritten one drives its new value)
 		if (address < 0x2000) ram[address & 0x07FF] = value;
 		else { debugTapBusy = true; try { WriteSlow(address, value); } finally { debugTapBusy = false; } }
 		tap.OnWrite(address, value);

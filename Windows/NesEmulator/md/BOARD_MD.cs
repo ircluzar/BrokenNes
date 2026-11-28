@@ -438,6 +438,10 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         var tap = DebugTap;
         if (tap != null)
         {
+            // the debugger's write hooks, per byte lane: a dropped lane is left out of the write (both dropped: nothing lands)
+            if (upper) { byte hb = (byte)(data >> 8); if (tap.FilterWrite(address, ref hb)) data = (ushort)(hb << 8 | (data & 0xFF)); else upper = false; }
+            if (lower) { byte lb = (byte)data; if (tap.FilterWrite(address | 1, ref lb)) data = (ushort)((data & 0xFF00) | lb); else lower = false; }
+            if (!upper && !lower) { lastOpenBus = data; return; }
             if (upper) tap.OnWrite(address, (byte)(data >> 8));
             if (lower) tap.OnWrite(address | 1, (byte)data);
         }

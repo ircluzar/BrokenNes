@@ -46,6 +46,9 @@ internal abstract class Session
     public virtual JsonObject ListBreakpoints(int hits) => throw No("breakpoints");
     public virtual JsonObject RemoveBreakpoint(int? id, bool all) => throw No("breakpoints");
     public virtual JsonObject Watch(string action, string? expr, int? index) => throw No("watches");
+    public virtual JsonObject WriteHookAdd(string spec, string action, string? condition, long? and, long? or, long? xor, long? value, bool quiet, string cpu) => throw No("write hooks");
+    public virtual JsonObject WriteHookList(long since, int limit) => throw No("write hooks");
+    public virtual JsonObject WriteHookRemove(int? id, bool all, bool clearLog) => throw No("write hooks");
     public virtual JsonObject Step(string mode, int count, string cpu, string? to, long? frame, int? scanline) => throw No("stepping");
     public virtual JsonObject CallStack(string cpu) => throw No("the call stack");
     public virtual JsonObject Registers(string cpu) => throw No("registers");

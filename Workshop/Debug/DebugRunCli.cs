@@ -26,7 +26,10 @@ namespace BrokenNes.Workshop.Debug;
 ///   back [n] | back frames &lt;n&gt;    (D5) step back n instructions (to the exact one), or to the start of the n-th frame before now
 ///   enhance &lt;fastcpu|widescreen|noflicker|sound&gt; &lt;on|off&gt;   the WideMess console's enhancements for a SNES game (spec 6.1)
 ///   tracefile &lt;path&gt; [fn &lt;symbol&gt;] [range &lt;spec&gt;] [frames &lt;a-b&gt;] | endtrace | sym &lt;file&gt; | domains | limits | detach
+///   hook &lt;spec&gt; &lt;log|break|rewrite|block|freeze&gt; [and $BF] [or $n] [xor $n] [value $n] [quiet] [if &lt;cond&gt;]   a write hook (CPU writes, before they land)
+///   unhook &lt;id&gt; | unhook all | hooks | hooklog [n]
 /// </code>
+/// <c>--hook "&lt;spec&gt; &lt;action&gt; ..."</c> (repeatable) adds a write hook before the commands run: <c>--hook "$00FC rewrite and $FE"</c> (SMB1: no death music, bit 0 of the event music queue).
 /// Specs: <c>$8000</c>, <c>$8000-$80FF</c>, <c>7E:0010</c>, <c>wram:$10</c>, <c>vram:$2000-$27FF</c>, <c>spc:$0200</c>, <c>player_hp</c>, <c>player_hp+1</c>.
 /// </summary>
 internal static class DebugRunCli
@@ -63,10 +66,12 @@ internal static class DebugRunCli
         for (int i = 0; i < args.Length - 1; i++)
             if (args[i] == "--sym") Console.WriteLine($"symbols: {h.Dbg.Symbols.Load(args[i + 1], h.Machine.Console)} from {args[i + 1]}");
         var lines = new List<string>();
+        for (int i = 0; i < args.Length - 1; i++) if (args[i] == "--hook") lines.Add("hook " + args[i + 1]);
+        bool hooksOnly = lines.Count > 0;
         if (Opt("script", "") is { Length: > 0 } sp) lines.AddRange(File.ReadAllLines(sp));
         if (Opt("do", "") is { Length: > 0 } d) lines.AddRange(SplitCommands(d));
         if (lines.Count == 0 && bugMovie != null) lines.AddRange(new[] { $"run {bugMovie.Frames}", "where", "regs", "stack" });
-        if (lines.Count == 0) lines.Add("run 600");
+        if (lines.Count == 0 || hooksOnly && lines.All(l => l.StartsWith("hook "))) { lines.Add("run 600"); if (hooksOnly) lines.Add("hooks"); }
         var shell = new DebugShell(h);
         foreach (var raw0 in lines)
         {
@@ -265,6 +270,20 @@ internal sealed class DebugShell
             case "sym": Console.WriteLine($"  {D.Symbols.Load(Rest(1), h.Machine.Console)} symbols"); break;
             case "domains": foreach (var dm in h.Machine.Domains()) Console.WriteLine($"  {dm.Id,-8} {dm.Size,9} {dm.Label}{(dm.Unavailable != null ? " (" + dm.Unavailable + ")" : "")}"); break;
             case "limits": foreach (var l in h.Machine.Limitations) Console.WriteLine("  " + l); break;
+            case "hook": AddHook(words); break;
+            case "unhook":
+                if (words.Count > 1 && words[1] == "all") Console.WriteLine($"  {D.ClearWriteHooks()} hooks removed");
+                else if (words.Count > 1) Console.WriteLine(D.RemoveWriteHook(int.Parse(words[1].TrimStart('#'), CultureInfo.InvariantCulture)) ? "  removed" : "  no such hook");
+                break;
+            case "hooks": foreach (var wh in D.WriteHooks) Console.WriteLine($"  {wh} ({wh.Changed} changed)"); Console.WriteLine($"  ({D.WriteHookRecords} log records)"); break;
+            case "hooklog":
+            {
+                int n = words.Count > 1 ? int.Parse(words[1], CultureInfo.InvariantCulture) : 20;
+                var all = D.HookLog();
+                foreach (var x in all.Skip(Math.Max(0, all.Count - n))) Console.WriteLine("  " + x.Text);
+                Console.WriteLine($"  ({D.WriteHookRecords} in all)");
+                break;
+            }
             case "detach": D.Detach(); Console.WriteLine($"  detached (hooks armed: {D.IsArmed})"); break;
             case "quit": case "exit": return false;
             default: throw new ArgumentException($"unknown command '{cmd}'");
@@ -290,6 +309,42 @@ internal sealed class DebugShell
         var bp = D.Add(spec, kind, cond, hits, trace, trace ? log ?? "" : null, cpu);
         if (trace && log == null) bp = Replace(bp);
         Console.WriteLine("  " + bp);
+    }
+
+    private static long Number(string t)
+    {
+        t = t.Trim();
+        if (t.StartsWith('$')) return long.Parse(t[1..], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        if (t.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) return long.Parse(t[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        return long.Parse(t, CultureInfo.InvariantCulture);
+    }
+
+    private static byte Byte(string t) { long v = Number(t); return v is >= 0 and <= 0xFF ? (byte)v : throw new FormatException($"{t} is not a byte"); }
+
+    private void AddHook(List<string> w)
+    {
+        if (w.Count < 3) throw new ArgumentException("hook <spec> <log|break|rewrite|block|freeze> [and $n] [or $n] [xor $n] [value $n] [quiet] [if <cond>]");
+        var act = w[2].ToLowerInvariant() switch
+        {
+            "log" => WriteHookAction.Log, "break" => WriteHookAction.Break, "rewrite" => WriteHookAction.Rewrite, "block" => WriteHookAction.Block, "freeze" => WriteHookAction.Freeze,
+            _ => throw new ArgumentException($"'{w[2]}' is not log, break, rewrite, block or freeze"),
+        };
+        byte and = 0xFF, or = 0, xor = 0; int? value = null; bool quiet = false; string? cond = null;
+        for (int i = 3; i < w.Count; i++)
+        {
+            switch (w[i].ToLowerInvariant())
+            {
+                case "and": and = Byte(w[++i]); break;
+                case "or": or = Byte(w[++i]); break;
+                case "xor": xor = Byte(w[++i]); break;
+                case "value": value = Byte(w[++i]); break;
+                case "quiet": quiet = true; break;
+                case "if": cond = string.Join(" ", w.Skip(i + 1)); i = w.Count; break;
+                default: throw new ArgumentException($"unknown hook word '{w[i]}'");
+            }
+        }
+        var hk = D.AddWriteHook(w[1], act, cond, and, or, xor, value, cpu, quiet);
+        Console.WriteLine("  " + hk);
     }
 
     private Breakpoint Replace(Breakpoint bp)

@@ -165,7 +165,7 @@ BrokenNes: it is how agents debug the games on BrokenNes instead of Mesen (Mesen
 ```powershell
 BrokenDev\brokendev.ps1 mcp install     # builds it into BROKENDEV_HOME\bnbuild\mcp, then: claude mcp add --scope user brokennes -- <exe> --repo <main checkout>
 BrokenDev\brokendev.ps1 mcp status      # built? registered? (claude mcp get brokennes)
-BrokenDev\brokendev.ps1 mcp test        # the client test (75 checks) and the planted-bug demo (6)
+BrokenDev\brokendev.ps1 mcp test        # the client test (187 checks) and the planted-bug demo (6)
 BrokenDev\brokendev.ps1 mcp uninstall   # claude mcp remove brokennes --scope user (nothing else is touched)
 BrokenDev\tests\mcp-live.ps1 -App <BrokenNes.Windows.exe> -Mcp <BrokenNes.Mcp.exe>   # live sessions against two desktop apps with scratch configs
 ```
@@ -192,12 +192,48 @@ exe locked).
 | input | `input` (press, hold, release, a scripted pad `0:Start,10:,60:Right+A`) |
 | memory | `read_memory` / `write_memory` (by spec: `$0010`, `7E:0010`, `wram:$10`, `spc:$0200`, a symbol; or by domain), `search_memory` (a RAM search), `list_domains`, `symbols` |
 | debugger | `breakpoint_add` (exec, mirror-aware watches incl. DMA, tracepoints, conditions, hit counts), `breakpoint_list`, `breakpoint_remove`, `watch` (expressions shown with every result), `step` (into, over, out, scanline, frame, run to), `call_stack`, `registers`, `set_register`, `trace`, `trace_frame` (one whole frame to a file), `disassemble`, `evaluate` |
+| write hooks | `write_hook_add` (log / break / rewrite / block / freeze CPU writes to a range, before they land), `write_hook_list` (hooks + the hook log), `write_hook_remove`: see *Write hooks* below |
 | picture | `screenshot` (an image), `layers` (SNES / WideMess: only some layers), `tiles`, `sprites` (OAM list and boxes) |
 | sound | `record_sound` (levels and a .wav) |
 | states | `save_state`, `load_state` (in the server's memory only), `diff_states` (by symbol) |
 | analysis | `checks` (start, report, stop: the D4 findings), `profile` |
 | movies (D5) | `step_back` (instructions or frames), `open_movie` (a movie replayed in a new session, keyframes checked), `movie` (save a session's movie, info, play, export fm2 / bk2, diverge, test), `bisect` |
 | BrokenDev | `brokendev` (build, verify, compat, run, list, status, doctor) |
+
+### Write hooks (mid-frame RAM write interception)
+
+A write hook sits on a CPU's write path and acts on every write to an address range **before it lands** (mirrors folded, like a write
+watch; CPU writes only, not DMA). The idea is the ML_NesPlayer FCEUX fork's (`fceu.cpp` / `x6502.cpp` WrRAM), which strips bits from
+writes to `$00FC` and reacts the instant `$0759` is written; here it is a debugging tool. Actions:
+
+| action | what it does |
+|---|---|
+| `log` | records frame, scanline, cycle, the writing instruction's PC, old -> new value and the call stack (the write lands) |
+| `break` | stops the machine at the write with it **NOT yet applied** (memory still holds the old value); `run` / `step` lets it land |
+| `rewrite` | `value = (value & and \| or) ^ xor`, or a forced `value` |
+| `block` | drops the write |
+| `freeze` | holds `value` like a cheat: put in place when added (and after a state load / reset), every write lands it instead |
+
+An optional `condition` is a breakpoint condition (`value` is the byte being written: `value & $40`, `value == 1 && frame > 120`).
+Hooks run in the order they were added, each seeing the value the ones before it left; `quiet: true` keeps a rewrite / block / freeze out
+of the log (counts only). Run results carry `writeHooks.new` (records since the last result) and `status` lists the hooks.
+
+Example, SMB1 without the death music (bit 0, $01, of the event music queue `$00FC`; `$0759` is the game-timer-expired flag):
+
+```
+write_hook_add  session=h1 spec=$00FC action=rewrite and=$FE
+write_hook_add  session=h1 spec=$0759 action=break            # stop the instant the game writes the timer-expired flag, before it lands
+write_hook_list session=h1 limit=20                           # the hooks, their hit / change counts, the newest log records
+```
+
+The same from the headless CLI (`Workshop --debug`): `--hook "$00FC rewrite and $FE"` (repeatable), or the shell commands
+`hook <spec> <log|break|rewrite|block|freeze> [and $n] [or $n] [xor $n] [value $n] [quiet] [if <cond>]`, `unhook <id|all>`, `hooks`, `hooklog [n]`.
+
+Reach: NES (CPU_FIX and every core that writes through the bus), SNES / WideMess 65816, Game Boy / Color, Master System, Game Gear, Genesis
+68000 and Z80. Not reached (refused, never silently ignored): the SPC700 (its writes are predicted, not tapped), the Z80's and SM83's I/O
+ports, DMA writes, the x86 PC and the N64 (no memory watch path). Hooks are session state: never saved into a save state, and a movie
+saved from a session does not carry them (`movie` warns when a hook changes writes). With no hook set the buses run exactly as before (the
+tap stays null), and the conformance suite proves a log hook leaves the machine frame-identical (`Workshop --debug-test --only hooks`).
 
 Results are JSON (also as structured content), pictures PNG images. Session files (traces, .wav) go to
 `%LOCALAPPDATA%\BrokenNes\mcp\sessions\`. The plan's section 8 and "D3 as built": `docs/projects/brokendev-debugging-plan.md`.

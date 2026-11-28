@@ -336,13 +336,26 @@ public sealed class BOARD_SMS
 
     public void WriteMemory(ushort address, byte value)
     {
-        MemWriteHook?.Invoke(address, value, Vdp.Line, lineCycle);
         var tap = DebugTap;
-        tap?.OnWrite(address, value);
+        if (tap != null) { WriteMemoryTapped(tap, address, value); return; }   // the debugger (null: none; the plain path below pays this one test)
+        MemWriteHook?.Invoke(address, value, Vdp.Line, lineCycle);
         if (address >= 0xC000 && ramEnabled) Ram[address & 0x1FFF] = value;
         Cart.Write(address, value);
         Bios?.Write(address, value);                 // the BIOS ROM board has a mapper of its own on the same bus
-        tap?.OnWriteDone(address, value);
+    }
+
+    /// <summary>A memory write with the debugger's tap set: its write hooks first (they may change the value or drop the write), then the
+    /// watches before and after it lands. The same stores as the plain path.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private void WriteMemoryTapped(NesEmulator.Sega.ISegaBusDebugTap tap, ushort address, byte value)
+    {
+        if (!tap.FilterWrite(address, ref value)) return;
+        MemWriteHook?.Invoke(address, value, Vdp.Line, lineCycle);
+        tap.OnWrite(address, value);
+        if (address >= 0xC000 && ramEnabled) Ram[address & 0x1FFF] = value;
+        Cart.Write(address, value);
+        Bios?.Write(address, value);
+        tap.OnWriteDone(address, value);
     }
 
     // =================================================================================== I/O ports

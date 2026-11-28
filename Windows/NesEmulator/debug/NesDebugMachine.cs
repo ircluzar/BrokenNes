@@ -59,6 +59,8 @@ public sealed class NesDebugMachine : DebugMachine, INesInstructionHook, IBusDeb
 
     void IBusDebugTap.OnRead(ushort address, byte value) => Debugger?.OnAccess(cpu, address, value, false, AccessSource.Cpu, -1);
     void IBusDebugTap.OnWrite(ushort address, byte value) => Debugger?.OnAccess(cpu, address, value, true, AccessSource.Cpu, -1);
+    bool IBusDebugTap.BeforeWrite(ushort address, ref byte value) { var d = Debugger; return d == null || d.FilterWrite(cpu, address, ref value); }
+    public override bool SupportsWriteHooks(DebugCpu c) => ReferenceEquals(c, cpu);
 
     void IBusDebugTap.OnDmcDmaHalt(ushort address) => Debugger?.OnDmcHalt(cpu, address);
 
@@ -89,7 +91,7 @@ public sealed class NesDebugMachine : DebugMachine, INesInstructionHook, IBusDeb
         {
             string id = nes.GetCpuCoreId();
             if (id is "CPU_SPD" or "CPU_EIL" or "CPU_LW2" or "CPU_ULQ")
-                yield return $"{id} reads and writes RAM without the bus (a speed shortcut), so RAM watches miss some of its accesses; CPU_FIX (the default) goes through the bus every time.";
+                yield return $"{id} reads and writes RAM without the bus (a speed shortcut), so RAM watches and write hooks miss some of its accesses; CPU_FIX (the default) goes through the bus every time.";
             if (id != "CPU_FIX")
                 yield return $"{id} does not say when an interrupt is about to be taken: the call stack finds interrupt entries afterwards, and an execute breakpoint on the instruction an NMI interrupts can be reported twice.";
             if (nes.DebugBus?.ppu is not IPpuViewProbe)
